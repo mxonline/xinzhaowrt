@@ -1,0 +1,5 @@
+work/
+output/
+*.log
+.DS_Store
+.env

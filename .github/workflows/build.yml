@@ -1,0 +1,78 @@
+name: Build XinZhaoWrt Arthur
+
+'on':
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: VIKINGYFY/immortalwrt branch or tag
+        required: true
+        default: main
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout build project
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Restore OpenWrt download and compiler caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/immortalwrt/dl
+            work/immortalwrt/.ccache
+          key: arthur-${{ runner.os }}-${{ github.event.inputs.source_ref || 'main' }}-${{ hashFiles('config/**', 'scripts/**', 'build.env') }}
+          restore-keys: |
+            arthur-${{ runner.os }}-${{ github.event.inputs.source_ref || 'main' }}-
+            arthur-${{ runner.os }}-
+
+      - name: Build firmware
+        env:
+          JOBS: '2'
+          QUIET_BUILD: '1'
+          REUSE_SOURCE: '0'
+        run: |
+          REF='${{ github.event.inputs.source_ref }}'
+          if [ -z "$REF" ]; then REF=main; fi
+          ./scripts/build.sh "$REF"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-Arthur
+          path: |
+            output/firmware/*
+            output/full.config
+            output/build-info.txt
+            output/required-plugins.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release for tags
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 新肇网络Wrt-京东云亚瑟固件 ${{ github.ref_name }}
+          files: |
+            output/firmware/*
+            output/full.config
+            output/build-info.txt
+            output/required-plugins.txt
+          generate_release_notes: true

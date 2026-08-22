@@ -1,0 +1,49 @@
+#!/bin/sh
+# First-install defaults for 新肇网络Wrt-京东云亚瑟固件.
+# Once initialized, a persistent /etc/config/xinzhaowrt marker prevents these
+# defaults from being re-applied on later sysupgrades that preserve config.
+
+set -eu
+
+if [ "$(uci -q get xinzhaowrt.system.initialized 2>/dev/null || true)" = "1" ]; then
+    exit 0
+fi
+
+current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
+case "$current_ip" in
+    ''|'192.168.1.1')
+        uci -q set network.lan.ipaddr='192.168.6.1'
+        uci -q commit network
+        logger -t xinzhaowrt 'Initial LAN IP set to 192.168.6.1'
+        ;;
+    *)
+        logger -t xinzhaowrt "Existing LAN IP preserved: $current_ip"
+        ;;
+esac
+
+root_hash="$(awk -F: '$1 == "root" { print $2; exit }' /etc/shadow 2>/dev/null || true)"
+case "$root_hash" in
+    ''|'!'|'*')
+        password_hash='$6$XZArthur01$1dyEnJigbC4dTZIO2sFYbcFnYiIh/FDhGUlok.m7NTR.07..EIUUdX6ePtXm6AtPFy2MndBJgHamEFx.w8.Wf0'
+        awk -F: -v OFS=: -v hash="$password_hash" '
+            $1 == "root" { $2 = hash }
+            { print }
+        ' /etc/shadow > /tmp/shadow.xinzhaowrt
+        cat /tmp/shadow.xinzhaowrt > /etc/shadow
+        rm -f /tmp/shadow.xinzhaowrt
+        chmod 600 /etc/shadow
+        logger -t xinzhaowrt 'Initial root password applied'
+        ;;
+    *)
+        logger -t xinzhaowrt 'Existing root password preserved'
+        ;;
+esac
+
+uci -q batch <<'UCI'
+set xinzhaowrt.system=system
+set xinzhaowrt.system.initialized='1'
+set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur'
+UCI
+uci -q commit xinzhaowrt
+
+exit 0
