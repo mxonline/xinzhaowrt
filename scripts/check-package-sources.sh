@@ -40,9 +40,17 @@ required=(
 missing=0
 for pkg in "${required[@]}"; do
   path="$FEED_DIR/$pkg"
-  [[ "$pkg" == "luci-app-store" ]] && path="$ISTORE_FEED_DIR/$pkg"
+  if [[ "$pkg" == "luci-app-store" ]]; then
+    # 同一份 Kenzok8 assembled feed 可能被 OpenWrt 注册为 xinzhao，
+    # 也可能因兼容配置注册为 istore；两者都是真实有效的安装位置。
+    if [[ -f "$FEED_DIR/$pkg/Makefile" ]]; then
+      path="$FEED_DIR/$pkg"
+    elif [[ -f "$ISTORE_FEED_DIR/$pkg/Makefile" ]]; then
+      path="$ISTORE_FEED_DIR/$pkg"
+    fi
+  fi
   if [[ ! -e "$path" || ! -f "$path/Makefile" ]]; then
-    echo "MISSING_SOURCE: $pkg ($path)"
+    echo "MISSING_SOURCE: $pkg (checked=$FEED_DIR/$pkg,$ISTORE_FEED_DIR/$pkg)"
     missing=1
   fi
 done
@@ -67,18 +75,24 @@ KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
 assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
-assert_istore_source() {
-  local pkg="$1" expected="$2" actual
-  actual="$(readlink -f "$ISTORE_FEED_DIR/$pkg" 2>/dev/null || true)"
-  if [[ "$actual" != "$expected" ]]; then
-    echo "MISSING_SOURCE_PROVENANCE: $pkg (expected $expected, got ${actual:-<none>})"
-    missing=1
-  fi
+assert_unified_source() {
+  local pkg="$1" expected="$2" actual feed
+  for feed in "$FEED_DIR" "$ISTORE_FEED_DIR"; do
+    if [[ -f "$feed/$pkg/Makefile" ]]; then
+      actual="$(readlink -f "$feed/$pkg" 2>/dev/null || true)"
+      if [[ "$actual" == "$expected" ]]; then
+        echo "FOUND_SOURCE_PROVENANCE: $pkg (feed=$(basename "$feed"), source=$actual)"
+        return 0
+      fi
+    fi
+  done
+  echo "MISSING_SOURCE_PROVENANCE: $pkg (expected $expected, got ${actual:-<none>})"
+  missing=1
 }
-assert_istore_source luci-app-store "$KENZO_SOURCE/luci-app-store"
-assert_istore_source luci-lib-taskd "$KENZO_SOURCE/luci-lib-taskd"
-assert_istore_source luci-lib-xterm "$KENZO_SOURCE/luci-lib-xterm"
-assert_istore_source taskd "$KENZO_SOURCE/taskd"
+assert_unified_source luci-app-store "$KENZO_SOURCE/luci-app-store"
+assert_unified_source luci-lib-taskd "$KENZO_SOURCE/luci-lib-taskd"
+assert_unified_source luci-lib-xterm "$KENZO_SOURCE/luci-lib-xterm"
+assert_unified_source taskd "$KENZO_SOURCE/taskd"
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
