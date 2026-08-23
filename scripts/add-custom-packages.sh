@@ -55,10 +55,7 @@ clone_or_update \
   https://github.com/linkease/istore.git \
   main
 ISTORE="$SOURCES/istore"
-link_pkg luci-app-store "$ISTORE/luci/luci-app-store"
-link_pkg luci-lib-taskd "$ISTORE/luci/luci-lib-taskd"
-link_pkg luci-lib-xterm "$ISTORE/luci/luci-lib-xterm"
-link_pkg taskd "$ISTORE/luci/taskd"
+ISTORE_FEED="$ISTORE/luci"
 
 # DiskMan.
 clone_or_update \
@@ -115,17 +112,25 @@ link_pkg open-app-filter "$OAF/open-app-filter"
 if [[ ! -f feeds.conf ]]; then
   cp feeds.conf.default feeds.conf
 fi
+sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
 sed -i '/^[[:space:]]*src-link[[:space:]]\+xinzhao[[:space:]]/d' feeds.conf
+printf 'src-link istore %s\n' "$ISTORE_FEED" >> feeds.conf
 printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 
+./scripts/feeds update istore
 ./scripts/feeds update xinzhao
+
+# Install the official iStore package and its companion libraries from feed istore.
+for pkg in luci-app-store luci-lib-taskd luci-lib-xterm taskd; do
+  ./scripts/feeds uninstall "$pkg" >/dev/null 2>&1 || true
+  ./scripts/feeds install -p istore "$pkg"
+done
 
 # Replace any same-named package installed from another feed with our selected
 # source.  This avoids duplicate package definitions from broad feeds.
 CUSTOM_PKGS=(
   luci-app-istorex luci-app-lucky lucky
-  luci-app-quickfile quickfile luci-app-quickstart luci-app-store
-  quickstart luci-lib-taskd luci-lib-xterm taskd
+  luci-app-quickfile quickfile luci-app-quickstart quickstart
   luci-app-diskman luci-app-easytier easytier
   luci-app-mosdns mosdns v2dat v2ray-geodata
   luci-app-openclash luci-app-oaf oaf open-app-filter

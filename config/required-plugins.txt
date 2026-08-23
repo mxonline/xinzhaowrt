@@ -1,3 +1,4 @@
+# luci-app-store is the canonical iStore package name; luci-app-istore does not exist.
 luci-app-adguardhome
 luci-app-autoreboot
 luci-app-diskman
