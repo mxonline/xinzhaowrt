@@ -49,6 +49,50 @@ jobs:
             arthur-${{ runner.os }}-${{ github.event.inputs.source_ref || 'main' }}-
             arthur-${{ runner.os }}-
 
+      - name: Feed Check
+        env:
+          IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+          IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p output/logs work/feed-check
+          FEED_LOG="$GITHUB_WORKSPACE/output/logs/feed-check.log"
+          FEED_ERROR="$GITHUB_WORKSPACE/output/logs/feed-error.txt"
+          : > "$FEED_LOG"
+          rm -f "$FEED_ERROR"
+          exec > >(tee -a "$FEED_LOG") 2>&1
+
+          # 中文说明：Feed Check 失败立即生成独立报告，并阻止后续 Build firmware。
+          trap 'rc=$?; failed_command=$BASH_COMMAND; trap - ERR; {
+            echo "Feed Check failed"
+            echo "GitHub Actions Run ID: ${GITHUB_RUN_ID:-unknown}"
+            echo "Commit SHA: ${GITHUB_SHA:-unknown}"
+            echo "ImmortalWrt source repo: $IMMORTAL_SOURCE_REPO"
+            echo "Source ref: $IMMORTAL_SOURCE_REF"
+            echo "失败命令: $failed_command"
+            echo "exit code: $rc"
+            echo
+            echo "关键错误："
+            grep -nEi "ERROR:|failed|error|fatal:|MISSING|does not exist|conflict|syntax" "$FEED_LOG" | tail -n 200 || true
+            echo
+            echo "最后100行 Feed Check 日志："
+            tail -n 100 "$FEED_LOG"
+          } > "$FEED_ERROR"; exit "$rc"' ERR
+
+          REF="$IMMORTAL_SOURCE_REF"
+          SRC="$GITHUB_WORKSPACE/work/feed-check/immortalwrt"
+          rm -rf "$SRC"
+          git clone --depth=1 --branch "$REF" "$IMMORTAL_SOURCE_REPO" "$SRC"
+          cd "$SRC"
+
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          "$GITHUB_WORKSPACE/scripts/add-custom-packages.sh" "$SRC"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp "$GITHUB_WORKSPACE/config/arthur.config" .config
+          make defconfig
+
       - name: Build firmware
         env:
           JOBS: '2'
@@ -68,7 +112,12 @@ jobs:
         env:
           IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
           IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
-        run: ./scripts/analyze-error.sh output/logs/build.log
+        run: |
+          if [ -f output/logs/feed-error.txt ]; then
+            ./scripts/analyze-error.sh output/logs/feed-check.log
+          else
+            ./scripts/analyze-error.sh output/logs/build.log
+          fi
 
       - name: Add failure summary to job
         if: always()
@@ -89,6 +138,9 @@ jobs:
           name: XinZhaoWrt-diagnostics-${{ github.run_id }}
           path: |
             output/logs/build.log
+            output/logs/feed-check.log
+            output/logs/feed-error.txt
+            output/logs/error-context.txt
             output/logs/error-summary.txt
             output/logs/failure-report.txt
             output/full.config
