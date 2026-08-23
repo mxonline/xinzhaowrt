@@ -47,6 +47,12 @@ link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
 link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
 link_pkg quickstart "$KENZO/quickstart"
+# 三个 iStore 相关插件及其任务组件统一使用同一份 Kenzok8 源，避免
+# luci-app-istorex/quickstart 与另一个 feed 的 luci-app-store 交叉解析。
+link_pkg luci-app-store "$KENZO/luci-app-store"
+link_pkg luci-lib-taskd "$KENZO/luci-lib-taskd"
+link_pkg luci-lib-xterm "$KENZO/luci-lib-xterm"
+link_pkg taskd "$KENZO/taskd"
 
 # ImmortalWrt 官方 LuCI 应用 feed。以下六个 required package 都在
 # immortalwrt/luci 的 applications 目录中，不使用第三方同名替代包。
@@ -83,15 +89,6 @@ for pkg_path in \
   path="${pkg_path#*:}"
   link_pkg "$pkg" "$IMMORTAL_PACKAGES/$path"
 done
-
-# Official iStore feed. Keep store/taskd together so luci-app-store uses the
-# upstream source instead of a mirror with ambiguous package provenance.
-clone_or_update \
-  istore \
-  https://github.com/linkease/istore.git \
-  main
-ISTORE="$SOURCES/istore"
-ISTORE_FEED="$ISTORE/luci"
 
 # DiskMan.
 clone_or_update \
@@ -162,22 +159,15 @@ ensure_official_feed() {
 ensure_official_feed packages https://github.com/immortalwrt/packages.git
 ensure_official_feed luci https://github.com/immortalwrt/luci.git
 ensure_official_feed routing https://github.com/openwrt/routing.git
-sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
 sed -i '/^[[:space:]]*src-link[[:space:]]\+xinzhao[[:space:]]/d' feeds.conf
-printf 'src-link istore %s\n' "$ISTORE_FEED" >> feeds.conf
+sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
+printf 'src-link istore %s\n' "$FEED" >> feeds.conf
 printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 
 ./scripts/feeds update packages luci routing
 ./scripts/feeds install -a
 ./scripts/feeds update istore
 ./scripts/feeds update xinzhao
-
-# Install all official iStore packages after both feed indexes exist.  The
-# second forced pass prevents dependency ordering from hiding package names.
-for pkg in luci-app-store luci-lib-taskd luci-lib-xterm taskd; do
-  ./scripts/feeds uninstall "$pkg" >/dev/null 2>&1 || true
-  ./scripts/feeds install -f -p istore "$pkg"
-done
 
 # Replace any same-named package installed from another feed with our selected
 # source.  This avoids duplicate package definitions from broad feeds.
@@ -198,12 +188,17 @@ for pkg in "${CUSTOM_PKGS[@]}"; do
   ./scripts/feeds install -f -p xinzhao "$pkg"
 done
 
-# Reinstall the two dependency chains after every selected package is known.
-./scripts/feeds install -f -p istore luci-app-store luci-lib-taskd luci-lib-xterm taskd
+# Reinstall the complete unified iStore dependency chain after every selected
+# package is known, so make defconfig sees all package symbols together.
 ./scripts/feeds install -f -p xinzhao \
   luci-app-istorex luci-app-quickstart quickstart \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
+
+# 通过同一份 Kenzok8 源的 istore feed 安装 store 及其完整任务依赖；
+# 保留该 feed 名称是为了兼容现有 package existence check。
+./scripts/feeds install -f -p istore \
+  luci-app-store luci-lib-taskd luci-lib-xterm taskd
 
 printf '\nCustom XinZhao feed installed with %d package entries.\n' "${#CUSTOM_PKGS[@]}"

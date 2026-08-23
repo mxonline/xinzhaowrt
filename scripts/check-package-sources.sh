@@ -61,17 +61,24 @@ assert_source() {
   fi
 }
 
-# Verify the three iStore-related names without inventing luci-app-istore.
-ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
+# Verify all three iStore-related names use one Kenzok8 source without
+# inventing luci-app-istore.
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
-actual_istore_store="$(readlink -f "$ISTORE_FEED_DIR/luci-app-store" 2>/dev/null || true)"
-if [[ "$actual_istore_store" != "$ISTORE_SOURCE/luci/luci-app-store" ]]; then
-  echo "MISSING_SOURCE_PROVENANCE: luci-app-store (expected $ISTORE_SOURCE/luci/luci-app-store, got ${actual_istore_store:-<none>})"
-  missing=1
-fi
 assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
+assert_istore_source() {
+  local pkg="$1" expected="$2" actual
+  actual="$(readlink -f "$ISTORE_FEED_DIR/$pkg" 2>/dev/null || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "MISSING_SOURCE_PROVENANCE: $pkg (expected $expected, got ${actual:-<none>})"
+    missing=1
+  fi
+}
+assert_istore_source luci-app-store "$KENZO_SOURCE/luci-app-store"
+assert_istore_source luci-lib-taskd "$KENZO_SOURCE/luci-lib-taskd"
+assert_istore_source luci-lib-xterm "$KENZO_SOURCE/luci-lib-xterm"
+assert_istore_source taskd "$KENZO_SOURCE/taskd"
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
