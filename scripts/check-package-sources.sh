@@ -11,6 +11,12 @@ required=(
   luci-app-lucky
   luci-app-quickfile
   luci-app-quickstart
+  luci-app-adguardhome
+  luci-app-autoreboot
+  luci-app-firewall
+  luci-app-package-manager
+  luci-app-pbr
+  luci-app-samba4
   luci-app-smartdns
   luci-app-sqm
   luci-app-ttyd
@@ -67,6 +73,9 @@ fi
 assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
+  assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
+done
+for pkg in luci-app-adguardhome luci-app-autoreboot luci-app-firewall luci-app-package-manager luci-app-pbr luci-app-samba4; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
 

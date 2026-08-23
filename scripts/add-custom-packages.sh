@@ -55,7 +55,11 @@ clone_or_update \
   https://github.com/immortalwrt/luci.git \
   master
 IMMORTAL_LUCI="$SOURCES/immortalwrt-luci"
-for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
+for pkg in \
+  luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
+  luci-app-package-manager luci-app-pbr luci-app-samba4 \
+  luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp \
+  luci-app-vlmcsd luci-app-wol; do
   link_pkg "$pkg" "$IMMORTAL_LUCI/applications/$pkg"
 done
 
@@ -71,7 +75,10 @@ for pkg_path in \
   "ttyd:utils/ttyd" \
   "miniupnpd:net/miniupnpd" \
   "vlmcsd:net/vlmcsd" \
-  "etherwake:net/etherwake"; do
+  "etherwake:net/etherwake" \
+  "adguardhome:net/adguardhome" \
+  "pbr:net/pbr" \
+  "samba4:net/samba4"; do
   pkg="${pkg_path%%:*}"
   path="${pkg_path#*:}"
   link_pkg "$pkg" "$IMMORTAL_PACKAGES/$path"
@@ -141,11 +148,27 @@ link_pkg open-app-filter "$OAF/open-app-filter"
 if [[ ! -f feeds.conf ]]; then
   cp feeds.conf.default feeds.conf
 fi
+
+# 检查并补齐 ImmortalWrt 的官方基础 feed；不替换或删除 xinzhao 自定义 feed。
+ensure_official_feed() {
+  local name="$1" url="$2"
+  if ! grep -Eq "^[[:space:]]*src-(git|hg)[[:space:]]+$name([[:space:]]|$)" feeds.conf; then
+    printf 'src-git %s %s\n' "$name" "$url" >> feeds.conf
+    echo "ADDED_OFFICIAL_FEED: $name -> $url"
+  else
+    echo "FOUND_OFFICIAL_FEED: $name"
+  fi
+}
+ensure_official_feed packages https://github.com/immortalwrt/packages.git
+ensure_official_feed luci https://github.com/immortalwrt/luci.git
+ensure_official_feed routing https://github.com/openwrt/routing.git
 sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
 sed -i '/^[[:space:]]*src-link[[:space:]]\+xinzhao[[:space:]]/d' feeds.conf
 printf 'src-link istore %s\n' "$ISTORE_FEED" >> feeds.conf
 printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 
+./scripts/feeds update packages luci routing
+./scripts/feeds install -a
 ./scripts/feeds update istore
 ./scripts/feeds update xinzhao
 
@@ -161,8 +184,10 @@ done
 CUSTOM_PKGS=(
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
+  luci-app-adguardhome luci-app-autoreboot luci-app-firewall
+  luci-app-package-manager luci-app-pbr luci-app-samba4
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
-  smartdns sqm-scripts ttyd miniupnpd vlmcsd etherwake
+  smartdns sqm-scripts ttyd miniupnpd vlmcsd etherwake adguardhome pbr samba4
   luci-app-diskman luci-app-easytier easytier
   luci-app-mosdns mosdns v2dat v2ray-geodata
   luci-app-openclash luci-app-oaf oaf open-app-filter
@@ -177,6 +202,8 @@ done
 ./scripts/feeds install -f -p istore luci-app-store luci-lib-taskd luci-lib-xterm taskd
 ./scripts/feeds install -f -p xinzhao \
   luci-app-istorex luci-app-quickstart quickstart \
+  luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
+  luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
 
 printf '\nCustom XinZhao feed installed with %d package entries.\n' "${#CUSTOM_PKGS[@]}"

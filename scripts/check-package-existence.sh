@@ -15,7 +15,9 @@ is_xinzhao_package() {
     luci-app-istorex|luci-app-lucky|lucky|luci-app-quickfile|quickfile|\
     luci-app-quickstart|quickstart|luci-app-diskman|luci-app-easytier|easytier|\
     luci-app-mosdns|mosdns|v2dat|v2ray-geodata|luci-app-openclash|\
-    luci-app-oaf|oaf|open-app-filter|luci-app-smartdns|luci-app-sqm|\
+    luci-app-oaf|oaf|open-app-filter|luci-app-adguardhome|luci-app-autoreboot|\
+    luci-app-firewall|luci-app-package-manager|luci-app-pbr|luci-app-samba4|\
+    luci-app-smartdns|luci-app-sqm|\
     luci-app-ttyd|luci-app-upnp|luci-app-vlmcsd|luci-app-wol|smartdns|\
     sqm-scripts|ttyd|miniupnpd|vlmcsd|etherwake) return 0 ;;
     *) return 1 ;;
