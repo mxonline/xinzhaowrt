@@ -11,6 +11,12 @@ required=(
   luci-app-lucky
   luci-app-quickfile
   luci-app-quickstart
+  luci-app-smartdns
+  luci-app-sqm
+  luci-app-ttyd
+  luci-app-upnp
+  luci-app-vlmcsd
+  luci-app-wol
   luci-app-store
   luci-app-diskman
   luci-app-easytier
@@ -52,6 +58,7 @@ assert_source() {
 # Verify the three iStore-related names without inventing luci-app-istore.
 ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
+IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
 actual_istore_store="$(readlink -f "$ISTORE_FEED_DIR/luci-app-store" 2>/dev/null || true)"
 if [[ "$actual_istore_store" != "$ISTORE_SOURCE/luci/luci-app-store" ]]; then
   echo "MISSING_SOURCE_PROVENANCE: luci-app-store (expected $ISTORE_SOURCE/luci/luci-app-store, got ${actual_istore_store:-<none>})"
@@ -59,6 +66,9 @@ if [[ "$actual_istore_store" != "$ISTORE_SOURCE/luci/luci-app-store" ]]; then
 fi
 assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
+for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
+  assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
+done
 
 if grep -Eq '^[[:space:]]*luci-app-istore([[:space:]]|$)' "$PROJECT_ROOT/config/required-plugins.txt" 2>/dev/null; then
   echo "ERROR: luci-app-istore is not a valid package name; use luci-app-store or luci-app-istorex."

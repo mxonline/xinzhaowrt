@@ -15,7 +15,9 @@ is_xinzhao_package() {
     luci-app-istorex|luci-app-lucky|lucky|luci-app-quickfile|quickfile|\
     luci-app-quickstart|quickstart|luci-app-diskman|luci-app-easytier|easytier|\
     luci-app-mosdns|mosdns|v2dat|v2ray-geodata|luci-app-openclash|\
-    luci-app-oaf|oaf|open-app-filter) return 0 ;;
+    luci-app-oaf|oaf|open-app-filter|luci-app-smartdns|luci-app-sqm|\
+    luci-app-ttyd|luci-app-upnp|luci-app-vlmcsd|luci-app-wol|smartdns|\
+    sqm-scripts|ttyd|miniupnpd|vlmcsd|etherwake) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -53,6 +55,17 @@ if grep -Eq '^[[:space:]]*luci-app-istore([[:space:]]|$)' "$REQUIRED_FILE"; then
   echo "INVALID_PACKAGE: luci-app-istore; use luci-app-store from feed istore"
   FAILED=1
 fi
+
+# 明确核对六个此前缺失的 LuCI 包，避免检查逻辑退回到模糊的 any-feed 搜索。
+for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
+  path="$SRC/package/feeds/xinzhao/$pkg/Makefile"
+  if [[ ! -f "$path" ]]; then
+    echo "MISSING_PACKAGE: $pkg (feed=xinzhao path=$path)"
+    FAILED=1
+  else
+    echo "FOUND_PACKAGE: $pkg (feed=xinzhao, source=$(readlink -f "$SRC/package/feeds/xinzhao/$pkg"))"
+  fi
+done
 
 if (( FAILED )); then
   echo "ERROR: required package existence check failed before make defconfig."

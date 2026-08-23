@@ -48,6 +48,35 @@ link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
 link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
 link_pkg quickstart "$KENZO/quickstart"
 
+# ImmortalWrt 官方 LuCI 应用 feed。以下六个 required package 都在
+# immortalwrt/luci 的 applications 目录中，不使用第三方同名替代包。
+clone_or_update \
+  immortalwrt-luci \
+  https://github.com/immortalwrt/luci.git \
+  master
+IMMORTAL_LUCI="$SOURCES/immortalwrt-luci"
+for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
+  link_pkg "$pkg" "$IMMORTAL_LUCI/applications/$pkg"
+done
+
+# ImmortalWrt 官方 packages feed：补齐上述 LuCI 应用的运行时依赖。
+clone_or_update \
+  immortalwrt-packages \
+  https://github.com/immortalwrt/packages.git \
+  master
+IMMORTAL_PACKAGES="$SOURCES/immortalwrt-packages"
+for pkg_path in \
+  "smartdns:net/smartdns" \
+  "sqm-scripts:net/sqm-scripts" \
+  "ttyd:utils/ttyd" \
+  "miniupnpd:net/miniupnpd" \
+  "vlmcsd:net/vlmcsd" \
+  "etherwake:net/etherwake"; do
+  pkg="${pkg_path%%:*}"
+  path="${pkg_path#*:}"
+  link_pkg "$pkg" "$IMMORTAL_PACKAGES/$path"
+done
+
 # Official iStore feed. Keep store/taskd together so luci-app-store uses the
 # upstream source instead of a mirror with ambiguous package provenance.
 clone_or_update \
@@ -132,6 +161,8 @@ done
 CUSTOM_PKGS=(
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
+  luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
+  smartdns sqm-scripts ttyd miniupnpd vlmcsd etherwake
   luci-app-diskman luci-app-easytier easytier
   luci-app-mosdns mosdns v2dat v2ray-geodata
   luci-app-openclash luci-app-oaf oaf open-app-filter
@@ -144,6 +175,8 @@ done
 
 # Reinstall the two dependency chains after every selected package is known.
 ./scripts/feeds install -f -p istore luci-app-store luci-lib-taskd luci-lib-xterm taskd
-./scripts/feeds install -f -p xinzhao luci-app-istorex luci-app-quickstart quickstart
+./scripts/feeds install -f -p xinzhao \
+  luci-app-istorex luci-app-quickstart quickstart \
+  luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
 
 printf '\nCustom XinZhao feed installed with %d package entries.\n' "${#CUSTOM_PKGS[@]}"
