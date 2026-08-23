@@ -32,6 +32,12 @@ jobs:
       - name: Install build dependencies
         run: ./scripts/codex-setup.sh
 
+      - name: Preflight project validation
+        run: |
+          mkdir -p output/logs
+          set -o pipefail
+          ./scripts/verify-project.sh 2>&1 | tee -a output/logs/build.log
+
       - name: Restore OpenWrt download and compiler caches
         uses: actions/cache@v4
         with:
@@ -51,9 +57,47 @@ jobs:
         run: |
           REF='${{ github.event.inputs.source_ref }}'
           if [ -z "$REF" ]; then REF=main; fi
+          mkdir -p output/logs
+          export IMMORTAL_SOURCE_REPO='https://github.com/VIKINGYFY/immortalwrt.git'
+          export IMMORTAL_SOURCE_REF="$REF"
           ./scripts/build.sh "$REF"
 
+      - name: Analyze build failure
+        if: failure()
+        continue-on-error: true
+        env:
+          IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+          IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
+        run: ./scripts/analyze-error.sh output/logs/build.log
+
+      - name: Add failure summary to job
+        if: always()
+        run: |
+          if [ -f output/logs/error-summary.txt ]; then
+            {
+              echo '## 自动失败诊断摘要'
+              cat output/logs/error-summary.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '未生成 error-summary.txt；请下载诊断 artifact。' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-diagnostics-${{ github.run_id }}
+          path: |
+            output/logs/build.log
+            output/logs/error-summary.txt
+            output/logs/failure-report.txt
+            output/full.config
+            config/required-plugins.txt
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload firmware artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: XinZhaoWrt-Arthur
@@ -62,11 +106,11 @@ jobs:
             output/full.config
             output/build-info.txt
             output/required-plugins.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Publish GitHub Release for tags
-        if: startsWith(github.ref, 'refs/tags/')
+        if: success() && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: 新肇网络Wrt-京东云亚瑟固件 ${{ github.ref_name }}

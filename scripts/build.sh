@@ -18,6 +18,16 @@ mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
 mkdir -p "$OUT/firmware"
 
+# 从脚本启动开始收集完整云端日志，覆盖 clone、feed、defconfig、下载和编译阶段。
+# QUIET_BUILD=1 时只写文件，避免 GitHub 控制台被完整编译输出淹没；日志仍完整保留。
+BUILD_LOG="$OUT/logs/build.log"
+: > "$BUILD_LOG"
+if [[ "$QUIET_BUILD" == "1" ]]; then
+  exec >>"$BUILD_LOG" 2>&1
+else
+  exec > >(tee -a "$BUILD_LOG") 2>&1
+fi
+
 "$PROJECT_ROOT/scripts/verify-project.sh"
 
 if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
@@ -65,15 +75,14 @@ fi
 find dl -type f -size -1024c -print -delete || true
 
 echo "[7/9] Compile firmware"
-BUILD_LOG="$OUT/logs/build.log"
 if [[ "$QUIET_BUILD" == "1" ]]; then
-  if ! make -j"$JOBS" >"$BUILD_LOG" 2>&1; then
+  if ! make -j"$JOBS"; then
     echo "BUILD_FAILED: concise diagnostics follow"
     "$PROJECT_ROOT/scripts/extract-build-error.sh" "$BUILD_LOG"
     exit 1
   fi
 else
-  if ! make -j"$JOBS" 2>&1 | tee "$BUILD_LOG"; then
+  if ! make -j"$JOBS"; then
     echo "BUILD_FAILED: see $BUILD_LOG"
     "$PROJECT_ROOT/scripts/extract-build-error.sh" "$BUILD_LOG"
     exit 1
