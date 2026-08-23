@@ -30,4 +30,9 @@ for f in scripts/*.sh; do
 done
 sh -n files/etc/uci-defaults/99-xinzhao-defaults
 
+[[ -x scripts/check-package-existence.sh ]] || {
+  echo "ERROR: scripts/check-package-existence.sh must be executable"
+  exit 1
+}
+
 echo "PASS: project static verification complete."

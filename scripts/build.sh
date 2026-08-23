@@ -43,6 +43,7 @@ echo "[2/9] Update/install standard feeds"
 echo "[3/9] Add mandatory external package sources"
 "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
+"$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 
 echo "[4/9] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"

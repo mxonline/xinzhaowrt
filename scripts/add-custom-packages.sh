@@ -120,10 +120,11 @@ printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 ./scripts/feeds update istore
 ./scripts/feeds update xinzhao
 
-# Install the official iStore package and its companion libraries from feed istore.
+# Install all official iStore packages after both feed indexes exist.  The
+# second forced pass prevents dependency ordering from hiding package names.
 for pkg in luci-app-store luci-lib-taskd luci-lib-xterm taskd; do
   ./scripts/feeds uninstall "$pkg" >/dev/null 2>&1 || true
-  ./scripts/feeds install -p istore "$pkg"
+  ./scripts/feeds install -f -p istore "$pkg"
 done
 
 # Replace any same-named package installed from another feed with our selected
@@ -138,7 +139,11 @@ CUSTOM_PKGS=(
 
 for pkg in "${CUSTOM_PKGS[@]}"; do
   ./scripts/feeds uninstall "$pkg" >/dev/null 2>&1 || true
-  ./scripts/feeds install -p xinzhao "$pkg"
+  ./scripts/feeds install -f -p xinzhao "$pkg"
 done
+
+# Reinstall the two dependency chains after every selected package is known.
+./scripts/feeds install -f -p istore luci-app-store luci-lib-taskd luci-lib-xterm taskd
+./scripts/feeds install -f -p xinzhao luci-app-istorex luci-app-quickstart quickstart
 
 printf '\nCustom XinZhao feed installed with %d package entries.\n' "${#CUSTOM_PKGS[@]}"
