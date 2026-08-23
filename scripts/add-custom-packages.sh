@@ -32,7 +32,9 @@ link_pkg() {
   ln -s "$src" "$FEED/$pkg"
 }
 
-# iStore ecosystem + Lucky + QuickFile.
+# iStoreX/QuickStart ecosystem + Lucky + QuickFile.
+# The exact luci-app-istore package does not exist; the package names are
+# luci-app-istorex (Kenzok8 extension) and luci-app-store (official iStore).
 clone_or_update \
   kenzok8-openwrt-packages \
   https://github.com/kenzok8/openwrt-packages.git \
@@ -44,11 +46,19 @@ link_pkg lucky "$KENZO/luci-app-lucky/lucky"
 link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
 link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
-link_pkg luci-app-store "$KENZO/luci-app-store"
 link_pkg quickstart "$KENZO/quickstart"
-link_pkg luci-lib-taskd "$KENZO/luci-lib-taskd"
-link_pkg luci-lib-xterm "$KENZO/luci-lib-xterm"
-link_pkg taskd "$KENZO/taskd"
+
+# Official iStore feed. Keep store/taskd together so luci-app-store uses the
+# upstream source instead of a mirror with ambiguous package provenance.
+clone_or_update \
+  istore \
+  https://github.com/linkease/istore.git \
+  main
+ISTORE="$SOURCES/istore"
+link_pkg luci-app-store "$ISTORE/luci/luci-app-store"
+link_pkg luci-lib-taskd "$ISTORE/luci/luci-lib-taskd"
+link_pkg luci-lib-xterm "$ISTORE/luci/luci-lib-xterm"
+link_pkg taskd "$ISTORE/luci/taskd"
 
 # DiskMan.
 clone_or_update \
