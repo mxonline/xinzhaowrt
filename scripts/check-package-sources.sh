@@ -69,30 +69,31 @@ assert_source() {
   fi
 }
 
-# Verify all three iStore-related names use one Kenzok8 source without
-# inventing luci-app-istore.
+# Verify iStoreX/QuickStart use Kenzok8 and store uses official linkease/istore.
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
+ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
 assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
-assert_unified_source() {
-  local pkg="$1" expected="$2" actual feed
-  for feed in "$FEED_DIR" "$ISTORE_FEED_DIR"; do
-    if [[ -f "$feed/$pkg/Makefile" ]]; then
-      actual="$(readlink -f "$feed/$pkg" 2>/dev/null || true)"
-      if [[ "$actual" == "$expected" ]]; then
-        echo "FOUND_SOURCE_PROVENANCE: $pkg (feed=$(basename "$feed"), source=$actual)"
-        return 0
-      fi
-    fi
-  done
-  echo "MISSING_SOURCE_PROVENANCE: $pkg (expected $expected, got ${actual:-<none>})"
-  missing=1
+assert_istore_source() {
+  local pkg="$1" expected="$2" actual
+  actual="$(readlink -f "$ISTORE_FEED_DIR/$pkg" 2>/dev/null || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "MISSING_SOURCE_PROVENANCE: $pkg (expected $expected, got ${actual:-<none>})"
+    missing=1
+  else
+    echo "FOUND_SOURCE_PROVENANCE: $pkg (feed=istore, source=$actual)"
+  fi
 }
-assert_unified_source luci-app-store "$KENZO_SOURCE/luci-app-store"
-assert_unified_source luci-lib-taskd "$KENZO_SOURCE/luci-lib-taskd"
-assert_unified_source luci-lib-xterm "$KENZO_SOURCE/luci-lib-xterm"
-assert_unified_source taskd "$KENZO_SOURCE/taskd"
+assert_istore_source luci-app-store "$ISTORE_SOURCE/luci/luci-app-store"
+assert_istore_source luci-lib-taskd "$ISTORE_SOURCE/luci/luci-lib-taskd"
+assert_istore_source luci-lib-xterm "$ISTORE_SOURCE/luci/luci-lib-xterm"
+assert_istore_source taskd "$ISTORE_SOURCE/luci/taskd"
+
+if [[ -e "$SRC/.xinzhao-feed/luci-app-store" || -e "$FEED_DIR/luci-app-store" ]]; then
+  echo "DUPLICATE_SOURCE: luci-app-store must not exist in .xinzhao-feed; use feed=istore"
+  missing=1
+fi
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done

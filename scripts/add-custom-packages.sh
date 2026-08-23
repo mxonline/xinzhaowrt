@@ -47,12 +47,15 @@ link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
 link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
 link_pkg quickstart "$KENZO/quickstart"
-# 三个 iStore 相关插件及其任务组件统一使用同一份 Kenzok8 源，避免
-# luci-app-istorex/quickstart 与另一个 feed 的 luci-app-store 交叉解析。
-link_pkg luci-app-store "$KENZO/luci-app-store"
-link_pkg luci-lib-taskd "$KENZO/luci-lib-taskd"
-link_pkg luci-lib-xterm "$KENZO/luci-lib-xterm"
-link_pkg taskd "$KENZO/taskd"
+
+# 官方 iStore feed。luci-app-store 及其任务组件只从这里安装，禁止在
+# .xinzhao-feed 中再放置同名 luci-app-store，避免 OpenWrt feed 冲突。
+clone_or_update \
+  istore \
+  https://github.com/linkease/istore.git \
+  main
+ISTORE="$SOURCES/istore"
+ISTORE_FEED="$ISTORE/luci"
 
 # ImmortalWrt 官方 LuCI 应用 feed。以下六个 required package 都在
 # immortalwrt/luci 的 applications 目录中，不使用第三方同名替代包。
@@ -140,6 +143,13 @@ link_pkg luci-app-oaf "$OAF/luci-app-oaf"
 link_pkg oaf "$OAF/oaf"
 link_pkg open-app-filter "$OAF/open-app-filter"
 
+# 防御性清理：只移除 xinzhao assembled feed 中的重复 store 包，不触碰
+# required-plugins.txt、设备配置或任何源码仓库中的插件。
+if [[ -e "$FEED/luci-app-store" ]]; then
+  rm -rf "$FEED/luci-app-store"
+  echo "REMOVED_DUPLICATE_PACKAGE: luci-app-store from .xinzhao-feed"
+fi
+
 # Register the assembled local feed.  Using a feed keeps package layout
 # compatible with OpenWrt's normal package/feeds/<feed>/<package> structure.
 if [[ ! -f feeds.conf ]]; then
@@ -161,7 +171,7 @@ ensure_official_feed luci https://github.com/immortalwrt/luci.git
 ensure_official_feed routing https://github.com/openwrt/routing.git
 sed -i '/^[[:space:]]*src-link[[:space:]]\+xinzhao[[:space:]]/d' feeds.conf
 sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
-printf 'src-link istore %s\n' "$FEED" >> feeds.conf
+printf 'src-link istore %s\n' "$ISTORE_FEED" >> feeds.conf
 printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 
 ./scripts/feeds update packages luci routing
@@ -196,8 +206,7 @@ done
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
 
-# 通过同一份 Kenzok8 源的 istore feed 安装 store 及其完整任务依赖；
-# 保留该 feed 名称是为了兼容现有 package existence check。
+# 通过官方 linkease/istore feed 安装 store 及其完整任务依赖。
 ./scripts/feeds install -f -p istore \
   luci-app-store luci-lib-taskd luci-lib-xterm taskd
 
