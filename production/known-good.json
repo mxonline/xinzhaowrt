@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "device": "jdcloud_re-ss-01",
+  "verified": false,
+  "source_repo": "https://github.com/VIKINGYFY/immortalwrt.git",
+  "source_ref": null,
+  "source_commit": null,
+  "firmware_file": null,
+  "sha256": null,
+  "config_sha256": null,
+  "verified_at": null,
+  "verification_notes": "Set verified=true only after cloud build checks pass and the firmware has been confirmed on the target router."
+}
