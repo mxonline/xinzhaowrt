@@ -13,6 +13,19 @@ mkdir -p "$FEED"
 clone_or_update() {
   local name="$1" url="$2" ref="$3"
   local dir="$SOURCES/$name"
+
+  if [[ "$ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    if [[ ! -d "$dir/.git" ]]; then
+      rm -rf "$dir"
+      git init "$dir"
+      git -C "$dir" remote add origin "$url"
+    fi
+    git -C "$dir" fetch --depth=1 origin "$ref"
+    git -C "$dir" checkout --detach -f FETCH_HEAD
+    git -C "$dir" clean -fdx
+    return
+  fi
+
   if [[ -d "$dir/.git" ]]; then
     git -C "$dir" fetch --depth=1 origin "$ref"
     git -C "$dir" reset --hard FETCH_HEAD
@@ -38,7 +51,7 @@ link_pkg() {
 clone_or_update \
   kenzok8-openwrt-packages \
   https://github.com/kenzok8/openwrt-packages.git \
-  master
+  "${KENZOK8_COMMIT:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
 # Do not rewrite QuickStart architecture metadata here.
@@ -59,7 +72,7 @@ link_pkg quickstart "$KENZO/quickstart"
 clone_or_update \
   istore \
   https://github.com/linkease/istore.git \
-  main
+  "${ISTORE_COMMIT:-main}"
 ISTORE="$SOURCES/istore"
 ISTORE_FEED="$ISTORE/luci"
 
