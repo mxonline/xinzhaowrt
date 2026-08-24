@@ -67,7 +67,7 @@ mkdir -p "$CCACHE_DIR"
 
 if [[ "$USE_LOCK" == "1" ]]; then
   echo "[2/9] Apply v3.0 locked standard feeds"
-  "$PROJECT_ROOT/scripts/apply-sources-lock.sh" "$SRC"
+  bash "$PROJECT_ROOT/scripts/apply-sources-lock.sh" "$SRC"
 else
   echo "[2/9] Use source-tree standard feeds"
 fi
@@ -82,7 +82,7 @@ echo "[3/9] Refresh feeds and package indexes before existence check"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 if [[ "$USE_LOCK" == "1" ]]; then
-  "$PROJECT_ROOT/scripts/verify-source-locks.sh" "$SRC"
+  bash "$PROJECT_ROOT/scripts/verify-source-locks.sh" "$SRC"
 fi
 
 echo "[4/9] Install project first-boot defaults overlay"
