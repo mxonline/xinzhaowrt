@@ -36,26 +36,43 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Validate release request
+      - name: Validate release request and resolve Candidate commit
+        id: candidate
         env:
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
           STABLE_TAG: ${{ inputs.stable_tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          [[ "$CANDIDATE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
+          [[ "$CANDIDATE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]] || {
             echo "BLOCKED: invalid candidate tag: $CANDIDATE_TAG"
             exit 1
           }
-          [[ "$STABLE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+          CANDIDATE_BASE="${BASH_REMATCH[1]}"
+          [[ "$STABLE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || {
             echo "BLOCKED: invalid stable tag: $STABLE_TAG"
             exit 1
           }
+          STABLE_BASE="${BASH_REMATCH[1]}"
+          [[ "$CANDIDATE_BASE" == "$STABLE_BASE" ]] || {
+            echo "BLOCKED: stable tag $STABLE_TAG does not match candidate base version $CANDIDATE_BASE"
+            exit 1
+          }
+
           gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "BLOCKED: stable release already exists: $STABLE_TAG"
             exit 1
           fi
+
+          git fetch --tags --force origin
+          CANDIDATE_SHA="$(git rev-list -n 1 "$CANDIDATE_TAG")"
+          [[ -n "$CANDIDATE_SHA" ]] || {
+            echo "BLOCKED: unable to resolve candidate commit for $CANDIDATE_TAG"
+            exit 1
+          }
+          echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Candidate commit: $CANDIDATE_SHA"
 
       - name: Download Candidate assets
         env:
@@ -71,9 +88,6 @@ jobs:
 
       - name: Verify Candidate assets
         id: verify
-        env:
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
-          STABLE_TAG: ${{ inputs.stable_tag }}
         run: |
           set -Eeuo pipefail
           mapfile -t firmware < <(find promote/assets -maxdepth 1 -type f -name '*jdcloud_re-ss-01*.bin' -size +0c | sort)
@@ -97,6 +111,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
           STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
         run: |
           set -Eeuo pipefail
           cat > promote/stable-notes.md <<EOF
@@ -107,13 +122,14 @@ jobs:
           - Device: JDCloud RE-SS-01 (Arthur)
           - Target: qualcommax / ipq60xx
           - Candidate source: ${CANDIDATE_TAG}
+          - Candidate commit: ${CANDIDATE_SHA}
           - Real-device verification: confirmed
-          - Status: Stable / known-good candidate
+          - Status: Stable / known-good
           EOF
 
           gh release create "$STABLE_TAG" promote/assets/* \
             --repo "$GITHUB_REPOSITORY" \
-            --target main \
+            --target "$CANDIDATE_SHA" \
             --title "XinZhaoWrt Arthur ${STABLE_TAG}" \
             --notes-file promote/stable-notes.md \
             --latest
@@ -122,6 +138,7 @@ jobs:
         env:
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
           STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
           FIRMWARE_NAME: ${{ steps.verify.outputs.firmware_name }}
           FIRMWARE_SHA256: ${{ steps.verify.outputs.firmware_sha256 }}
         run: |
@@ -141,6 +158,7 @@ jobs:
               'subtarget': 'ipq60xx',
               'stable_tag': os.environ['STABLE_TAG'],
               'candidate_tag': os.environ['CANDIDATE_TAG'],
+              'source_commit': os.environ['CANDIDATE_SHA'],
               'firmware': os.environ['FIRMWARE_NAME'],
               'sha256': os.environ['FIRMWARE_SHA256'],
               'verified_at': datetime.now(timezone.utc).isoformat(),
@@ -153,6 +171,7 @@ jobs:
 
           git config user.name 'XinZhaoWrt Release Bot'
           git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git pull --rebase origin main
           git add production/known-good.json
           git commit -m "release: mark ${STABLE_TAG} as known-good"
           git push origin HEAD:main
@@ -164,6 +183,7 @@ jobs:
             echo
             echo '- Candidate: `${{ inputs.candidate_tag }}`'
             echo '- Stable: `${{ inputs.stable_tag }}`'
+            echo '- Candidate commit: `${{ steps.candidate.outputs.candidate_sha }}`'
             echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
             echo '- SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
             echo '- known-good: 已更新'
