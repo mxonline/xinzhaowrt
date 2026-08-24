@@ -1,0 +1,66 @@
+name: XinZhaoWrt Runner Preflight
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/runner-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  preflight:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify runner identity and tools
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Host "whoami: $(whoami)"
+          Write-Host "USERPROFILE: $env:USERPROFILE"
+          Write-Host "PATH: $env:PATH"
+
+          foreach ($tool in @('git','gh','codex')) {
+            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
+            if (-not $cmd) {
+              throw "PREFLIGHT_FAILED: required tool not found: $tool"
+            }
+            Write-Host "$tool => $($cmd.Source)"
+          }
+
+          git --version
+          gh --version | Select-Object -First 1
+          codex --version
+
+      - name: Verify GitHub token access
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fullName = gh api "repos/$env:GITHUB_REPOSITORY" --jq '.full_name'
+          if ($LASTEXITCODE -ne 0 -or $fullName -ne $env:GITHUB_REPOSITORY) {
+            throw "PREFLIGHT_FAILED: GH_TOKEN cannot access $env:GITHUB_REPOSITORY"
+          }
+          Write-Host "GitHub token OK: $fullName"
+
+      - name: Summary
+        if: always()
+        shell: powershell
+        run: |
+          "## XinZhaoWrt Runner Preflight" >> $env:GITHUB_STEP_SUMMARY
+          "Runner: $(whoami)" >> $env:GITHUB_STEP_SUMMARY
+          "Profile: $env:USERPROFILE" >> $env:GITHUB_STEP_SUMMARY
