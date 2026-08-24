@@ -42,18 +42,20 @@ clone_or_update \
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
 # 京东云亚瑟 IPQ60xx 的 OpenWrt 架构名为 arm_cortex-a7，而 quickstart
-# 上游发布的是通用 arm 二进制，并且原 Makefile 只把 arm_cortex-a7 漏在
-# 可选架构之外。这里仅修正云端临时自定义 feed 的元数据：将其映射到
-# 上游实际提供的 arm 包名，同时保留 x86_64、aarch64 与原有 arm 支持。
+# 上游发布的是通用 arm 二进制。原 Makefile 的 @(x86_64||aarch64||arm)
+# 条件在 ImmortalWrt 目标配置中不能正确表达该包的实际兼容范围，导致
+# make defconfig 将 quickstart 及其上层 LuCI 包一起取消。这里仅修正云端
+# 临时自定义 feed 的元数据：使用实际提供的 arm 二进制，并移除错误的
+# 架构 Kconfig 限制；不修改设备 .config 或 required-plugins.txt。
 # 不修改设备 .config，也不改变 required-plugins.txt 中的插件需求。
 QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
 if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
-   grep -q '@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
+   grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
   sed -i \
     -e 's/PKG_ARCH_quickstart:=$(ARCH)/PKG_ARCH_quickstart:=arm/' \
-    -e 's/@(x86_64||aarch64||arm)/@(x86_64||aarch64||arm||arm_cortex-a7)/' \
+    -e 's/DEPENDS:=@(x86_64||aarch64||arm) /DEPENDS:=/' \
     "$QUICKSTART_MAKEFILE"
-  echo 'PATCHED_PACKAGE_ARCH: quickstart arm_cortex-a7 -> arm'
+  echo 'PATCHED_PACKAGE_ARCH: quickstart uses generic arm binary without incompatible Kconfig restriction'
 else
   echo 'ERROR: quickstart Makefile 的预期架构声明已变化，拒绝静默应用兼容性补丁。' >&2
   exit 1
