@@ -13,9 +13,6 @@ name: Build XinZhaoWrt Arthur
         required: true
         default: true
         type: boolean
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -187,7 +184,7 @@ jobs:
           retention-days: 14
 
       - name: Publish Candidate GitHub Release
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_candidate == true
+        if: success() && inputs.publish_candidate == true
         id: candidate_release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,7 +194,7 @@ jobs:
           ./scripts/release-candidate.sh
 
       - name: Persist Candidate release status
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_candidate == true
+        if: success() && inputs.publish_candidate == true
         env:
           CANDIDATE_TAG: ${{ steps.candidate_release.outputs.tag }}
           FIRMWARE_NAME: ${{ steps.candidate_release.outputs.firmware_name }}
@@ -212,15 +209,3 @@ jobs:
           git commit -m "release: record ${CANDIDATE_TAG} candidate publication"
           git pull --rebase origin main
           git push origin HEAD:main
-
-      - name: Publish GitHub Release for stable tags
-        if: success() && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: 新肇网络Wrt-京东云亚瑟固件 ${{ github.ref_name }}
-          files: |
-            output/firmware/*
-            output/full.config
-            output/build-info.txt
-            output/required-plugins.txt
-          generate_release_notes: true
