@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 120
     env:
       IMMORTALWRT_COMMIT: b193c19dee5ebed962091088080397030c90dfb2
+      KENZOK8_COMMIT: 69eb1427dc5cfcc58fd97ff00e2a1be52fb4d478
+      ISTORE_COMMIT: e481cfe5a9632190393ae95dda774d379f4d7e88
 
     steps:
       - name: Checkout project
@@ -23,11 +25,21 @@ jobs:
       - name: Install build dependencies
         run: ./scripts/codex-setup.sh
 
-      - name: Verify Arthur target architecture
+      - name: Verify pinned Arthur and QuickStart assumptions
         run: |
           set -euo pipefail
-          test "$(curl -fsSL https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/${IMMORTALWRT_COMMIT}/target/linux/qualcommax/Makefile | awk -F':=' '/^ARCH:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "aarch64"
-          ! grep -q 'quickstart\.arm' scripts/add-custom-packages.sh
+          target_makefile="$(curl -fsSL https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/${IMMORTALWRT_COMMIT}/target/linux/qualcommax/Makefile)"
+          test "$(printf '%s\n' "$target_makefile" | awk -F':=' '/^ARCH:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "aarch64"
+          test "$(printf '%s\n' "$target_makefile" | awk -F':=' '/^CPU_TYPE:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "cortex-a53"
+
+          quickstart_makefile="$(curl -fsSL https://raw.githubusercontent.com/kenzok8/openwrt-packages/${KENZOK8_COMMIT}/quickstart/Makefile)"
+          grep -Fq 'PKG_ARCH_quickstart:=$(ARCH)' <<< "$quickstart_makefile"
+          grep -Fq 'DEPENDS:=@(x86_64||aarch64||arm)' <<< "$quickstart_makefile"
+          grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' <<< "$quickstart_makefile"
+
+          # Guard against reintroducing the old architecture-rewrite code. A comment
+          # mentioning quickstart.arm is harmless; executable rewrite logic is not.
+          ! grep -q '^QUICKSTART_MAKEFILE=' scripts/add-custom-packages.sh
 
       - name: Prepare pinned ImmortalWrt source
         run: |
@@ -46,6 +58,13 @@ jobs:
           make defconfig
           "$GITHUB_WORKSPACE/scripts/check-config.sh" .config
 
+      - name: Verify Phase 1 source revisions
+        working-directory: work/immortalwrt
+        run: |
+          set -euo pipefail
+          test "$(git -C .xinzhao-sources/kenzok8-openwrt-packages rev-parse HEAD)" = "$KENZOK8_COMMIT"
+          test "$(git -C .xinzhao-sources/istore rev-parse HEAD)" = "$ISTORE_COMMIT"
+
       - name: Compile Phase 1 package chain
         working-directory: work/immortalwrt
         run: |
@@ -62,8 +81,9 @@ jobs:
             echo '## OpenWrt 自动编译流程 v3.0 — 稳定化 Phase 1'
             echo '- Device: JDCloud RE-SS-01 / Arthur'
             echo '- Target: qualcommax/ipq60xx'
-            echo '- Upstream commit: `b193c19dee5ebed962091088080397030c90dfb2`'
-            echo '- Expected target ARCH: `aarch64`'
+            echo '- ImmortalWrt: `b193c19dee5ebed962091088080397030c90dfb2`'
+            echo '- Kenzok8: `69eb1427dc5cfcc58fd97ff00e2a1be52fb4d478`'
+            echo '- iStore: `e481cfe5a9632190393ae95dda774d379f4d7e88`'
             echo '- Scope: QuickStart + iStore dependency chain only'
-            echo '- Full firmware build is intentionally gated until stabilization checks pass.'
+            echo '- Full firmware build is gated until stabilization checks pass.'
           } >> "$GITHUB_STEP_SUMMARY"
