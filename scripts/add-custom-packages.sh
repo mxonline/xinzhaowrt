@@ -52,10 +52,10 @@ QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
 if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
    grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
   sed -i \
-    -e 's/PKG_ARCH_quickstart:=$(ARCH)/PKG_ARCH_quickstart:=arm/' \
     -e 's/DEPENDS:=@(x86_64||aarch64||arm) /DEPENDS:=/' \
+    -e 's/quickstart\.\$(PKG_ARCH_quickstart)/quickstart.arm/' \
     "$QUICKSTART_MAKEFILE"
-  echo 'PATCHED_PACKAGE_ARCH: quickstart uses generic arm binary without incompatible Kconfig restriction'
+  echo 'PATCHED_PACKAGE_ARCH: quickstart keeps target package arch and installs generic arm binary'
 else
   echo 'ERROR: quickstart Makefile 的预期架构声明已变化，拒绝静默应用兼容性补丁。' >&2
   exit 1
