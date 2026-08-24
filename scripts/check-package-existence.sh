@@ -35,7 +35,7 @@ is_xinzhao_package() {
   case "$1" in
     luci-app-istorex|luci-app-lucky|lucky|luci-app-quickfile|quickfile|\
     luci-app-quickstart|quickstart|luci-app-diskman|luci-app-easytier|easytier|\
-    luci-app-mosdns|mosdns|v2dat|v2ray-geodata|luci-app-openclash|\
+    luci-app-mosdns|mosdns|v2ray-geodata|luci-app-openclash|\
     luci-app-oaf|oaf|open-app-filter|luci-app-adguardhome|luci-app-autoreboot|\
     luci-app-firewall|luci-app-package-manager|luci-app-pbr|luci-app-samba4|\
     luci-app-smartdns|luci-app-sqm|\

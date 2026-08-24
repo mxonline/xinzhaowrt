@@ -29,7 +29,6 @@ required=(
   easytier
   luci-app-mosdns
   mosdns
-  v2dat
   v2ray-geodata
   luci-app-openclash
   luci-app-oaf
