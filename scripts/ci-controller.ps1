@@ -169,7 +169,7 @@ function Wait-CloudRun {
         $status = [string]$run.status
         $conclusion = [string]$run.conclusion
         Set-ControllerState -Status $status -Stage 'github-actions' -Conclusion $conclusion -CurrentRunId $Id -RepairRound $Round -Message "GitHub Actions $status"
-        Write-ControllerLog "Run $Id: status=$status conclusion=$conclusion"
+        Write-ControllerLog "Run ${Id}: status=$status conclusion=$conclusion"
         if ($status -eq 'completed') { return $run }
         Start-Sleep -Seconds $PollSeconds
     }
