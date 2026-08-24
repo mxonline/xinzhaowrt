@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCK_FILE="${XINZHAOWRT_SOURCES_LOCK:-$PROJECT_ROOT/config/sources.lock}"
+if [[ -f "$LOCK_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$LOCK_FILE"
+  set +a
+fi
+
 SRC="${1:?Usage: $0 /path/to/immortalwrt}"
 cd "$SRC"
 
@@ -46,19 +55,14 @@ link_pkg() {
 }
 
 # iStoreX/QuickStart ecosystem + Lucky + QuickFile.
-# The exact luci-app-istore package does not exist; the package names are
-# luci-app-istorex (Kenzok8 extension) and luci-app-store (official iStore).
 clone_or_update \
   kenzok8-openwrt-packages \
   https://github.com/kenzok8/openwrt-packages.git \
   "${KENZOK8_COMMIT:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# Do not rewrite QuickStart architecture metadata here.
-# VIKINGYFY/immortalwrt qualcommax declares ARCH:=aarch64 and CPU_TYPE:=cortex-a53.
-# Kenzok8 QuickStart already declares support for aarch64 and installs
-# quickstart.$(ARCH), so forcing quickstart.arm would install the wrong binary
-# on JDCloud RE-SS-01/IPQ6000.
+# qualcommax is aarch64/cortex-a53. Keep QuickStart's own architecture metadata;
+# do not rewrite it to quickstart.arm.
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"
@@ -67,8 +71,7 @@ link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
 link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
 link_pkg quickstart "$KENZO/quickstart"
 
-# 官方 iStore feed。luci-app-store 及其任务组件只从这里安装，禁止在
-# .xinzhao-feed 中再放置同名 luci-app-store，避免 OpenWrt feed 冲突。
+# Official iStore feed.
 clone_or_update \
   istore \
   https://github.com/linkease/istore.git \
@@ -76,12 +79,11 @@ clone_or_update \
 ISTORE="$SOURCES/istore"
 ISTORE_FEED="$ISTORE/luci"
 
-# ImmortalWrt 官方 LuCI 应用 feed。以下六个 required package 都在
-# immortalwrt/luci 的 applications 目录中，不使用第三方同名替代包。
+# Selected ImmortalWrt LuCI applications.
 clone_or_update \
   immortalwrt-luci \
   https://github.com/immortalwrt/luci.git \
-  master
+  "${LUCI_FEED_COMMIT:-master}"
 IMMORTAL_LUCI="$SOURCES/immortalwrt-luci"
 for pkg in \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
@@ -91,11 +93,11 @@ for pkg in \
   link_pkg "$pkg" "$IMMORTAL_LUCI/applications/$pkg"
 done
 
-# ImmortalWrt 官方 packages feed：补齐上述 LuCI 应用的运行时依赖。
+# Selected runtime packages required by the LuCI applications above.
 clone_or_update \
   immortalwrt-packages \
   https://github.com/immortalwrt/packages.git \
-  master
+  "${PACKAGES_FEED_COMMIT:-master}"
 IMMORTAL_PACKAGES="$SOURCES/immortalwrt-packages"
 for pkg_path in \
   "smartdns:net/smartdns" \
@@ -116,7 +118,7 @@ done
 clone_or_update \
   luci-app-diskman \
   https://github.com/sbwml/luci-app-diskman.git \
-  main
+  "${DISKMAN_COMMIT:-main}"
 DISKMAN="$SOURCES/luci-app-diskman"
 link_pkg luci-app-diskman "$DISKMAN/luci-app-diskman"
 
@@ -124,16 +126,16 @@ link_pkg luci-app-diskman "$DISKMAN/luci-app-diskman"
 clone_or_update \
   luci-app-easytier \
   https://github.com/EasyTier/luci-app-easytier.git \
-  main
+  "${EASYTIER_COMMIT:-main}"
 EASYTIER="$SOURCES/luci-app-easytier"
 link_pkg luci-app-easytier "$EASYTIER/luci-app-easytier"
 link_pkg easytier "$EASYTIER/easytier"
 
-# MosDNS v5。上游 v5 分支仅提供 luci-app-mosdns 和 mosdns。
+# MosDNS v5 + geodata.
 clone_or_update \
   luci-app-mosdns \
   https://github.com/sbwml/luci-app-mosdns.git \
-  v5
+  "${MOSDNS_COMMIT:-v5}"
 MOSDNS="$SOURCES/luci-app-mosdns"
 link_pkg luci-app-mosdns "$MOSDNS/luci-app-mosdns"
 link_pkg mosdns "$MOSDNS/mosdns"
@@ -141,14 +143,14 @@ link_pkg mosdns "$MOSDNS/mosdns"
 clone_or_update \
   v2ray-geodata \
   https://github.com/sbwml/v2ray-geodata.git \
-  master
+  "${V2RAY_GEODATA_COMMIT:-master}"
 link_pkg v2ray-geodata "$SOURCES/v2ray-geodata"
 
 # OpenClash official package.
 clone_or_update \
   OpenClash \
   https://github.com/vernesong/OpenClash.git \
-  master
+  "${OPENCLASH_COMMIT:-master}"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
@@ -161,23 +163,20 @@ link_pkg luci-app-oaf "$OAF/luci-app-oaf"
 link_pkg oaf "$OAF/oaf"
 link_pkg open-app-filter "$OAF/open-app-filter"
 
-# 防御性清理：只移除 xinzhao assembled feed 中的重复 store 包，不触碰
-# required-plugins.txt、设备配置或任何源码仓库中的插件。
+# Defensive cleanup: iStore's luci-app-store is only installed from the
+# dedicated linkease/istore feed, never duplicated in xinzhao.
 if [[ -e "$FEED/luci-app-store" ]]; then
   rm -rf "$FEED/luci-app-store"
   echo "REMOVED_DUPLICATE_PACKAGE: luci-app-store from .xinzhao-feed"
 fi
 
-# Register the assembled local feed. Using a feed keeps package layout
-# compatible with OpenWrt's normal package/feeds/<feed>/<package> structure.
 if [[ ! -f feeds.conf ]]; then
   cp feeds.conf.default feeds.conf
 fi
 
-# 检查并补齐 ImmortalWrt 的官方基础 feed；不替换或删除 xinzhao 自定义 feed。
 ensure_official_feed() {
   local name="$1" url="$2"
-  if ! grep -Eq "^[[:space:]]*src-(git|hg)[[:space:]]+$name([[:space:]]|$)" feeds.conf; then
+  if ! grep -Eq "^[[:space:]]*src-(git|git-full|hg)[[:space:]]+$name([[:space:]]|$)" feeds.conf; then
     printf 'src-git %s %s\n' "$name" "$url" >> feeds.conf
     echo "ADDED_OFFICIAL_FEED: $name -> $url"
   else
@@ -187,6 +186,7 @@ ensure_official_feed() {
 ensure_official_feed packages https://github.com/immortalwrt/packages.git
 ensure_official_feed luci https://github.com/immortalwrt/luci.git
 ensure_official_feed routing https://github.com/openwrt/routing.git
+
 sed -i '/^[[:space:]]*src-link[[:space:]]\+xinzhao[[:space:]]/d' feeds.conf
 sed -i '/^[[:space:]]*src-link[[:space:]]\+istore[[:space:]]/d' feeds.conf
 printf 'src-link istore %s\n' "$ISTORE_FEED" >> feeds.conf
@@ -197,8 +197,6 @@ printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 ./scripts/feeds update istore
 ./scripts/feeds update xinzhao
 
-# Replace any same-named package installed from another feed with our selected
-# source. This avoids duplicate package definitions from broad feeds.
 CUSTOM_PKGS=(
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
@@ -216,15 +214,12 @@ for pkg in "${CUSTOM_PKGS[@]}"; do
   ./scripts/feeds install -f -p xinzhao "$pkg"
 done
 
-# Reinstall the complete unified iStore dependency chain after every selected
-# package is known, so make defconfig sees all package symbols together.
 ./scripts/feeds install -f -p xinzhao \
   luci-app-istorex luci-app-quickstart quickstart \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
 
-# 通过官方 linkease/istore feed 安装 store 及其完整任务依赖。
 ./scripts/feeds install -f -p istore \
   luci-app-store luci-lib-taskd luci-lib-xterm taskd
 
