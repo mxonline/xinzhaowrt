@@ -41,26 +41,11 @@ clone_or_update \
   master
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# 京东云亚瑟 IPQ60xx 的 OpenWrt 架构名为 arm_cortex-a7，而 quickstart
-# 上游发布的是通用 arm 二进制。原 Makefile 的 @(x86_64||aarch64||arm)
-# 条件在 ImmortalWrt 目标配置中不能正确表达该包的实际兼容范围，导致
-# make defconfig 将 quickstart 及其上层 LuCI 包一起取消。这里仅修正云端
-# 临时自定义 feed 的元数据：使用实际提供的 arm 二进制，并移除错误的
-# 架构 Kconfig 限制；不修改设备 .config 或 required-plugins.txt。
-# 不修改设备 .config，也不改变 required-plugins.txt 中的插件需求。
-QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
-if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
-   grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
-  sed -i \
-    -e 's/DEPENDS:=@(x86_64||aarch64||arm) /DEPENDS:=/' \
-    -e 's/quickstart\.\$(PKG_ARCH_quickstart)/quickstart.arm/' \
-    "$QUICKSTART_MAKEFILE"
-  echo 'PATCHED_PACKAGE_ARCH: quickstart keeps target package arch and installs generic arm binary'
-else
-  echo 'ERROR: quickstart Makefile 的预期架构声明已变化，拒绝静默应用兼容性补丁。' >&2
-  exit 1
-fi
-
+# Do not rewrite QuickStart architecture metadata here.
+# VIKINGYFY/immortalwrt qualcommax declares ARCH:=aarch64 and CPU_TYPE:=cortex-a53.
+# Kenzok8 QuickStart already declares support for aarch64 and installs
+# quickstart.$(ARCH), so forcing quickstart.arm would install the wrong binary
+# on JDCloud RE-SS-01/IPQ6000.
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"
@@ -131,7 +116,7 @@ EASYTIER="$SOURCES/luci-app-easytier"
 link_pkg luci-app-easytier "$EASYTIER/luci-app-easytier"
 link_pkg easytier "$EASYTIER/easytier"
 
-# MosDNS v5。上游 v5 分支仅提供 luci-app-mosdns 和 mosdns；不存在 v2dat package 目录。
+# MosDNS v5。上游 v5 分支仅提供 luci-app-mosdns 和 mosdns。
 clone_or_update \
   luci-app-mosdns \
   https://github.com/sbwml/luci-app-mosdns.git \
@@ -170,7 +155,7 @@ if [[ -e "$FEED/luci-app-store" ]]; then
   echo "REMOVED_DUPLICATE_PACKAGE: luci-app-store from .xinzhao-feed"
 fi
 
-# Register the assembled local feed.  Using a feed keeps package layout
+# Register the assembled local feed. Using a feed keeps package layout
 # compatible with OpenWrt's normal package/feeds/<feed>/<package> structure.
 if [[ ! -f feeds.conf ]]; then
   cp feeds.conf.default feeds.conf
@@ -200,7 +185,7 @@ printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 ./scripts/feeds update xinzhao
 
 # Replace any same-named package installed from another feed with our selected
-# source.  This avoids duplicate package definitions from broad feeds.
+# source. This avoids duplicate package definitions from broad feeds.
 CUSTOM_PKGS=(
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
