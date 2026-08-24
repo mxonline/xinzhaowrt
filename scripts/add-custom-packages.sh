@@ -155,7 +155,7 @@ link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 clone_or_update \
   OpenAppFilter \
   https://github.com/destan19/OpenAppFilter.git \
-  master
+  "${OAF_COMMIT:-master}"
 OAF="$SOURCES/OpenAppFilter"
 link_pkg luci-app-oaf "$OAF/luci-app-oaf"
 link_pkg oaf "$OAF/oaf"
