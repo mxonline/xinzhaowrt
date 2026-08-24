@@ -28,7 +28,20 @@ fi
 
 # 中文说明：覆盖 package、feed、Makefile、依赖、shell、资源和下载错误。
 ERROR_PATTERN='ERROR:|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Ignoring feed.*(failed|error|index missing)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE'
-FIRST_ERROR="$(grep -nEi "$ERROR_PATTERN" "$LOG" | head -n 1 || true)"
+# 中文说明：先让 grep 完整读取并写入临时文件，禁止使用 grep | head，避免大日志触发 Broken pipe。
+MATCH_FILE="$(mktemp)"
+REAL_ERROR_FILE="$(mktemp)"
+cleanup_match_files() {
+  rm -f "$MATCH_FILE" "$REAL_ERROR_FILE"
+}
+trap cleanup_match_files EXIT
+grep -nEi "$ERROR_PATTERN" "$LOG" > "$MATCH_FILE" || true
+
+# 中文说明：优先识别第一个真实 ERROR；若日志只出现分类错误，则回退到第一个匹配项。
+REAL_ERROR_PATTERN='(^|[^[:alpha:]])ERROR(:|[[:space:]])|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)'
+grep -nEi "$REAL_ERROR_PATTERN" "$LOG" > "$REAL_ERROR_FILE" || true
+FIRST_ERROR="$(sed -n '1p' "$REAL_ERROR_FILE")"
+[[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="$(sed -n '1p' "$MATCH_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="未匹配到预定义错误模式；请查看完整 build.log。"
 
 if grep -qiE 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|make defconfig|configuration written to .config' "$LOG"; then
@@ -44,7 +57,9 @@ else
 fi
 
 FIRST_ERROR_LINE="$(printf '%s\n' "$FIRST_ERROR" | cut -d: -f1)"
-LAST_ERROR_LINE="$(grep -nEi "$ERROR_PATTERN" "$LOG" | tail -n 1 | cut -d: -f1 || true)"
+LAST_ERROR_MATCH="$(sed -n '$p' "$REAL_ERROR_FILE")"
+[[ -n "$LAST_ERROR_MATCH" ]] || LAST_ERROR_MATCH="$(sed -n '$p' "$MATCH_FILE")"
+LAST_ERROR_LINE="$(printf '%s\n' "$LAST_ERROR_MATCH" | cut -d: -f1)"
 [[ "$FIRST_ERROR_LINE" =~ ^[0-9]+$ ]] || FIRST_ERROR_LINE=1
 [[ "$LAST_ERROR_LINE" =~ ^[0-9]+$ ]] || LAST_ERROR_LINE="$FIRST_ERROR_LINE"
 
@@ -120,8 +135,11 @@ write_section() {
   echo "exit code："
   printf '%s\n' "$exit_lines"
   echo
-  echo '最后100行关键日志：'
-  grep -nEi "$ERROR_PATTERN" "$LOG" | tail -n 100 || tail -n 100 "$LOG"
+  echo '最后200行完整日志：'
+  tail -n 200 "$LOG"
+  echo
+  echo '最后200行关键日志：'
+  tail -n 200 "$MATCH_FILE"
   write_section 'MISSING_PACKAGE 列表' 'MISSING_PACKAGE'
   write_section 'MISSING_SOURCE 列表' 'MISSING_SOURCE'
   write_section 'make defconfig 后缺失 CONFIG 列表' 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE'
