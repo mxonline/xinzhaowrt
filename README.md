@@ -71,6 +71,8 @@ luci-app-wol
 
 为减少 Codex 读取海量 OpenWrt 日志，Cloud 入口默认把完整编译日志保存到 `output/logs/build.log`。失败时只输出错误匹配和最后 220 行。详细操作见 `docs/CODEX_CLOUD.md`。
 
+GitHub Actions 自动触发、前台持续监控、API 限流退避、失败自动诊断与最多 3 轮自动修复的总控规则，统一以 `docs/OPENWRT_CI_V2.md` 为准。
+
 ## 本地编译
 
 ```bash
@@ -97,6 +99,7 @@ OAF 带有内核相关组件。上游发生较大的 Linux 内核变化时，如
 ## 文档
 
 - `AGENTS.md`：Codex 项目硬规则
+- `docs/OPENWRT_CI_V2.md`：OpenWrt 自动编译流程 v2.0，总控、监控、限流与自动修复规则
 - `docs/CODEX_CLOUD.md`：Codex Cloud 全编译流程
 - `docs/BUILD.md`：本地/手工编译
 - `docs/PLUGINS.md`：插件说明
