@@ -5,6 +5,16 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 
+LOCK_FILE="${XINZHAOWRT_SOURCES_LOCK:-$PROJECT_ROOT/config/sources.lock}"
+LOCKED_IMMORTALWRT_COMMIT=""
+if [[ -f "$LOCK_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$LOCK_FILE"
+  set +a
+  LOCKED_IMMORTALWRT_COMMIT="${IMMORTALWRT_COMMIT:-}"
+fi
+
 REQUESTED_REF="${1:-$SOURCE_REF}"
 WORKDIR="${WORKDIR:-$PROJECT_ROOT/work}"
 SRC="$WORKDIR/immortalwrt"
@@ -13,13 +23,15 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+USE_LOCK=0
+if [[ -n "$LOCKED_IMMORTALWRT_COMMIT" && "$REQUESTED_REF" == "$LOCKED_IMMORTALWRT_COMMIT" ]]; then
+  USE_LOCK=1
+fi
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
 mkdir -p "$OUT/firmware"
 
-# 从脚本启动开始收集完整云端日志，覆盖 clone、feed、defconfig、下载和编译阶段。
-# QUIET_BUILD=1 时只写文件，避免 GitHub 控制台被完整编译输出淹没；日志仍完整保留。
 BUILD_LOG="$OUT/logs/build.log"
 : > "$BUILD_LOG"
 if [[ "$QUIET_BUILD" == "1" ]]; then
@@ -36,9 +48,16 @@ if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
   git -C "$SRC" reset --hard FETCH_HEAD
   git -C "$SRC" clean -fdx -e dl/ -e .ccache/ -e .xinzhao-sources/
 else
-  echo "[1/9] Clone ImmortalWrt source: $REQUESTED_REF"
+  echo "[1/9] Clone/fetch ImmortalWrt source: $REQUESTED_REF"
   rm -rf "$SRC"
-  git clone --depth=1 --branch "$REQUESTED_REF" "$SOURCE_REPO" "$SRC"
+  if [[ "$REQUESTED_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    git init "$SRC"
+    git -C "$SRC" remote add origin "$SOURCE_REPO"
+    git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
+    git -C "$SRC" checkout --detach -f FETCH_HEAD
+  else
+    git clone --depth=1 --branch "$REQUESTED_REF" "$SOURCE_REPO" "$SRC"
+  fi
 fi
 
 cd "$SRC"
@@ -46,22 +65,28 @@ SOURCE_SHA="$(git rev-parse HEAD)"
 export CCACHE_DIR="$SRC/.ccache"
 mkdir -p "$CCACHE_DIR"
 
-echo "[2/9] Update/install standard feeds"
+if [[ "$USE_LOCK" == "1" ]]; then
+  echo "[2/9] Apply v3.0 locked standard feeds"
+  "$PROJECT_ROOT/scripts/apply-sources-lock.sh" "$SRC"
+else
+  echo "[2/9] Use source-tree standard feeds"
+fi
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
 echo "[3/9] Add mandatory external package sources"
 "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
-# 自定义 feed 组装后重新生成全部 feed index，再开始逐包 Makefile 检查。
 echo "[3/9] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
+if [[ "$USE_LOCK" == "1" ]]; then
+  "$PROJECT_ROOT/scripts/verify-source-locks.sh" "$SRC"
+fi
 
 echo "[4/9] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
-# Merge our overlay without deleting upstream files/.
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
 echo "[5/9] Apply Arthur target and 22-plugin seed config"
@@ -134,9 +159,10 @@ done
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
+  echo "Source lock: $USE_LOCK"
   echo
   echo "Mandatory LuCI plugins:"
-  sed 's/^/- /' "$PROJECT_ROOT/config/required-plugins.txt"
+  grep -v '^[[:space:]]*#' "$PROJECT_ROOT/config/required-plugins.txt" | sed '/^[[:space:]]*$/d;s/^/- /'
   echo
   echo "Custom package commits:"
   for d in .xinzhao-sources/*; do
@@ -144,9 +170,21 @@ done
     printf '%s: ' "$(basename "$d")"
     git -C "$d" rev-parse HEAD
   done
+  if [[ "$USE_LOCK" == "1" ]]; then
+    echo
+    echo "Standard feed commits:"
+    for d in feeds/packages feeds/luci feeds/routing feeds/telephony feeds/video; do
+      [[ -d "$d/.git" ]] || continue
+      printf '%s: ' "$(basename "$d")"
+      git -C "$d" rev-parse HEAD
+    done
+  fi
 } > "$OUT/build-info.txt"
 
 cp "$PROJECT_ROOT/config/required-plugins.txt" "$OUT/required-plugins.txt"
+if [[ "$USE_LOCK" == "1" ]]; then
+  cp "$LOCK_FILE" "$OUT/sources.lock"
+fi
 (
   cd "$OUT/firmware"
   sha256sum * > SHA256SUMS.local
