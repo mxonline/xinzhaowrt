@@ -24,7 +24,7 @@ git -C "$SRC" remote add origin https://github.com/VIKINGYFY/immortalwrt.git
 git -C "$SRC" fetch --depth=1 origin "$IMMORTALWRT_COMMIT"
 git -C "$SRC" checkout --detach -f FETCH_HEAD
 
-"$PROJECT_ROOT/scripts/apply-sources-lock.sh" "$SRC"
+bash "$PROJECT_ROOT/scripts/apply-sources-lock.sh" "$SRC"
 
 cd "$SRC"
 ./scripts/feeds update -a
@@ -37,6 +37,6 @@ cd "$SRC"
 cp "$PROJECT_ROOT/config/arthur.config" .config
 make defconfig
 "$PROJECT_ROOT/scripts/check-config.sh" .config
-"$PROJECT_ROOT/scripts/verify-source-locks.sh" "$SRC"
+bash "$PROJECT_ROOT/scripts/verify-source-locks.sh" "$SRC"
 
 echo "V3_SOURCE_READY=$SRC"
