@@ -196,6 +196,23 @@ jobs:
           chmod +x scripts/release-candidate.sh
           ./scripts/release-candidate.sh
 
+      - name: Persist Candidate release status
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_candidate == true
+        env:
+          CANDIDATE_TAG: ${{ steps.candidate_release.outputs.tag }}
+          FIRMWARE_NAME: ${{ steps.candidate_release.outputs.firmware_name }}
+          FIRMWARE_SHA256: ${{ steps.candidate_release.outputs.firmware_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/update-release-status.sh
+          ./scripts/update-release-status.sh "$CANDIDATE_TAG" "$FIRMWARE_NAME" "$FIRMWARE_SHA256"
+          git config user.name 'XinZhaoWrt Release Bot'
+          git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git add production/status.json
+          git commit -m "release: record ${CANDIDATE_TAG} candidate publication"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
       - name: Publish GitHub Release for stable tags
         if: success() && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
