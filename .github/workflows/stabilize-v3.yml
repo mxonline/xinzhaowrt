@@ -1,0 +1,294 @@
+name: OpenWrt v3.0 Stabilization
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openwrt-v3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Verify locked Arthur and QuickStart assumptions
+        run: |
+          set -euo pipefail
+          source config/sources.lock
+          target_makefile="$(curl -fsSL https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/${IMMORTALWRT_COMMIT}/target/linux/qualcommax/Makefile)"
+          test "$(printf '%s\n' "$target_makefile" | awk -F':=' '/^ARCH:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "aarch64"
+          test "$(printf '%s\n' "$target_makefile" | awk -F':=' '/^CPU_TYPE:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "cortex-a53"
+          quickstart_makefile="$(curl -fsSL https://raw.githubusercontent.com/kenzok8/openwrt-packages/${KENZOK8_COMMIT}/quickstart/Makefile)"
+          grep -Fq 'PKG_ARCH_quickstart:=$(ARCH)' <<< "$quickstart_makefile"
+          grep -Fq 'DEPENDS:=@(x86_64||aarch64||arm)' <<< "$quickstart_makefile"
+          grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' <<< "$quickstart_makefile"
+          ! grep -q '^QUICKSTART_MAKEFILE=' scripts/add-custom-packages.sh
+
+      - name: Prepare one fully pinned build tree
+        run: bash scripts/prepare-v3-source.sh "$GITHUB_WORKSPACE/work/v3"
+
+      - name: Snapshot resolved config
+        run: |
+          mkdir -p output/smoke
+          cp work/v3/immortalwrt/.config output/smoke/full-smoke.config
+          cp config/sources.lock output/smoke/sources.lock
+          cp config/required-plugins.txt output/smoke/required-plugins.txt
+
+      - name: Phase 1 - QuickStart and iStore
+        id: phase1
+        continue-on-error: true
+        working-directory: work/v3/immortalwrt
+        run: |
+          set -o pipefail
+          {
+            make package/feeds/xinzhao/quickstart/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-quickstart/compile -j1 V=s
+            make package/feeds/istore/luci-app-store/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-istorex/compile -j1 V=s
+          } 2>&1 | tee "$GITHUB_WORKSPACE/output/smoke/phase1-istore-quickstart.log"
+
+      - name: Phase 2 - OpenAppFilter
+        id: phase2
+        continue-on-error: true
+        working-directory: work/v3/immortalwrt
+        run: |
+          set -o pipefail
+          {
+            make package/feeds/xinzhao/open-app-filter/compile -j1 V=s
+            make package/feeds/xinzhao/oaf/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-oaf/compile -j1 V=s
+          } 2>&1 | tee "$GITHUB_WORKSPACE/output/smoke/phase2-openappfilter.log"
+
+      - name: Phase 3 - OpenClash and MosDNS
+        id: phase3
+        continue-on-error: true
+        working-directory: work/v3/immortalwrt
+        run: |
+          set -o pipefail
+          {
+            make package/feeds/xinzhao/luci-app-openclash/compile -j1 V=s
+            make package/feeds/xinzhao/v2ray-geodata/compile -j1 V=s
+            make package/feeds/xinzhao/mosdns/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-mosdns/compile -j1 V=s
+          } 2>&1 | tee "$GITHUB_WORKSPACE/output/smoke/phase3-openclash-mosdns.log"
+
+      - name: Phase 4 - EasyTier DiskMan Lucky QuickFile
+        id: phase4
+        continue-on-error: true
+        working-directory: work/v3/immortalwrt
+        run: |
+          set -o pipefail
+          {
+            make package/feeds/xinzhao/easytier/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-easytier/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-diskman/compile -j1 V=s
+            make package/feeds/xinzhao/lucky/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-lucky/compile -j1 V=s
+            make package/feeds/xinzhao/quickfile/compile -j1 V=s
+            make package/feeds/xinzhao/luci-app-quickfile/compile -j1 V=s
+          } 2>&1 | tee "$GITHUB_WORKSPACE/output/smoke/phase4-external.log"
+
+      - name: Phase 5 - Standard LuCI applications
+        id: phase5
+        continue-on-error: true
+        working-directory: work/v3/immortalwrt
+        run: |
+          set -o pipefail
+          {
+            for pkg in \
+              luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
+              luci-app-package-manager luci-app-pbr luci-app-samba4 \
+              luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp \
+              luci-app-vlmcsd luci-app-wol; do
+              echo "=== smoke compile: $pkg ==="
+              make "package/feeds/xinzhao/$pkg/compile" -j1 V=s
+            done
+          } 2>&1 | tee "$GITHUB_WORKSPACE/output/smoke/phase5-standard-luci.log"
+
+      - name: Compatibility summary
+        if: always()
+        run: |
+          {
+            echo '## OpenWrt v3.0 compatibility smoke matrix'
+            echo '| Phase | Result |'
+            echo '|---|---|'
+            echo '| 1 QuickStart + iStore | ${{ steps.phase1.outcome }} |'
+            echo '| 2 OpenAppFilter | ${{ steps.phase2.outcome }} |'
+            echo '| 3 OpenClash + MosDNS | ${{ steps.phase3.outcome }} |'
+            echo '| 4 External packages | ${{ steps.phase4.outcome }} |'
+            echo '| 5 Standard LuCI | ${{ steps.phase5.outcome }} |'
+            echo
+            echo 'Full firmware build is allowed only when all five phases are success.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-v3-smoke-${{ github.run_id }}
+          path: output/smoke/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Compatibility gate
+        if: always()
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            '${{ steps.phase1.outcome }}' \
+            '${{ steps.phase2.outcome }}' \
+            '${{ steps.phase3.outcome }}' \
+            '${{ steps.phase4.outcome }}' \
+            '${{ steps.phase5.outcome }}'; do
+            [[ "$result" == "success" ]] || failed=1
+          done
+          if [[ "$failed" != "0" ]]; then
+            echo "COMPATIBILITY_GATE_FAILED: one or more smoke phases failed" >&2
+            exit 1
+          fi
+          echo "COMPATIBILITY_GATE_OK: all smoke phases passed"
+
+  full-build-known-good:
+    needs: compatibility-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Restore locked build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/immortalwrt/dl
+            work/immortalwrt/.ccache
+          key: arthur-v3-${{ runner.os }}-${{ hashFiles('config/sources.lock', 'config/arthur.config', 'config/required-plugins.txt', 'scripts/**') }}
+          restore-keys: |
+            arthur-v3-${{ runner.os }}-
+
+      - name: Full firmware build from locked sources
+        env:
+          JOBS: '2'
+          QUIET_BUILD: '1'
+          REUSE_SOURCE: '0'
+        run: |
+          set -euo pipefail
+          source config/sources.lock
+          ./scripts/build.sh "$IMMORTALWRT_COMMIT"
+
+      - name: Verify known-good candidate
+        run: |
+          set -euo pipefail
+          source build.env
+          test -s output/full.config
+          test -s output/build-info.txt
+          test -s output/sources.lock
+          test -s output/firmware/profiles.json
+          test -s output/firmware/SHA256SUMS.local
+
+          grep -Fq "$DEVICE_PROFILE" output/firmware/profiles.json
+
+          image_count="$(find output/firmware -maxdepth 1 -type f -name '*.bin' -size +1024c | wc -l)"
+          [[ "$image_count" -ge 1 ]] || { echo 'ERROR: no non-empty Arthur firmware image found' >&2; exit 1; }
+
+          while IFS= read -r pkg; do
+            [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+            grep -Fqx "CONFIG_PACKAGE_${pkg}=y" output/full.config || {
+              echo "ERROR: required plugin missing from final config: $pkg" >&2
+              exit 1
+            }
+          done < config/required-plugins.txt
+
+          (
+            cd output/firmware
+            sha256sum -c SHA256SUMS.local
+          )
+
+          mkdir -p output/known-good
+          cp output/sources.lock output/known-good/sources.lock
+          cp output/full.config output/known-good/full.config
+          cp output/build-info.txt output/known-good/build-info.txt
+          cp output/required-plugins.txt output/known-good/required-plugins.txt
+          cp output/firmware/profiles.json output/known-good/profiles.json
+          cp output/firmware/SHA256SUMS.local output/known-good/SHA256SUMS.local
+          {
+            echo "status=known-good-candidate"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "project_commit=${GITHUB_SHA}"
+            echo "device=${DEVICE_PROFILE}"
+            echo "verified_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "required_plugins=22"
+          } > output/known-good/manifest.txt
+
+          echo '## Known-good candidate verified' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Device: $DEVICE_PROFILE" >> "$GITHUB_STEP_SUMMARY"
+          echo '- Required LuCI plugins: 22/22' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Firmware images: $image_count" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Analyze full-build failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          if [[ -s output/logs/build.log ]]; then
+            ./scripts/analyze-error.sh output/logs/build.log
+          else
+            ./scripts/analyze-error.sh
+          fi
+
+      - name: Upload full-build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-v3-full-diagnostics-${{ github.run_id }}
+          path: |
+            output/logs/
+            output/full.config
+            output/build-info.txt
+            output/sources.lock
+            config/required-plugins.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload known-good candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-Arthur-known-good-candidate-${{ github.run_id }}
+          path: |
+            output/firmware/
+            output/known-good/
+            output/full.config
+            output/build-info.txt
+            output/sources.lock
+            output/required-plugins.txt
+          if-no-files-found: error
+          retention-days: 30
