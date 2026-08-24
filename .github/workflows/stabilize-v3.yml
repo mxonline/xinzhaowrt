@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: openwrt-v3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   phase1-istore-quickstart:
     runs-on: ubuntu-24.04
@@ -17,6 +21,7 @@ jobs:
       IMMORTALWRT_COMMIT: b193c19dee5ebed962091088080397030c90dfb2
       KENZOK8_COMMIT: 69eb1427dc5cfcc58fd97ff00e2a1be52fb4d478
       ISTORE_COMMIT: e481cfe5a9632190393ae95dda774d379f4d7e88
+      OAF_COMMIT: a189ad85e8fb461318533941963f0e2975274a19
 
     steps:
       - name: Checkout project
@@ -64,6 +69,7 @@ jobs:
           set -euo pipefail
           test "$(git -C .xinzhao-sources/kenzok8-openwrt-packages rev-parse HEAD)" = "$KENZOK8_COMMIT"
           test "$(git -C .xinzhao-sources/istore rev-parse HEAD)" = "$ISTORE_COMMIT"
+          test "$(git -C .xinzhao-sources/OpenAppFilter rev-parse HEAD)" = "$OAF_COMMIT"
 
       - name: Compile Phase 1 package chain
         working-directory: work/immortalwrt
@@ -74,16 +80,73 @@ jobs:
           make package/feeds/istore/luci-app-store/compile -j1 V=s
           make package/feeds/xinzhao/luci-app-istorex/compile -j1 V=s
 
-      - name: Record stabilization phase
+      - name: Record Phase 1
         if: always()
         run: |
           {
-            echo '## OpenWrt 自动编译流程 v3.0 — 稳定化 Phase 1'
+            echo '## OpenWrt 自动编译流程 v3.0 — Phase 1'
             echo '- Device: JDCloud RE-SS-01 / Arthur'
             echo '- Target: qualcommax/ipq60xx'
             echo '- ImmortalWrt: `b193c19dee5ebed962091088080397030c90dfb2`'
             echo '- Kenzok8: `69eb1427dc5cfcc58fd97ff00e2a1be52fb4d478`'
             echo '- iStore: `e481cfe5a9632190393ae95dda774d379f4d7e88`'
-            echo '- Scope: QuickStart + iStore dependency chain only'
-            echo '- Full firmware build is gated until stabilization checks pass.'
+            echo '- Scope: QuickStart + iStore dependency chain'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  phase2-openappfilter:
+    needs: phase1-istore-quickstart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      IMMORTALWRT_COMMIT: b193c19dee5ebed962091088080397030c90dfb2
+      KENZOK8_COMMIT: 69eb1427dc5cfcc58fd97ff00e2a1be52fb4d478
+      ISTORE_COMMIT: e481cfe5a9632190393ae95dda774d379f4d7e88
+      OAF_COMMIT: a189ad85e8fb461318533941963f0e2975274a19
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Prepare pinned ImmortalWrt source
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          git clone --filter=blob:none --no-checkout https://github.com/VIKINGYFY/immortalwrt.git work/immortalwrt
+          git -C work/immortalwrt fetch --depth=1 origin "$IMMORTALWRT_COMMIT"
+          git -C work/immortalwrt checkout --detach FETCH_HEAD
+          cd work/immortalwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          "$GITHUB_WORKSPACE/scripts/add-custom-packages.sh" "$PWD"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp "$GITHUB_WORKSPACE/config/arthur.config" .config
+          make defconfig
+          "$GITHUB_WORKSPACE/scripts/check-config.sh" .config
+
+      - name: Verify OpenAppFilter revision
+        working-directory: work/immortalwrt
+        run: |
+          set -euo pipefail
+          test "$(git -C .xinzhao-sources/OpenAppFilter rev-parse HEAD)" = "$OAF_COMMIT"
+
+      - name: Compile OpenAppFilter chain
+        working-directory: work/immortalwrt
+        run: |
+          set -euo pipefail
+          make package/feeds/xinzhao/open-app-filter/compile -j1 V=s
+          make package/feeds/xinzhao/oaf/compile -j1 V=s
+          make package/feeds/xinzhao/luci-app-oaf/compile -j1 V=s
+
+      - name: Record Phase 2
+        if: always()
+        run: |
+          {
+            echo '## OpenWrt 自动编译流程 v3.0 — Phase 2'
+            echo '- OpenAppFilter: `a189ad85e8fb461318533941963f0e2975274a19`'
+            echo '- Scope: kernel-facing package + userspace + LuCI'
+            echo '- Phase 2 only runs after Phase 1 succeeds.'
           } >> "$GITHUB_STEP_SUMMARY"
