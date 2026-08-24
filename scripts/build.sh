@@ -52,6 +52,10 @@ echo "[2/9] Update/install standard feeds"
 
 echo "[3/9] Add mandatory external package sources"
 "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
+# 自定义 feed 组装后重新生成全部 feed index，再开始逐包 Makefile 检查。
+echo "[3/9] Refresh feeds and package indexes before existence check"
+./scripts/feeds update -a
+./scripts/feeds install -a
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 

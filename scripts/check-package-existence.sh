@@ -8,6 +8,7 @@ REQUIRED_FILE="$PROJECT_ROOT/config/required-plugins.txt"
 FAILED=0
 MISSING_PACKAGES=()
 MISSING_FEEDS=()
+PACKAGE_ROWS=()
 
 report_missing_feed() {
   local feed="$1" path="$SRC/package/feeds/$1"
@@ -20,11 +21,15 @@ report_missing_package() {
   local pkg="$1" feed="$2" path="$3"
   echo "MISSING_PACKAGE: package=$pkg feed=$feed path=$path"
   MISSING_PACKAGES+=("$pkg|$feed|$path")
+  PACKAGE_ROWS+=("$pkg|$feed|$path|MISSING")
   FAILED=1
 }
 
 [[ -d "$SRC/package/feeds/istore" ]] || report_missing_feed istore
 [[ -d "$SRC/package/feeds/xinzhao" ]] || report_missing_feed xinzhao
+
+echo "PACKAGE | SOURCE FEED | MAKEFILE PATH | STATUS"
+echo "--------|--------------|---------------|-------"
 
 is_xinzhao_package() {
   case "$1" in
@@ -48,6 +53,7 @@ while IFS= read -r pkg; do
       report_missing_package "$pkg" istore "$path/Makefile"
     else
       echo "FOUND_PACKAGE: package=$pkg feed=istore path=$path/Makefile"
+      PACKAGE_ROWS+=("$pkg|istore|$path/Makefile|FOUND")
     fi
   elif is_xinzhao_package "$pkg"; then
     path="$SRC/package/feeds/xinzhao/$pkg"
@@ -55,16 +61,18 @@ while IFS= read -r pkg; do
       report_missing_package "$pkg" xinzhao "$path/Makefile"
     else
       echo "FOUND_PACKAGE: package=$pkg feed=xinzhao path=$path/Makefile"
+      PACKAGE_ROWS+=("$pkg|xinzhao|$path/Makefile|FOUND")
     fi
   else
     path="$(find "$SRC/package/feeds" -type f -path "*/$pkg/Makefile" -print -quit 2>/dev/null || true)"
     if [[ -z "$path" ]]; then
-      report_missing_package "$pkg" 'packages|luci|routing' \
+      report_missing_package "$pkg" 'packages,luci,routing' \
         "$SRC/package/feeds/{packages,luci,routing}/$pkg/Makefile"
     else
       feed_path="${path#"$SRC/package/feeds/"}"
       feed_name="${feed_path%%/*}"
       echo "FOUND_PACKAGE: package=$pkg feed=$feed_name path=$path"
+      PACKAGE_ROWS+=("$pkg|$feed_name|$path|FOUND")
     fi
   fi
 done < "$REQUIRED_FILE"
@@ -73,6 +81,14 @@ if grep -Eq '^[[:space:]]*luci-app-istore([[:space:]]|$)' "$REQUIRED_FILE"; then
   echo "INVALID_PACKAGE: luci-app-istore; use luci-app-store from feed istore"
   FAILED=1
 fi
+
+echo
+echo "PACKAGE | SOURCE FEED | MAKEFILE PATH | STATUS"
+echo "--------|--------------|---------------|-------"
+for row in "${PACKAGE_ROWS[@]}"; do
+  IFS='|' read -r pkg feed path status <<< "$row"
+  echo "$pkg | $feed | $path | $status"
+done
 
 if (( FAILED )); then
   echo
