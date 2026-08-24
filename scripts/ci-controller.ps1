@@ -89,7 +89,8 @@ function Assert-CleanRepository {
 }
 
 function Sync-Main {
-    Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'fetch','origin',$Branch) | Out-Null
+    # 中文说明：静默 Git 的正常远程进度输出，避免 PowerShell 将 stderr 进度误当作失败信息。
+    Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'fetch','--quiet','origin',$Branch) | Out-Null
     $currentBranch = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'branch','--show-current')).Output.Trim()
     if ($currentBranch -eq $Branch) {
         Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'pull','--ff-only','origin',$Branch) | Out-Null
