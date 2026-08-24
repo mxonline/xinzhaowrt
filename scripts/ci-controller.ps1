@@ -90,8 +90,17 @@ function Assert-CleanRepository {
 
 function Sync-Main {
     Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'fetch','origin',$Branch) | Out-Null
-    Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'checkout',$Branch) | Out-Null
-    Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'pull','--ff-only','origin',$Branch) | Out-Null
+    $currentBranch = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'branch','--show-current')).Output.Trim()
+    if ($currentBranch -eq $Branch) {
+        Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'pull','--ff-only','origin',$Branch) | Out-Null
+    } else {
+        # 中文说明：允许控制器运行在 detached worktree；main 可能被另一工作树占用。
+        $head = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
+        $remoteHead = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse',"origin/$Branch")).Output.Trim()
+        if ($head -ne $remoteHead) {
+            throw "Detached worktree is not synchronized with origin/$Branch. Refusing to overwrite local worktree."
+        }
+    }
 }
 
 function Get-HardFileHashes {
