@@ -1,0 +1,11 @@
+{
+  "status": "candidate_published",
+  "stage": "release",
+  "conclusion": "success",
+  "device": "jdcloud_re-ss-01",
+  "candidate_tag": "v0.1.0-rc.42",
+  "firmware": "jdcloud_re-ss-01-squashfs-sysupgrade.bin",
+  "sha256": "example",
+  "known_good": false,
+  "message": "Candidate release published; awaiting real-device verification before Stable/known-good promotion."
+}
