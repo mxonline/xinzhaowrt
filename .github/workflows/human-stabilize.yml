@@ -1,0 +1,68 @@
+name: Human Stabilization Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quickstart-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      IMMORTALWRT_COMMIT: b193c19dee5ebed962091088080397030c90dfb2
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Verify Arthur architecture assumption
+        run: |
+          set -euo pipefail
+          test "$(curl -fsSL https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/${IMMORTALWRT_COMMIT}/target/linux/qualcommax/Makefile | awk -F':=' '/^ARCH:=/{gsub(/[[:space:]]/,"",$2); print $2; exit}')" = "aarch64"
+          ! grep -q 'quickstart\.arm' scripts/add-custom-packages.sh
+
+      - name: Prepare pinned ImmortalWrt source
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          git clone --filter=blob:none --no-checkout https://github.com/VIKINGYFY/immortalwrt.git work/immortalwrt
+          git -C work/immortalwrt fetch --depth=1 origin "$IMMORTALWRT_COMMIT"
+          git -C work/immortalwrt checkout --detach FETCH_HEAD
+          cd work/immortalwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          "$GITHUB_WORKSPACE/scripts/add-custom-packages.sh" "$PWD"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp "$GITHUB_WORKSPACE/config/arthur.config" .config
+          make defconfig
+          "$GITHUB_WORKSPACE/scripts/check-config.sh" .config
+
+      - name: Compile QuickStart and iStore chain only
+        working-directory: work/immortalwrt
+        run: |
+          set -euo pipefail
+          make package/feeds/xinzhao/quickstart/compile -j1 V=s
+          make package/feeds/xinzhao/luci-app-quickstart/compile -j1 V=s
+          make package/feeds/istore/luci-app-store/compile -j1 V=s
+          make package/feeds/xinzhao/luci-app-istorex/compile -j1 V=s
+
+      - name: Record target facts
+        if: always()
+        run: |
+          {
+            echo '## Human stabilization check'
+            echo '- Device: JDCloud RE-SS-01 / Arthur'
+            echo '- Target: qualcommax/ipq60xx'
+            echo '- Upstream commit: `b193c19dee5ebed962091088080397030c90dfb2`'
+            echo '- Expected target ARCH: `aarch64`'
+            echo '- Scope: QuickStart + iStore chain only; no full firmware build'
+          } >> "$GITHUB_STEP_SUMMARY"
