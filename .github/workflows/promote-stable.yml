@@ -143,7 +143,7 @@ jobs:
             --notes-file promote/stable-notes.md \
             --latest
 
-      - name: Update known-good record
+      - name: Update known-good and production status
         env:
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
           STABLE_TAG: ${{ inputs.stable_tag }}
@@ -183,9 +183,17 @@ jobs:
               f.write('\n')
           PY
 
-          git add production/known-good.json
+          chmod +x scripts/update-stable-status.sh
+          ./scripts/update-stable-status.sh \
+            "$STABLE_TAG" \
+            "$CANDIDATE_TAG" \
+            "$FIRMWARE_NAME" \
+            "$FIRMWARE_SHA256" \
+            "$CANDIDATE_SHA"
+
+          git add production/known-good.json production/status.json
           if git diff --cached --quiet; then
-            echo 'known-good already matches this Stable release.'
+            echo 'known-good and production status already match this Stable release.'
           else
             git commit -m "release: mark ${STABLE_TAG} as known-good"
             git push origin HEAD:main
@@ -201,5 +209,6 @@ jobs:
             echo '- Candidate commit: `${{ steps.candidate.outputs.candidate_sha }}`'
             echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
             echo '- SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
+            echo '- production/status: verified'
             echo '- known-good: 已更新或已确认一致'
           } >> "$GITHUB_STEP_SUMMARY"
