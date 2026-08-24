@@ -68,7 +68,11 @@ jobs:
             local rc=$?
             if (( rc != 0 )); then
               local first_error
-              first_error="$(awk 'BEGIN { IGNORECASE=1 } /ERROR:|failed|fatal:|MISSING|does not exist|conflict|syntax error|error:/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
+              # 中文说明：忽略 WARNING，优先记录真正导致步骤退出的 ERROR/fatal/依赖或语法错误。
+              first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /ERROR:|fatal:|MISSING_PACKAGE|MISSING_SOURCE|package source.*no Makefile|dependency.*does not exist|conflict|syntax error/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
+              if [[ -z "$first_error" ]]; then
+                first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /failed|error:/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
+              fi
               {
                 echo "Failure stage: Feed Check"
                 echo "GitHub Actions Run ID: ${GITHUB_RUN_ID:-unknown}"

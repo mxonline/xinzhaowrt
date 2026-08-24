@@ -110,7 +110,7 @@ EASYTIER="$SOURCES/luci-app-easytier"
 link_pkg luci-app-easytier "$EASYTIER/luci-app-easytier"
 link_pkg easytier "$EASYTIER/easytier"
 
-# MosDNS v5 + v2dat + geodata.
+# MosDNS v5。上游 v5 分支仅提供 luci-app-mosdns 和 mosdns；不存在 v2dat package 目录。
 clone_or_update \
   luci-app-mosdns \
   https://github.com/sbwml/luci-app-mosdns.git \
@@ -118,7 +118,6 @@ clone_or_update \
 MOSDNS="$SOURCES/luci-app-mosdns"
 link_pkg luci-app-mosdns "$MOSDNS/luci-app-mosdns"
 link_pkg mosdns "$MOSDNS/mosdns"
-link_pkg v2dat "$MOSDNS/v2dat"
 
 clone_or_update \
   v2ray-geodata \
@@ -189,7 +188,7 @@ CUSTOM_PKGS=(
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
   smartdns sqm-scripts ttyd miniupnpd vlmcsd etherwake adguardhome pbr samba4
   luci-app-diskman luci-app-easytier easytier
-  luci-app-mosdns mosdns v2dat v2ray-geodata
+  luci-app-mosdns mosdns v2ray-geodata
   luci-app-openclash luci-app-oaf oaf open-app-filter
 )
 
