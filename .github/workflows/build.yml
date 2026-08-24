@@ -8,6 +8,11 @@ name: Build XinZhaoWrt Arthur
         required: true
         default: main
         type: string
+      publish_candidate:
+        description: Publish successful build as Candidate GitHub Release
+        required: true
+        default: true
+        type: boolean
   push:
     tags:
       - 'v*'
@@ -62,13 +67,11 @@ jobs:
           rm -f "$FEED_ERROR"
           exec > >(tee -a "$FEED_LOG") 2>&1
 
-          # 中文说明：错误命令先由 ERR trap 记录，最终由 EXIT trap 统一落盘，确保任意失败都有报告。
           feed_failed_command='未捕获到失败命令'
           feed_on_exit() {
             local rc=$?
             if (( rc != 0 )); then
               local first_error
-              # 中文说明：忽略 WARNING，优先记录真正导致步骤退出的 ERROR/fatal/依赖或语法错误。
               first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /ERROR:|fatal:|MISSING_PACKAGE|MISSING_SOURCE|package source.*no Makefile|dependency.*does not exist|conflict|syntax error/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
               if [[ -z "$first_error" ]]; then
                 first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /failed|error:/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
@@ -183,7 +186,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publish GitHub Release for tags
+      - name: Publish Candidate GitHub Release
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_candidate == true
+        id: candidate_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
+        run: |
+          chmod +x scripts/release-candidate.sh
+          ./scripts/release-candidate.sh
+
+      - name: Publish GitHub Release for stable tags
         if: success() && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
