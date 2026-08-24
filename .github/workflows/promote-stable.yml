@@ -1,0 +1,170 @@
+name: Promote XinZhaoWrt Candidate to Stable
+
+'on':
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: Candidate release tag, e.g. v0.1.0-rc.42
+        required: true
+        type: string
+      stable_tag:
+        description: Stable release tag, e.g. v0.1.0
+        required: true
+        type: string
+      device_verified:
+        description: Confirm JDCloud RE-SS-01 real-device verification passed
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xinzhaowrt-stable-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: inputs.device_verified == true
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate release request
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$CANDIDATE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
+            echo "BLOCKED: invalid candidate tag: $CANDIDATE_TAG"
+            exit 1
+          }
+          [[ "$STABLE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "BLOCKED: invalid stable tag: $STABLE_TAG"
+            exit 1
+          }
+          gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "BLOCKED: stable release already exists: $STABLE_TAG"
+            exit 1
+          fi
+
+      - name: Download Candidate assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p promote/assets
+          gh release download "$CANDIDATE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir promote/assets
+          find promote/assets -maxdepth 1 -type f -print
+
+      - name: Verify Candidate assets
+        id: verify
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -Eeuo pipefail
+          mapfile -t firmware < <(find promote/assets -maxdepth 1 -type f -name '*jdcloud_re-ss-01*.bin' -size +0c | sort)
+          (( ${#firmware[@]} > 0 )) || {
+            echo 'BLOCKED: Candidate release contains no non-empty jdcloud_re-ss-01 firmware.'
+            exit 1
+          }
+          [[ -s promote/assets/sha256sums.txt ]] || {
+            echo 'BLOCKED: Candidate release has no sha256sums.txt.'
+            exit 1
+          }
+          (
+            cd promote/assets
+            sha256sum -c sha256sums.txt
+          )
+          printf '%s\n' "firmware_name=$(basename "${firmware[0]}")" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "firmware_sha256=$(sha256sum "${firmware[0]}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create Stable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -Eeuo pipefail
+          cat > promote/stable-notes.md <<EOF
+          # XinZhaoWrt Arthur ${STABLE_TAG}
+
+          Stable release promoted from ${CANDIDATE_TAG} after explicit JDCloud RE-SS-01 real-device verification.
+
+          - Device: JDCloud RE-SS-01 (Arthur)
+          - Target: qualcommax / ipq60xx
+          - Candidate source: ${CANDIDATE_TAG}
+          - Real-device verification: confirmed
+          - Status: Stable / known-good candidate
+          EOF
+
+          gh release create "$STABLE_TAG" promote/assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target main \
+            --title "XinZhaoWrt Arthur ${STABLE_TAG}" \
+            --notes-file promote/stable-notes.md \
+            --latest
+
+      - name: Update known-good record
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          FIRMWARE_NAME: ${{ steps.verify.outputs.firmware_name }}
+          FIRMWARE_SHA256: ${{ steps.verify.outputs.firmware_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          path = 'production/known-good.json'
+          try:
+              with open(path, 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+          except Exception:
+              data = {}
+          data.update({
+              'status': 'verified',
+              'device': 'jdcloud_re-ss-01',
+              'target': 'qualcommax',
+              'subtarget': 'ipq60xx',
+              'stable_tag': os.environ['STABLE_TAG'],
+              'candidate_tag': os.environ['CANDIDATE_TAG'],
+              'firmware': os.environ['FIRMWARE_NAME'],
+              'sha256': os.environ['FIRMWARE_SHA256'],
+              'verified_at': datetime.now(timezone.utc).isoformat(),
+              'verification': 'real-device-confirmed'
+          })
+          with open(path, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+
+          git config user.name 'XinZhaoWrt Release Bot'
+          git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git add production/known-good.json
+          git commit -m "release: mark ${STABLE_TAG} as known-good"
+          git push origin HEAD:main
+
+      - name: Stable promotion summary
+        run: |
+          {
+            echo '## XinZhaoWrt Stable 发布完成'
+            echo
+            echo '- Candidate: `${{ inputs.candidate_tag }}`'
+            echo '- Stable: `${{ inputs.stable_tag }}`'
+            echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
+            echo '- SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
+            echo '- known-good: 已更新'
+          } >> "$GITHUB_STEP_SUMMARY"
