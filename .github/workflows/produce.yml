@@ -1,0 +1,111 @@
+name: XinZhaoWrt Firmware Production v1
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - 'production/request.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: xinzhaowrt-production-controller
+  cancel-in-progress: false
+
+jobs:
+  controller:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 1440
+
+    steps:
+      - name: Checkout controller project
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Read production request
+        id: request
+        shell: powershell
+        run: |
+          $request = Get-Content -Raw production/request.json | ConvertFrom-Json
+          if ($request.device -ne 'jdcloud_re-ss-01') {
+            throw "BLOCKED: unsupported device $($request.device)"
+          }
+          if ($request.action -ne 'produce') {
+            Write-Host "No production requested. action=$($request.action)"
+            "should_run=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          if ($request.mode -notin @('UpdateBuild','Rebuild')) {
+            throw "BLOCKED: unsupported production mode $($request.mode)"
+          }
+          $rounds = [int]$request.max_repair_rounds
+          if ($rounds -lt 0 -or $rounds -gt 5) {
+            throw "BLOCKED: max_repair_rounds must be between 0 and 5"
+          }
+          $poll = [int]$request.poll_seconds
+          if ($poll -lt 15 -or $poll -gt 300) {
+            throw "BLOCKED: poll_seconds must be between 15 and 300"
+          }
+          "should_run=true" >> $env:GITHUB_OUTPUT
+          "mode=$($request.mode)" >> $env:GITHUB_OUTPUT
+          "max_rounds=$rounds" >> $env:GITHUB_OUTPUT
+          "poll_seconds=$poll" >> $env:GITHUB_OUTPUT
+          "request_id=$($request.request_id)" >> $env:GITHUB_OUTPUT
+          Write-Host "Accepted production request $($request.request_id)"
+
+      - name: Verify controller tools
+        if: steps.request.outputs.should_run == 'true'
+        shell: powershell
+        run: |
+          foreach ($tool in @('git','gh','codex')) {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+              throw "BLOCKED: required local tool not found: $tool"
+            }
+          }
+          gh auth status --hostname github.com
+
+      - name: Run persistent production controller
+        if: steps.request.outputs.should_run == 'true'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/ci-controller.ps1 `
+            -Mode '${{ steps.request.outputs.mode }}' `
+            -MaxRepairRounds ${{ steps.request.outputs.max_rounds }} `
+            -PollSeconds ${{ steps.request.outputs.poll_seconds }}
+
+      - name: Production summary
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path state/ci-state.json) {
+            "## 路由固件完整生产 v1.0" >> $env:GITHUB_STEP_SUMMARY
+            '```json' >> $env:GITHUB_STEP_SUMMARY
+            Get-Content state/ci-state.json >> $env:GITHUB_STEP_SUMMARY
+            '```' >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            "## 路由固件完整生产 v1.0" >> $env:GITHUB_STEP_SUMMARY
+            "No controller state file was produced." >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload controller state and logs
+        if: always() && steps.request.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: XinZhaoWrt-production-controller-${{ github.run_id }}
+          path: |
+            state/ci-state.json
+            output/controller/**
+          if-no-files-found: warn
+          retention-days: 30
