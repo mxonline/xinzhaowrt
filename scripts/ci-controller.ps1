@@ -179,7 +179,7 @@ function Wait-CloudRun {
     while ($true) {
         $run = Get-CloudRunState -Id $Id
         $status = [string]$run.status
-        $conclusion = [string]$run.conclusion
+        $conclusion = if ($run.PSObject.Properties.Name -contains 'conclusion') { [string]$run.conclusion } else { '' }
         Set-ControllerState -Status $status -Stage 'github-actions' -Conclusion $conclusion -CurrentRunId $Id -RepairRound $Round -Message "GitHub Actions $status"
         Write-ControllerLog "Run ${Id}: status=$status conclusion=$conclusion"
         if ($status -eq 'completed') { return $run }
@@ -328,7 +328,7 @@ try {
 
     while ($true) {
         $run = Wait-CloudRun -Id $currentRunId -Round $repairRound
-        $conclusion = [string]$run.conclusion
+        $conclusion = if ($run.PSObject.Properties.Name -contains 'conclusion') { [string]$run.conclusion } else { '' }
 
         if ($conclusion -eq 'success') {
             Set-ControllerState -Status 'verifying' -Stage 'artifact' -Conclusion $conclusion -CurrentRunId $currentRunId -RepairRound $repairRound -Message 'Downloading and verifying firmware artifacts.'
