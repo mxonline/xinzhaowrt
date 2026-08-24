@@ -62,22 +62,31 @@ jobs:
           rm -f "$FEED_ERROR"
           exec > >(tee -a "$FEED_LOG") 2>&1
 
-          # 中文说明：Feed Check 失败立即生成独立报告，并阻止后续 Build firmware。
-          trap 'rc=$?; failed_command=$BASH_COMMAND; trap - ERR; {
-            echo "Feed Check failed"
-            echo "GitHub Actions Run ID: ${GITHUB_RUN_ID:-unknown}"
-            echo "Commit SHA: ${GITHUB_SHA:-unknown}"
-            echo "ImmortalWrt source repo: $IMMORTAL_SOURCE_REPO"
-            echo "Source ref: $IMMORTAL_SOURCE_REF"
-            echo "失败命令: $failed_command"
-            echo "exit code: $rc"
-            echo
-            echo "关键错误："
-            grep -nEi "ERROR:|failed|error|fatal:|MISSING|does not exist|conflict|syntax" "$FEED_LOG" | tail -n 200 || true
-            echo
-            echo "最后100行 Feed Check 日志："
-            tail -n 100 "$FEED_LOG"
-          } > "$FEED_ERROR"; exit "$rc"' ERR
+          # 中文说明：错误命令先由 ERR trap 记录，最终由 EXIT trap 统一落盘，确保任意失败都有报告。
+          feed_failed_command='未捕获到失败命令'
+          feed_on_exit() {
+            local rc=$?
+            if (( rc != 0 )); then
+              local first_error
+              first_error="$(awk 'BEGIN { IGNORECASE=1 } /ERROR:|failed|fatal:|MISSING|does not exist|conflict|syntax error|error:/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
+              {
+                echo "Failure stage: Feed Check"
+                echo "GitHub Actions Run ID: ${GITHUB_RUN_ID:-unknown}"
+                echo "Commit SHA: ${GITHUB_SHA:-unknown}"
+                echo "ImmortalWrt source repo: $IMMORTAL_SOURCE_REPO"
+                echo "Source ref: $IMMORTAL_SOURCE_REF"
+                echo "Failed command: $feed_failed_command"
+                echo "Exit code: $rc"
+                echo "First real error: ${first_error:-未在 Feed Check 日志中匹配到 ERROR；请查看完整日志。}"
+                echo
+                echo "Last relevant log lines:"
+                tail -n 200 "$FEED_LOG" || true
+              } > "$FEED_ERROR"
+            fi
+            return "$rc"
+          }
+          trap 'feed_failed_command="$BASH_COMMAND"' ERR
+          trap feed_on_exit EXIT
 
           REF="$IMMORTAL_SOURCE_REF"
           SRC="$GITHUB_WORKSPACE/work/feed-check/immortalwrt"
@@ -113,10 +122,15 @@ jobs:
           IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
           IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
         run: |
-          if [ -f output/logs/feed-error.txt ]; then
-            ./scripts/analyze-error.sh output/logs/feed-check.log
-          else
+          if [ -s output/logs/feed-error.txt ]; then
+            echo "Failure source: Feed Check"
+            ./scripts/analyze-error.sh output/logs/feed-check.log output/logs/feed-error.txt
+          elif [ -s output/logs/build.log ]; then
+            echo "Failure source: Build firmware"
             ./scripts/analyze-error.sh output/logs/build.log
+          else
+            echo "Failure source: unknown (no non-empty Feed Check or build log)"
+            ./scripts/analyze-error.sh
           fi
 
       - name: Add failure summary to job
@@ -128,7 +142,11 @@ jobs:
               cat output/logs/error-summary.txt
             } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo '未生成 error-summary.txt；请下载诊断 artifact。' >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo '## 自动失败诊断摘要'
+              echo 'Failure stage: Unknown'
+              echo 'First real error: error-summary.txt 未生成，请下载诊断 Artifact。'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload diagnostics artifact

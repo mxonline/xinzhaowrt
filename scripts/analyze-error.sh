@@ -3,27 +3,50 @@ set -uo pipefail
 
 # 中文说明：分析完整云端日志，定位 feeds、defconfig 和正式编译阶段的真实错误。
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG="${1:-$PROJECT_ROOT/output/logs/build.log}"
 OUT_DIR="$PROJECT_ROOT/output/logs"
+LOG="${1:-$OUT_DIR/build.log}"
+FEED_ERROR="${2:-$OUT_DIR/feed-error.txt}"
 SUMMARY="$OUT_DIR/error-summary.txt"
 REPORT="$OUT_DIR/failure-report.txt"
 CONTEXT="$OUT_DIR/error-context.txt"
 mkdir -p "$OUT_DIR"
+
+# 中文说明：Feed Check 报告非空时优先作为失败事实来源，避免读取被跳过的 build.log。
+IS_FEED_FAILURE=0
+if [[ -s "$FEED_ERROR" ]]; then
+  IS_FEED_FAILURE=1
+  if [[ -s "$OUT_DIR/feed-check.log" ]]; then
+    LOG="$OUT_DIR/feed-check.log"
+  fi
+fi
 
 RUN_ID="${GITHUB_RUN_ID:-unknown}"
 COMMIT_SHA="${GITHUB_SHA:-unknown}"
 SOURCE_REPO="${IMMORTAL_SOURCE_REPO:-${SOURCE_REPO:-unknown}}"
 SOURCE_REF="${IMMORTAL_SOURCE_REF:-${SOURCE_REF:-unknown}}"
 
-if [[ ! -f "$LOG" ]]; then
+if [[ ! -s "$LOG" ]]; then
   {
     echo "诊断输入日志不存在：$LOG"
+    if (( IS_FEED_FAILURE == 1 )); then
+      echo "Failure stage: Feed Check"
+      cat "$FEED_ERROR"
+    fi
     echo "GitHub Actions Run ID: $RUN_ID"
     echo "Commit SHA: $COMMIT_SHA"
   } > "$SUMMARY"
   cp "$SUMMARY" "$REPORT"
   cp "$SUMMARY" "$CONTEXT"
   exit 0
+fi
+
+FEED_FAILED_COMMAND=''
+FEED_EXIT_CODE=''
+FEED_FIRST_ERROR=''
+if (( IS_FEED_FAILURE == 1 )); then
+  FEED_FAILED_COMMAND="$(sed -n 's/^Failed command: //p' "$FEED_ERROR" | sed -n '1p')"
+  FEED_EXIT_CODE="$(sed -n 's/^Exit code: //p' "$FEED_ERROR" | sed -n '1p')"
+  FEED_FIRST_ERROR="$(sed -n 's/^First real error: //p' "$FEED_ERROR" | sed -n '1p')"
 fi
 
 # 中文说明：覆盖 package、feed、Makefile、依赖、shell、资源和下载错误。
@@ -44,16 +67,21 @@ FIRST_ERROR="$(sed -n '1p' "$REAL_ERROR_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="$(sed -n '1p' "$MATCH_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="未匹配到预定义错误模式；请查看完整 build.log。"
 
-if grep -qiE 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|make defconfig|configuration written to .config' "$LOG"; then
-  STAGE='make defconfig / 配置保留检查'
-elif grep -qiE 'Collecting package info.*(failed|error)|feeds[[:space:]]+(update|install)|Updating feed|Create index file|package index|MISSING_PACKAGE|MISSING_SOURCE' "$LOG"; then
-  STAGE='OpenWrt feeds / package index / source preflight'
-elif grep -qiE 'download[[:space:]_-]*(failure|failed|error)|failed.*download|make download' "$LOG"; then
-  STAGE='源码下载'
-elif grep -qiE '\[7/9\]|make\[[^]]*\]|failed to build|recipe for target' "$LOG"; then
-  STAGE='make world / 固件编译'
+if (( IS_FEED_FAILURE == 1 )); then
+  STAGE='Feed Check'
+  [[ -n "$FEED_FIRST_ERROR" ]] && FIRST_ERROR="$FEED_FIRST_ERROR"
 else
-  STAGE='构建初始化或依赖安装'
+  if grep -qiE 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|make defconfig|configuration written to .config' "$LOG"; then
+    STAGE='make defconfig / 配置保留检查'
+  elif grep -qiE 'Collecting package info.*(failed|error)|feeds[[:space:]]+(update|install)|Updating feed|Create index file|package index|MISSING_PACKAGE|MISSING_SOURCE' "$LOG"; then
+    STAGE='OpenWrt feeds / package index / source preflight'
+  elif grep -qiE 'download[[:space:]_-]*(failure|failed|error)|failed.*download|make download' "$LOG"; then
+    STAGE='源码下载'
+  elif grep -qiE '\[7/9\]|make\[[^]]*\]|failed to build|recipe for target' "$LOG"; then
+    STAGE='make world / 固件编译'
+  else
+    STAGE='构建初始化或依赖安装'
+  fi
 fi
 
 FIRST_ERROR_LINE="$(printf '%s\n' "$FIRST_ERROR" | cut -d: -f1)"
@@ -79,6 +107,9 @@ extract_feeds() {
 }
 
 exit_lines="$(grep -nEi 'exit code|exit status|Process completed with exit code|returned[[:space:]]+[0-9]+' "$LOG" || true)"
+if (( IS_FEED_FAILURE == 1 )) && [[ -n "$FEED_EXIT_CODE" ]]; then
+  exit_lines="Feed Check exit code: $FEED_EXIT_CODE"
+fi
 [[ -n "$exit_lines" ]] || exit_lines='未在日志中明确打印 exit code；外层 shell 失败状态见 GitHub Actions。'
 
 context_block() {
@@ -124,9 +155,18 @@ write_section() {
   echo "Commit SHA: $COMMIT_SHA"
   echo "ImmortalWrt source repo: $SOURCE_REPO"
   echo "Source ref: $SOURCE_REF"
+  echo "Failure stage: $STAGE"
+  echo "Failed command: ${FEED_FAILED_COMMAND:-见下方失败命令上下文}"
+  echo "Exit code: ${FEED_EXIT_CODE:-见下方 exit code / exit status}"
+  echo "First real error: $FIRST_ERROR"
+  echo "Last relevant log lines:"
+  tail -n 200 "$LOG"
+  echo
   echo "失败阶段：$STAGE"
-  echo "失败命令："
-  failure_commands | tail -n 30
+  echo "失败命令：${FEED_FAILED_COMMAND:-见下方失败命令上下文}"
+  if [[ -z "$FEED_FAILED_COMMAND" ]]; then
+    failure_commands | tail -n 30
+  fi
   echo "真实错误：$FIRST_ERROR"
   echo "相关package："
   extract_names
