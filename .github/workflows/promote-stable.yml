@@ -60,18 +60,26 @@ jobs:
           }
 
           gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-          if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "BLOCKED: stable release already exists: $STABLE_TAG"
-            exit 1
-          fi
-
           git fetch --tags --force origin
           CANDIDATE_SHA="$(git rev-list -n 1 "$CANDIDATE_TAG")"
           [[ -n "$CANDIDATE_SHA" ]] || {
             echo "BLOCKED: unable to resolve candidate commit for $CANDIDATE_TAG"
             exit 1
           }
+
+          STABLE_EXISTS=false
+          if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            STABLE_SHA="$(git rev-list -n 1 "$STABLE_TAG" 2>/dev/null || true)"
+            [[ "$STABLE_SHA" == "$CANDIDATE_SHA" ]] || {
+              echo "BLOCKED: existing stable tag $STABLE_TAG points to $STABLE_SHA, expected $CANDIDATE_SHA"
+              exit 1
+            }
+            STABLE_EXISTS=true
+            echo "Stable release already exists on the verified Candidate commit; continuing idempotent known-good recovery."
+          fi
+
           echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "stable_exists=$STABLE_EXISTS" >> "$GITHUB_OUTPUT"
           echo "Candidate commit: $CANDIDATE_SHA"
 
       - name: Download Candidate assets
@@ -107,6 +115,7 @@ jobs:
           printf '%s\n' "firmware_sha256=$(sha256sum "${firmware[0]}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Create Stable GitHub Release
+        if: steps.candidate.outputs.stable_exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
@@ -142,6 +151,11 @@ jobs:
           FIRMWARE_NAME: ${{ steps.verify.outputs.firmware_name }}
           FIRMWARE_SHA256: ${{ steps.verify.outputs.firmware_sha256 }}
         run: |
+          set -Eeuo pipefail
+          git config user.name 'XinZhaoWrt Release Bot'
+          git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git pull --rebase origin main
+
           python3 - <<'PY'
           import json, os
           from datetime import datetime, timezone
@@ -169,12 +183,13 @@ jobs:
               f.write('\n')
           PY
 
-          git config user.name 'XinZhaoWrt Release Bot'
-          git config user.email 'xinzhaowrt@users.noreply.github.com'
-          git pull --rebase origin main
           git add production/known-good.json
-          git commit -m "release: mark ${STABLE_TAG} as known-good"
-          git push origin HEAD:main
+          if git diff --cached --quiet; then
+            echo 'known-good already matches this Stable release.'
+          else
+            git commit -m "release: mark ${STABLE_TAG} as known-good"
+            git push origin HEAD:main
+          fi
 
       - name: Stable promotion summary
         run: |
@@ -186,5 +201,5 @@ jobs:
             echo '- Candidate commit: `${{ steps.candidate.outputs.candidate_sha }}`'
             echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
             echo '- SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
-            echo '- known-good: 已更新'
+            echo '- known-good: 已更新或已确认一致'
           } >> "$GITHUB_STEP_SUMMARY"
