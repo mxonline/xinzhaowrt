@@ -1,9 +1,15 @@
 {
   "schema_version": "1.0",
-  "status": "idle",
-  "stage": "bootstrap",
+  "request_id": "arthur-20260825-0653",
+  "status": "waiting_runner",
+  "stage": "production-controller",
   "device": "jdcloud_re-ss-01",
-  "run_id": null,
+  "run_id": 32786881640,
   "repair_round": 0,
-  "message": "Firmware production v1.0 bootstrap complete; waiting for a production request."
+  "candidate_tag": null,
+  "stable_tag": null,
+  "firmware": null,
+  "sha256": null,
+  "message": "Production request accepted by GitHub Actions. Waiting for an online self-hosted Windows runner with labels: self-hosted, windows, x64, xinzhaowrt-controller.",
+  "updated_at": "2026-08-25T06:54:29+08:00"
 }
