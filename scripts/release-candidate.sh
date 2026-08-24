@@ -29,6 +29,10 @@ for file in "${FIRMWARES[@]}"; do
   sha256sum "$file" >> "$SHA_FILE"
 done
 
+PRIMARY_FIRMWARE="${FIRMWARES[0]}"
+PRIMARY_NAME="$(basename "$PRIMARY_FIRMWARE")"
+PRIMARY_SHA256="$(sha256sum "$PRIMARY_FIRMWARE" | awk '{print $1}')"
+
 NOTES="output/release/release-notes.md"
 cat > "$NOTES" <<EOF
 # XinZhaoWrt Arthur ${TAG}
@@ -39,6 +43,8 @@ Candidate 预发布版本，仅表示云端编译与产物检查通过，尚未�
 - Target: qualcommax / ipq60xx
 - Source ref: ${IMMORTAL_SOURCE_REF:-main}
 - GitHub Actions Run ID: ${RUN_ID}
+- Firmware: ${PRIMARY_NAME}
+- SHA256: ${PRIMARY_SHA256}
 - Controller policy: automatic Candidate release
 
 实机验证通过后，再晋升为 Stable / Latest 并更新 production/known-good.json。
@@ -61,5 +67,10 @@ else
     --prerelease
 fi
 
-echo "tag=$TAG" >> "${GITHUB_OUTPUT:-/dev/null}"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+  echo "firmware_name=$PRIMARY_NAME" >> "$GITHUB_OUTPUT"
+  echo "firmware_sha256=$PRIMARY_SHA256" >> "$GITHUB_OUTPUT"
+fi
+
 echo "Candidate release published: $TAG"
