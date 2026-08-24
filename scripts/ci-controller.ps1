@@ -96,6 +96,8 @@ function Sync-Main {
         Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'pull','--ff-only','origin',$Branch) | Out-Null
     } else {
         # 中文说明：允许控制器运行在 detached worktree；main 可能被另一工作树占用。
+        $head = ''
+        $remoteHead = ''
         $head = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
         $remoteHead = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse',"origin/$Branch")).Output.Trim()
         if ($head -ne $remoteHead) {
