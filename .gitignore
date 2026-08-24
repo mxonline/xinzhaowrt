@@ -1,5 +1,6 @@
 work/
 output/
+state/
 *.log
 .DS_Store
 .env
