@@ -63,8 +63,20 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $lastMessage = Join-Path $env:RUNNER_TEMP 'codex-preflight-last-message.txt'
           $prompt = 'Reply exactly CODEX_PREFLIGHT_OK. Do not modify files.'
-          $output = ($prompt | codex exec --sandbox read-only -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+
+          $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
+          $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
+          if (-not (Test-Path $codexCmd)) {
+            $codexCmd = $codexPs1
+          }
+          Write-Host "Codex exec shim: $codexCmd"
+
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          $output = ($prompt | & $codexCmd exec --sandbox read-only -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
           $exitCode = $LASTEXITCODE
+          $ErrorActionPreference = $previousPreference
+
           Write-Host $output
           if ($exitCode -ne 0) {
             throw "PREFLIGHT_FAILED: codex exec failed with exit code $exitCode"
