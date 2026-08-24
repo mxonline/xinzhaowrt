@@ -22,6 +22,7 @@ $HardFiles = @(
     'config/required-plugins.txt',
     'config/arthur.config'
 )
+$currentRunId = $RunId
 
 New-Item -ItemType Directory -Force -Path $StateDir, $OutputRoot | Out-Null
 
@@ -343,6 +344,6 @@ try {
 catch {
     $message = $_.Exception.Message
     Write-ControllerLog "STOPPED: $message"
-    Set-ControllerState -Status 'blocked' -Stage 'controller' -CurrentRunId $RunId -Message $message
+    Set-ControllerState -Status 'blocked' -Stage 'controller' -CurrentRunId $currentRunId -Message $message
     exit 1
 }
