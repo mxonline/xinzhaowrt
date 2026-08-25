@@ -31,12 +31,12 @@ fi
 "$PROJECT_ROOT/scripts/verify-project.sh"
 
 if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
-  echo "[1/9] Reuse ImmortalWrt checkout and reset to $REQUESTED_REF"
+  echo "[1/10] Reuse ImmortalWrt checkout and reset to $REQUESTED_REF"
   git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
   git -C "$SRC" reset --hard FETCH_HEAD
   git -C "$SRC" clean -fdx -e dl/ -e .ccache/ -e .xinzhao-sources/
 else
-  echo "[1/9] Clone ImmortalWrt source: $REQUESTED_REF"
+  echo "[1/10] Clone ImmortalWrt source: $REQUESTED_REF"
   rm -rf "$SRC"
   git clone --depth=1 --branch "$REQUESTED_REF" "$SOURCE_REPO" "$SRC"
 fi
@@ -46,25 +46,25 @@ SOURCE_SHA="$(git rev-parse HEAD)"
 export CCACHE_DIR="$SRC/.ccache"
 mkdir -p "$CCACHE_DIR"
 
-echo "[2/9] Update/install standard feeds"
+echo "[2/10] Update/install standard feeds"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-echo "[3/9] Add mandatory external package sources"
+echo "[3/10] Add mandatory external package sources"
 "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
 # 自定义 feed 组装后重新生成全部 feed index，再开始逐包 Makefile 检查。
-echo "[3/9] Refresh feeds and package indexes before existence check"
+echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 
-echo "[4/9] Install project first-boot defaults overlay"
+echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
 # Merge our overlay without deleting upstream files/.
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
-echo "[5/9] Apply Arthur target and 22-plugin seed config"
+echo "[5/10] Apply Arthur target and 22-plugin seed config"
 cp "$PROJECT_ROOT/config/arthur.config" .config
 # ImmortalWrt/OpenWrt packages currently have a tar/xz dependency ordering bug
 # that can hide luci-app-store from Kconfig. iStore upstream confirms that
@@ -79,7 +79,7 @@ make defconfig
 "$PROJECT_ROOT/scripts/check-config.sh" .config
 cp .config "$OUT/full.config"
 
-echo "[6/9] Download source archives"
+echo "[6/10] Download source archives"
 if ! make download -j"$JOBS"; then
   echo "Download pass failed; retrying serially for clearer diagnostics."
   find dl -type f -size -1024c -print -delete || true
@@ -87,7 +87,7 @@ if ! make download -j"$JOBS"; then
 fi
 find dl -type f -size -1024c -print -delete || true
 
-echo "[7/9] Compile firmware"
+echo "[7/10] Compile firmware"
 if [[ "$QUIET_BUILD" == "1" ]]; then
   if ! make -j"$JOBS"; then
     echo "BUILD_FAILED: concise diagnostics follow"
@@ -102,7 +102,10 @@ else
   fi
 fi
 
-echo "[8/9] Collect and normalize firmware names"
+echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
+"$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"
+
+echo "[9/10] Collect and normalize firmware names"
 TARGET_DIR="bin/targets/$DEVICE_TARGET/$DEVICE_SUBTARGET"
 [[ -d "$TARGET_DIR" ]] || { echo "ERROR: target output directory missing: $TARGET_DIR"; exit 1; }
 
@@ -161,6 +164,7 @@ cp "$PROJECT_ROOT/config/required-plugins.txt" "$OUT/required-plugins.txt"
   sha256sum * > SHA256SUMS.local
 )
 
-echo "[9/9] Done"
+echo "[10/10] Done"
 echo "Firmware: $OUT/firmware"
 echo "Metadata: $OUT/build-info.txt"
+echo "Plugin verification: $OUT/plugin-verification.txt"
