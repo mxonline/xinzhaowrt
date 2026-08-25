@@ -29,7 +29,8 @@ New-Item -ItemType Directory -Force -Path $StateDir, $OutputRoot | Out-Null
 function Write-ControllerLog {
     param([string]$Message)
     $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
-    $line | Tee-Object -FilePath $ControllerLog -Append
+    Add-Content -Path $ControllerLog -Value $line
+    Write-Host $line
 }
 
 function Set-ControllerState {
