@@ -108,6 +108,46 @@ jobs:
             throw "PREFLIGHT_FAILED: unexpected Codex response: $final"
           }
 
+      - name: Verify Codex workspace-write sandbox
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $probe = Join-Path $env:GITHUB_WORKSPACE 'codex-write-probe.txt'
+          $lastMessage = Join-Path $env:RUNNER_TEMP 'codex-write-probe-last-message.txt'
+          Remove-Item $probe -Force -ErrorAction SilentlyContinue
+
+          $prompt = 'Create a file named codex-write-probe.txt in the repository root containing exactly CODEX_WORKSPACE_WRITE_OK and one trailing newline. Do not modify any other file. Then reply exactly CODEX_WORKSPACE_WRITE_OK.'
+          $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
+          $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
+          if (-not (Test-Path $codexCmd)) {
+            $codexCmd = $codexPs1
+          }
+
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          $output = ($prompt | & $codexCmd exec --sandbox workspace-write -c 'windows.sandbox="unelevated"' -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+          $exitCode = $LASTEXITCODE
+          $ErrorActionPreference = $previousPreference
+          Write-Host $output
+
+          if ($exitCode -ne 0) {
+            throw "PREFLIGHT_FAILED: Codex workspace-write exec failed with exit code $exitCode"
+          }
+          if (-not (Test-Path $probe)) {
+            throw 'PREFLIGHT_FAILED: Codex workspace-write did not create the probe file.'
+          }
+          $probeText = (Get-Content -Raw $probe).Trim()
+          if ($probeText -ne 'CODEX_WORKSPACE_WRITE_OK') {
+            throw "PREFLIGHT_FAILED: unexpected probe content: $probeText"
+          }
+          $final = if (Test-Path $lastMessage) { (Get-Content -Raw $lastMessage).Trim() } else { '' }
+          if ($final -ne 'CODEX_WORKSPACE_WRITE_OK') {
+            throw "PREFLIGHT_FAILED: unexpected Codex workspace-write final response: $final"
+          }
+
+          Remove-Item $probe -Force
+          Write-Host 'Codex workspace-write OK on Windows runner.'
+
       - name: Summary
         if: always()
         shell: powershell
