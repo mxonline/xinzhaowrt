@@ -603,7 +603,7 @@ function Commit-And-PushRepair {
     Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'push','origin',"HEAD:$Branch") | Out-Null
 
     $sha = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
-    Write-ControllerLog "Committed and pushed automatic repair for failed Run $FailedRunId: $sha"
+    Write-ControllerLog "Committed and pushed automatic repair for failed Run ${FailedRunId}: $sha"
     return $sha
 }
 
@@ -687,7 +687,7 @@ function Verify-SuccessfulCandidate {
         plugin_verification = 'PASS'
         release_url = [string]$release.url
         verified_at = (Get-Date).ToString('o')
-    } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $RunDir 'candidate-verification.json') -Encoding UTF8
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $runDir 'candidate-verification.json') -Encoding UTF8
 
     Write-ControllerLog "Run $Id Candidate verification PASS. Release: $tag"
     return $tag
