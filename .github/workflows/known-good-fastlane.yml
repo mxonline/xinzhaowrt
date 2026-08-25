@@ -37,6 +37,7 @@ jobs:
       - name: Validate project and lock
         run: |
           set -Eeuo pipefail
+          chmod +x scripts/*.sh
           ./scripts/verify-project.sh
           test -s config/arthur-known-good.lock
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
@@ -67,10 +68,10 @@ jobs:
         if: failure()
         continue-on-error: true
         run: |
-          if [ -s output/logs/build-diagnostic.log ]; then
-            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
-          elif [ -s output/logs/build.log ]; then
+          if [ -s output/logs/build.log ]; then
             ./scripts/analyze-error.sh output/logs/build.log
+          elif [ -s output/logs/build-diagnostic.log ]; then
+            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
           else
             ./scripts/analyze-error.sh
           fi
