@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-v3-baseline-20260826-001",
+  "request_id": "arthur-v3-baseline-retry-release-20260826-001",
   "mode": "rebuild_known_good",
   "base_stable": "v0.1.0",
   "device": "jdcloud_re-ss-01",
-  "reason": "Validate OpenWrt automatic compilation v3.0 against the first verified Arthur Known-Good baseline without moving any source refs.",
-  "requested_at": "2026-08-26T01:30:00+08:00"
+  "reason": "Retry the verified Known-Good v3 rebuild after fixing the Candidate Release upload failure caused by an empty update-lock.diff asset.",
+  "requested_at": "2026-08-26T02:50:00+08:00"
 }
