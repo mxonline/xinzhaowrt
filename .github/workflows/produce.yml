@@ -102,13 +102,13 @@ jobs:
           $pollSeconds = [int]'${{ steps.request.outputs.poll_seconds }}'
           if ($mode -eq 'Resume') {
             $runId = [long]'${{ steps.request.outputs.run_id }}'
-            ./scripts/ci-controller.ps1 `
+            ./scripts/ci-controller-v2.ps1 `
               -Mode Resume `
               -RunId $runId `
               -MaxRepairRounds $maxRounds `
               -PollSeconds $pollSeconds
           } else {
-            ./scripts/ci-controller.ps1 `
+            ./scripts/ci-controller-v2.ps1 `
               -Mode $mode `
               -MaxRepairRounds $maxRounds `
               -PollSeconds $pollSeconds
@@ -119,12 +119,12 @@ jobs:
         shell: powershell
         run: |
           if (Test-Path state/ci-state.json) {
-            "## 路由固件完整生产 v1.0" >> $env:GITHUB_STEP_SUMMARY
+            "## 路由固件完整生产 v2.0" >> $env:GITHUB_STEP_SUMMARY
             '```json' >> $env:GITHUB_STEP_SUMMARY
             Get-Content state/ci-state.json >> $env:GITHUB_STEP_SUMMARY
             '```' >> $env:GITHUB_STEP_SUMMARY
           } else {
-            "## 路由固件完整生产 v1.0" >> $env:GITHUB_STEP_SUMMARY
+            "## 路由固件完整生产 v2.0" >> $env:GITHUB_STEP_SUMMARY
             "No controller state file was produced." >> $env:GITHUB_STEP_SUMMARY
           }
 
