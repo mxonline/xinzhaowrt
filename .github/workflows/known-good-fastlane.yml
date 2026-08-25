@@ -1,0 +1,151 @@
+name: Arthur Known-Good Fast Lane v1
+
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/known-good-fastlane.yml'
+      - 'production/known-good-request.json'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-known-good-fastlane
+  cancel-in-progress: false
+
+jobs:
+  build-known-good:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout build project
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Validate project and lock
+        run: |
+          set -Eeuo pipefail
+          ./scripts/verify-project.sh
+          test -s config/arthur-known-good.lock
+          test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
+          echo 'Arthur Known-Good lock and 22-plugin requirement are present.'
+
+      - name: Restore OpenWrt downloads and compiler cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/immortalwrt/dl
+            work/immortalwrt/.ccache
+          key: arthur-known-good-${{ runner.os }}-${{ hashFiles('config/arthur-known-good.lock', 'config/arthur.config', 'config/required-plugins.txt', 'scripts/**') }}
+          restore-keys: |
+            arthur-known-good-${{ runner.os }}-
+            arthur-${{ runner.os }}-
+
+      - name: Build frozen Arthur baseline
+        env:
+          USE_KNOWN_GOOD_LOCK: '1'
+          JOBS: '2'
+          QUIET_BUILD: '1'
+          REUSE_SOURCE: '0'
+        run: |
+          set -Eeuo pipefail
+          ./scripts/build.sh
+
+      - name: Analyze failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          if [ -s output/logs/build-diagnostic.log ]; then
+            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
+          elif [ -s output/logs/build.log ]; then
+            ./scripts/analyze-error.sh output/logs/build.log
+          else
+            ./scripts/analyze-error.sh
+          fi
+
+      - name: Build acceptance summary
+        if: always()
+        run: |
+          {
+            echo '## Arthur Known-Good Fast Lane v1'
+            echo
+            echo '- Source and feeds: exact SHA locked'
+            echo '- Device: jdcloud_re-ss-01'
+            echo '- Required LuCI plugins: 22'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s output/plugin-verification.txt ]; then
+            {
+              echo
+              echo '### 22-plugin final verification'
+              echo '```text'
+              cat output/plugin-verification.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s output/logs/error-summary.txt ]; then
+            {
+              echo
+              echo '### Failure diagnosis'
+              cat output/logs/error-summary.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-Known-Good-diagnostics-${{ github.run_id }}
+          path: |
+            output/logs/build.log
+            output/logs/build-diagnostic.log
+            output/logs/error-context.txt
+            output/logs/error-summary.txt
+            output/logs/failure-report.txt
+            output/full.config
+            output/plugin-verification.txt
+            config/arthur-known-good.lock
+            config/required-plugins.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload verified firmware
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-Known-Good-${{ github.run_id }}
+          path: |
+            output/firmware/*
+            output/full.config
+            output/build-info.txt
+            output/plugin-verification.txt
+            output/arthur-known-good.lock
+            output/required-plugins.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Known-Good candidate release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          tag="arthur-known-good-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            output/firmware/* \
+            output/plugin-verification.txt \
+            output/arthur-known-good.lock \
+            --title "Arthur Known-Good ${GITHUB_RUN_ID}" \
+            --notes "Frozen reproducible Arthur baseline. Acceptance requires full build success, all 22 mandatory LuCI packages compiled, all 22 present in the final firmware manifest, and firmware SHA256 output." \
+            --prerelease
