@@ -48,7 +48,7 @@ jobs:
             "should_run=false" >> $env:GITHUB_OUTPUT
             exit 0
           }
-          if ($request.mode -notin @('UpdateBuild','Rebuild')) {
+          if ($request.mode -notin @('UpdateBuild','Rebuild','Resume')) {
             throw "BLOCKED: unsupported production mode $($request.mode)"
           }
           $rounds = [int]$request.max_repair_rounds
@@ -59,12 +59,23 @@ jobs:
           if ($poll -lt 15 -or $poll -gt 300) {
             throw "BLOCKED: poll_seconds must be between 15 and 300"
           }
+          $runId = 0
+          if ($request.mode -eq 'Resume') {
+            if (-not ($request.PSObject.Properties.Name -contains 'run_id')) {
+              throw 'BLOCKED: Resume mode requires run_id'
+            }
+            $runId = [long]$request.run_id
+            if ($runId -le 0) {
+              throw 'BLOCKED: Resume mode requires a positive run_id'
+            }
+          }
           "should_run=true" >> $env:GITHUB_OUTPUT
           "mode=$($request.mode)" >> $env:GITHUB_OUTPUT
+          "run_id=$runId" >> $env:GITHUB_OUTPUT
           "max_rounds=$rounds" >> $env:GITHUB_OUTPUT
           "poll_seconds=$poll" >> $env:GITHUB_OUTPUT
           "request_id=$($request.request_id)" >> $env:GITHUB_OUTPUT
-          Write-Host "Accepted production request $($request.request_id)"
+          Write-Host "Accepted production request $($request.request_id), mode=$($request.mode), run_id=$runId"
 
       - name: Verify controller tools
         if: steps.request.outputs.should_run == 'true'
@@ -86,10 +97,22 @@ jobs:
         if: steps.request.outputs.should_run == 'true'
         shell: powershell
         run: |
-          ./scripts/ci-controller.ps1 `
-            -Mode '${{ steps.request.outputs.mode }}' `
-            -MaxRepairRounds ${{ steps.request.outputs.max_rounds }} `
-            -PollSeconds ${{ steps.request.outputs.poll_seconds }}
+          $mode = '${{ steps.request.outputs.mode }}'
+          $maxRounds = [int]'${{ steps.request.outputs.max_rounds }}'
+          $pollSeconds = [int]'${{ steps.request.outputs.poll_seconds }}'
+          if ($mode -eq 'Resume') {
+            $runId = [long]'${{ steps.request.outputs.run_id }}'
+            ./scripts/ci-controller.ps1 `
+              -Mode Resume `
+              -RunId $runId `
+              -MaxRepairRounds $maxRounds `
+              -PollSeconds $pollSeconds
+          } else {
+            ./scripts/ci-controller.ps1 `
+              -Mode $mode `
+              -MaxRepairRounds $maxRounds `
+              -PollSeconds $pollSeconds
+          }
 
       - name: Production summary
         if: always()
