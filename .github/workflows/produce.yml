@@ -35,6 +35,16 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Install Codex controller shim
+        shell: powershell
+        run: |
+          $shimDir = Join-Path $env:GITHUB_WORKSPACE 'scripts\codex-shim'
+          if (-not (Test-Path (Join-Path $shimDir 'codex.cmd'))) {
+            throw 'BLOCKED: Codex controller shim is missing.'
+          }
+          $shimDir >> $env:GITHUB_PATH
+          Write-Host "Codex controller shim added to PATH: $shimDir"
+
       - name: Read production request
         id: request
         shell: powershell
