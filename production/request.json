@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-20260825-controller-v2-resume",
+  "request_id": "arthur-20260825-controller-v2-resume-2",
   "action": "produce",
   "device": "jdcloud_re-ss-01",
   "mode": "Resume",
@@ -8,5 +8,5 @@
   "source_ref": "main",
   "max_repair_rounds": 3,
   "poll_seconds": 60,
-  "notes": "Resume the failed Arthur build through controller v2. The controller must use diagnostics-only Codex reasoning, controller-applied patches, regression verification, 22-plugin build/manifest verification, firmware artifact verification and SHA256 before success."
+  "notes": "Resume the failed Arthur build through controller v2 after fixing Codex exec trust handling on the Windows self-hosted runner. Continue diagnostics-only reasoning, controller-applied patches, regression verification, 22-plugin build/manifest verification, firmware artifact verification and SHA256 before success."
 }
