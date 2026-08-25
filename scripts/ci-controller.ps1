@@ -61,8 +61,19 @@ function Invoke-Captured {
         [string[]]$Arguments,
         [switch]$AllowFailure
     )
-    $text = (& $FilePath @Arguments 2>&1 | Out-String).Trim()
-    $code = $LASTEXITCODE
+
+    $previousPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell converts native stderr into non-terminating error records.
+        # Keep those records in captured output and use the native process exit code as truth.
+        $ErrorActionPreference = 'Continue'
+        $text = (& $FilePath @Arguments 2>&1 | Out-String).Trim()
+        $code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if (-not $AllowFailure -and $code -ne 0) {
         throw "$FilePath failed with exit code $code`n$text"
     }
