@@ -12,6 +12,9 @@ permissions:
   contents: write
   actions: write
 
+env:
+  GH_TOKEN: ${{ github.token }}
+
 concurrency:
   group: xinzhaowrt-production-controller
   cancel-in-progress: false
@@ -67,18 +70,21 @@ jobs:
         if: steps.request.outputs.should_run == 'true'
         shell: powershell
         run: |
+          $ErrorActionPreference = 'Stop'
           foreach ($tool in @('git','gh','codex')) {
             if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
               throw "BLOCKED: required local tool not found: $tool"
             }
           }
-          gh auth status --hostname github.com
+          $fullName = gh api "repos/$env:GITHUB_REPOSITORY" --jq '.full_name'
+          if ($LASTEXITCODE -ne 0 -or $fullName -ne $env:GITHUB_REPOSITORY) {
+            throw "BLOCKED: GH_TOKEN cannot access $env:GITHUB_REPOSITORY"
+          }
+          Write-Host "Controller tools and GitHub token OK: $fullName"
 
       - name: Run persistent production controller
         if: steps.request.outputs.should_run == 'true'
         shell: powershell
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           ./scripts/ci-controller.ps1 `
             -Mode '${{ steps.request.outputs.mode }}' `
