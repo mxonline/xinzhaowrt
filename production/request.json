@@ -1,12 +1,11 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-20260825-0815-resume",
+  "request_id": "arthur-20260825-istore-xz-retry",
   "action": "produce",
   "device": "jdcloud_re-ss-01",
-  "mode": "Resume",
-  "run_id": 32792360666,
+  "mode": "UpdateBuild",
   "source_ref": "main",
   "max_repair_rounds": 3,
   "poll_seconds": 60,
-  "notes": "Resume the already-running Arthur cloud build after fixing controller log pipeline output. Reuse Run 32792360666 rather than starting a duplicate build; continue through artifact verification or automatic Codex repair/rebuild if the cloud build fails."
+  "notes": "Retry Arthur production after diagnosing Run 32792360666: luci-app-store, luci-app-quickstart and luci-app-istorex were removed by make defconfig. Seed xz-utils before defconfig per linkease/istore upstream workaround for the tar/xz dependency bug."
 }
