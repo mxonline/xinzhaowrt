@@ -75,6 +75,9 @@ jobs:
           ./scripts/prepare-update-lock.sh "$UPDATE_MODE" "$CANDIDATE_LOCK"
           cp "$CANDIDATE_LOCK" output/candidate-lock.txt
           diff -u config/arthur-known-good.lock "$CANDIDATE_LOCK" > output/update-lock.diff || true
+          if [ ! -s output/update-lock.diff ]; then
+            printf '%s\n' '# No source lock delta; Candidate uses the verified Known-Good lock unchanged.' > output/update-lock.diff
+          fi
           LOCK_SHA="$(sha256sum "$CANDIDATE_LOCK" | awk '{print $1}')"
 
           echo "lock_path=$CANDIDATE_LOCK" >> "$GITHUB_OUTPUT"
