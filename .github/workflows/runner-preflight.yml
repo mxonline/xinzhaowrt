@@ -7,6 +7,7 @@ name: XinZhaoWrt Runner Preflight
     paths:
       - '.github/workflows/runner-preflight.yml'
       - 'scripts/ci-controller.ps1'
+      - 'scripts/ci-controller-v2.ps1'
   workflow_dispatch:
 
 permissions:
@@ -35,15 +36,11 @@ jobs:
           Write-Host "whoami: $(whoami)"
           Write-Host "USERPROFILE: $env:USERPROFILE"
           Write-Host "PATH: $env:PATH"
-
           foreach ($tool in @('git','gh','codex')) {
             $cmd = Get-Command $tool -ErrorAction SilentlyContinue
-            if (-not $cmd) {
-              throw "PREFLIGHT_FAILED: required tool not found: $tool"
-            }
+            if (-not $cmd) { throw "PREFLIGHT_FAILED: required tool not found: $tool" }
             Write-Host "$tool => $($cmd.Source)"
           }
-
           git --version
           gh --version | Select-Object -First 1
           codex --version
@@ -58,20 +55,23 @@ jobs:
           }
           Write-Host "GitHub token OK: $fullName"
 
-      - name: Verify controller script syntax
+      - name: Verify controller v2 syntax
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\ci-controller.ps1'
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $text = ($errors | ForEach-Object { $_.ToString() }) -join "`n"
-            throw "PREFLIGHT_FAILED: ci-controller.ps1 syntax errors:`n$text"
+          foreach ($relative in @('scripts\ci-controller.ps1','scripts\ci-controller-v2.ps1')) {
+            $script = Join-Path $env:GITHUB_WORKSPACE $relative
+            if (-not (Test-Path $script)) { throw "PREFLIGHT_FAILED: missing controller script: $relative" }
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $text = ($errors | ForEach-Object { $_.ToString() }) -join "`n"
+              throw "PREFLIGHT_FAILED: $relative syntax errors:`n$text"
+            }
           }
-          if (-not (Select-String -Path $script -Pattern 'Get-CodexExecutable' -Quiet)) {
-            throw 'PREFLIGHT_FAILED: controller does not contain Windows Codex executable resolver.'
+          if (-not (Select-String -Path (Join-Path $env:GITHUB_WORKSPACE 'scripts\ci-controller-v2.ps1') -Pattern 'Invoke-StructuredCodexRepair' -Quiet)) {
+            throw 'PREFLIGHT_FAILED: controller v2 structured repair function missing.'
           }
           Write-Host 'Controller PowerShell syntax OK.'
 
@@ -80,73 +80,46 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $lastMessage = Join-Path $env:RUNNER_TEMP 'codex-preflight-last-message.txt'
-          $prompt = 'Reply exactly CODEX_PREFLIGHT_OK. Do not modify files.'
-
+          $prompt = 'Reply exactly CODEX_PREFLIGHT_OK. Do not use tools. Do not modify files.'
           $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
           $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
-          if (-not (Test-Path $codexCmd)) {
-            $codexCmd = $codexPs1
-          }
-          Write-Host "Codex exec shim: $codexCmd"
-
+          if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
           $previousPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
-          $output = ($prompt | & $codexCmd exec --sandbox read-only -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+          $output = ($prompt | & $codexCmd exec --sandbox read-only -c 'approval_policy="never"' -o $lastMessage - 2>&1 | Out-String)
           $exitCode = $LASTEXITCODE
           $ErrorActionPreference = $previousPreference
-
           Write-Host $output
-          if ($exitCode -ne 0) {
-            throw "PREFLIGHT_FAILED: codex exec failed with exit code $exitCode"
-          }
-          if (-not (Test-Path $lastMessage)) {
-            throw 'PREFLIGHT_FAILED: Codex did not produce a last-message file.'
-          }
+          if ($exitCode -ne 0) { throw "PREFLIGHT_FAILED: codex exec failed with exit code $exitCode" }
+          if (-not (Test-Path $lastMessage)) { throw 'PREFLIGHT_FAILED: Codex did not produce a last-message file.' }
           $final = (Get-Content -Raw $lastMessage).Trim()
-          Write-Host "Codex final: $final"
-          if ($final -ne 'CODEX_PREFLIGHT_OK') {
-            throw "PREFLIGHT_FAILED: unexpected Codex response: $final"
-          }
+          if ($final -ne 'CODEX_PREFLIGHT_OK') { throw "PREFLIGHT_FAILED: unexpected Codex response: $final" }
 
-      - name: Verify Codex workspace-write sandbox
+      - name: Verify structured no-tool repair response
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $probe = Join-Path $env:GITHUB_WORKSPACE 'codex-write-probe.txt'
-          $lastMessage = Join-Path $env:RUNNER_TEMP 'codex-write-probe-last-message.txt'
-          Remove-Item $probe -Force -ErrorAction SilentlyContinue
-
-          $prompt = 'Create a file named codex-write-probe.txt in the repository root containing exactly CODEX_WORKSPACE_WRITE_OK and one trailing newline. Do not modify any other file. Then reply exactly CODEX_WORKSPACE_WRITE_OK.'
+          $lastMessage = Join-Path $env:RUNNER_TEMP 'codex-structured-probe.json'
+          $prompt = @'
+          Do not use shell, filesystem, network, or tools. Analyze only this text.
+          Return ONLY this JSON object with no markdown:
+          {"status":"repairable","root_cause":"synthetic test","error_signature":"SYNTHETIC","repair_strategy":"none","files_needed":["scripts/build.sh"]}
+          '@
           $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
           $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
-          if (-not (Test-Path $codexCmd)) {
-            $codexCmd = $codexPs1
-          }
-
+          if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
           $previousPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
-          $output = ($prompt | & $codexCmd exec --sandbox workspace-write -c 'windows.sandbox="unelevated"' -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+          $output = ($prompt | & $codexCmd exec --sandbox read-only -c 'approval_policy="never"' -o $lastMessage - 2>&1 | Out-String)
           $exitCode = $LASTEXITCODE
           $ErrorActionPreference = $previousPreference
           Write-Host $output
-
-          if ($exitCode -ne 0) {
-            throw "PREFLIGHT_FAILED: Codex workspace-write exec failed with exit code $exitCode"
+          if ($exitCode -ne 0) { throw "PREFLIGHT_FAILED: structured Codex probe failed with exit code $exitCode" }
+          $obj = Get-Content -Raw $lastMessage | ConvertFrom-Json
+          if ($obj.status -ne 'repairable' -or $obj.error_signature -ne 'SYNTHETIC') {
+            throw 'PREFLIGHT_FAILED: structured Codex response was not parseable/expected.'
           }
-          if (-not (Test-Path $probe)) {
-            throw 'PREFLIGHT_FAILED: Codex workspace-write did not create the probe file.'
-          }
-          $probeText = (Get-Content -Raw $probe).Trim()
-          if ($probeText -ne 'CODEX_WORKSPACE_WRITE_OK') {
-            throw "PREFLIGHT_FAILED: unexpected probe content: $probeText"
-          }
-          $final = if (Test-Path $lastMessage) { (Get-Content -Raw $lastMessage).Trim() } else { '' }
-          if ($final -ne 'CODEX_WORKSPACE_WRITE_OK') {
-            throw "PREFLIGHT_FAILED: unexpected Codex workspace-write final response: $final"
-          }
-
-          Remove-Item $probe -Force
-          Write-Host 'Codex workspace-write OK on Windows runner.'
+          Write-Host 'Structured no-tool Codex path OK; workspace-write is intentionally not required.'
 
       - name: Summary
         if: always()
