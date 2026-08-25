@@ -69,11 +69,34 @@ function Invoke-Captured {
     [pscustomobject]@{ ExitCode = $code; Output = $text }
 }
 
+function Get-CodexExecutable {
+    $codex = Get-Command codex -ErrorAction Stop
+    $source = $codex.Source
+
+    if ($source -and $source.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $cmdShim = Join-Path (Split-Path $source -Parent) 'codex.cmd'
+        if (Test-Path $cmdShim) {
+            return $cmdShim
+        }
+    }
+
+    $cmd = Get-Command codex.cmd -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    return $source
+}
+
 function Assert-Tools {
     foreach ($tool in @('git','gh','codex')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
             throw "Required command not found: $tool"
         }
+    }
+    $codexPath = Get-CodexExecutable
+    if (-not $codexPath -or -not (Test-Path $codexPath)) {
+        throw 'Required Codex executable could not be resolved.'
     }
     $auth = Invoke-Captured -FilePath 'gh' -Arguments @('auth','status','--hostname','github.com') -AllowFailure
     if ($auth.ExitCode -ne 0) {
@@ -255,12 +278,13 @@ Rules:
 "@
     $prompt | Set-Content -Path $promptPath -Encoding UTF8
 
-    $codexPath = (Get-Command codex).Source
-    Write-ControllerLog "Starting non-interactive Codex repair for Run $Id, round $Round."
+    $codexPath = Get-CodexExecutable
+    Write-ControllerLog "Starting non-interactive Codex repair for Run $Id, round $Round using $codexPath."
     Set-ControllerState -Status 'repairing' -Stage 'codex-exec' -CurrentRunId $Id -RepairRound $Round -Message 'Codex is analyzing diagnostics and preparing a minimal repair.'
 
     $job = Start-Job -ScriptBlock {
         param($Exe,$Root,$PromptFile,$LastMessage)
+        $ErrorActionPreference = 'Continue'
         $inputText = Get-Content -Raw -Path $PromptFile
         $output = ($inputText | & $Exe exec --sandbox workspace-write -c 'approval_policy="never"' -C $Root -o $LastMessage - 2>&1 | Out-String)
         [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
