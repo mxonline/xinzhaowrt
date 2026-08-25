@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-20260825-0810",
+  "request_id": "arthur-20260825-0813",
   "action": "produce",
   "device": "jdcloud_re-ss-01",
   "mode": "UpdateBuild",
   "source_ref": "main",
   "max_repair_rounds": 3,
   "poll_seconds": 60,
-  "notes": "Retry full acceptance run after fixing production workflow GitHub token exposure. Self-hosted runner, PowerShell, Git, GitHub CLI, Codex CLI, Codex authentication, and controller syntax preflight have passed."
+  "notes": "Retry full acceptance run after making the Windows PowerShell controller capture native stderr without treating successful native commands as terminating errors. All runner preflight checks passed."
 }
