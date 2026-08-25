@@ -1,0 +1,481 @@
+{
+  "device": {
+    "model": "JDCloud RE-SS-01",
+    "target": "jdcloud_re-ss-01",
+    "address": "192.168.1.1"
+  },
+  "candidate": "arthur-known-good-32853100232",
+  "commit": "236abeaaea06442aa0f8f34efd0b4464b35c5061",
+  "ssh": {
+    "passed": true,
+    "command": "echo CODEX_SSH_OK",
+    "exit_code": 0,
+    "output": "CODEX_SSH_OK",
+    "reason": "SSH connectivity is required."
+  },
+  "boot": {
+    "before": [
+      {
+        "passed": true,
+        "command": "ubus call system board",
+        "exit_code": 0,
+        "output": "{\n\t\"kernel\": \"6.18.44\",\n\t\"hostname\": \"ImmortalWRT\",\n\t\"system\": \"ARMv8 Processor rev 4\",\n\t\"model\": \"JDCloud RE-SS-01\",\n\t\"board_name\": \"jdcloud,re-ss-01\",\n\t\"rootfs_type\": \"squashfs\",\n\t\"release\": {\n\t\t\"distribution\": \"ImmortalWRT\",\n\t\t\"version\": \"SNAPSHOT\",\n\t\t\"firmware_url\": \"https://downloads.immortalwrt.org/\",\n\t\t\"revision\": \"r1-27e26e324b\",\n\t\t\"target\": \"qualcommax/ipq60xx\",\n\t\t\"description\": \"ImmortalWRT SNAPSHOT r1-27e26e324b\",\n\t\t\"builddate\": \"1787615825\"\n\t}\n}",
+        "reason": "Board identity must be JDCloud RE-SS-01 / jdcloud,re-ss-01."
+      },
+      {
+        "passed": true,
+        "command": "cat /etc/openwrt_release; uname -a; uptime",
+        "exit_code": 0,
+        "output": "DISTRIB_ID='ImmortalWRT'\nDISTRIB_RELEASE='SNAPSHOT'\nDISTRIB_REVISION='r1-27e26e324b'\nDISTRIB_TARGET='qualcommax/ipq60xx'\nDISTRIB_ARCH='aarch64_cortex-a53'\nDISTRIB_DESCRIPTION='ImmortalWRT SNAPSHOT r1-27e26e324b'\nDISTRIB_TAINTS='no-all'\nLinux ImmortalWRT 6.18.44 #0 SMP Mon Aug 24 23:57:05 2026 aarch64 GNU/Linux\n 01:10:14 up 1 min,  load average: 0.38, 0.23, 0.08",
+        "reason": "ImmortalWrt/OpenWrt must be running normally."
+      }
+    ],
+    "after": [
+      {
+        "passed": true,
+        "command": "ubus call system board",
+        "exit_code": 0,
+        "output": "{\n\t\"kernel\": \"6.18.44\",\n\t\"hostname\": \"ImmortalWRT\",\n\t\"system\": \"ARMv8 Processor rev 4\",\n\t\"model\": \"JDCloud RE-SS-01\",\n\t\"board_name\": \"jdcloud,re-ss-01\",\n\t\"rootfs_type\": \"squashfs\",\n\t\"release\": {\n\t\t\"distribution\": \"ImmortalWRT\",\n\t\t\"version\": \"SNAPSHOT\",\n\t\t\"firmware_url\": \"https://downloads.immortalwrt.org/\",\n\t\t\"revision\": \"r1-27e26e324b\",\n\t\t\"target\": \"qualcommax/ipq60xx\",\n\t\t\"description\": \"ImmortalWRT SNAPSHOT r1-27e26e324b\",\n\t\t\"builddate\": \"1787615825\"\n\t}\n}",
+        "reason": "Board identity must be JDCloud RE-SS-01 / jdcloud,re-ss-01."
+      },
+      {
+        "passed": true,
+        "command": "cat /etc/openwrt_release; uname -a; uptime",
+        "exit_code": 0,
+        "output": "DISTRIB_ID='ImmortalWRT'\nDISTRIB_RELEASE='SNAPSHOT'\nDISTRIB_REVISION='r1-27e26e324b'\nDISTRIB_TARGET='qualcommax/ipq60xx'\nDISTRIB_ARCH='aarch64_cortex-a53'\nDISTRIB_DESCRIPTION='ImmortalWRT SNAPSHOT r1-27e26e324b'\nDISTRIB_TAINTS='no-all'\nLinux ImmortalWRT 6.18.44 #0 SMP Mon Aug 24 23:57:05 2026 aarch64 GNU/Linux\n 01:11:45 up 1 min,  load average: 1.32, 0.37, 0.12",
+        "reason": "ImmortalWrt/OpenWrt must be running normally."
+      }
+    ],
+    "checks": []
+  },
+  "storage": {
+    "passed": true,
+    "command": "uname -a; free -h; df -h; mount; command -v mmc || true; lsblk 2>/dev/null || true; dmesg | tail -n 80",
+    "exit_code": 0,
+    "output": "Linux ImmortalWRT 6.18.44 #0 SMP Mon Aug 24 23:57:05 2026 aarch64 GNU/Linux\n              total        used        free      shared  buff/cache   available\nMem:         404996      190912       86008        8708      128076      154332\nSwap:             0           0           0\nFilesystem                Size      Used Available Use% Mounted on\n/dev/root                88.0M     88.0M         0 100% /rom\ntmpfs                   197.8M      4.6M    193.1M   2% /tmp\n/dev/loop0                1.9G     98.1M      1.8G   5% /overlay\noverlayfs:/overlay        1.9G     98.1M      1.8G   5% /\ntmpfs                   512.0K         0    512.0K   0% /dev\n/dev/mmcblk0p27          50.9G    151.9M     48.1G   0% /mnt/mmcblk0p27\n/dev/mmcblk0p18 on /rom type squashfs (ro,relatime,errors=continue)\nproc on /proc type proc (rw,nosuid,nodev,noexec,relatime)\nsysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)\ncgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,nsdelegate)\ntmpfs on /tmp type tmpfs (rw,nosuid,nodev,noatime)\n/mmcblk0p18 on /overlay type f2fs (rw,noatime,lazytime,background_gc=on,nogc_merge,discard,discard_unit=block,user_xattr,inline_xattr,acl,inline_data,inline_dentry,flush_merge,barrier,extent_cache,mode=adaptive,active_logs=6,alloc_mode=reuse,checkpoint_merge,fsync_mode=posix,memory=normal,errors=continue,lookup_mode=perf)\noverlayfs:/overlay on / type overlay (rw,noatime,lowerdir=/,upperdir=/overlay/upper,workdir=/overlay/work,xino=off)\ntmpfs on /dev type tmpfs (rw,nosuid,noexec,noatime,size=512k,mode=755)\ndevpts on /dev/pts type devpts (rw,nosuid,noexec,noatime,mode=600,ptmxmode=000)\ndebugfs on /sys/kernel/debug type debugfs (rw,nosuid,nodev,noexec,noatime)\nbpffs on /sys/fs/bpf type bpf (rw,nosuid,nodev,noexec,noatime,mode=700)\n/dev/mmcblk0p27 on /mnt/mmcblk0p27 type ext4 (rw,relatime)\nNAME         MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS\nloop0          7:0    0  1.9G  0 loop /overlay\nmmcblk0      179:0    0 57.1G  0 disk \n├─mmcblk0p1  179:1    0  768K  0 part \n├─mmcblk0p2  179:2    0  256K  0 part \n├─mmcblk0p3  179:3    0  256K  0 part \n├─mmcblk0p4  179:4    0  1.8M  0 part \n├─mmcblk0p5  179:5    0  1.8M  0 part \n├─mmcblk0p6  179:6    0  256K  0 part \n├─mmcblk0p7  179:7    0  256K  0 part \n├─mmcblk0p8  179:8    0  256K  0 part \n├─mmcblk0p9  179:9    0  256K  0 part \n├─mmcblk0p10 179:10   0  256K  0 part \n├─mmcblk0p11 179:11   0  256K  0 part \n├─mmcblk0p12 179:12   0  256K  0 part \n├─mmcblk0p13 179:13   0  640K  0 part \n├─mmcblk0p14 179:14   0  640K  0 part \n├─mmcblk0p15 179:15   0  256K  0 part \n├─mmcblk0p16 179:16   0    6M  0 part \n├─mmcblk0p17 179:17   0    6M  0 part \n├─mmcblk0p18 179:18   0    2G  0 part /rom\n├─mmcblk0p19 179:19   0    4M  0 part \n├─mmcblk0p20 179:20   0   60M  0 part \n├─mmcblk0p21 179:21   0    4M  0 part \n├─mmcblk0p22 179:22   0   20M  0 part \n├─mmcblk0p23 179:23   0  512K  0 part \n├─mmcblk0p24 179:24   0 87.5M  0 part \n├─mmcblk0p25 179:25   0  300M  0 part \n├─mmcblk0p26 179:26   0  512M  0 part \n├─mmcblk0p27 179:27   0   52G  0 part /mnt/mmcblk0p27\n└─mmcblk0p28 179:28   0    1G  0 part \nmmcblk0boot0 179:32   0    4M  1 disk \nmmcblk0boot1 179:64   0    4M  1 disk \n[   20.246716] usbcore: registered new interface driver ums-datafab\n[   20.252919] usbcore: registered new interface driver ums-freecom\n[   20.258941] usbcore: registered new interface driver ums-isd200\n[   20.264967] usbcore: registered new interface driver ums-jumpshot\n[   20.270498] usbcore: registered new interface driver ums-karma\n[   20.276976] usbcore: registered new interface driver ums-sddr09\n[   20.282657] usbcore: registered new interface driver ums-sddr55\n[   20.288626] usbcore: registered new interface driver ums-usbat\n[   20.295283] usbcore: registered new interface driver usbserial_generic\n[   20.299108] usbserial: USB Serial support registered for generic\n[   20.319716] xt_time: kernel timezone is -0000\n[   20.433214] ath11k c000000.wifi: ipq6018 hw1.0\n[   20.433252] ath11k c000000.wifi: FW memory mode: 1\n[   23.616146] EXT4-fs (mmcblk0p27): mounted filesystem 97d057be-8ffe-4c27-9752-94a4992e7110 r/w with ordered data mode. Quota mode: disabled.\n[   37.059229] remoteproc remoteproc0: powering up cd00000.remoteproc\n[   37.072497] remoteproc remoteproc0: Booting fw image IPQ6018/q6_fw.mdt, size 7340\n[   37.847822] remoteproc remoteproc0: remote processor cd00000.remoteproc is now up\n[   37.861004] usbcore: registered new interface driver qcserial\n[   37.861084] usbserial: USB Serial support registered for Qualcomm USB modem\n[   37.866131] kmodloader: done loading kernel modules from /etc/modules.d/*\n[   37.899996] ath11k c000000.wifi: chip_id 0x0 chip_family 0x4 board_id 0xff soc_id 0xffffffff\n[   37.900048] ath11k c000000.wifi: fw_version 0x2c0205b4 fw_build_timestamp 2024-10-04 16:15 fw_build_id WLAN.HK.2.12-01460-QCAHKSWPL_SILICONZ-1\n[   38.070579] ath11k c000000.wifi: nss init soc nss if_num 203 userpd_id 0\n[   38.084449] ath11k c000000.wifi: NSS firmware reports no mesh capability, 802.11s stays on the host path\n[   38.084511] ath11k c000000.wifi: NSS firmware reports no mesh capability, 802.11s stays on the host path\n[   41.692026] br-lan: port 1(lan1) entered blocking state\n[   41.692078] br-lan: port 1(lan1) entered disabled state\n[   41.696133] nss-dp 3a001200.dp2 lan1: entered allmulticast mode\n[   41.701736] nss-dp 3a001200.dp2 lan1: entered promiscuous mode\n[   41.718169] br-lan: port 2(lan2) entered blocking state\n[   41.718218] br-lan: port 2(lan2) entered disabled state\n[   41.722332] nss-dp 3a001400.dp3 lan2: entered allmulticast mode\n[   41.727740] nss-dp 3a001400.dp3 lan2: entered promiscuous mode\n[   41.740628] nss-dp 3a001600.dp4 lan3: PHY Link up speed: 1000\n[   41.743212] br-lan: port 3(lan3) entered blocking state\n[   41.745371] br-lan: port 3(lan3) entered disabled state\n[   41.750456] nss-dp 3a001600.dp4 lan3: entered allmulticast mode\n[   41.756085] nss-dp 3a001600.dp4 lan3: entered promiscuous mode\n[   41.769313] nss-dp 3a001800.dp5 wan: PHY Link up speed: 1000\n[   41.956645] ECM init: selected_front_end=1, register_ip_post_routing=1, register_br_post_routing=1\n[   41.956729] ECM database jhash random seed: 0xdd1aa492\n[   41.977010] ECM init complete\n[   42.276608] qca-nss 39000000.nss: Configuring additional NSS pbufs\n[   42.309095] qca-nss 39000000.nss: Additional pbufs of size 8003584 got added to NSS\n[   42.436311] br-lan: port 4(phy0-ap0) entered blocking state\n[   42.436359] br-lan: port 4(phy0-ap0) entered disabled state\n[   42.440754] ath11k c000000.wifi phy0-ap0: entered allmulticast mode\n[   42.446682] ath11k c000000.wifi phy0-ap0: entered promiscuous mode\n[   42.721540] br-lan: port 3(lan3) entered blocking state\n[   42.721594] br-lan: port 3(lan3) entered forwarding state\n[   42.801255] br-lan: port 5(phy1-ap0) entered blocking state\n[   42.801423] br-lan: port 5(phy1-ap0) entered disabled state\n[   42.805790] ath11k c000000.wifi phy1-ap0: entered allmulticast mode\n[   42.811592] ath11k c000000.wifi phy1-ap0: entered promiscuous mode\n[   42.913519] br-lan: port 5(phy1-ap0) entered blocking state\n[   42.913570] br-lan: port 5(phy1-ap0) entered forwarding state\n[   43.334787] br-lan: port 4(phy0-ap0) entered blocking state\n[   43.334845] br-lan: port 4(phy0-ap0) entered forwarding state\n[   44.471796] ath11k c000000.wifi phy0-ap0: left allmulticast mode\n[   44.471868] ath11k c000000.wifi phy0-ap0: left promiscuous mode\n[   44.476999] br-lan: port 4(phy0-ap0) entered disabled state\n[   44.593561] nss_nl_init[515]:NSS Netlink manager loaded: Build Id: 08/25/26, 15:46:53\n[   44.952994] ath11k c000000.wifi phy1-ap0: left allmulticast mode\n[   44.953066] ath11k c000000.wifi phy1-ap0: left promiscuous mode\n[   44.958255] br-lan: port 5(phy1-ap0) entered disabled state\n[   45.701023] br-lan: port 4(phy0-ap0) entered blocking state\n[   45.701073] br-lan: port 4(phy0-ap0) entered disabled state\n[   45.705591] ath11k c000000.wifi phy0-ap0: entered allmulticast mode\n[   45.711395] ath11k c000000.wifi phy0-ap0: entered promiscuous mode\n[   46.049973] br-lan: port 5(phy1-ap0) entered blocking state\n[   46.050027] br-lan: port 5(phy1-ap0) entered disabled state\n[   46.054497] ath11k c000000.wifi phy1-ap0: entered allmulticast mode\n[   46.060183] ath11k c000000.wifi phy1-ap0: entered promiscuous mode\n[   46.103364] br-lan: port 5(phy1-ap0) entered blocking state\n[   46.103425] br-lan: port 5(phy1-ap0) entered forwarding state\n[   46.156031] br-lan: port 4(phy0-ap0) entered blocking state\n[   46.156082] br-lan: port 4(phy0-ap0) entered forwarding state\n[   50.765690] Frequency Set to 748800000\n[   51.061849] oaf: Driver ver. 5.3.3 - Copyright(c) 2019-2026, destan19(TT), <www.openappfilter.com>\n[   51.061901] oaf: init ok",
+    "reason": "Kernel, memory, overlay, eMMC, filesystem and mounts must be healthy."
+  },
+  "lan": {
+    "passed": true,
+    "command": "ubus call network.interface.lan status; ip -4 addr; ip route",
+    "exit_code": 0,
+    "output": "{\n\t\"up\": true,\n\t\"pending\": false,\n\t\"available\": true,\n\t\"autostart\": true,\n\t\"dynamic\": false,\n\t\"uptime\": 21,\n\t\"l3_device\": \"br-lan\",\n\t\"proto\": \"static\",\n\t\"device\": \"br-lan\",\n\t\"updated\": [\n\t\t\"addresses\"\n\t],\n\t\"metric\": 0,\n\t\"dns_metric\": 0,\n\t\"delegation\": true,\n\t\"ipv4-address\": [\n\t\t{\n\t\t\t\"address\": \"192.168.1.1\",\n\t\t\t\"mask\": 24\n\t\t}\n\t],\n\t\"ipv6-address\": [\n\t\t\n\t],\n\t\"ipv6-prefix\": [\n\t\t\n\t],\n\t\"ipv6-prefix-assignment\": [\n\t\t{\n\t\t\t\"address\": \"fd80:24ac:a676:4::\",\n\t\t\t\"mask\": 64,\n\t\t\t\"preferred\": 43184,\n\t\t\t\"valid\": 43184,\n\t\t\t\"local-address\": {\n\t\t\t\t\"address\": \"fd80:24ac:a676:4:ded8:7cff:fe46:9124\",\n\t\t\t\t\"mask\": 64\n\t\t\t}\n\t\t}\n\t],\n\t\"route\": [\n\t\t\n\t],\n\t\"dns-server\": [\n\t\t\n\t],\n\t\"dns-search\": [\n\t\t\n\t],\n\t\"neighbors\": [\n\t\t\n\t],\n\t\"inactive\": {\n\t\t\"ipv4-address\": [\n\t\t\t\n\t\t],\n\t\t\"ipv6-address\": [\n\t\t\t\n\t\t],\n\t\t\"route\": [\n\t\t\t\n\t\t],\n\t\t\"dns-server\": [\n\t\t\t\n\t\t],\n\t\t\"dns-search\": [\n\t\t\t\n\t\t],\n\t\t\"neighbors\": [\n\t\t\t\n\t\t]\n\t},\n\t\"data\": {\n\t\t\n\t}\n}\n1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000\n    inet 127.0.0.1/8 scope host lo\n       valid_lft forever preferred_lft forever\n5: wan: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000\n    inet 192.168.2.208/24 brd 192.168.2.255 scope global wan\n       valid_lft forever preferred_lft forever\n12: br-lan: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000\n    inet 192.168.1.1/24 brd 192.168.1.255 scope global br-lan\n       valid_lft forever preferred_lft forever\ndefault via 192.168.2.1 dev wan proto static src 192.168.2.208 \n192.168.1.0/24 dev br-lan proto kernel scope link src 192.168.1.1 \n192.168.2.0/24 dev wan proto kernel scope link src 192.168.2.208",
+    "reason": "LAN must be up with an IPv4 address."
+  },
+  "wan": {
+    "passed": true,
+    "command": "ubus call network.interface.wan status; ip route show default",
+    "exit_code": 0,
+    "output": "{\n\t\"up\": true,\n\t\"pending\": false,\n\t\"available\": true,\n\t\"autostart\": true,\n\t\"dynamic\": false,\n\t\"uptime\": 14,\n\t\"l3_device\": \"wan\",\n\t\"proto\": \"dhcp\",\n\t\"device\": \"wan\",\n\t\"updated\": [\n\t\t\"addresses\",\n\t\t\"routes\",\n\t\t\"data\"\n\t],\n\t\"metric\": 0,\n\t\"dns_metric\": 0,\n\t\"delegation\": true,\n\t\"ipv4-address\": [\n\t\t{\n\t\t\t\"address\": \"192.168.2.208\",\n\t\t\t\"mask\": 24\n\t\t}\n\t],\n\t\"ipv6-address\": [\n\t\t\n\t],\n\t\"ipv6-prefix\": [\n\t\t\n\t],\n\t\"ipv6-prefix-assignment\": [\n\t\t\n\t],\n\t\"route\": [\n\t\t{\n\t\t\t\"target\": \"0.0.0.0\",\n\t\t\t\"mask\": 0,\n\t\t\t\"nexthop\": \"192.168.2.1\",\n\t\t\t\"source\": \"192.168.2.208/32\"\n\t\t}\n\t],\n\t\"dns-server\": [\n\t\t\"192.168.2.1\"\n\t],\n\t\"dns-search\": [\n\t\t\"lan\"\n\t],\n\t\"neighbors\": [\n\t\t\n\t],\n\t\"inactive\": {\n\t\t\"ipv4-address\": [\n\t\t\t\n\t\t],\n\t\t\"ipv6-address\": [\n\t\t\t\n\t\t],\n\t\t\"route\": [\n\t\t\t\n\t\t],\n\t\t\"dns-server\": [\n\t\t\t\n\t\t],\n\t\t\"dns-search\": [\n\t\t\t\n\t\t],\n\t\t\"neighbors\": [\n\t\t\t\n\t\t]\n\t},\n\t\"data\": {\n\t\t\"dhcpserver\": \"192.168.2.1\",\n\t\t\"hostname\": \"ImmortalWRT\",\n\t\t\"leasetime\": 43200\n\t}\n}\ndefault via 192.168.2.1 dev wan proto static src 192.168.2.208",
+    "reason": "WAN must be up and have a default route."
+  },
+  "internet": {
+    "passed": true,
+    "command": "ping -c 2 -W 3 1.1.1.1; uclient-fetch -qO- --timeout=10 https://api.ipify.org 2>/dev/null || true",
+    "exit_code": 0,
+    "output": "PING 1.1.1.1 (1.1.1.1): 56 data bytes\n\n--- 1.1.1.1 ping statistics ---\n2 packets transmitted, 0 packets received, 100% packet loss\n43.199.188.208",
+    "reason": "Public IP connectivity must work."
+  },
+  "dns": {
+    "passed": true,
+    "command": "nslookup openwrt.org 2>&1 || busybox nslookup openwrt.org 2>&1",
+    "exit_code": 0,
+    "output": "Server:\t\t127.0.0.1\nAddress:\t127.0.0.1:53\n\n\nName:\topenwrt.org\nAddress: 28.0.4.58",
+    "reason": "DNS resolution must work."
+  },
+  "wifi_2g": {
+    "passed": true,
+    "command": "ubus call wireless status 2>/dev/null || true; iwinfo",
+    "exit_code": 0,
+    "output": "phy0-ap0 ESSID: \"OWRT\"\n         Access Point: dc:d8:7c:46:91:26\n         Mode: Master  Channel: 36 (5.180 GHz)  HT Mode: HE80\n         Center Channel 1: 42 2: unknown\n         Tx-Power: 27 dBm  Link Quality: 70/70\n         Signal: 0 dBm  Noise: -111 dBm\n         Bit Rate: unknown\n         Encryption: WPA-PSK (CCMP)\n         Type: nl80211  HW Mode(s): 802.11ax/ac/n\n         Hardware: embedded [Qualcomm Atheros IPQ6018]\n         TX power offset: none\n         Channel offset: none\n         Supports VAPs: yes  PHY name: phy0\n\nphy1-ap0 ESSID: \"OWRT\"\n         Access Point: dc:d8:7c:46:91:27\n         Mode: Master  Channel: 1 (2.412 GHz)  HT Mode: HE20\n         Center Channel 1: 1 2: unknown\n         Tx-Power: 29 dBm  Link Quality: 70/70\n         Signal: 0 dBm  Noise: -103 dBm\n         Bit Rate: unknown\n         Encryption: WPA-PSK (CCMP)\n         Type: nl80211  HW Mode(s): 802.11ax/ac/n/g/b\n         Hardware: embedded [Qualcomm Atheros IPQ6018]\n         TX power offset: none\n         Channel offset: none\n         Supports VAPs: yes  PHY name: phy1",
+    "reason": "2.4 GHz radio must be present."
+  },
+  "wifi_5g": {
+    "passed": true,
+    "command": "ubus call wireless status 2>/dev/null || true; iwinfo",
+    "exit_code": 0,
+    "output": "phy0-ap0 ESSID: \"OWRT\"\n         Access Point: dc:d8:7c:46:91:26\n         Mode: Master  Channel: 36 (5.180 GHz)  HT Mode: HE80\n         Center Channel 1: 42 2: unknown\n         Tx-Power: 27 dBm  Link Quality: 70/70\n         Signal: 0 dBm  Noise: -111 dBm\n         Bit Rate: unknown\n         Encryption: WPA-PSK (CCMP)\n         Type: nl80211  HW Mode(s): 802.11ax/ac/n\n         Hardware: embedded [Qualcomm Atheros IPQ6018]\n         TX power offset: none\n         Channel offset: none\n         Supports VAPs: yes  PHY name: phy0\n\nphy1-ap0 ESSID: \"OWRT\"\n         Access Point: dc:d8:7c:46:91:27\n         Mode: Master  Channel: 1 (2.412 GHz)  HT Mode: HE20\n         Center Channel 1: 1 2: unknown\n         Tx-Power: 29 dBm  Link Quality: 70/70\n         Signal: 0 dBm  Noise: -103 dBm\n         Bit Rate: unknown\n         Encryption: WPA-PSK (CCMP)\n         Type: nl80211  HW Mode(s): 802.11ax/ac/n/g/b\n         Hardware: embedded [Qualcomm Atheros IPQ6018]\n         TX power offset: none\n         Channel offset: none\n         Supports VAPs: yes  PHY name: phy1",
+    "reason": "5 GHz radio must be present."
+  },
+  "luci": {
+    "passed": true,
+    "command": "curl -k -sS -o /dev/null -w HTTP:%{http_code} https://192.168.1.1/cgi-bin/luci/",
+    "exit_code": 0,
+    "output": "HTTP:403",
+    "reason": "LuCI must respond over HTTPS; self-signed certificate is explicitly allowed."
+  },
+  "required_plugins_total": 22,
+  "required_plugins_passed": 22,
+  "required_plugins_before_reboot": [
+    {
+      "name": "luci-app-adguardhome",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-adguardhome'",
+      "exit_code": 0,
+      "output": "luci-app-adguardhome"
+    },
+    {
+      "name": "luci-app-autoreboot",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-autoreboot'",
+      "exit_code": 0,
+      "output": "luci-app-autoreboot"
+    },
+    {
+      "name": "luci-app-diskman",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-diskman'",
+      "exit_code": 0,
+      "output": "luci-app-diskman"
+    },
+    {
+      "name": "luci-app-easytier",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-easytier'",
+      "exit_code": 0,
+      "output": "luci-app-easytier"
+    },
+    {
+      "name": "luci-app-firewall",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-firewall'",
+      "exit_code": 0,
+      "output": "luci-app-firewall"
+    },
+    {
+      "name": "luci-app-istorex",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-istorex'",
+      "exit_code": 0,
+      "output": "luci-app-istorex"
+    },
+    {
+      "name": "luci-app-lucky",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-lucky'",
+      "exit_code": 0,
+      "output": "luci-app-lucky"
+    },
+    {
+      "name": "luci-app-mosdns",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-mosdns'",
+      "exit_code": 0,
+      "output": "luci-app-mosdns"
+    },
+    {
+      "name": "luci-app-oaf",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-oaf'",
+      "exit_code": 0,
+      "output": "luci-app-oaf"
+    },
+    {
+      "name": "luci-app-package-manager",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-package-manager'",
+      "exit_code": 0,
+      "output": "luci-app-package-manager"
+    },
+    {
+      "name": "luci-app-openclash",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-openclash'",
+      "exit_code": 0,
+      "output": "luci-app-openclash"
+    },
+    {
+      "name": "luci-app-pbr",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-pbr'",
+      "exit_code": 0,
+      "output": "luci-app-pbr"
+    },
+    {
+      "name": "luci-app-quickfile",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-quickfile'",
+      "exit_code": 0,
+      "output": "luci-app-quickfile"
+    },
+    {
+      "name": "luci-app-quickstart",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-quickstart'",
+      "exit_code": 0,
+      "output": "luci-app-quickstart"
+    },
+    {
+      "name": "luci-app-samba4",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-samba4'",
+      "exit_code": 0,
+      "output": "luci-app-samba4"
+    },
+    {
+      "name": "luci-app-smartdns",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-smartdns'",
+      "exit_code": 0,
+      "output": "luci-app-smartdns"
+    },
+    {
+      "name": "luci-app-sqm",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-sqm'",
+      "exit_code": 0,
+      "output": "luci-app-sqm"
+    },
+    {
+      "name": "luci-app-store",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-store'",
+      "exit_code": 0,
+      "output": "luci-app-store"
+    },
+    {
+      "name": "luci-app-ttyd",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-ttyd'",
+      "exit_code": 0,
+      "output": "luci-app-ttyd"
+    },
+    {
+      "name": "luci-app-upnp",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-upnp'",
+      "exit_code": 0,
+      "output": "luci-app-upnp"
+    },
+    {
+      "name": "luci-app-vlmcsd",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-vlmcsd'",
+      "exit_code": 0,
+      "output": "luci-app-vlmcsd"
+    },
+    {
+      "name": "luci-app-wol",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-wol'",
+      "exit_code": 0,
+      "output": "luci-app-wol"
+    }
+  ],
+  "required_plugins_after_reboot": [
+    {
+      "name": "luci-app-adguardhome",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-adguardhome'",
+      "exit_code": 0,
+      "output": "luci-app-adguardhome"
+    },
+    {
+      "name": "luci-app-autoreboot",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-autoreboot'",
+      "exit_code": 0,
+      "output": "luci-app-autoreboot"
+    },
+    {
+      "name": "luci-app-diskman",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-diskman'",
+      "exit_code": 0,
+      "output": "luci-app-diskman"
+    },
+    {
+      "name": "luci-app-easytier",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-easytier'",
+      "exit_code": 0,
+      "output": "luci-app-easytier"
+    },
+    {
+      "name": "luci-app-firewall",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-firewall'",
+      "exit_code": 0,
+      "output": "luci-app-firewall"
+    },
+    {
+      "name": "luci-app-istorex",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-istorex'",
+      "exit_code": 0,
+      "output": "luci-app-istorex"
+    },
+    {
+      "name": "luci-app-lucky",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-lucky'",
+      "exit_code": 0,
+      "output": "luci-app-lucky"
+    },
+    {
+      "name": "luci-app-mosdns",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-mosdns'",
+      "exit_code": 0,
+      "output": "luci-app-mosdns"
+    },
+    {
+      "name": "luci-app-oaf",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-oaf'",
+      "exit_code": 0,
+      "output": "luci-app-oaf"
+    },
+    {
+      "name": "luci-app-package-manager",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-package-manager'",
+      "exit_code": 0,
+      "output": "luci-app-package-manager"
+    },
+    {
+      "name": "luci-app-openclash",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-openclash'",
+      "exit_code": 0,
+      "output": "luci-app-openclash"
+    },
+    {
+      "name": "luci-app-pbr",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-pbr'",
+      "exit_code": 0,
+      "output": "luci-app-pbr"
+    },
+    {
+      "name": "luci-app-quickfile",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-quickfile'",
+      "exit_code": 0,
+      "output": "luci-app-quickfile"
+    },
+    {
+      "name": "luci-app-quickstart",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-quickstart'",
+      "exit_code": 0,
+      "output": "luci-app-quickstart"
+    },
+    {
+      "name": "luci-app-samba4",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-samba4'",
+      "exit_code": 0,
+      "output": "luci-app-samba4"
+    },
+    {
+      "name": "luci-app-smartdns",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-smartdns'",
+      "exit_code": 0,
+      "output": "luci-app-smartdns"
+    },
+    {
+      "name": "luci-app-sqm",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-sqm'",
+      "exit_code": 0,
+      "output": "luci-app-sqm"
+    },
+    {
+      "name": "luci-app-store",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-store'",
+      "exit_code": 0,
+      "output": "luci-app-store"
+    },
+    {
+      "name": "luci-app-ttyd",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-ttyd'",
+      "exit_code": 0,
+      "output": "luci-app-ttyd"
+    },
+    {
+      "name": "luci-app-upnp",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-upnp'",
+      "exit_code": 0,
+      "output": "luci-app-upnp"
+    },
+    {
+      "name": "luci-app-vlmcsd",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-vlmcsd'",
+      "exit_code": 0,
+      "output": "luci-app-vlmcsd"
+    },
+    {
+      "name": "luci-app-wol",
+      "passed": true,
+      "package_manager": "apk",
+      "command": "apk info -e 'luci-app-wol'",
+      "exit_code": 0,
+      "output": "luci-app-wol"
+    }
+  ],
+  "reboot": {
+    "passed": true,
+    "command": "ping 192.168.1.1; ssh -o BatchMode=yes root@192.168.1.1 echo CODEX_SSH_OK",
+    "exit_code": 0,
+    "output": "minute=0.08; ping=True; ssh=False\nminute=0.17; ping=True; ssh=False\nminute=0.25; ping=False; ssh=False\nminute=0.33; ping=True; ssh=False\nminute=0.42; ping=True; ssh=False\nminute=0.5; ping=True; ssh=False\nminute=0.58; ping=True; ssh=False\nminute=0.67; ping=True; ssh=False\nminute=0.75; ping=True; ssh=False\nminute=0.83; ping=True; ssh=True"
+  },
+  "persistence": {
+    "passed": true,
+    "command": "test -f /etc/xinzhao-real-device-test && cat /etc/xinzhao-real-device-test",
+    "exit_code": 0,
+    "output": "candidate=arthur-known-good-32853100232\ntime=2026-08-25T17:10:13Z",
+    "reason": "Test file must survive reboot."
+  },
+  "critical_log_errors": [],
+  "failures": [],
+  "result": "PASS"
+}
