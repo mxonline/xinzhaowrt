@@ -5,7 +5,17 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 
-REQUESTED_REF="${1:-$SOURCE_REF}"
+USE_KNOWN_GOOD_LOCK="${USE_KNOWN_GOOD_LOCK:-0}"
+LOCK_FILE="${KNOWN_GOOD_LOCK:-$PROJECT_ROOT/config/arthur-known-good.lock}"
+if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
+  [[ -f "$LOCK_FILE" ]] || { echo "ERROR: Known-Good lock missing: $LOCK_FILE"; exit 1; }
+  # shellcheck disable=SC1090
+  source "$LOCK_FILE"
+  REQUESTED_REF="$IMMORTALWRT_REF"
+else
+  REQUESTED_REF="${1:-$SOURCE_REF}"
+fi
+
 WORKDIR="${WORKDIR:-$PROJECT_ROOT/work}"
 SRC="$WORKDIR/immortalwrt"
 OUT="$PROJECT_ROOT/output"
@@ -18,10 +28,10 @@ mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
 mkdir -p "$OUT/firmware"
 
-# 从脚本启动开始收集完整云端日志，覆盖 clone、feed、defconfig、下载和编译阶段。
-# QUIET_BUILD=1 时只写文件，避免 GitHub 控制台被完整编译输出淹没；日志仍完整保留。
 BUILD_LOG="$OUT/logs/build.log"
+DIAGNOSTIC_LOG="$OUT/logs/build-diagnostic.log"
 : > "$BUILD_LOG"
+rm -f "$DIAGNOSTIC_LOG"
 if [[ "$QUIET_BUILD" == "1" ]]; then
   exec >>"$BUILD_LOG" 2>&1
 else
@@ -36,9 +46,11 @@ if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
   git -C "$SRC" reset --hard FETCH_HEAD
   git -C "$SRC" clean -fdx -e dl/ -e .ccache/ -e .xinzhao-sources/
 else
-  echo "[1/10] Clone ImmortalWrt source: $REQUESTED_REF"
+  echo "[1/10] Clone ImmortalWrt source at exact ref: $REQUESTED_REF"
   rm -rf "$SRC"
-  git clone --depth=1 --branch "$REQUESTED_REF" "$SOURCE_REPO" "$SRC"
+  git clone --filter=blob:none --no-checkout "$SOURCE_REPO" "$SRC"
+  git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
+  git -C "$SRC" -c advice.detachedHead=false checkout --detach FETCH_HEAD
 fi
 
 cd "$SRC"
@@ -46,13 +58,24 @@ SOURCE_SHA="$(git rev-parse HEAD)"
 export CCACHE_DIR="$SRC/.ccache"
 mkdir -p "$CCACHE_DIR"
 
+if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
+  echo "KNOWN_GOOD_LOCK: pinning standard feeds to exact commits"
+  cat > feeds.conf <<EOF
+src-git packages https://github.com/immortalwrt/packages.git^$PACKAGES_REF
+src-git luci https://github.com/immortalwrt/luci.git^$LUCI_REF
+src-git routing https://github.com/openwrt/routing.git^$ROUTING_REF
+src-git telephony https://github.com/openwrt/telephony.git^$TELEPHONY_REF
+src-git video https://github.com/openwrt/video.git^$VIDEO_REF
+EOF
+fi
+
 echo "[2/10] Update/install standard feeds"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
 echo "[3/10] Add mandatory external package sources"
-"$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
-# 自定义 feed 组装后重新生成全部 feed index，再开始逐包 Makefile 检查。
+USE_KNOWN_GOOD_LOCK="$USE_KNOWN_GOOD_LOCK" KNOWN_GOOD_LOCK="$LOCK_FILE" \
+  "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
@@ -61,17 +84,10 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
-# Merge our overlay without deleting upstream files/.
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 cp "$PROJECT_ROOT/config/arthur.config" .config
-# ImmortalWrt/OpenWrt packages currently have a tar/xz dependency ordering bug
-# that can hide luci-app-store from Kconfig. iStore upstream confirms that
-# selecting xz-utils first restores luci-app-store; quickstart and istorex then
-# survive through their normal dependency chain. Keep this compatibility seed
-# outside the protected Arthur config so the device/plugin requirements remain
-# unchanged and the workaround can be removed when upstream is fixed.
 if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
   printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
 fi
@@ -81,23 +97,21 @@ cp .config "$OUT/full.config"
 
 echo "[6/10] Download source archives"
 if ! make download -j"$JOBS"; then
-  echo "Download pass failed; retrying serially for clearer diagnostics."
+  echo "Download pass failed; retrying serially with V=s."
   find dl -type f -size -1024c -print -delete || true
   make download -j1 V=s
 fi
 find dl -type f -size -1024c -print -delete || true
 
 echo "[7/10] Compile firmware"
-if [[ "$QUIET_BUILD" == "1" ]]; then
-  if ! make -j"$JOBS"; then
-    echo "BUILD_FAILED: concise diagnostics follow"
-    "$PROJECT_ROOT/scripts/extract-build-error.sh" "$BUILD_LOG"
-    exit 1
-  fi
-else
-  if ! make -j"$JOBS"; then
-    echo "BUILD_FAILED: see $BUILD_LOG"
-    "$PROJECT_ROOT/scripts/extract-build-error.sh" "$BUILD_LOG"
+if ! make -j"$JOBS"; then
+  echo "PARALLEL_BUILD_FAILED: rerunning with -j1 V=s to expose the first real error."
+  : > "$DIAGNOSTIC_LOG"
+  if make -j1 V=s 2>&1 | tee "$DIAGNOSTIC_LOG"; then
+    echo "SERIAL_RETRY_RECOVERED: parallel failure was transient; continuing acceptance gates."
+  else
+    echo "BUILD_FAILED: serial diagnostic build also failed."
+    "$PROJECT_ROOT/scripts/extract-build-error.sh" "$DIAGNOSTIC_LOG"
     exit 1
   fi
 fi
@@ -146,6 +160,10 @@ done
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
+  echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
+  if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
+    echo "Lock file: config/arthur-known-good.lock"
+  fi
   echo
   echo "Mandatory LuCI plugins:"
   sed 's/^/- /' "$PROJECT_ROOT/config/required-plugins.txt"
@@ -159,6 +177,7 @@ done
 } > "$OUT/build-info.txt"
 
 cp "$PROJECT_ROOT/config/required-plugins.txt" "$OUT/required-plugins.txt"
+[[ -f "$LOCK_FILE" ]] && cp "$LOCK_FILE" "$OUT/arthur-known-good.lock"
 (
   cd "$OUT/firmware"
   sha256sum * > SHA256SUMS.local
