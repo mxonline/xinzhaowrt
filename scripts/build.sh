@@ -66,6 +66,15 @@ rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
 echo "[5/9] Apply Arthur target and 22-plugin seed config"
 cp "$PROJECT_ROOT/config/arthur.config" .config
+# ImmortalWrt/OpenWrt packages currently have a tar/xz dependency ordering bug
+# that can hide luci-app-store from Kconfig. iStore upstream confirms that
+# selecting xz-utils first restores luci-app-store; quickstart and istorex then
+# survive through their normal dependency chain. Keep this compatibility seed
+# outside the protected Arthur config so the device/plugin requirements remain
+# unchanged and the workaround can be removed when upstream is fixed.
+if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
+  printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
+fi
 make defconfig
 "$PROJECT_ROOT/scripts/check-config.sh" .config
 cp .config "$OUT/full.config"
