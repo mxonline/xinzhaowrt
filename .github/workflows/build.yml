@@ -178,6 +178,16 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          if [ -f output/plugin-verification.txt ]; then
+            {
+              echo
+              echo '## 22 个必选插件最终校验'
+              echo '```text'
+              cat output/plugin-verification.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload diagnostics artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -192,6 +202,7 @@ jobs:
             output/logs/failure-report.txt
             output/logs/failure-fingerprint.json
             output/logs/repair-regression.json
+            output/plugin-verification.txt
             output/full.config
             config/required-plugins.txt
           if-no-files-found: warn
@@ -207,6 +218,7 @@ jobs:
             output/full.config
             output/build-info.txt
             output/required-plugins.txt
+            output/plugin-verification.txt
           if-no-files-found: warn
           retention-days: 14
 
