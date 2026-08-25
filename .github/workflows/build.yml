@@ -15,6 +15,7 @@ name: Build XinZhaoWrt Arthur
         type: boolean
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -69,7 +70,7 @@ jobs:
             local rc=$?
             if (( rc != 0 )); then
               local first_error
-              first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /ERROR:|fatal:|MISSING_PACKAGE|MISSING_SOURCE|package source.*no Makefile|dependency.*does not exist|conflict|syntax error/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
+              first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /ERROR:|fatal:|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|package source.*no Makefile|dependency.*does not exist|conflict|syntax error/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
               if [[ -z "$first_error" ]]; then
                 first_error="$(awk 'BEGIN { IGNORECASE=1 } $0 !~ /WARNING:/ && /failed|error:/ { print NR ":" $0; exit }' "$FEED_LOG" 2>/dev/null || true)"
               fi
@@ -103,8 +104,10 @@ jobs:
           "$GITHUB_WORKSPACE/scripts/add-custom-packages.sh" "$SRC"
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          cp "$GITHUB_WORKSPACE/config/arthur.config" .config
-          make defconfig
+
+          # Hard gate: use the same Arthur compatibility seed as the real build,
+          # then require all 22 protected LuCI packages to survive make defconfig.
+          bash "$GITHUB_WORKSPACE/scripts/apply-arthur-config.sh" "$SRC"
 
       - name: Build firmware
         env:
@@ -137,6 +140,18 @@ jobs:
             ./scripts/analyze-error.sh
           fi
 
+      - name: Verify automatic repair regression
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Hard gate states:
+          # BASELINE_FAILURE              = no previous automatic repair to compare
+          # FAILED_SAME_ERROR             = previous repair did not remove old root cause
+          # OLD_ERROR_CLEARED_NEW_ERROR   = old root cause is gone; current failure is new
+          # BLOCKED_PREVIOUS_DIAGNOSTICS_UNAVAILABLE = cannot prove regression result
+          bash ./scripts/repair-regression-gate.sh output/logs
+
       - name: Add failure summary to job
         if: always()
         run: |
@@ -153,6 +168,16 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          if [ -f output/logs/repair-regression.json ]; then
+            {
+              echo
+              echo '## 自动修复回归门禁'
+              echo '```json'
+              cat output/logs/repair-regression.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload diagnostics artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,6 +190,8 @@ jobs:
             output/logs/error-context.txt
             output/logs/error-summary.txt
             output/logs/failure-report.txt
+            output/logs/failure-fingerprint.json
+            output/logs/repair-regression.json
             output/full.config
             config/required-plugins.txt
           if-no-files-found: warn
