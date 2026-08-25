@@ -1,0 +1,79 @@
+name: Arthur v3 Controller Preflight
+
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/ci-controller-v3.ps1'
+      - 'scripts/start-ci-controller-v3.ps1'
+      - 'scripts/ci-v3-status.ps1'
+      - '.github/workflows/controller-v3-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-controller:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(
+            'scripts/ci-controller-v3.ps1',
+            'scripts/start-ci-controller-v3.ps1',
+            'scripts/ci-v3-status.ps1'
+          )
+
+          foreach ($file in $files) {
+            if (-not (Test-Path $file)) { throw "Missing controller file: $file" }
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$file: $($_.Message)" }
+              throw "PowerShell parse failed: $file"
+            }
+            Write-Host "PASS: PowerShell parse: $file"
+          }
+
+      - name: Verify v3 hard gates are referenced
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $controller = Get-Content -Raw 'scripts/ci-controller-v3.ps1'
+          $required = @(
+            'config/required-plugins.txt',
+            'config/arthur.config',
+            'config/arthur-known-good.lock',
+            'production/known-good.json',
+            'production/status.json',
+            'VERSION',
+            'build.env'
+          )
+          foreach ($path in $required) {
+            if ($controller -notmatch [regex]::Escape($path)) {
+              throw "Controller does not protect required path: $path"
+            }
+          }
+
+          $plugins = @(Get-Content 'config/required-plugins.txt' | Where-Object { $_ -and $_ -notmatch '^\s*#' })
+          if ($plugins.Count -ne 22) { throw "Expected 22 required plugins, got $($plugins.Count)" }
+          if ($controller -notmatch 'MaxRepairRounds = 3') { throw 'Default 3-round repair limit missing.' }
+          if ($controller -notmatch 'arthur-update-v3.yml') { throw 'v3 workflow binding missing.' }
+          if ($controller -notmatch 'workspace-write') { throw 'Codex workspace repair mode missing.' }
+          if ($controller -notmatch 'approval_policy=') { throw 'Codex non-interactive approval policy missing.' }
+
+          Write-Host 'PASS: v3 controller hard-gate preflight.'
