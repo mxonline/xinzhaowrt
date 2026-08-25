@@ -43,7 +43,9 @@ jobs:
               [ref]$errors
             ) | Out-Null
             if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error "${file}: $($_.Message)" }
+              foreach ($parseError in $errors) {
+                Write-Host ('PARSE_ERROR file={0} line={1} col={2} text={3} message={4}' -f $file,$parseError.Extent.StartLineNumber,$parseError.Extent.StartColumnNumber,$parseError.Extent.Text,$parseError.Message)
+              }
               throw "PowerShell parse failed: $file"
             }
             Write-Host "PASS: PowerShell parse: $file"
