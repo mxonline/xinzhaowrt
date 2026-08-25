@@ -1,13 +1,22 @@
 {
   "schema_version": "1.0",
   "device": "jdcloud_re-ss-01",
-  "verified": false,
+  "verified": true,
   "source_repo": "https://github.com/VIKINGYFY/immortalwrt.git",
   "source_ref": null,
-  "source_commit": null,
+  "source_commit": "236abeaaea06442aa0f8f34efd0b4464b35c5061",
   "firmware_file": null,
-  "sha256": null,
+  "sha256": "9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d",
   "config_sha256": null,
-  "verified_at": null,
-  "verification_notes": "Set verified=true only after cloud build checks pass and the firmware has been confirmed on the target router."
+  "verified_at": "2026-08-25T17:23:41.432638+00:00",
+  "verification_notes": "Set verified=true only after cloud build checks pass and the firmware has been confirmed on the target router.",
+  "status": "verified",
+  "target": "qualcommax",
+  "subtarget": "ipq60xx",
+  "stable_tag": "v0.1.0",
+  "candidate_tag": "arthur-known-good-32853100232",
+  "verification_commit": "26a1580d3d2c00b989ae6bf15574a591b08f69ac",
+  "verification_report": "output/real-device/real-device-verification.json",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin",
+  "verification": "real-device-confirmed"
 }

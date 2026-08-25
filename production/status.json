@@ -1,15 +1,18 @@
 {
   "schema_version": "1.0",
   "request_id": "arthur-20260825-0653",
-  "status": "waiting_runner",
-  "stage": "production-controller",
+  "status": "verified",
+  "stage": "stable_release",
   "device": "jdcloud_re-ss-01",
   "run_id": 32786881640,
   "repair_round": 0,
-  "candidate_tag": null,
-  "stable_tag": null,
-  "firmware": null,
-  "sha256": null,
-  "message": "Production request accepted by GitHub Actions. Waiting for an online self-hosted Windows runner with labels: self-hosted, windows, x64, xinzhaowrt-controller.",
-  "updated_at": "2026-08-25T06:54:29+08:00"
+  "candidate_tag": "arthur-known-good-32853100232",
+  "stable_tag": "v0.1.0",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin",
+  "sha256": "9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d",
+  "message": "Stable GitHub Release published after explicit real-device verification; known-good updated.",
+  "updated_at": "2026-08-25T17:23:41.504679+00:00",
+  "conclusion": "success",
+  "source_commit": "236abeaaea06442aa0f8f34efd0b4464b35c5061",
+  "known_good": true
 }
