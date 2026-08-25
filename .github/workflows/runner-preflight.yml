@@ -6,6 +6,7 @@ name: XinZhaoWrt Runner Preflight
       - main
     paths:
       - '.github/workflows/runner-preflight.yml'
+      - 'scripts/ci-controller.ps1'
   workflow_dispatch:
 
 permissions:
@@ -56,6 +57,23 @@ jobs:
             throw "PREFLIGHT_FAILED: GH_TOKEN cannot access $env:GITHUB_REPOSITORY"
           }
           Write-Host "GitHub token OK: $fullName"
+
+      - name: Verify controller script syntax
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\ci-controller.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $text = ($errors | ForEach-Object { $_.ToString() }) -join "`n"
+            throw "PREFLIGHT_FAILED: ci-controller.ps1 syntax errors:`n$text"
+          }
+          if (-not (Select-String -Path $script -Pattern 'Get-CodexExecutable' -Quiet)) {
+            throw 'PREFLIGHT_FAILED: controller does not contain Windows Codex executable resolver.'
+          }
+          Write-Host 'Controller PowerShell syntax OK.'
 
       - name: Verify Codex non-interactive authentication
         shell: powershell
