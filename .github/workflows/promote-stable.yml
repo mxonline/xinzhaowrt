@@ -4,7 +4,7 @@ name: Promote XinZhaoWrt Candidate to Stable
   workflow_dispatch:
     inputs:
       candidate_tag:
-        description: Candidate release tag, e.g. v0.1.0-rc.42
+        description: Candidate release tag, e.g. arthur-known-good-32853100232
         required: true
         type: string
       stable_tag:
@@ -44,20 +44,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          [[ "$CANDIDATE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]] || {
-            echo "BLOCKED: invalid candidate tag: $CANDIDATE_TAG"
+
+          PROJECT_VERSION="$(tr -d '[:space:]' < VERSION)"
+          [[ "$PROJECT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "BLOCKED: invalid VERSION: $PROJECT_VERSION"
             exit 1
           }
-          CANDIDATE_BASE="${BASH_REMATCH[1]}"
-          [[ "$STABLE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]] || {
-            echo "BLOCKED: invalid stable tag: $STABLE_TAG"
+
+          [[ "$STABLE_TAG" == "v${PROJECT_VERSION}" ]] || {
+            echo "BLOCKED: stable tag $STABLE_TAG must match repository VERSION v${PROJECT_VERSION}"
             exit 1
           }
-          STABLE_BASE="${BASH_REMATCH[1]}"
-          [[ "$CANDIDATE_BASE" == "$STABLE_BASE" ]] || {
-            echo "BLOCKED: stable tag $STABLE_TAG does not match candidate base version $CANDIDATE_BASE"
+
+          if [[ "$CANDIDATE_TAG" =~ ^arthur-known-good-[0-9]+$ ]]; then
+            echo "Fast Lane Candidate accepted: $CANDIDATE_TAG"
+          elif [[ "$CANDIDATE_TAG" =~ ^v${PROJECT_VERSION//./\.}-rc\.[0-9]+$ ]]; then
+            echo "Legacy RC Candidate accepted: $CANDIDATE_TAG"
+          else
+            echo "BLOCKED: unsupported candidate tag: $CANDIDATE_TAG"
             exit 1
-          }
+          fi
 
           gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           git fetch --tags --force origin
@@ -80,7 +86,68 @@ jobs:
 
           echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
           echo "stable_exists=$STABLE_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "project_version=$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           echo "Candidate commit: $CANDIDATE_SHA"
+
+      - name: Verify archived real-device evidence
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        run: |
+          set -Eeuo pipefail
+          REPORT='output/real-device/real-device-verification.json'
+          [[ -s "$REPORT" ]] || {
+            echo "BLOCKED: missing real-device verification report: $REPORT"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          import json, os, sys
+
+          path = 'output/real-device/real-device-verification.json'
+          with open(path, 'r', encoding='utf-8-sig') as f:
+              data = json.load(f)
+
+          errors = []
+          candidate = os.environ['CANDIDATE_TAG']
+          candidate_sha = os.environ['CANDIDATE_SHA']
+
+          def require(cond, message):
+              if not cond:
+                  errors.append(message)
+
+          require(data.get('candidate') == candidate,
+                  f"candidate mismatch: report={data.get('candidate')!r}, expected={candidate!r}")
+          require(data.get('commit') == candidate_sha,
+                  f"commit mismatch: report={data.get('commit')!r}, expected={candidate_sha!r}")
+          require(str(data.get('result', '')).upper() == 'PASS',
+                  f"result is not PASS: {data.get('result')!r}")
+          require(data.get('required_plugins_total') == 22,
+                  f"required_plugins_total is not 22: {data.get('required_plugins_total')!r}")
+          require(data.get('required_plugins_passed') == 22,
+                  f"required_plugins_passed is not 22: {data.get('required_plugins_passed')!r}")
+
+          device = data.get('device') or {}
+          require(device.get('target') == 'jdcloud_re-ss-01',
+                  f"device target mismatch: {device.get('target')!r}")
+
+          for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
+              item = data.get(name) or {}
+              require(item.get('passed') is True, f"{name} did not pass")
+
+          require(len(data.get('critical_log_errors') or []) == 0,
+                  'critical_log_errors is not empty')
+          require(len(data.get('failures') or []) == 0,
+                  'failures is not empty')
+
+          if errors:
+              print('BLOCKED: archived real-device verification did not satisfy Stable gate:')
+              for error in errors:
+                  print(f'- {error}')
+              sys.exit(1)
+
+          print('PASS: archived real-device verification matches Candidate and all hard gates.')
+          PY
 
       - name: Download Candidate assets
         env:
@@ -88,31 +155,65 @@ jobs:
           CANDIDATE_TAG: ${{ inputs.candidate_tag }}
         run: |
           set -Eeuo pipefail
+          rm -rf promote
           mkdir -p promote/assets
           gh release download "$CANDIDATE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --dir promote/assets
-          find promote/assets -maxdepth 1 -type f -print
+          find promote/assets -maxdepth 1 -type f -print | sort
 
       - name: Verify Candidate assets
         id: verify
         run: |
           set -Eeuo pipefail
-          mapfile -t firmware < <(find promote/assets -maxdepth 1 -type f -name '*jdcloud_re-ss-01*.bin' -size +0c | sort)
-          (( ${#firmware[@]} > 0 )) || {
-            echo 'BLOCKED: Candidate release contains no non-empty jdcloud_re-ss-01 firmware.'
+
+          SYSUPGRADE="$(find promote/assets -maxdepth 1 -type f -name '*sysupgrade*.bin' -size +0c | sort | head -n1 || true)"
+          FACTORY="$(find promote/assets -maxdepth 1 -type f -name '*factory*.bin' -size +0c | sort | head -n1 || true)"
+
+          [[ -n "$SYSUPGRADE" || -n "$FACTORY" ]] || {
+            echo 'BLOCKED: Candidate release contains no non-empty Arthur firmware .bin.'
             exit 1
           }
-          [[ -s promote/assets/sha256sums.txt ]] || {
-            echo 'BLOCKED: Candidate release has no sha256sums.txt.'
+
+          if [[ -n "$SYSUPGRADE" ]]; then
+            FIRMWARE="$SYSUPGRADE"
+          else
+            FIRMWARE="$FACTORY"
+          fi
+
+          CHECKSUM_FILE=''
+          if [[ -s promote/assets/SHA256SUMS.local ]]; then
+            CHECKSUM_FILE='SHA256SUMS.local'
+          elif [[ -s promote/assets/sha256sums ]]; then
+            CHECKSUM_FILE='sha256sums'
+          elif [[ -s promote/assets/sha256sums.txt ]]; then
+            CHECKSUM_FILE='sha256sums.txt'
+          else
+            echo 'BLOCKED: Candidate release contains no supported checksum file.'
             exit 1
-          }
+          fi
+
+          echo "Using checksum file: $CHECKSUM_FILE"
           (
             cd promote/assets
-            sha256sum -c sha256sums.txt
+            sha256sum -c "$CHECKSUM_FILE"
           )
-          printf '%s\n' "firmware_name=$(basename "${firmware[0]}")" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "firmware_sha256=$(sha256sum "${firmware[0]}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+          [[ -s promote/assets/plugin-verification.txt ]] || {
+            echo 'BLOCKED: Candidate release has no plugin-verification.txt.'
+            exit 1
+          }
+          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' \
+            promote/assets/plugin-verification.txt || {
+              echo 'BLOCKED: Candidate plugin verification PASS marker missing.'
+              exit 1
+            }
+
+          printf '%s\n' "firmware_name=$(basename "$FIRMWARE")" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "firmware_sha256=$(sha256sum "$FIRMWARE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "checksum_file=$CHECKSUM_FILE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "sysupgrade_name=$(basename "$SYSUPGRADE")" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "factory_name=$(basename "$FACTORY")" >> "$GITHUB_OUTPUT"
 
       - name: Create Stable GitHub Release
         if: steps.candidate.outputs.stable_exists != 'true'
@@ -126,17 +227,23 @@ jobs:
           cat > promote/stable-notes.md <<EOF
           # XinZhaoWrt Arthur ${STABLE_TAG}
 
-          Stable release promoted from ${CANDIDATE_TAG} after explicit JDCloud RE-SS-01 real-device verification.
+          Stable release promoted from ${CANDIDATE_TAG} after archived JDCloud RE-SS-01 real-device verification passed all hard gates.
 
           - Device: JDCloud RE-SS-01 (Arthur)
           - Target: qualcommax / ipq60xx
           - Candidate source: ${CANDIDATE_TAG}
           - Candidate commit: ${CANDIDATE_SHA}
-          - Real-device verification: confirmed
+          - Required LuCI plugins: 22/22 real-device PASS
+          - Reboot and overlay persistence: PASS
+          - Network / DNS / Wi-Fi / LuCI: PASS
+          - Critical log errors: 0
           - Status: Stable / known-good
           EOF
 
-          gh release create "$STABLE_TAG" promote/assets/* \
+          gh release create "$STABLE_TAG" \
+            promote/assets/* \
+            output/real-device/real-device-verification.json \
+            output/real-device/real-device-verification.md \
             --repo "$GITHUB_REPOSITORY" \
             --target "$CANDIDATE_SHA" \
             --title "XinZhaoWrt Arthur ${STABLE_TAG}" \
@@ -150,6 +257,7 @@ jobs:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
           FIRMWARE_NAME: ${{ steps.verify.outputs.firmware_name }}
           FIRMWARE_SHA256: ${{ steps.verify.outputs.firmware_sha256 }}
+          VERIFICATION_COMMIT: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           git config user.name 'XinZhaoWrt Release Bot'
@@ -159,25 +267,31 @@ jobs:
           python3 - <<'PY'
           import json, os
           from datetime import datetime, timezone
+
           path = 'production/known-good.json'
           try:
               with open(path, 'r', encoding='utf-8') as f:
                   data = json.load(f)
           except Exception:
               data = {}
+
           data.update({
               'status': 'verified',
+              'verified': True,
               'device': 'jdcloud_re-ss-01',
               'target': 'qualcommax',
               'subtarget': 'ipq60xx',
               'stable_tag': os.environ['STABLE_TAG'],
               'candidate_tag': os.environ['CANDIDATE_TAG'],
               'source_commit': os.environ['CANDIDATE_SHA'],
+              'verification_commit': os.environ['VERIFICATION_COMMIT'],
+              'verification_report': 'output/real-device/real-device-verification.json',
               'firmware': os.environ['FIRMWARE_NAME'],
               'sha256': os.environ['FIRMWARE_SHA256'],
               'verified_at': datetime.now(timezone.utc).isoformat(),
               'verification': 'real-device-confirmed'
           })
+
           with open(path, 'w', encoding='utf-8') as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
               f.write('\n')
@@ -209,6 +323,8 @@ jobs:
             echo '- Candidate commit: `${{ steps.candidate.outputs.candidate_sha }}`'
             echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
             echo '- SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
-            echo '- production/status: verified'
+            echo '- Required plugins: `22/22`'
+            echo '- Real-device verification: `PASS`'
+            echo '- production/status: `verified`'
             echo '- known-good: 已更新或已确认一致'
           } >> "$GITHUB_STEP_SUMMARY"
