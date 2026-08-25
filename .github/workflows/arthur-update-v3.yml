@@ -1,0 +1,260 @@
+name: Arthur Known-Good Update v3
+
+'on':
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Update scope based on the verified Known-Good baseline
+        required: true
+        default: rebuild_known_good
+        type: choice
+        options:
+          - rebuild_known_good
+          - update_immortalwrt
+          - update_feeds
+          - update_plugins
+          - update_all
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-known-good-update-v3
+  cancel-in-progress: false
+
+jobs:
+  build-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Validate verified Known-Good baseline
+        id: baseline
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          ./scripts/verify-project.sh
+          test -s config/arthur-known-good.lock
+          test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
+
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          with open('production/known-good.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          if data.get('verified') is not True or data.get('status') != 'verified':
+              raise SystemExit('BLOCKED: production/known-good.json is not verified')
+          if data.get('device') != 'jdcloud_re-ss-01':
+              raise SystemExit('BLOCKED: Known-Good device is not jdcloud_re-ss-01')
+          stable = data.get('stable_tag') or ''
+          candidate = data.get('candidate_tag') or ''
+          if not stable:
+              raise SystemExit('BLOCKED: Known-Good stable_tag is missing')
+          print(f'base_stable={stable}')
+          print(f'base_candidate={candidate}')
+          PY
+
+          echo 'PASS: verified Known-Good baseline and 22-plugin hard gate are present.'
+
+      - name: Prepare candidate source lock
+        id: lock
+        env:
+          UPDATE_MODE: ${{ inputs.mode }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p output
+          CANDIDATE_LOCK="$RUNNER_TEMP/arthur-update.lock"
+          ./scripts/prepare-update-lock.sh "$UPDATE_MODE" "$CANDIDATE_LOCK"
+          cp "$CANDIDATE_LOCK" output/candidate-lock.txt
+          diff -u config/arthur-known-good.lock "$CANDIDATE_LOCK" > output/update-lock.diff || true
+          LOCK_SHA="$(sha256sum "$CANDIDATE_LOCK" | awk '{print $1}')"
+          echo "path=$CANDIDATE_LOCK" >> "$GITHUB_OUTPUT"
+          echo "sha256=$LOCK_SHA" >> "$GITHUB_OUTPUT"
+
+          python3 - "$CANDIDATE_LOCK" "$UPDATE_MODE" "$LOCK_SHA" <<'PY'
+          import json, os, re, sys
+          path, mode, lock_sha = sys.argv[1:]
+          refs = {}
+          for line in open(path, 'r', encoding='utf-8'):
+              m = re.match(r'^([A-Z0-9_]+_REF)="([0-9a-f]{40})"$', line.strip())
+              if m:
+                  refs[m.group(1)] = m.group(2)
+          meta = {
+              'schema_version': '1.0',
+              'mode': mode,
+              'project_commit': os.environ['GITHUB_SHA'],
+              'base_stable': os.environ.get('BASE_STABLE', ''),
+              'base_candidate': os.environ.get('BASE_CANDIDATE', ''),
+              'candidate_lock_sha256': lock_sha,
+              'refs': refs,
+          }
+          with open('output/update-metadata.json', 'w', encoding='utf-8') as f:
+              json.dump(meta, f, indent=2)
+              f.write('\n')
+          PY
+        env:
+          UPDATE_MODE: ${{ inputs.mode }}
+          BASE_STABLE: ${{ steps.baseline.outputs.base_stable }}
+          BASE_CANDIDATE: ${{ steps.baseline.outputs.base_candidate }}
+
+      - name: Restore OpenWrt downloads and compiler cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/immortalwrt/dl
+            work/immortalwrt/.ccache
+          key: arthur-v3-${{ runner.os }}-${{ inputs.mode }}-${{ steps.lock.outputs.sha256 }}
+          restore-keys: |
+            arthur-v3-${{ runner.os }}-${{ inputs.mode }}-
+            arthur-known-good-${{ runner.os }}-
+            arthur-${{ runner.os }}-
+
+      - name: Build update Candidate
+        env:
+          USE_KNOWN_GOOD_LOCK: '1'
+          KNOWN_GOOD_LOCK: ${{ steps.lock.outputs.path }}
+          JOBS: '2'
+          QUIET_BUILD: '1'
+          REUSE_SOURCE: '0'
+        run: |
+          set -Eeuo pipefail
+          ./scripts/build.sh
+
+      - name: Analyze failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          if [ -s output/logs/build.log ]; then
+            ./scripts/analyze-error.sh output/logs/build.log
+          elif [ -s output/logs/build-diagnostic.log ]; then
+            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
+          else
+            ./scripts/analyze-error.sh
+          fi
+
+      - name: Enforce Candidate acceptance gates
+        if: success()
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' \
+            output/plugin-verification.txt
+          test "$(grep -c '^\[PASS\]' output/plugin-verification.txt || true)" -ge 22
+          find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
+          test -s output/firmware/SHA256SUMS.local
+          (
+            cd output/firmware
+            sha256sum -c SHA256SUMS.local
+          )
+          test -s output/arthur-known-good.lock
+          cmp -s output/arthur-known-good.lock "${{ steps.lock.outputs.path }}"
+          echo 'PASS: Candidate firmware, 22/22 plugin gate, checksum and candidate lock all verified.'
+
+      - name: Build acceptance summary
+        if: always()
+        run: |
+          {
+            echo '## Arthur Known-Good Update v3'
+            echo
+            echo '- Mode: `${{ inputs.mode }}`'
+            echo '- Base Stable: `${{ steps.baseline.outputs.base_stable }}`'
+            echo '- Base Candidate: `${{ steps.baseline.outputs.base_candidate }}`'
+            echo '- Candidate project commit: `${{ github.sha }}`'
+            echo '- Candidate lock SHA256: `${{ steps.lock.outputs.sha256 }}`'
+            echo '- Device: `jdcloud_re-ss-01`'
+            echo '- Required LuCI plugins: `22`'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s output/update-lock.diff ]; then
+            {
+              echo
+              echo '### Source lock delta'
+              echo '```diff'
+              cat output/update-lock.diff
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s output/plugin-verification.txt ]; then
+            {
+              echo
+              echo '### 22-plugin final verification'
+              echo '```text'
+              cat output/plugin-verification.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v3-diagnostics-${{ github.run_id }}
+          path: |
+            output/logs/build.log
+            output/logs/build-diagnostic.log
+            output/logs/error-context.txt
+            output/logs/error-summary.txt
+            output/logs/failure-report.txt
+            output/full.config
+            output/plugin-verification.txt
+            output/update-lock.diff
+            output/update-metadata.json
+            output/candidate-lock.txt
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload verified Candidate firmware
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v3-Candidate-${{ github.run_id }}
+          path: |
+            output/firmware/*
+            output/full.config
+            output/build-info.txt
+            output/plugin-verification.txt
+            output/arthur-known-good.lock
+            output/required-plugins.txt
+            output/update-lock.diff
+            output/update-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish update Candidate release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_MODE: ${{ inputs.mode }}
+          BASE_STABLE: ${{ steps.baseline.outputs.base_stable }}
+          LOCK_SHA: ${{ steps.lock.outputs.sha256 }}
+        run: |
+          set -Eeuo pipefail
+          tag="arthur-update-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            output/firmware/* \
+            output/plugin-verification.txt \
+            output/arthur-known-good.lock \
+            output/build-info.txt \
+            output/required-plugins.txt \
+            output/update-lock.diff \
+            output/update-metadata.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Arthur Update Candidate ${GITHUB_RUN_ID}" \
+            --notes "Known-Good Update v3 Candidate. Base Stable: ${BASE_STABLE}. Update mode: ${UPDATE_MODE}. Candidate lock SHA256: ${LOCK_SHA}. This is not Stable until JDCloud RE-SS-01 real-device verification passes and Stable promotion completes." \
+            --prerelease
+
+          echo "### Candidate Release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tag: \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '- Next gate: real-device verification on JDCloud RE-SS-01' >> "$GITHUB_STEP_SUMMARY"
