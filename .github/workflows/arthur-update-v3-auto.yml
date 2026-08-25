@@ -1,0 +1,65 @@
+name: Arthur Known-Good Update v3 Auto Trigger
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - 'production/v3-request.json'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch-v3:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout request
+        uses: actions/checkout@v4
+
+      - name: Validate request and dispatch v3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          REQUEST='production/v3-request.json'
+          [[ -s "$REQUEST" ]] || {
+            echo 'BLOCKED: production/v3-request.json is missing or empty.'
+            exit 1
+          }
+
+          MODE="$(python3 - <<'PY'
+          import json
+          with open('production/v3-request.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          mode = data.get('mode')
+          allowed = {
+              'rebuild_known_good',
+              'update_immortalwrt',
+              'update_feeds',
+              'update_plugins',
+              'update_all',
+          }
+          if mode not in allowed:
+              raise SystemExit(f'BLOCKED: unsupported v3 mode: {mode!r}')
+          request_id = data.get('request_id') or ''
+          if not request_id:
+              raise SystemExit('BLOCKED: request_id is required')
+          print(mode)
+          PY
+          )"
+
+          echo "Dispatching Arthur Known-Good Update v3 with mode=$MODE"
+          gh workflow run arthur-update-v3.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f mode="$MODE"
+
+          {
+            echo '## Arthur v3 auto trigger'
+            echo
+            echo "- Request commit: \`${GITHUB_SHA}\`"
+            echo "- Mode: \`${MODE}\`"
+            echo '- Dispatched workflow: `Arthur Known-Good Update v3`'
+          } >> "$GITHUB_STEP_SUMMARY"
