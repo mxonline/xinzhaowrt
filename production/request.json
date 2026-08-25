@@ -1,11 +1,12 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-20260825-istore-xz-retry",
+  "request_id": "arthur-20260825-controller-v2-resume",
   "action": "produce",
   "device": "jdcloud_re-ss-01",
-  "mode": "UpdateBuild",
+  "mode": "Resume",
+  "run_id": 32795255408,
   "source_ref": "main",
   "max_repair_rounds": 3,
   "poll_seconds": 60,
-  "notes": "Retry Arthur production after diagnosing Run 32792360666: luci-app-store, luci-app-quickstart and luci-app-istorex were removed by make defconfig. Seed xz-utils before defconfig per linkease/istore upstream workaround for the tar/xz dependency bug."
+  "notes": "Resume the failed Arthur build through controller v2. The controller must use diagnostics-only Codex reasoning, controller-applied patches, regression verification, 22-plugin build/manifest verification, firmware artifact verification and SHA256 before success."
 }
