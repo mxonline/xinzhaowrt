@@ -1,12 +1,24 @@
 # 新肇网络Wrt-京东云亚瑟固件
 
-面向 **JDCloud RE-SS-01（京东云亚瑟 / Arthur）** 的定制 ImmortalWrt 固件工程。当前项目版本为 **v0.1.0 testing**，上游默认使用 `VIKINGYFY/immortalwrt` 的 `main` 高通分支。
+面向 **JDCloud RE-SS-01（京东云亚瑟 / Arthur）** 的定制 ImmortalWrt 固件工程。当前正式 Known-Good 版本为 **v0.1.0 Stable**，后续更新统一从已验证基准派生 Candidate，不再直接用浮动源码覆盖正式基准。
 
-64G 表示设备 eMMC 容量，不是独立 OpenWrt target。设备配置始终使用：
+设备配置固定为：
 
 ```text
 qualcommax/ipq60xx/jdcloud_re-ss-01
 ```
+
+64G 表示设备 eMMC 容量，不是独立 OpenWrt target。
+
+## 当前 Known-Good
+
+- Stable：`v0.1.0`
+- Device：`JDCloud RE-SS-01`
+- Target：`qualcommax/ipq60xx`
+- Required LuCI plugins：`22/22 PASS`
+- Real-device verification：`PASS`
+- Canonical source lock：`config/arthur-known-good.lock`
+- Known-Good metadata：`production/known-good.json`
 
 ## 首次登录默认值
 
@@ -18,7 +30,7 @@ qualcommax/ipq60xx/jdcloud_re-ss-01
 
 ## 22 个硬性必选 LuCI 插件
 
-构建以 `config/required-plugins.txt` 为唯一必选清单。`make defconfig` 后缺少任何一个，`scripts/check-config.sh` 会直接终止构建。
+构建以 `config/required-plugins.txt` 为唯一必选清单。`make defconfig` 后缺少任何一个，`scripts/check-config.sh` 会直接终止构建；完整编译后还必须验证 22 个插件均存在实际安装包并进入最终 firmware manifest。
 
 ```text
 luci-app-adguardhome
@@ -47,9 +59,56 @@ luci-app-wol
 
 ## LuCI Web 栈
 
-由于 `luci-app-quickfile` 当前依赖 `luci-nginx`，本固件统一使用 **LuCI + Nginx** 作为管理 Web 栈，不同时选择默认 uhttpd 的 `luci` / `luci-ssl` collections。这样可以避免两套 Web 服务同时监听管理端口。
+由于 `luci-app-quickfile` 当前依赖 `luci-nginx`，本固件统一使用 **LuCI + Nginx** 作为管理 Web 栈，不同时选择默认 uhttpd 的 `luci` / `luci-ssl` collections。
 
-## Codex Cloud 全量编译
+## Known-Good 自动编译 v3
+
+正式更新入口：`.github/workflows/arthur-update-v3.yml`。
+
+更新模式：
+
+```text
+rebuild_known_good
+update_immortalwrt
+update_feeds
+update_plugins
+update_all
+```
+
+v3 的原则是：先复制当前 `config/arthur-known-good.lock` 生成临时 Candidate lock，只移动本次允许更新的 ref；Candidate 编译失败不会覆盖正式 Known-Good。
+
+成功 Candidate 自动创建：
+
+```text
+arthur-update-<run_id>
+```
+
+Candidate 必须经过 JDCloud RE-SS-01 实机验证，只有输出：
+
+```text
+REAL DEVICE VERIFICATION PASS
+```
+
+并归档验收报告后，才能运行 `.github/workflows/promote-stable-v3.yml` 晋升新的 Stable。Stable 晋升成功后，Candidate lock 才会替换正式 `config/arthur-known-good.lock`。
+
+完整规则见 `docs/OPENWRT_CI_V3.md`。
+
+## Codex 本机实机验收
+
+刷入 Candidate 后，在与亚瑟同一局域网的 Windows / Codex Desktop 环境执行：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\real-device-verify-v3.ps1 `
+  -Candidate arthur-update-<run_id> `
+  -Commit <candidate-project-commit> `
+  -Target root@192.168.1.1
+```
+
+实机流程会验证 SSH、设备型号、存储、LAN/WAN、Internet、DNS、2.4G/5G、LuCI、22/22 插件、日志、正常重启和 overlay 持久化。
+
+刷机、`sysupgrade`、MTD、U-Boot、eMMC 分区写入始终需要人工确认，不允许自动执行。
+
+## Codex Cloud / GitHub Actions 编译
 
 环境初始化：
 
@@ -69,35 +128,23 @@ luci-app-wol
 ./scripts/codex-cloud-build.sh
 ```
 
-为减少 Codex 读取海量 OpenWrt 日志，Cloud 入口默认把完整编译日志保存到 `output/logs/build.log`。失败时只输出错误匹配和最后 220 行。详细操作见 `docs/CODEX_CLOUD.md`。
+失败时优先读取 `output/logs/build.log`、`output/logs/build-diagnostic.log` 和 diagnostics Artifact，不把普通 WARNING 或最终 exit code 当根因。
 
-GitHub Actions 自动触发、监控、API 限流退避、失败自动诊断与最多 3 轮自动修复的总控规则，统一以 `docs/OPENWRT_CI_V2.md` 为准。
+## Windows 持久控制器
 
-## Windows 持久自动编译控制器
-
-正式自动开发不再依赖 Codex 聊天窗口长期保持活动。Windows 端通过持久控制器独立跟踪 GitHub Actions，失败后自动下载诊断资料并调用 `codex exec` 修复，再由控制器提交、推送并重新触发云端构建。
-
-启动“更新编译”：
+旧 v2 控制器仍保留用于已有 Build / Controller 任务的兼容和排障：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-ci-controller.ps1 -Mode UpdateBuild
 ```
 
-查看真实状态：
+查看状态：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1
 ```
 
-持续查看：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1 -Follow
-```
-
-控制器默认每 60 秒查询一次 GitHub 状态，遇到 `unexpected EOF`、网络错误、GitHub 5xx 或 API rate limit 会退避后继续原 Run，不会盲目重复触发。失败后最多自动修复 3 轮；修改 22 个必选插件清单、设备配置或需要产品决策时才进入 `blocked`。
-
-完整说明见 `docs/PERSISTENT_CI_CONTROLLER.md`。
+新固件更新与 Stable 发布优先按 Known-Good v3 流程执行。
 
 ## 本地编译
 
@@ -107,26 +154,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1 -Follow
 
 ## 固件命名
 
-成功后标准文件名为：
+标准输出：
 
 ```text
-XinZhaoWrt-Arthur-v0.1.0-YYYYMMDD-sysupgrade.bin
-XinZhaoWrt-Arthur-v0.1.0-YYYYMMDD-factory.bin
+XinZhaoWrt-Arthur-vX.Y.Z-YYYYMMDD-sysupgrade.bin
+XinZhaoWrt-Arthur-vX.Y.Z-YYYYMMDD-factory.bin
 ```
 
-实际是否同时生成 factory/sysupgrade 两种镜像，由当前上游 RE-SS-01 image recipe 决定。
+实际是否同时生成 factory / sysupgrade，由当前 RE-SS-01 image recipe 决定。
 
 ## 运行时注意
 
-AdGuard Home、MosDNS、SmartDNS、OpenClash 可以同时编进固件，但不要让多个 DNS 服务同时占用 53 端口。OpenClash 与 PBR 同时存在也没问题，实际启用时要避免两套策略路由同时接管同一批流量。
+AdGuard Home、MosDNS、SmartDNS、OpenClash 可以同时编进固件，但不要让多个 DNS 服务同时占用 53 端口。OpenClash 与 PBR 可以共存为软件包，但实际启用时要避免两套策略路由同时接管同一批流量。
 
 OAF 带有内核相关组件。上游发生较大的 Linux 内核变化时，如果编译失败，优先检查 OAF 的内核 API 兼容性，不得为了让构建通过直接删除 `luci-app-oaf`。
 
 ## 文档
 
 - `AGENTS.md`：Codex 项目硬规则
-- `docs/OPENWRT_CI_V2.md`：OpenWrt 自动编译流程 v2.0，总控、监控、限流与自动修复规则
-- `docs/PERSISTENT_CI_CONTROLLER.md`：Windows 持久控制器、`codex exec` 自动修复和状态管理
+- `docs/OPENWRT_CI_V3.md`：当前 Known-Good 自动编译、Candidate、实机验收与 Stable 晋升流程
+- `docs/OPENWRT_CI_V2.md`：旧版持久控制器流程，保留作为历史兼容
+- `docs/PERSISTENT_CI_CONTROLLER.md`：Windows 持久控制器与 `codex exec`
 - `docs/CODEX_CLOUD.md`：Codex Cloud 全编译流程
 - `docs/BUILD.md`：本地/手工编译
 - `docs/PLUGINS.md`：插件说明
