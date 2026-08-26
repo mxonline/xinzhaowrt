@@ -46,7 +46,7 @@ jobs:
           fi
 
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee changed-files.txt
-          SCOPE="$(./scripts/classify-build-scope.sh < changed-files.txt)"
+          SCOPE="$(bash ./scripts/classify-build-scope.sh < changed-files.txt)"
           echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
           echo "Build scope: $SCOPE"
 
@@ -63,8 +63,8 @@ jobs:
             echo '## Arthur Fast Preflight'
             echo
             echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
-            echo '- This workflow never compiles firmware.'
-            echo '- DOC_ONLY: documentation only.'
-            echo '- FAST_GATE: CI/verifier/control change; static gates only.'
-            echo '- FULL_BUILD: firmware-affecting or unknown change; full Candidate build required separately.'
+            echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
+            echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
+            echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
+            echo '- FULL_BUILD: firmware-affecting or unknown change; run Arthur Known-Good Update v3 separately.'
           } >> "$GITHUB_STEP_SUMMARY"
