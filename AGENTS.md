@@ -25,11 +25,25 @@ Required startup sequence:
 3. read `knowledge/INDEX.md` and route the task to only the relevant knowledge/documents;
 4. for device/target work, read `knowledge/DEVICE-PROFILE.md`;
 5. for baseline/update work, read `knowledge/KNOWN-GOOD.md` and `knowledge/SOURCE-LOCK.md`;
-6. on a failure, classify the first causal error and consult `knowledge/KNOWN-FAILURES.md` before inventing a repair.
+6. on a failure, classify the first causal error and consult `knowledge/KNOWN-FAILURES.md` before inventing a repair;
+7. before changing an upstream/feed/package source, adopting a fork, or creating a new compatibility patch/build component, execute `knowledge/REUSE-GATE.md` and record `USE / REUSE / FORK / BUILD`.
 
 Live GitHub/build/device evidence overrides stale documentation. `production/known-good.json` remains the machine-readable authority for the last promoted real-device-confirmed Stable. `config/arthur-known-good.lock` remains the authority for pinned source/feed/plugin refs.
 
 After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAILURES.md`. After a Candidate is promoted, update the project state/known-good knowledge to match the new machine-readable Stable record.
+
+## Reuse Gate hard rule
+
+`knowledge/REUSE-GATE.md` is a prospective source/implementation decision gate. It does not create a new firmware workflow and does not supersede the current Known-Good/Candidate/Stable gates.
+
+- Do not move `config/arthur-known-good.lock`, invalidate `production/known-good.json`, restart an active Candidate, or revert current `main` progress merely because this rule was introduced.
+- Rebuilding the exact current locked baseline does not require a new Reuse Gate.
+- Apply the gate when a task changes upstream, feeds, third-party package sources, forks, patch strategy or build-system components.
+- Search official OpenWrt/ImmortalWrt sources first, then same-device/same-target recent successful GitHub Actions baselines, then maintained package upstreams/forks.
+- Evaluate actual target/kernel/branch compatibility, recent CI/build status, license, maintenance, dependency health, security, source provenance, 22-plugin compatibility and long-term maintenance cost.
+- Star count is supporting evidence only.
+- No explicit `USE / REUSE / FORK / BUILD` decision means no new source/fork/custom compatibility implementation should be adopted.
+- The gate never authorizes dropping a mandatory plugin or weakening acceptance criteria to get a green build.
 
 ## Mandatory plugins
 
@@ -40,9 +54,10 @@ Never fix a build by silently deleting, disabling, renaming or commenting out a 
 1. identify the first real compiler/package error;
 2. verify source layout and dependencies;
 3. check current ImmortalWrt/kernel API compatibility;
-4. patch or update the package source;
-5. rerun `make defconfig` and `scripts/check-config.sh`;
-6. rebuild.
+4. run the Reuse Gate when the repair would change package source/fork/patch strategy;
+5. patch or update the package source only after that decision;
+6. rerun `make defconfig` and `scripts/check-config.sh`;
+7. rebuild.
 
 ## Required first-boot defaults
 
@@ -68,6 +83,8 @@ Current external source families:
 - MosDNS: sbwml/luci-app-mosdns v5 plus geodata dependency
 - OpenClash: vernesong/OpenClash
 - OAF: destan19/OpenAppFilter
+
+Before replacing any of these source families, use `knowledge/REUSE-GATE.md`. Existing pinned refs remain authoritative until the normal update/fix acceptance path justifies a lock change.
 
 ## Build procedure
 
