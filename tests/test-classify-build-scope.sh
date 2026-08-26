@@ -8,7 +8,7 @@ run_case() {
   local expected="$1"
   shift
   local actual
-  actual="$(printf '%s\n' "$@" | "$CLASSIFIER")"
+  actual="$(printf '%s\n' "$@" | bash "$CLASSIFIER")"
   if [[ "$actual" != "$expected" ]]; then
     printf 'FAIL: expected %s, got %s for:\n' "$expected" "$actual" >&2
     printf '  %s\n' "$@" >&2
