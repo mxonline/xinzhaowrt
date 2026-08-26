@@ -141,7 +141,9 @@ jobs:
           grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' output/plugin-verification.txt
           grep -Fq 'Verified required plugins: 22' output/plugin-verification.txt
           test -s output/upload-oom-verification.txt
-          grep -Fq 'PASS: Arthur large-upload OOM guard verified: transient duplicate upload copies are kept off tmpfs while the final sysupgrade image remains in /tmp.' output/upload-oom-verification.txt
+          grep -Fq 'PASS: Arthur large-upload OOM guard verified:' output/upload-oom-verification.txt
+          grep -Fq 'Nginx buffering is disk-backed' output/upload-oom-verification.txt
+          grep -Fq 'cgi-io can link its /tmp O_TMPFILE directly to /tmp/firmware.bin without a second 90+ MiB copy.' output/upload-oom-verification.txt
           find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
           test -s output/firmware/SHA256SUMS.local
           (cd output/firmware && sha256sum -c SHA256SUMS.local)
