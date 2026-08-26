@@ -121,6 +121,8 @@ if ! make -j"$JOBS"; then
   fi
 fi
 
+"$PROJECT_ROOT/scripts/verify-upload-oom-build.sh" "$SRC"
+
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
 "$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"
 
@@ -193,3 +195,4 @@ echo "[10/10] Done"
 echo "Firmware: $OUT/firmware"
 echo "Metadata: $OUT/build-info.txt"
 echo "Plugin verification: $OUT/plugin-verification.txt"
+echo "Upload OOM verification: $OUT/upload-oom-verification.txt"
