@@ -18,8 +18,8 @@ grep -Fq 'XINZHAO_UPLOAD_TMPDIR "/root/.xinzhao-upload/cgi-io"' "$CGI_PATCH" || 
   echo "ERROR: cgi-io temp path is not disk-backed"
   exit 1
 }
-grep -Fq 'st.tempfd = open(XINZHAO_UPLOAD_TMPDIR' "$CGI_PATCH" || {
-  echo "ERROR: cgi-io patch does not replace /tmp O_TMPFILE"
+grep -Eq '^\+[^+].*st\.tempfd = open\(XINZHAO_UPLOAD_TMPDIR' "$CGI_PATCH" || {
+  echo "ERROR: cgi-io patch does not add the disk-backed O_TMPFILE path"
   exit 1
 }
 
@@ -28,7 +28,9 @@ if grep -Fq 'client_body_temp_path /tmp' "$NGINX_CONF"; then
   exit 1
 fi
 
-if grep -Fq 'st.tempfd = open("/tmp"' "$CGI_PATCH"; then
+# Only inspect lines ADDED by the patch. The expected removed line still contains
+# open("/tmp") with a leading '-', and must not be mistaken for a regression.
+if grep -Eq '^\+[^+].*st\.tempfd = open\("/tmp"' "$CGI_PATCH"; then
   echo "ERROR: cgi-io upload path regressed to tmpfs"
   exit 1
 fi
