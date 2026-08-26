@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-v0.1.1-upload-oom-fix-20260826-001",
+  "request_id": "arthur-v0.1.1-upload-oom-fix-retry-20260826-002",
   "mode": "rebuild_known_good",
   "base_stable": "v0.1.0",
   "device": "jdcloud_re-ss-01",
-  "reason": "Build v0.1.1 from the verified v0.1.0 Known-Good lock with disk-backed Nginx and cgi-io transient upload buffering to prevent LuCI large-firmware OOM while preserving the standard /tmp/firmware.bin sysupgrade handoff.",
-  "requested_at": "2026-08-26T14:30:00+08:00"
+  "reason": "Retry the v0.1.1 large-upload OOM fix Candidate after normalizing executable permissions for newly added shell verification scripts. Keep the verified v0.1.0 Known-Good lock unchanged.",
+  "requested_at": "2026-08-26T14:35:00+08:00"
 }
