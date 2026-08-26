@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-v0.1.1-upload-oom-fix-retry-20260826-002",
+  "request_id": "arthur-v0.1.1-upload-oom-fix-retry-20260826-003",
   "mode": "rebuild_known_good",
   "base_stable": "v0.1.0",
   "device": "jdcloud_re-ss-01",
-  "reason": "Retry the v0.1.1 large-upload OOM fix Candidate after normalizing executable permissions for newly added shell verification scripts. Keep the verified v0.1.0 Known-Good lock unchanged.",
-  "requested_at": "2026-08-26T14:35:00+08:00"
+  "reason": "Retry the v0.1.1 large-upload OOM fix Candidate after correcting the static guard to inspect only added patch lines, so the expected removed open(\"/tmp\") line is not misclassified as a regression. Keep the verified v0.1.0 Known-Good lock unchanged.",
+  "requested_at": "2026-08-26T15:38:00+08:00"
 }
