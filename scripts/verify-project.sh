@@ -24,6 +24,7 @@ while IFS= read -r pkg; do
 done < config/required-plugins.txt
 
 ./scripts/check-defaults.sh
+./scripts/check-upload-oom-fix.sh
 
 for f in scripts/*.sh; do
   bash -n "$f"
