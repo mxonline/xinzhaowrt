@@ -34,6 +34,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fast static preflight
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          ./scripts/verify-project.sh
+          test -s config/arthur-known-good.lock
+          test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
+          echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
+
       - name: Free runner disk space
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
