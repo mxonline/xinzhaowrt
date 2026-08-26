@@ -12,10 +12,13 @@ For every non-trivial firmware task:
 2. Read `knowledge/PROJECT-STATE.md`.
 3. Verify the live Git branch/HEAD and relevant workflow/release state. Live evidence overrides stale documentation.
 4. Read this router and load the task-specific knowledge below.
-5. Make the smallest change from the current verified baseline.
-6. Run the appropriate preflight/build/acceptance gates.
-7. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
-8. Record newly verified failure patterns or baseline changes back into the knowledge layer.
+5. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
+6. Make the smallest change from the current verified baseline.
+7. Run the appropriate preflight/build/acceptance gates.
+8. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
+9. Record newly verified failure patterns or baseline changes back into the knowledge layer.
+
+The Reuse Gate is prospective. It does not move the current source lock, invalidate a Candidate/Stable result, restart an active build, or weaken existing acceptance gates.
 
 ## Routing table
 
@@ -36,21 +39,32 @@ Read:
 - `production/known-good.json`
 - `.github/workflows/arthur-update-v3.yml`
 
-Use `rebuild_known_good`. Do not move source refs.
+Use `rebuild_known_good`. Do not move source refs. Rebuilding the exact locked baseline does not require a new Reuse Gate.
 
 ### Update ImmortalWrt, feeds or plugins
 Read:
 - `knowledge/KNOWN-GOOD.md`
 - `knowledge/SOURCE-LOCK.md`
+- `knowledge/REUSE-GATE.md`
 - `config/arthur-known-good.lock`
 - `scripts/prepare-update-lock.sh`
 - `.github/workflows/arthur-update-v3.yml`
 
-Change one source family at a time unless the user explicitly requests a broader update. Candidate must pass all build acceptance gates before real-device verification.
+Before adopting a new source/ref/fork, record `USE / REUSE / FORK / BUILD`. Change one source family at a time unless the user explicitly requests a broader update. Candidate must pass all build acceptance gates before real-device verification.
+
+### Package source / fork / patch selection
+Read:
+- `knowledge/REUSE-GATE.md`
+- `knowledge/KNOWN-FAILURES.md`
+- `knowledge/SOURCE-LOCK.md`
+- affected package upstream/fork evidence
+
+Search official OpenWrt/ImmortalWrt first, then same-device/same-target recent successful GitHub Actions baselines, then maintained package upstreams/forks. Never pick a source by Star count alone.
 
 ### Package missing / feed / dependency failure
 Read:
 - `knowledge/KNOWN-FAILURES.md`
+- `knowledge/REUSE-GATE.md` when the repair changes source/fork/patch strategy
 - `config/required-plugins.txt`
 - `scripts/add-custom-packages.sh`
 - `scripts/check-package-sources.sh`
@@ -61,6 +75,7 @@ Never fix a package failure by silently removing one of the 22 mandatory LuCI ap
 ### Compile / toolchain / memory / CI failure
 Read:
 - `knowledge/KNOWN-FAILURES.md`
+- `knowledge/REUSE-GATE.md` only if the proposed repair changes source/fork/build architecture
 - `scripts/build.sh`
 - `scripts/extract-build-error.sh`
 - relevant workflow file
@@ -80,6 +95,7 @@ A cloud build PASS is only a Candidate PASS. Stable promotion requires the proje
 ### Large-upload OOM regression
 Read:
 - `knowledge/KNOWN-FAILURES.md`
+- `knowledge/REUSE-GATE.md` if replacing the current fix with an upstream/fork implementation
 - `scripts/apply-upload-oom-fix.sh`
 - `scripts/check-upload-oom-fix.sh`
 - the compiled-source verification script used by v3
@@ -102,4 +118,4 @@ When information conflicts, use this order:
 
 ## Safety boundary
 
-Knowledge routing never authorizes automatic flashing, bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes or U-Boot modification. Those remain human-reviewed operations.
+Knowledge routing and Reuse Gate decisions never authorize automatic flashing, bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes or U-Boot modification. Those remain human-reviewed operations.
