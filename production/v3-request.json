@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-v0.1.2-upload-oom-zero-copy-20260826-001",
+  "request_id": "arthur-v0.1.2-upload-oom-zero-copy-gate-retry-20260827-001",
   "mode": "rebuild_known_good",
   "base_stable": "v0.1.0",
   "device": "jdcloud_re-ss-01",
-  "reason": "Build v0.1.2 after real-device v0.1.1 proved that moving cgi-io O_TMPFILE to overlay forces cross-filesystem fallback copying into /tmp/firmware.bin and triggers a new OOM. Keep only Nginx request-body buffering on disk; restore cgi-io O_TMPFILE to /tmp so cgi-io and /tmp/firmware.bin share the same tmpfs and can use linkat without a second 90+ MiB copy. Keep the verified v0.1.0 Known-Good source lock unchanged.",
-  "requested_at": "2026-08-26T22:50:00+08:00"
+  "reason": "Retry the v0.1.2 zero-copy Candidate after the previous build itself succeeded but the Candidate acceptance gate used a stale OOM PASS phrase. The current workflow gate is synchronized with the new v0.1.2 verification output. Keep the verified v0.1.0 Known-Good source lock unchanged.",
+  "requested_at": "2026-08-27T04:29:00+08:00"
 }
