@@ -8,4 +8,8 @@ sudo apt-get install -y \
   rsync swig unzip zlib1g-dev file wget curl libelf-dev ecj fastjar \
   xsltproc qemu-utils ccache jq
 
+# GitHub Contents API-created shell scripts may not carry the executable bit.
+# Normalize project script permissions before running any static verification.
+chmod +x scripts/*.sh
+
 ./scripts/verify-project.sh
