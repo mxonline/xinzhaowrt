@@ -1,0 +1,19 @@
+--- a/main.c
++++ b/main.c
+@@ -33,6 +33,7 @@
+ #endif
+ 
+ #define READ_BLOCK 4096
++#define XINZHAO_UPLOAD_TMPDIR "/root/.xinzhao-upload/cgi-io"
+ 
+ enum part {
+ 	PART_UNKNOWN,
+@@ -264,7 +265,7 @@ data_begin_cb(multipart_parser *p)
+ 		if (!session_access(st.sessionid, "file", st.filename, "write"))
+ 			return response(false, "Access to path denied by ACL");
+ 
+-		st.tempfd = open("/tmp", O_TMPFILE | O_RDWR, S_IRUSR | S_IWUSR);
++		st.tempfd = open(XINZHAO_UPLOAD_TMPDIR, O_TMPFILE | O_RDWR, S_IRUSR | S_IWUSR);
+ 
+ 		if (st.tempfd < 0)
+ 			return response(false, "Failed to create temporary file");
