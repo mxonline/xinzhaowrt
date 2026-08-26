@@ -14,6 +14,23 @@
 
 Read `build.env` before changing build logic.
 
+## Agent Knowledge Layer
+
+For every non-trivial firmware task, do not begin by re-deriving the project from old chat context or loading every repository document.
+
+Required startup sequence:
+
+1. read `knowledge/PROJECT-STATE.md`;
+2. verify live Git branch/HEAD and relevant GitHub workflow/release state;
+3. read `knowledge/INDEX.md` and route the task to only the relevant knowledge/documents;
+4. for device/target work, read `knowledge/DEVICE-PROFILE.md`;
+5. for baseline/update work, read `knowledge/KNOWN-GOOD.md` and `knowledge/SOURCE-LOCK.md`;
+6. on a failure, classify the first causal error and consult `knowledge/KNOWN-FAILURES.md` before inventing a repair.
+
+Live GitHub/build/device evidence overrides stale documentation. `production/known-good.json` remains the machine-readable authority for the last promoted real-device-confirmed Stable. `config/arthur-known-good.lock` remains the authority for pinned source/feed/plugin refs.
+
+After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAILURES.md`. After a Candidate is promoted, update the project state/known-good knowledge to match the new machine-readable Stable record.
+
 ## Mandatory plugins
 
 `config/required-plugins.txt` is the authoritative list. It contains exactly 22 required LuCI applications. Every one must remain `=y` after `make defconfig`.
@@ -90,7 +107,6 @@ A build is not successful merely because `make` exits zero. Verify all of these:
 - `output/build-info.txt` exists;
 - `output/firmware/SHA256SUMS.local` exists;
 - first-boot defaults file is included in the source `files/` overlay.
-
 
 ## Web server stack
 
