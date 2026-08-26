@@ -5,6 +5,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 
+FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
+[[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }
+export FIRMWARE_VERSION
+
 USE_KNOWN_GOOD_LOCK="${USE_KNOWN_GOOD_LOCK:-0}"
 LOCK_FILE="${KNOWN_GOOD_LOCK:-$PROJECT_ROOT/config/arthur-known-good.lock}"
 if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
@@ -79,6 +83,7 @@ USE_KNOWN_GOOD_LOCK="$USE_KNOWN_GOOD_LOCK" KNOWN_GOOD_LOCK="$LOCK_FILE" \
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
+"$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 
@@ -161,6 +166,7 @@ done
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
   echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
+  echo "Large-upload OOM guard: disk-backed Nginx/cgi-io transient buffering; final sysupgrade handoff /tmp/firmware.bin"
   if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
     echo "Lock file: config/arthur-known-good.lock"
   fi
