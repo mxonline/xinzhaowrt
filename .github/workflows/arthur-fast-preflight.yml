@@ -1,0 +1,70 @@
+name: Arthur Fast Preflight
+
+'on':
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arthur-fast-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize test permissions
+        run: |
+          chmod +x tests/*.sh || true
+
+      - name: Test build-scope classifier
+        run: ./tests/test-classify-build-scope.sh
+
+      - name: Determine changed files
+        id: changes
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="$(git rev-parse HEAD^)"
+            HEAD_SHA="$(git rev-parse HEAD)"
+          fi
+
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee changed-files.txt
+          SCOPE="$(./scripts/classify-build-scope.sh < changed-files.txt)"
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "Build scope: $SCOPE"
+
+      - name: Run static project verification
+        if: success() && steps.changes.outputs.scope != 'DOC_ONLY'
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/verify-project.sh
+
+      - name: Preflight summary
+        if: always()
+        run: |
+          {
+            echo '## Arthur Fast Preflight'
+            echo
+            echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
+            echo '- This workflow never compiles firmware.'
+            echo '- DOC_ONLY: documentation only.'
+            echo '- FAST_GATE: CI/verifier/control change; static gates only.'
+            echo '- FULL_BUILD: firmware-affecting or unknown change; full Candidate build required separately.'
+          } >> "$GITHUB_STEP_SUMMARY"
