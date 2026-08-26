@@ -12,15 +12,26 @@ For every non-trivial firmware task:
 2. Read `knowledge/PROJECT-STATE.md`.
 3. Verify the live Git branch/HEAD and relevant workflow/release state. Live evidence overrides stale documentation.
 4. Read this router and load the task-specific knowledge below.
-5. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
-6. Make the smallest change from the current verified baseline.
-7. Run the appropriate preflight/build/acceptance gates.
-8. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
-9. Record newly verified failure patterns or baseline changes back into the knowledge layer.
+5. Read `knowledge/BUILD-ROUTING.md` before deciding whether a full OpenWrt build is required.
+6. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
+7. Make the smallest change from the current verified baseline.
+8. Route the change through `Arthur Fast Preflight`; only `FULL_BUILD` changes proceed to the long Candidate build.
+9. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
+10. Record newly verified failure patterns or baseline changes back into the knowledge layer.
 
 The Reuse Gate is prospective. It does not move the current source lock, invalidate a Candidate/Stable result, restart an active build, or weaken existing acceptance gates.
 
+The Fast Preflight routing layer is also prospective. It must not cancel or restart an active Candidate. It only decides whether a change is `DOC_ONLY`, `FAST_GATE` or `FULL_BUILD`; unknown paths fail closed to `FULL_BUILD`.
+
 ## Routing table
+
+### Decide whether a full build is required
+Read:
+- `knowledge/BUILD-ROUTING.md`
+- `scripts/classify-build-scope.sh`
+- `.github/workflows/arthur-fast-preflight.yml`
+
+Run Fast Preflight before a long OpenWrt compile. Documentation-only changes do not compile firmware. CI/verifier/test/control-plane changes use static gates. Firmware-affecting or unknown changes require the normal v3 Candidate build.
 
 ### Device, target or image questions
 Read:
@@ -75,12 +86,15 @@ Never fix a package failure by silently removing one of the 22 mandatory LuCI ap
 ### Compile / toolchain / memory / CI failure
 Read:
 - `knowledge/KNOWN-FAILURES.md`
+- `knowledge/BUILD-ROUTING.md`
 - `knowledge/REUSE-GATE.md` only if the proposed repair changes source/fork/build architecture
 - `scripts/build.sh`
 - `scripts/extract-build-error.sh`
 - relevant workflow file
 
 Classify the first real failure as one of: `SOURCE`, `FEED`, `DEPENDENCY`, `CONFIG`, `PATCH`, `TOOLCHAIN`, `PACKAGE`, `KERNEL`, `IMAGE`, `CI`.
+
+A CI/verifier-only repair must pass Fast Preflight before considering any full rebuild. Do not use a full firmware compile as a syntax checker or verifier test.
 
 ### Firmware promotion / release
 Read:
@@ -95,12 +109,15 @@ A cloud build PASS is only a Candidate PASS. Stable promotion requires the proje
 ### Large-upload OOM regression
 Read:
 - `knowledge/KNOWN-FAILURES.md`
+- `knowledge/BUILD-ROUTING.md`
 - `knowledge/REUSE-GATE.md` if replacing the current fix with an upstream/fork implementation
 - `scripts/apply-upload-oom-fix.sh`
 - `scripts/check-upload-oom-fix.sh`
 - the compiled-source verification script used by v3
 
 The fix must be verified in the compiled source tree and in the firmware acceptance gate, not only by checking repository text.
+
+Verifier-only corrections are `FAST_GATE`; changes to the actual OOM patch/application path are `FULL_BUILD`.
 
 ## Authority order
 
@@ -118,4 +135,4 @@ When information conflicts, use this order:
 
 ## Safety boundary
 
-Knowledge routing and Reuse Gate decisions never authorize automatic flashing, bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes or U-Boot modification. Those remain human-reviewed operations.
+Knowledge routing, Fast Preflight and Reuse Gate decisions never authorize automatic flashing, bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes or U-Boot modification. Those remain human-reviewed operations.
