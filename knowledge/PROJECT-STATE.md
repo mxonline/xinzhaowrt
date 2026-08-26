@@ -59,6 +59,21 @@ Next hard gate:
 
 Do not call `arthur-update-32943895389` Known-Good Stable until these gates pass.
 
+## Pre-promotion verification gap discovered 2026-08-26
+
+The existing `scripts/real-device-verify-v3.ps1` / `scripts/real-device-verify.ps1` gate verifies SSH, board identity, storage, LAN/WAN, Internet/DNS, 2.4G/5G, LuCI, 22 required plugins, logs, reboot recovery and persistence.
+
+It does **not** currently execute an actual large LuCI firmware upload or otherwise produce explicit real-device evidence that the previous duplicate tmpfs upload/OOM failure has been exercised on hardware.
+
+At the same time, the `arthur-update-32943895389` Candidate release explicitly says the next hard gate includes real-device large firmware upload without OOM. Therefore:
+
+- do not promote `v0.1.1` solely from the current generic real-device script;
+- before Stable promotion, add or execute a non-destructive real-device large-upload/OOM verification step;
+- that step must exercise the relevant Nginx/cgi-io upload buffering path without invoking `sysupgrade` or writing firmware;
+- archive evidence and make the promotion gate require it.
+
+Until this gap is closed, `v0.1.1` promotion state is `BLOCKED_BY_REAL_DEVICE_UPLOAD_GATE` even if the existing generic real-device script passes.
+
 ## Build state interpretation
 
 The repository may receive documentation/control commits after the functional Candidate commit. Agents must therefore distinguish:
@@ -85,9 +100,10 @@ Normal knowledge/documentation commits must not be treated as firmware rebuild r
 - Stable: `v0.1.0`
 - Candidate: `arthur-update-32943895389`
 - Candidate build: PASS
-- Candidate real-device verification: NOT YET RECORDED
-- Candidate Stable promotion: NOT YET PERFORMED
+- Candidate generic real-device verification: NOT YET RECORDED
+- Candidate large-upload/OOM real-device verification: MISSING / REQUIRED
+- Candidate Stable promotion: BLOCKED
 
 ## Next execution
 
-For firmware progression, continue with real-device verification of the current `v0.1.1` Candidate. For build-system work, load `knowledge/INDEX.md` and route the requested task from this state.
+For firmware progression, first close the non-destructive real-device large-upload/OOM verification gap, then run the full real-device gate for the current `v0.1.1` Candidate. Do not run Stable promotion before both evidence sets pass.
