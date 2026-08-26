@@ -140,12 +140,14 @@ jobs:
           test -s output/plugin-verification.txt
           grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' output/plugin-verification.txt
           grep -Fq 'Verified required plugins: 22' output/plugin-verification.txt
+          test -s output/upload-oom-verification.txt
+          grep -Fq 'PASS: Arthur large-upload OOM guard verified: transient duplicate upload copies are kept off tmpfs while the final sysupgrade image remains in /tmp.' output/upload-oom-verification.txt
           find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
           test -s output/firmware/SHA256SUMS.local
           (cd output/firmware && sha256sum -c SHA256SUMS.local)
           test -s output/arthur-known-good.lock
           cmp -s output/arthur-known-good.lock "${{ steps.prep.outputs.lock_path }}"
-          echo 'PASS: firmware, 22/22 plugins, SHA256 and Candidate lock verified.'
+          echo 'PASS: firmware, 22/22 plugins, large-upload OOM guard, SHA256 and Candidate lock verified.'
 
       - name: Analyze failure
         if: failure()
@@ -172,6 +174,7 @@ jobs:
             echo '- Candidate lock SHA256: `${{ steps.prep.outputs.lock_sha }}`'
             echo '- Device: `jdcloud_re-ss-01`'
             echo '- Required plugins: `22`'
+            echo '- Large-upload OOM guard: required'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -s output/update-lock.diff ]; then
             echo '### Source lock delta' >> "$GITHUB_STEP_SUMMARY"
@@ -183,6 +186,12 @@ jobs:
             echo '### Final plugin verification' >> "$GITHUB_STEP_SUMMARY"
             echo '```text' >> "$GITHUB_STEP_SUMMARY"
             cat output/plugin-verification.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s output/upload-oom-verification.txt ]; then
+            echo '### Large-upload OOM verification' >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat output/upload-oom-verification.txt >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -199,6 +208,7 @@ jobs:
             output/logs/failure-report.txt
             output/full.config
             output/plugin-verification.txt
+            output/upload-oom-verification.txt
             output/update-lock.diff
             output/update-metadata.json
             output/candidate-lock.txt
@@ -215,6 +225,7 @@ jobs:
             output/full.config
             output/build-info.txt
             output/plugin-verification.txt
+            output/upload-oom-verification.txt
             output/arthur-known-good.lock
             output/required-plugins.txt
             output/update-lock.diff
@@ -235,6 +246,7 @@ jobs:
           gh release create "$tag" \
             output/firmware/* \
             output/plugin-verification.txt \
+            output/upload-oom-verification.txt \
             output/arthur-known-good.lock \
             output/build-info.txt \
             output/required-plugins.txt \
@@ -243,8 +255,8 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Arthur Update Candidate ${GITHUB_RUN_ID}" \
-            --notes "Known-Good Update v3 Candidate. Base Stable: ${BASE_STABLE}. Mode: ${UPDATE_MODE}. Lock SHA256: ${LOCK_SHA}. Not Stable until JDCloud RE-SS-01 real-device verification and v3 Stable promotion both pass." \
+            --notes "Known-Good Update v3 Candidate. Base Stable: ${BASE_STABLE}. Mode: ${UPDATE_MODE}. Lock SHA256: ${LOCK_SHA}. Includes the Arthur large-upload OOM guard. Not Stable until JDCloud RE-SS-01 real-device verification and v3 Stable promotion both pass." \
             --prerelease
 
           echo "- Candidate tag: \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
-          echo '- Next hard gate: JDCloud RE-SS-01 real-device verification' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Next hard gate: JDCloud RE-SS-01 real-device verification including large firmware upload without OOM' >> "$GITHUB_STEP_SUMMARY"
