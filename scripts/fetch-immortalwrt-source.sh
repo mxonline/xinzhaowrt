@@ -51,7 +51,7 @@ retry_git() {
   local attempt
   for attempt in 1 2 3; do
     echo "SOURCE_FETCH_ATTEMPT: method=$label attempt=$attempt"
-    if git -c http.sslBackend=openssl -c http.version=HTTP/1.1 -c http.maxRequests=1 "$@"; then
+    if git -c http.version=HTTP/1.1 -c http.maxRequests=1 "$@"; then
       return 0
     fi
     echo "SOURCE_FETCH_RETRY: method=$label attempt=$attempt failed"
@@ -67,7 +67,7 @@ resolve_commit() {
   fi
 
   local resolved
-  resolved="$(git -c http.sslBackend=openssl -c http.version=HTTP/1.1 -c http.maxRequests=1 ls-remote --refs "$SOURCE_REMOTE" "refs/heads/$REQUESTED_REF" | awk 'NR == 1 { print $1 }')"
+  resolved="$(git -c http.version=HTTP/1.1 -c http.maxRequests=1 ls-remote --refs "$SOURCE_REMOTE" "refs/heads/$REQUESTED_REF" | awk 'NR == 1 { print $1 }')"
   [[ "$resolved" =~ ^[0-9a-f]{40}$ ]] || fail "cannot resolve official ref to a fixed commit: $REQUESTED_REF"
   printf '%s' "$resolved"
 }
@@ -94,7 +94,7 @@ fetch_commit() {
 
 verify_git_checkout() {
   local actual
-  git -C "$SRC" -c http.sslBackend=openssl -c http.version=HTTP/1.1 -c http.maxRequests=1 -c advice.detachedHead=false checkout --detach FETCH_HEAD
+  git -C "$SRC" -c http.version=HTTP/1.1 -c http.maxRequests=1 -c advice.detachedHead=false checkout --detach FETCH_HEAD
   actual="$(git -C "$SRC" rev-parse HEAD)"
   [[ "$actual" == "$TARGET_COMMIT" ]] || fail "commit mismatch: expected $TARGET_COMMIT got $actual"
   git -C "$SRC" fsck --no-progress

@@ -27,7 +27,6 @@ if ($workflow -notmatch [regex]::Escape('output/source-fetch.env')) {
 
 foreach ($required in @(
     'fsck --no-progress',
-    'http.sslBackend=openssl',
     'http.version=HTTP/1.1',
     '--depth=1',
     '--filter=blob:none',
@@ -43,6 +42,7 @@ foreach ($required in @(
 }
 
 foreach ($forbidden in @(
+    'http.sslBackend=',
     'codeload.github.com',
     'fetch_official_archive',
     'official_archive',
