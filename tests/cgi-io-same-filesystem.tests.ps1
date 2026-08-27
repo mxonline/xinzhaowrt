@@ -16,10 +16,18 @@ foreach ($source in @($applyScript, $buildCheck)) {
     }
 }
 
-if ($applyScript -notmatch 'official cgi-io implementation' -or
-    $checkScript -notmatch 'official cgi-io implementation' -or
+if ($applyScript -match 'CGI_MAIN|cgi-io/src/main\.c|O_TMPFILE') {
+    throw 'Pre-build upload validation must not read cgi-io upstream source before OpenWrt prepares build_dir.'
+}
+if ($applyScript -notmatch 'CGI_PKG/Makefile' -or
+    $applyScript -notmatch 'check-upload-oom-fix\.sh' -or
+    $applyScript -notmatch 'ui\.uploadFile\(''/tmp/firmware\.bin''' -or
+    $applyScript -notmatch 'luci-mod-system\.json') {
+    throw 'Pre-build upload validation must retain package-recipe and LuCI /tmp/firmware.bin handoff checks.'
+}
+if ($checkScript -notmatch 'official cgi-io implementation' -or
     $buildCheck -notmatch 'open\("/tmp", O_TMPFILE') {
-    throw 'Build guards must explicitly verify the current upstream cgi-io /tmp O_TMPFILE implementation.'
+    throw 'Post-build guard must verify the prepared cgi-io /tmp O_TMPFILE implementation.'
 }
 
 Write-Host 'PASS: cgi-io temporary files remain on the same /tmp filesystem as /tmp/firmware.bin.'

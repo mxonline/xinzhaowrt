@@ -4,14 +4,16 @@ set -euo pipefail
 SRC="${1:?usage: apply-upload-oom-fix.sh <immortalwrt-source-dir>}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CGI_PKG="$SRC/feeds/packages/net/cgi-io"
+CGI_RECIPE="$CGI_PKG/Makefile"
 LUCI_FLASH="$SRC/feeds/luci/modules/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js"
 LUCI_ACL="$SRC/feeds/luci/modules/luci-mod-system/root/usr/share/rpcd/acl.d/luci-mod-system.json"
-CGI_MAIN="$CGI_PKG/src/main.c"
 
 [[ -d "$CGI_PKG" ]] || { echo "ERROR: cgi-io package source missing: $CGI_PKG"; exit 1; }
+[[ -f "$CGI_RECIPE" ]] || { echo "ERROR: cgi-io package recipe missing: $CGI_RECIPE"; exit 1; }
 [[ -f "$LUCI_FLASH" ]] || { echo "ERROR: LuCI flash.js missing: $LUCI_FLASH"; exit 1; }
 [[ -f "$LUCI_ACL" ]] || { echo "ERROR: LuCI flash ACL missing: $LUCI_ACL"; exit 1; }
-[[ -f "$CGI_MAIN" ]] || { echo "ERROR: cgi-io main.c missing: $CGI_MAIN"; exit 1; }
+
+"$PROJECT_ROOT/scripts/check-upload-oom-fix.sh"
 
 # Keep OpenWrt's standard /tmp/firmware.bin handoff intact. sysupgrade expects the
 # final image in tmpfs during the RAM-root upgrade stage. We only move transient
@@ -26,9 +28,4 @@ grep -Fq '"/tmp/firmware.bin": [ "write" ]' "$LUCI_ACL" || {
   exit 1
 }
 
-grep -Fq 'st.tempfd = open("/tmp", O_TMPFILE | O_RDWR, S_IRUSR | S_IWUSR);' "$CGI_MAIN" || {
-  echo "ERROR: current upstream cgi-io implementation no longer creates O_TMPFILE in /tmp"
-  exit 1
-}
-
-echo 'PASS: official cgi-io implementation retained: its O_TMPFILE and /tmp/firmware.bin handoff use the same /tmp filesystem.'
+echo 'PASS: pre-build upload guard retained cgi-io package recipe and LuCI /tmp/firmware.bin handoff.'
