@@ -5,6 +5,7 @@ name: Arthur Known-Good Fast Lane v1
   push:
     branches:
       - main
+      - codex/v013-source-fetch-recovery
     paths:
       - '.github/workflows/known-good-fastlane.yml'
       - 'production/known-good-request.json'
