@@ -9,6 +9,11 @@ name: Arthur Known-Good Fast Lane v1
     paths:
       - '.github/workflows/known-good-fastlane.yml'
       - 'production/known-good-request.json'
+      - 'build.env'
+      - 'config/**'
+      - 'scripts/**'
+      - 'files/**'
+      - 'tests/**'
 
 permissions:
   contents: write
