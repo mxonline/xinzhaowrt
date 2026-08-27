@@ -16,6 +16,7 @@ DUPES="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | sort | uniq
 [[ -z "$DUPES" ]] || { echo "ERROR: duplicate plugins:"; echo "$DUPES"; exit 1; }
 
 while IFS= read -r pkg; do
+  pkg="${pkg%$'\r'}"
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
   grep -qxF "CONFIG_PACKAGE_${pkg}=y" config/arthur.config || {
     echo "ERROR: config/arthur.config does not enable $pkg"

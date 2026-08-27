@@ -116,6 +116,7 @@ jobs:
             output/logs/failure-report.txt
             output/full.config
             output/plugin-verification.txt
+            output/source-fetch.env
             config/arthur-known-good.lock
             config/required-plugins.txt
           if-no-files-found: warn
@@ -130,6 +131,7 @@ jobs:
             output/firmware/*
             output/full.config
             output/build-info.txt
+            output/source-fetch.env
             output/plugin-verification.txt
             output/arthur-known-good.lock
             output/required-plugins.txt

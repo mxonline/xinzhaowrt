@@ -6,13 +6,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CGI_PKG="$SRC/feeds/packages/net/cgi-io"
 LUCI_FLASH="$SRC/feeds/luci/modules/luci-mod-system/htdocs/luci-static/resources/view/system/flash.js"
 LUCI_ACL="$SRC/feeds/luci/modules/luci-mod-system/root/usr/share/rpcd/acl.d/luci-mod-system.json"
-PATCH_SRC="$PROJECT_ROOT/patches/cgi-io/950-xinzhao-disk-upload-temp.patch"
-PATCH_DST="$CGI_PKG/patches/950-xinzhao-disk-upload-temp.patch"
+CGI_MAIN="$CGI_PKG/src/main.c"
 
 [[ -d "$CGI_PKG" ]] || { echo "ERROR: cgi-io package source missing: $CGI_PKG"; exit 1; }
 [[ -f "$LUCI_FLASH" ]] || { echo "ERROR: LuCI flash.js missing: $LUCI_FLASH"; exit 1; }
 [[ -f "$LUCI_ACL" ]] || { echo "ERROR: LuCI flash ACL missing: $LUCI_ACL"; exit 1; }
-[[ -f "$PATCH_SRC" ]] || { echo "ERROR: cgi-io OOM patch missing: $PATCH_SRC"; exit 1; }
+[[ -f "$CGI_MAIN" ]] || { echo "ERROR: cgi-io main.c missing: $CGI_MAIN"; exit 1; }
 
 # Keep OpenWrt's standard /tmp/firmware.bin handoff intact. sysupgrade expects the
 # final image in tmpfs during the RAM-root upgrade stage. We only move transient
@@ -27,10 +26,9 @@ grep -Fq '"/tmp/firmware.bin": [ "write" ]' "$LUCI_ACL" || {
   exit 1
 }
 
-mkdir -p "$(dirname "$PATCH_DST")"
-cp "$PATCH_SRC" "$PATCH_DST"
+grep -Fq 'st.tempfd = open("/tmp", O_TMPFILE | O_RDWR, S_IRUSR | S_IWUSR);' "$CGI_MAIN" || {
+  echo "ERROR: current upstream cgi-io implementation no longer creates O_TMPFILE in /tmp"
+  exit 1
+}
 
-grep -Fq 'XINZHAO_UPLOAD_TMPDIR "/root/.xinzhao-upload/cgi-io"' "$PATCH_DST"
-grep -Fq 'st.tempfd = open(XINZHAO_UPLOAD_TMPDIR' "$PATCH_DST"
-
-echo 'PASS: Arthur large-upload OOM fix staged; transient Nginx/cgi-io buffering is disk-backed while final sysupgrade handoff remains /tmp/firmware.bin.'
+echo 'PASS: official cgi-io implementation retained: its O_TMPFILE and /tmp/firmware.bin handoff use the same /tmp filesystem.'

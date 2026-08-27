@@ -44,21 +44,13 @@ fi
 
 "$PROJECT_ROOT/scripts/verify-project.sh"
 
-if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
-  echo "[1/10] Reuse ImmortalWrt checkout and reset to $REQUESTED_REF"
-  git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
-  git -C "$SRC" reset --hard FETCH_HEAD
-  git -C "$SRC" clean -fdx -e dl/ -e .ccache/ -e .xinzhao-sources/
-else
-  echo "[1/10] Clone ImmortalWrt source at exact ref: $REQUESTED_REF"
-  rm -rf "$SRC"
-  git clone --filter=blob:none --no-checkout "$SOURCE_REPO" "$SRC"
-  git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
-  git -C "$SRC" -c advice.detachedHead=false checkout --detach FETCH_HEAD
-fi
+echo "[1/10] Acquire verified ImmortalWrt source at exact ref: $REQUESTED_REF"
+bash "$PROJECT_ROOT/scripts/fetch-immortalwrt-source.sh" "$SRC" "$SOURCE_REPO" "$REQUESTED_REF" "$OUT"
+# shellcheck disable=SC1090
+source "$OUT/source-fetch.env"
 
 cd "$SRC"
-SOURCE_SHA="$(git rev-parse HEAD)"
+SOURCE_SHA="$SOURCE_COMMIT"
 export CCACHE_DIR="$SRC/.ccache"
 mkdir -p "$CCACHE_DIR"
 
@@ -167,8 +159,12 @@ done
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
+  echo "Source method: $SOURCE_METHOD"
+  echo "Source remote: $SOURCE_REMOTE"
+  echo "Source integrity: $SOURCE_INTEGRITY"
+  [[ -z "$SOURCE_ARCHIVE_SHA256" ]] || echo "Source archive SHA256: $SOURCE_ARCHIVE_SHA256"
   echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
-  echo "Large-upload OOM guard: disk-backed Nginx/cgi-io transient buffering; final sysupgrade handoff /tmp/firmware.bin"
+  echo "Large-upload guard: disk-backed Nginx request buffering; official cgi-io /tmp O_TMPFILE and /tmp/firmware.bin same-filesystem handoff"
   if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
     echo "Lock file: config/arthur-known-good.lock"
   fi

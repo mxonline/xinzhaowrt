@@ -7,6 +7,7 @@ REQUIRED_FILE="$PROJECT_ROOT/config/required-plugins.txt"
 
 missing=0
 while IFS= read -r pkg; do
+  pkg="${pkg%$'\r'}"
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
   sym="CONFIG_PACKAGE_${pkg}=y"
   if ! grep -qxF "$sym" "$CFG"; then
