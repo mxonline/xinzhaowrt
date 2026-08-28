@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: codex/v4-production-controller
+          ref: main
 
       - name: Guard legacy build occupancy
         env:
@@ -69,6 +69,7 @@ jobs:
           chmod +x scripts/*.sh tests/*.sh
           ./tests/test-classify-build-scope.sh
           ./tests/test-v4-toolchain-bootstrap.sh
+          ./tests/test-v4-toolchain-acceptance.sh
           ./scripts/verify-project.sh
           ./scripts/v4-toolchain-bootstrap.sh --plan
 
@@ -78,7 +79,7 @@ jobs:
           path: |
             work/immortalwrt/dl
             work/immortalwrt/.ccache
-          key: arthur-v4-toolchain-${{ runner.os }}-${{ hashFiles('config/arthur-known-good.lock', 'config/arthur.config', 'config/required-plugins.txt', 'scripts/build.sh', 'scripts/v4-toolchain-bootstrap.sh') }}
+          key: arthur-v4-toolchain-${{ runner.os }}-${{ hashFiles('config/arthur-known-good.lock', 'config/arthur.config', 'config/required-plugins.txt', 'scripts/build.sh', 'scripts/v4-toolchain-bootstrap.sh', 'scripts/v4-verify-toolchain.sh') }}
           restore-keys: |
             arthur-known-good-${{ runner.os }}-
             arthur-${{ runner.os }}-
@@ -91,6 +92,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           ./scripts/v4-toolchain-bootstrap.sh --execute
+
+      - name: Verify generated toolchain bundle
+        run: |
+          set -Eeuo pipefail
+          ./scripts/v4-verify-toolchain.sh
 
       - name: Analyze bootstrap failure
         if: failure()
@@ -113,6 +119,7 @@ jobs:
             echo '- Stable Known-Good is read-only during this workflow.'
             echo '- Source and feeds are pinned by config/arthur-known-good.lock.'
             echo '- Outputs required: SDK, standalone ImageBuilder, package repositories, provenance and SHA256.'
+            echo '- Acceptance must pass before artifact upload or Release publication.'
             echo '- One-time auto handoff source: legacy run 33182381566.'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -s output/toolchain/toolchain-provenance.json ]; then
@@ -121,6 +128,15 @@ jobs:
               echo '### Provenance'
               echo '```json'
               cat output/toolchain/toolchain-provenance.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s output/toolchain/toolchain-acceptance.json ]; then
+            {
+              echo
+              echo '### Acceptance'
+              echo '```json'
+              cat output/toolchain/toolchain-acceptance.json
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -163,10 +179,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          test -s output/toolchain/toolchain-acceptance.json
+          grep -q '"status": "verified"' output/toolchain/toolchain-acceptance.json
           stable_tag="$(python3 -c "import json; print(json.load(open('production/known-good.json'))['stable_tag'])")"
           tag="arthur-toolchain-${stable_tag}-${GITHUB_RUN_ID}"
           gh release create "$tag" \
             output/toolchain/* \
             --title "Arthur v4 Toolchain ${stable_tag} / ${GITHUB_RUN_ID}" \
-            --notes "Known-Good-matched SDK, standalone ImageBuilder and package repository bundle. This is a toolchain Candidate only and does not mutate Stable firmware." \
+            --notes "Known-Good-matched SDK, standalone ImageBuilder and package repository bundle. Toolchain acceptance verified. This is a toolchain Candidate only and does not mutate Stable firmware." \
             --prerelease
