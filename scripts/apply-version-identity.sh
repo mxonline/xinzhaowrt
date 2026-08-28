@@ -29,6 +29,9 @@ set_config() {
   mv "$tmp" "$CONFIG_FILE"
 }
 
+# ImmortalWrt gates VERSIONOPT behind IMAGEOPT. Inject both so the build does
+# not rely on the seed being the only caller of this script.
+set_config CONFIG_IMAGEOPT 'CONFIG_IMAGEOPT=y'
 set_config CONFIG_VERSIONOPT 'CONFIG_VERSIONOPT=y'
 set_config CONFIG_VERSION_DIST 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 set_config CONFIG_VERSION_NUMBER "CONFIG_VERSION_NUMBER=\"$FIRMWARE_VERSION\""

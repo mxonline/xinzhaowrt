@@ -14,6 +14,7 @@ CONFIG
 bash "$PROJECT_ROOT/scripts/apply-version-identity.sh" "$CONFIG"
 
 VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
+grep -qxF 'CONFIG_IMAGEOPT=y' "$CONFIG"
 grep -qxF 'CONFIG_VERSIONOPT=y' "$CONFIG"
 grep -qxF 'CONFIG_VERSION_DIST="XinZhaoWrt"' "$CONFIG"
 grep -qxF "CONFIG_VERSION_NUMBER=\"$VERSION\"" "$CONFIG"

@@ -84,13 +84,7 @@ mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
-cp "$PROJECT_ROOT/config/arthur.config" .config
-bash "$PROJECT_ROOT/scripts/apply-version-identity.sh" .config
-if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
-  printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
-fi
-make defconfig
-"$PROJECT_ROOT/scripts/check-config.sh" .config
+bash "$PROJECT_ROOT/tests/test-version-identity-defconfig.sh" "$SRC"
 cp .config "$OUT/full.config"
 
 echo "[6/10] Download source archives"
