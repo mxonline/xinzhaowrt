@@ -58,7 +58,10 @@ if grep -Eq '^[[:space:]]+push:' "$WORKFLOW"; then
   exit 1
 fi
 
-# workflow_run automation must keep the exact v4 branch checkout until migration lands on main.
-grep -q "ref: codex/v4-production-controller" "$WORKFLOW"
+# v4 controller has landed on main; workflow_run must consume the default-branch implementation.
+grep -q '^[[:space:]]*ref: main$' "$WORKFLOW" || {
+  echo 'FAIL: v4 toolchain bootstrap must checkout main after controller merge' >&2
+  exit 1
+}
 
 echo 'PASS: v4 toolchain bootstrap planning, manual gate and one-time auto-handoff are correct.'
