@@ -1,5 +1,19 @@
 # Arthur Real Device Verification
 
+## Run 33182381566 — rejected FIRST BOOT candidate
+
+- Candidate: `XinZhaoWrt-Arthur-v0.1.3-20260828-sysupgrade.bin`
+- Build / artifact identity / SHA256 / profile / target / source commit / 22-plugin manifest: PASS
+- Clean Flash: PASS
+- LAN Default: PASS — `192.168.6.1/24`
+- FIRST BOOT: FAIL — `xinzhaowrt.system.initialized` and `xinzhaowrt.system.firmware` were absent.
+- Known-Good: NO
+- Root cause: an absent `/etc/config/xinzhaowrt` makes UCI report `Entry not found`; `uci -q batch` suppresses that error and returns zero, so the old defaults script was removed without committing markers.
+- Targeted fix: explicit atomic package creation, fail-closed UCI transaction, stage evidence, and real-UCI runtime/idempotence gate.
+- Runtime preflight: PASS on isolated real UCI (`FIRST_BOOT_RUNTIME_GATE`, `FIRST_BOOT_IDEMPOTENCE`).
+- QuickStart runtime: FAIL / INVESTIGATING — its ELF executable fails on Arthur aarch64 (procd exit 127); the shell fallback produces the observed syntax error. Nginx owns ports 80/443; uhttpd conflict remains a separate web-stack issue.
+- Next: ROOT CAUSE → TARGETED FIX → RUNTIME PREFLIGHT → WEB STACK GATE → NEW CANDIDATE. Do not rebuild or flash this rejected candidate.
+
 - Started: 2026-08-28 15:58 +08:00
 - Scope: resumed from an already-flashed, booted firmware. No build, download, flash, factory reset, or configuration rewrite is permitted.
 

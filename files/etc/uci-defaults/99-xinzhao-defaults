@@ -1,49 +1,75 @@
 #!/bin/sh
 # First-install defaults for 新肇网络Wrt-京东云亚瑟固件.
-# Once initialized, a persistent /etc/config/xinzhaowrt marker prevents these
-# defaults from being re-applied on later sysupgrades that preserve config.
+# A successful transaction persists xinzhaowrt.system.initialized so later
+# sysupgrades that retain configuration do not reapply these defaults.
 
 set -eu
+
+shadow_file="${XINZHAO_SHADOW_FILE:-/etc/shadow}"
+config_dir="${XINZHAO_CONFIG_DIR:-/etc/config}"
+marker_file="$config_dir/xinzhaowrt"
+
+log() {
+    logger -t xinzhaowrt "$*" || true
+}
+
+fail() {
+    log "FIRSTBOOT_FAIL stage=$1"
+    exit 1
+}
 
 if [ "$(uci -q get xinzhaowrt.system.initialized 2>/dev/null || true)" = "1" ]; then
     exit 0
 fi
 
+log 'FIRSTBOOT_START'
+
 current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
 case "$current_ip" in
     ''|'192.168.1.1'|'192.168.1.1/24')
-        uci -q set network.lan.ipaddr='192.168.6.1/24'
-        uci -q commit network
-        logger -t xinzhaowrt 'Initial LAN IP set to 192.168.6.1'
+        uci set network.lan.ipaddr='192.168.6.1/24' || fail lan_set
+        uci commit network || fail lan_commit
+        [ "$(uci get network.lan.ipaddr)" = '192.168.6.1/24' ] || fail lan_verify
         ;;
     *)
-        logger -t xinzhaowrt "Existing LAN IP preserved: $current_ip"
+        log "Existing LAN IP preserved: $current_ip"
         ;;
 esac
+log 'LAN_CONFIG_PASS'
 
-root_hash="$(awk -F: '$1 == "root" { print $2; exit }' /etc/shadow 2>/dev/null || true)"
+root_hash="$(awk -F: '$1 == "root" { print $2; exit }' "$shadow_file" 2>/dev/null || true)"
 case "$root_hash" in
     ''|'!'|'*')
         password_hash='$6$XZArthur01$1dyEnJigbC4dTZIO2sFYbcFnYiIh/FDhGUlok.m7NTR.07..EIUUdX6ePtXm6AtPFy2MndBJgHamEFx.w8.Wf0'
+        shadow_tmp="/tmp/shadow.xinzhaowrt.$$"
         awk -F: -v OFS=: -v hash="$password_hash" '
             $1 == "root" { $2 = hash }
             { print }
-        ' /etc/shadow > /tmp/shadow.xinzhaowrt
-        cat /tmp/shadow.xinzhaowrt > /etc/shadow
-        rm -f /tmp/shadow.xinzhaowrt
-        chmod 600 /etc/shadow
-        logger -t xinzhaowrt 'Initial root password applied'
+        ' "$shadow_file" > "$shadow_tmp" || fail root_password_render
+        cat "$shadow_tmp" > "$shadow_file" || fail root_password_write
+        rm -f "$shadow_tmp" || fail root_password_cleanup
+        chmod 600 "$shadow_file" || fail root_password_mode
         ;;
     *)
-        logger -t xinzhaowrt 'Existing root password preserved'
+        log 'Existing root password preserved'
         ;;
 esac
+log 'ROOT_CREDENTIAL_PASS'
 
-uci -q batch <<'UCI'
-set xinzhaowrt.system=system
-set xinzhaowrt.system.initialized='1'
-set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur'
-commit xinzhaowrt
-UCI
+if [ ! -e "$marker_file" ]; then
+    marker_tmp="$marker_file.tmp.$$"
+    ( umask 077; : > "$marker_tmp" ) || fail marker_package_prepare
+    chmod 600 "$marker_tmp" || fail marker_package_mode
+    mv -f "$marker_tmp" "$marker_file" || fail marker_package_create
+fi
 
+uci set xinzhaowrt.system=system || fail marker_set_section
+uci set xinzhaowrt.system.initialized='1' || fail marker_set_initialized
+uci set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur' || fail marker_set_firmware
+uci commit xinzhaowrt || fail marker_commit
+[ "$(uci get xinzhaowrt.system.initialized)" = '1' ] || fail marker_verify_initialized
+[ "$(uci get xinzhaowrt.system.firmware)" = 'XinZhaoWrt-Arthur' ] || fail marker_verify_firmware
+
+log 'MARKER_CONFIG_PASS'
+log 'FIRSTBOOT_COMPLETE'
 exit 0

@@ -3,7 +3,7 @@
   "firmware": "XinZhaoWrt / ImmortalWRT SNAPSHOT r0+1-27e26e324",
   "build": "existing flashed device; no build action performed",
   "verification_started": "2026-08-28T15:58:00+08:00",
-  "current_stage": "IN_PROGRESS",
+  "current_stage": "FIRST_BOOT_ROOT_CAUSE",
   "passed": {
     "windows_network_discovery": "PASS",
     "lan_reachability": "PASS",
@@ -64,6 +64,9 @@
   "fixed_candidate": {
     "source_commit": "a735e34cc5b787a9c62f4138741abe55affe960a",
     "source_validation": "PASS",
+    "config_gate_fix_commit": "65bb7b4c04fdcbad1bb77327157936fddff85e2d",
+    "config_gate_fix_branch": "codex/v013-source-fetch-recovery",
+    "config_gate_fix_push": "PASS",
     "previous_failed_run": "33152832160",
     "previous_failure_reason": "CONFIG_VERSIONOPT lost during make defconfig because CONFIG_IMAGEOPT was not enabled.",
     "config_gate_static": "PASS",
@@ -71,15 +74,18 @@
     "github_authentication": "PASS",
     "github_authenticated_api": "PASS",
     "github_actions_access": "REMOTE_ACTIONS_MONITORING_EXTERNAL",
-    "build": "IN_PROGRESS",
-    "build_provenance": "NOT_STARTED",
-    "clean_flash": "NOT_STARTED",
-    "first_boot_acceptance": "NOT_STARTED",
+    "build": "PASS (run 33182381566)",
+    "build_provenance": "PASS",
+    "candidate": "REJECTED_FIRST_BOOT",
+    "clean_flash": "PASS",
+    "lan_default": "PASS (192.168.6.1/24)",
+    "first_boot_acceptance": "FAIL (initialized and firmware markers absent)",
     "real_device_verification": "NOT_STARTED",
     "reboot_persistence": "NOT_STARTED",
     "known_good": "NOT_STARTED",
     "monitoring_mode": "REMOTE_ACTIONS_MONITORING_EXTERNAL",
-    "blocker": "NONE"
+    "quickstart_runtime": "FAIL / INVESTIGATING (ELF exec failure on aarch64; procd exit 127)",
+    "blocker": "ROOT CAUSE → TARGETED FIX → RUNTIME PREFLIGHT → NEW CANDIDATE"
   },
-  "next_action": "Push the minimal defconfig identity-gate fix to codex/v013-source-fetch-recovery. The existing push trigger must run the real defconfig gate before any candidate artifact, clean flash, or device acceptance proceeds."
+  "next_action": "Run FIRST_BOOT_RUNTIME_GATE and WEB_STACK_GATE against the toolchain bootstrap outputs, then select ImageBuilder unless QuickStart requires an SDK package rebuild. Do not full-build or flash the rejected candidate."
 }
