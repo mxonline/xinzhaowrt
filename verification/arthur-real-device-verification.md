@@ -11,8 +11,10 @@
 - Root cause: an absent `/etc/config/xinzhaowrt` makes UCI report `Entry not found`; `uci -q batch` suppresses that error and returns zero, so the old defaults script was removed without committing markers.
 - Targeted fix: explicit atomic package creation, fail-closed UCI transaction, stage evidence, and real-UCI runtime/idempotence gate.
 - Runtime preflight: PASS on isolated real UCI (`FIRST_BOOT_RUNTIME_GATE`, `FIRST_BOOT_IDEMPOTENCE`).
-- QuickStart runtime: FAIL / INVESTIGATING — its ELF executable fails on Arthur aarch64 (procd exit 127); the shell fallback produces the observed syntax error. Nginx owns ports 80/443; uhttpd conflict remains a separate web-stack issue.
-- Next: ROOT CAUSE → TARGETED FIX → RUNTIME PREFLIGHT → WEB STACK GATE → NEW CANDIDATE. Do not rebuild or flash this rejected candidate.
+- QuickStart runtime: FAIL / ROOT CAUSE CONFIRMED — extracted `/usr/sbin/quickstart` is a statically linked `ELF32 ARM EABI5` executable (no dynamic interpreter or shared-library dependencies), while Arthur runs `aarch64` / `aarch64_cortex-a53`. procd exit 127 is therefore a wrong-architecture exec failure; ash then misparses the ELF as a script.
+- QuickStart source correction: PASS (static) — the Kenzok8 feed bootstrap had replaced `quickstart.$(PKG_ARCH_quickstart)` with `quickstart.arm`; the correction preserves the target-architecture artifact selection. SDK rebuild remains pending bootstrap acceptance.
+- Web stack: static gate PASS — nginx remains primary and the new overlay stops/disables uhttpd before enabling/restarting nginx. Runtime gate is pending the rebuilt aarch64 QuickStart package.
+- Next: wait for bootstrap `33196164359` → SDK_BUILD QuickStart → ImageBuilder → runtime WEB_STACK_GATE → replacement candidate. Do not full-build or flash this rejected candidate.
 
 - Started: 2026-08-28 15:58 +08:00
 - Scope: resumed from an already-flashed, booted firmware. No build, download, flash, factory reset, or configuration rewrite is permitted.

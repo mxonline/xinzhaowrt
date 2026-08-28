@@ -52,19 +52,15 @@ clone_or_update \
   "${KENZOK8_REF:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# 京东云亚瑟 IPQ60xx 的 OpenWrt 架构名为 arm_cortex-a7，而 quickstart
-# 上游发布的是通用 arm 二进制。仅修正临时自定义 feed 的元数据，不修改
-# config/arthur.config 或 config/required-plugins.txt。
+# Arthur emits aarch64_cortex-a53 packages.  The QuickStart Makefile chooses a
+# matching upstream artifact through PKG_ARCH_quickstart; never substitute the
+# 32-bit generic ARM executable into an aarch64 package.
 QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
 if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
    grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
-  sed -i \
-    -e 's/DEPENDS:=@(x86_64||aarch64||arm) /DEPENDS:=/' \
-    -e 's/quickstart\.\$(PKG_ARCH_quickstart)/quickstart.arm/' \
-    "$QUICKSTART_MAKEFILE"
-  echo 'PATCHED_PACKAGE_ARCH: quickstart keeps target package arch and installs generic arm binary'
+  echo 'QUICKSTART_ARTIFACT_ARCH: use quickstart.$(PKG_ARCH_quickstart) for the SDK target architecture'
 else
-  echo 'ERROR: quickstart Makefile 的预期架构声明已变化，拒绝静默应用兼容性补丁。' >&2
+  echo 'ERROR: QuickStart Makefile architecture selection changed; refusing to replace the target artifact.' >&2
   exit 1
 fi
 

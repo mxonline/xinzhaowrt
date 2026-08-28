@@ -3,7 +3,7 @@
   "firmware": "XinZhaoWrt / ImmortalWRT SNAPSHOT r0+1-27e26e324",
   "build": "existing flashed device; no build action performed",
   "verification_started": "2026-08-28T15:58:00+08:00",
-  "current_stage": "FIRST_BOOT_ROOT_CAUSE",
+  "current_stage": "QUICKSTART_SDK_WAIT",
   "passed": {
     "windows_network_discovery": "PASS",
     "lan_reachability": "PASS",
@@ -80,12 +80,17 @@
     "clean_flash": "PASS",
     "lan_default": "PASS (192.168.6.1/24)",
     "first_boot_acceptance": "FAIL (initialized and firmware markers absent)",
-    "real_device_verification": "NOT_STARTED",
+    "first_boot_runtime_gate": "PASS (isolated real UCI)",
+    "first_boot_idempotence": "PASS (isolated real UCI)",
+    "first_boot_static_check": "PASS",
+    "quickstart_runtime": "FAIL (wrong architecture: installed ELF32 ARM EABI5 on Arthur aarch64)",
+    "quickstart_source_gate": "PASS (target artifact selection restored; SDK rebuild pending)",
+    "web_stack_static_gate": "PASS (nginx primary; uhttpd disable overlay)",
+    "real_device_verification": "PAUSED (failed router preserved; no reflash)",
     "reboot_persistence": "NOT_STARTED",
     "known_good": "NOT_STARTED",
     "monitoring_mode": "REMOTE_ACTIONS_MONITORING_EXTERNAL",
-    "quickstart_runtime": "FAIL / INVESTIGATING (ELF exec failure on aarch64; procd exit 127)",
-    "blocker": "ROOT CAUSE → TARGETED FIX → RUNTIME PREFLIGHT → NEW CANDIDATE"
+    "blocker": "WAIT_TOOLCHAIN_BOOTSTRAP_33196164359 → SDK_BUILD quickstart → IMAGEBUILDER candidate"
   },
-  "next_action": "Run FIRST_BOOT_RUNTIME_GATE and WEB_STACK_GATE against the toolchain bootstrap outputs, then select ImageBuilder unless QuickStart requires an SDK package rebuild. Do not full-build or flash the rejected candidate."
+  "next_action": "When bootstrap 33196164359 passes all SDK/ImageBuilder/repository/SHA256/provenance/lock checks, SDK-build only QuickStart for aarch64_cortex-a53, then assemble with ImageBuilder. Do not full-build or flash the rejected candidate."
 }
