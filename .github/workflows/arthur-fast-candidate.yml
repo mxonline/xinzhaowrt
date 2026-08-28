@@ -1,0 +1,177 @@
+name: Arthur Fast Candidate SDK and ImageBuilder
+
+'on':
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm the SDK-only QuickStart and ImageBuilder candidate lane
+        required: true
+        default: 'NO'
+        type: choice
+        options:
+          - 'NO'
+          - 'BUILD_FAST_CANDIDATE'
+      toolchain_tag:
+        description: Verified Arthur toolchain release
+        required: true
+        default: arthur-toolchain-v0.1.0-33196164359
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-fast-candidate
+  cancel-in-progress: false
+
+jobs:
+  build-fast-candidate:
+    if: ${{ inputs.confirm == 'BUILD_FAST_CANDIDATE' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@v4
+
+      - name: Install minimal runtime tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static zstd
+
+      - name: Validate source gates
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh tests/*.sh
+          ./scripts/check-defaults.sh
+          ./scripts/check-web-stack.sh
+          ./tests/test-fast-candidate-workflow.sh
+
+      - name: Download and verify accepted toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOLCHAIN_TAG: ${{ inputs.toolchain_tag }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p toolchain
+          gh release download "$TOOLCHAIN_TAG" --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber \
+            --pattern SHA256SUMS \
+            --pattern toolchain-acceptance.json \
+            --pattern toolchain-provenance.json \
+            --pattern arthur-known-good.lock \
+            --pattern full.config \
+            --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' \
+            --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst' \
+            --pattern package-repositories.tar.gz
+          (
+            cd toolchain
+            sha256sum -c SHA256SUMS
+          )
+          python3 - <<'PY'
+          import json
+          acceptance = json.load(open('toolchain/toolchain-acceptance.json', encoding='utf-8'))
+          provenance = json.load(open('toolchain/toolchain-provenance.json', encoding='utf-8'))
+          assert acceptance['status'] == 'verified'
+          assert acceptance['device'] == 'jdcloud_re-ss-01'
+          assert acceptance['target'] == 'qualcommax'
+          assert acceptance['subtarget'] == 'ipq60xx'
+          assert provenance['config'] == {'CONFIG_SDK': 'y', 'CONFIG_IB': 'y', 'CONFIG_IB_STANDALONE': 'y'}
+          print('TOOLCHAIN_ACCEPTANCE=PASS')
+          PY
+          cmp -s config/arthur-known-good.lock toolchain/arthur-known-good.lock
+          echo 'TOOLCHAIN_LOCK=PASS'
+
+      - name: SDK_BUILD QuickStart only
+        run: |
+          set -Eeuo pipefail
+          mkdir -p sdk imagebuilder sources
+          tar --zstd -xf toolchain/immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst -C sdk
+          SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
+          test -n "$SDK_DIR"
+          git clone https://github.com/kenzok8/openwrt-packages.git sources/kenzok8
+          git -C sources/kenzok8 checkout "$(sed -n 's/^KENZOK8_REF="\([0-9a-f]\{40\}\)"$/\1/p' config/arthur-known-good.lock)"
+          grep -Fq 'PKG_ARCH_quickstart:=$(ARCH)' sources/kenzok8/quickstart/Makefile
+          ! grep -Fq 'quickstart.arm' sources/kenzok8/quickstart/Makefile
+          mkdir -p "$SDK_DIR/package/feeds/xinzhao"
+          ln -s "$GITHUB_WORKSPACE/sources/kenzok8/quickstart" "$SDK_DIR/package/feeds/xinzhao/quickstart"
+          printf '\nCONFIG_PACKAGE_quickstart=m\n' >> "$SDK_DIR/.config"
+          make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/feeds/xinzhao/quickstart/compile V=s
+          QUICKSTART_APK="$(find "$SDK_DIR/bin/packages/aarch64_cortex-a53" -type f -name 'quickstart-*.apk' -print -quit)"
+          test -n "$QUICKSTART_APK"
+          mkdir quickstart-root
+          tar --zstd -xf "$QUICKSTART_APK" -C quickstart-root
+          file quickstart-root/usr/sbin/quickstart | grep -Eq 'ELF 64-bit.*ARM aarch64'
+          qemu-aarch64-static quickstart-root/usr/sbin/quickstart --help >/dev/null
+          set +e
+          timeout 10 qemu-aarch64-static quickstart-root/usr/sbin/quickstart serve --unix /tmp/quickstart.sock >/tmp/quickstart-serve.log 2>&1
+          quickstart_exit=$?
+          set -e
+          test "$quickstart_exit" -ne 127
+          echo "QUICKSTART_APK=$QUICKSTART_APK" >> "$GITHUB_ENV"
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+          echo 'QUICKSTART_SDK_BUILD=PASS'
+
+      - name: Assemble candidate with ImageBuilder
+        run: |
+          set -Eeuo pipefail
+          tar --zstd -xf toolchain/immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst -C imagebuilder
+          IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-imagebuilder-*' -print -quit)"
+          test -n "$IB_DIR"
+          mkdir -p "$IB_DIR/repositories"
+          tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
+          REPO_DIR="$IB_DIR/repositories/packages/aarch64_cortex-a53/xinzhao"
+          test -d "$REPO_DIR"
+          cp "$QUICKSTART_APK" "$REPO_DIR/"
+          SDK_APK="$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
+          test -x "$SDK_APK"
+          (
+            cd "$REPO_DIR"
+            "$SDK_APK" index --output packages.adb ./*.apk
+          )
+          REPOSITORIES_CONF="$(find "$IB_DIR" -maxdepth 2 -name repositories.conf -print -quit)"
+          test -n "$REPOSITORIES_CONF"
+          printf 'src/gz xinzhao_local file://%s\n' "$REPO_DIR" | cat - "$REPOSITORIES_CONF" > "$REPOSITORIES_CONF.new"
+          mv "$REPOSITORIES_CONF.new" "$REPOSITORIES_CONF"
+          mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          mkdir -p image-files
+          cp -a files/. image-files/
+          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
+          FIRMWARE="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -type f -name '*sysupgrade.bin' -size +0c -print -quit)"
+          test -n "$FIRMWARE"
+          mkdir -p output/firmware
+          cp "$FIRMWARE" output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin
+          sha256sum output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
+          echo 'IMAGEBUILDER=PASS'
+
+      - name: WEB_STACK_GATE and artifact validation
+        run: |
+          set -Eeuo pipefail
+          test -x image-files/etc/uci-defaults/98-xinzhao-web-stack
+          grep -Fq '/etc/init.d/uhttpd disable' image-files/etc/uci-defaults/98-xinzhao-web-stack
+          grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack
+          test -s output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin
+          grep -Fq 'jdcloud_re-ss-01' toolchain/build-info.txt
+          grep -Fq 'qualcommax/ipq60xx' toolchain/build-info.txt
+          sha256sum -c output/firmware/SHA256SUMS.local
+          echo 'WEB_STACK_GATE=PASS'
+          echo 'SYSUPGRADE_ARTIFACT_GATE=PASS'
+
+      - name: Publish fast candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          tag="arthur-fast-candidate-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin \
+            output/firmware/SHA256SUMS.local \
+            toolchain/toolchain-provenance.json \
+            toolchain/toolchain-acceptance.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Arthur Fast Candidate ${GITHUB_RUN_ID}" \
+            --notes 'SDK-built QuickStart and ImageBuilder-only Arthur candidate. No kernel or full firmware build. Clean flash is required before Known-Good acceptance.' \
+            --prerelease
