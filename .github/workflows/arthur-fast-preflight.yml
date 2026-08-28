@@ -34,6 +34,9 @@ jobs:
       - name: Test v4 toolchain bootstrap gate
         run: ./tests/test-v4-toolchain-bootstrap.sh
 
+      - name: Test v4 toolchain acceptance gate
+        run: ./tests/test-v4-toolchain-acceptance.sh
+
       - name: Determine changed files
         id: changes
         if: success()
