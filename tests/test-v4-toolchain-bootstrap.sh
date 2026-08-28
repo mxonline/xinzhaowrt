@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP="$ROOT/scripts/v4-toolchain-bootstrap.sh"
 WORKFLOW="$ROOT/.github/workflows/arthur-toolchain-bootstrap-v4.yml"
+LEGACY_RUN_ID='33182381566'
 
 [[ -x "$BOOTSTRAP" ]] || {
   echo "FAIL: missing executable scripts/v4-toolchain-bootstrap.sh" >&2
@@ -42,13 +43,22 @@ fi
   echo 'FAIL: missing arthur-toolchain-bootstrap-v4.yml' >&2
   exit 1
 }
+
 grep -q 'workflow_dispatch:' "$WORKFLOW"
+grep -q 'workflow_run:' "$WORKFLOW"
+grep -q 'Arthur Known-Good Fast Lane v1' "$WORKFLOW"
+grep -q "github.event.workflow_run.id == ${LEGACY_RUN_ID}" "$WORKFLOW"
 grep -q 'v4-toolchain-bootstrap.sh --plan' "$WORKFLOW"
 grep -q 'v4-toolchain-bootstrap.sh --execute' "$WORKFLOW"
 grep -q 'actions/upload-artifact@v4' "$WORKFLOW"
+
+# The bootstrap may auto-handoff only from the one legacy run, never from arbitrary pushes.
 if grep -Eq '^[[:space:]]+push:' "$WORKFLOW"; then
   echo 'FAIL: v4 toolchain bootstrap must not auto-run on push' >&2
   exit 1
 fi
 
-echo 'PASS: v4 toolchain bootstrap planning and workflow gates are correct.'
+# workflow_run automation must keep the exact v4 branch checkout until migration lands on main.
+grep -q "ref: codex/v4-production-controller" "$WORKFLOW"
+
+echo 'PASS: v4 toolchain bootstrap planning, manual gate and one-time auto-handoff are correct.'
