@@ -6,8 +6,8 @@
   "migration_branch": "codex/v4-production-controller",
   "base_branch": "main",
   "base_commit": "b4ee915e94aad7bfea7a281ef2d0b59de781b6df",
-  "current_stage": "ROUTING_MIGRATION",
-  "stage_status": "IN_PROGRESS",
+  "current_stage": "TOOLCHAIN_BOOTSTRAP_GATE",
+  "stage_status": "BLOCKED_BY_ACTIVE_LEGACY_FULL_BUILD",
   "reuse_gate": {
     "status": "DONE",
     "decision": "REUSE_FORK",
@@ -30,11 +30,34 @@
     "verification": "real-device-confirmed",
     "verified_at": "2026-08-25T17:23:41.432638+00:00"
   },
+  "routing": {
+    "status": "VERIFIED",
+    "workflow_run": 33187441194,
+    "scopes": [
+      "DOC_ONLY",
+      "FAST_GATE",
+      "IMAGEBUILDER",
+      "SDK_BUILD",
+      "FULL_BUILD"
+    ],
+    "policy": "Unknown or ABI-sensitive changes fail closed to FULL_BUILD."
+  },
+  "toolchain_bootstrap": {
+    "status": "BLOCKED",
+    "reason": "Stable v0.1.0 release does not contain matching SDK or ImageBuilder archives, and legacy Full Build run 33182381566 is still active. Do not launch a second heavy build concurrently.",
+    "required_outputs": [
+      "Known-Good-matched SDK",
+      "Known-Good-matched ImageBuilder",
+      "package repository/index for required packages",
+      "toolchain provenance and SHA256"
+    ],
+    "implementation_basis": "OpenWrt build system CONFIG_SDK + CONFIG_IB outputs"
+  },
   "lanes": {
     "DOC_ONLY": "READY",
-    "FAST_GATE": "READY",
-    "IMAGEBUILDER": "PLANNED",
-    "SDK_BUILD": "PLANNED",
+    "FAST_GATE": "READY_VERIFIED",
+    "IMAGEBUILDER": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP",
+    "SDK_BUILD": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP",
     "FULL_BUILD": "READY_FALLBACK",
     "REAL_DEVICE": "HUMAN_REVIEW_GATE"
   },
@@ -42,15 +65,20 @@
     "run_id": 33182381566,
     "workflow": "Arthur Known-Good Fast Lane v1",
     "branch": "codex/v013-source-fetch-recovery",
+    "status": "IN_PROGRESS",
+    "step": "Build frozen Arthur baseline",
     "role": "candidate_only",
-    "policy": "Do not let this legacy full build block v4 migration or mutate the verified v0.1.0 Stable baseline automatically."
+    "policy": "Do not let this legacy full build block v4 control-plane migration or mutate the verified v0.1.0 Stable baseline automatically."
   },
   "completed_stages": [
     "REUSE_GATE",
     "KNOWN_GOOD_DISCOVERY",
     "KNOWN_GOOD_LOCK",
-    "V4_ISOLATED_BRANCH"
+    "V4_ISOLATED_BRANCH",
+    "V4_ROUTING_TEST_RED",
+    "V4_ROUTING_IMPLEMENTATION",
+    "V4_ROUTING_VERIFIED"
   ],
-  "next_action": "Extend routing from DOC_ONLY/FAST_GATE/FULL_BUILD to explicit IMAGEBUILDER/SDK_BUILD/FULL_BUILD lanes without weakening the existing Known-Good, 22-plugin, checksum, OOM and real-device gates.",
+  "next_action": "When legacy Full Build 33182381566 is no longer active, perform one Known-Good-locked bootstrap build with CONFIG_SDK and CONFIG_IB enabled, publish SDK/ImageBuilder/package repository artifacts, verify provenance, then mark IMAGEBUILDER and SDK_BUILD READY.",
   "rollback_target": "main@b4ee915e94aad7bfea7a281ef2d0b59de781b6df + production/known-good.json stable v0.1.0"
 }
