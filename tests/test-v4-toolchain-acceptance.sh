@@ -3,9 +3,14 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERIFY="$ROOT/scripts/v4-verify-toolchain.sh"
+WORKFLOW="$ROOT/.github/workflows/arthur-toolchain-bootstrap-v4.yml"
 
 [[ -x "$VERIFY" ]] || {
   echo 'FAIL: missing executable scripts/v4-verify-toolchain.sh' >&2
+  exit 1
+}
+[[ -f "$WORKFLOW" ]] || {
+  echo 'FAIL: missing Arthur Toolchain Bootstrap v4 workflow' >&2
   exit 1
 }
 
@@ -101,4 +106,13 @@ if TOOLCHAIN_DIR="$missing" "$VERIFY" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo 'PASS: v4 toolchain acceptance gate behavior is correct.'
+grep -q 'v4-verify-toolchain.sh' "$WORKFLOW" || {
+  echo 'FAIL: bootstrap workflow does not run the toolchain acceptance verifier' >&2
+  exit 1
+}
+grep -q '^[[:space:]]*ref: main$' "$WORKFLOW" || {
+  echo 'FAIL: bootstrap workflow must checkout main after v4 controller merge' >&2
+  exit 1
+}
+
+echo 'PASS: v4 toolchain acceptance gate behavior and workflow integration are correct.'
