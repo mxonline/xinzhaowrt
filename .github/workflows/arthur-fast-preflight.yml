@@ -24,12 +24,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize test permissions
+      - name: Normalize script permissions
         run: |
-          chmod +x tests/*.sh || true
+          chmod +x tests/*.sh scripts/*.sh || true
 
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
+
+      - name: Test v4 toolchain bootstrap gate
+        run: ./tests/test-v4-toolchain-bootstrap.sh
 
       - name: Determine changed files
         id: changes
@@ -52,9 +55,7 @@ jobs:
 
       - name: Run static project verification
         if: success() && steps.changes.outputs.scope != 'DOC_ONLY'
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/verify-project.sh
+        run: ./scripts/verify-project.sh
 
       - name: Preflight summary
         if: always()
@@ -66,5 +67,7 @@ jobs:
             echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
             echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
             echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
-            echo '- FULL_BUILD: firmware-affecting or unknown change; run Arthur Known-Good Update v3 separately.'
+            echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'
+            echo '- SDK_BUILD: rebuild user-space packages with the Known-Good-matched SDK.'
+            echo '- FULL_BUILD: kernel/ABI/unknown change; full Candidate build required.'
           } >> "$GITHUB_STEP_SUMMARY"

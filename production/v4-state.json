@@ -1,0 +1,104 @@
+{
+  "schema_version": "4.0",
+  "controller": "OpenWrt firmware production v4.0",
+  "project": "新肇网络Wrt-京东云亚瑟固件",
+  "device": "jdcloud_re-ss-01",
+  "migration_branch": "codex/v4-production-controller",
+  "base_branch": "main",
+  "base_commit": "b4ee915e94aad7bfea7a281ef2d0b59de781b6df",
+  "current_stage": "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_ARMED",
+  "stage_status": "WAITING_FOR_LEGACY_RUN_COMPLETION",
+  "reuse_gate": {
+    "status": "DONE",
+    "decision": "REUSE_FORK",
+    "controller_base": "mxonline/xinzhaowrt@main",
+    "upstream_build_ecosystem": [
+      "VIKINGYFY/immortalwrt",
+      "VIKINGYFY/OpenWRT-CI",
+      "OpenWrt ImageBuilder/SDK model"
+    ],
+    "rule": "Do not rebuild from scratch when a smaller validated lane can produce the required artifact."
+  },
+  "known_good": {
+    "status": "VERIFIED",
+    "stable_tag": "v0.1.0",
+    "candidate_tag": "arthur-known-good-32853100232",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin",
+    "sha256": "9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d",
+    "upstream_repo": "https://github.com/VIKINGYFY/immortalwrt.git",
+    "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
+    "verification": "real-device-confirmed",
+    "verified_at": "2026-08-25T17:23:41.432638+00:00"
+  },
+  "routing": {
+    "status": "VERIFIED",
+    "workflow_run": 33187441194,
+    "scopes": [
+      "DOC_ONLY",
+      "FAST_GATE",
+      "IMAGEBUILDER",
+      "SDK_BUILD",
+      "FULL_BUILD"
+    ],
+    "policy": "Unknown or ABI-sensitive changes fail closed to FULL_BUILD."
+  },
+  "toolchain_bootstrap": {
+    "status": "AUTO_HANDOFF_ARMED",
+    "preflight_run": 33188621568,
+    "workflow": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
+    "executor": "scripts/v4-toolchain-bootstrap.sh",
+    "trigger_mode": "workflow_run_exact_id_or_manual_confirm",
+    "handoff_source_workflow": "Arthur Known-Good Fast Lane v1",
+    "handoff_source_run_id": 33182381566,
+    "parallel_build_guard": true,
+    "reason": "The bootstrap workflow is prepared to start exactly once when legacy Full Build run 33182381566 reaches completed state. Stable v0.1.0 remains read-only.",
+    "required_outputs": [
+      "Known-Good-matched SDK",
+      "Known-Good-matched standalone ImageBuilder",
+      "package repository archive",
+      "toolchain provenance JSON",
+      "SHA256SUMS"
+    ],
+    "config": [
+      "CONFIG_SDK=y",
+      "CONFIG_IB=y",
+      "CONFIG_IB_STANDALONE=y"
+    ],
+    "implementation_basis": "ImmortalWrt/OpenWrt native SDK and ImageBuilder bundle outputs"
+  },
+  "lanes": {
+    "DOC_ONLY": "READY",
+    "FAST_GATE": "READY_VERIFIED",
+    "IMAGEBUILDER": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
+    "SDK_BUILD": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
+    "FULL_BUILD": "READY_FALLBACK",
+    "REAL_DEVICE": "HUMAN_REVIEW_GATE"
+  },
+  "legacy_active_run": {
+    "run_id": 33182381566,
+    "workflow": "Arthur Known-Good Fast Lane v1",
+    "branch": "codex/v013-source-fetch-recovery",
+    "status": "IN_PROGRESS",
+    "step": "Build frozen Arthur baseline",
+    "role": "candidate_only",
+    "policy": "Do not let this legacy full build mutate the verified v0.1.0 Stable baseline automatically. v4 Bootstrap waits for its completed event."
+  },
+  "completed_stages": [
+    "REUSE_GATE",
+    "KNOWN_GOOD_DISCOVERY",
+    "KNOWN_GOOD_LOCK",
+    "V4_ISOLATED_BRANCH",
+    "V4_ROUTING_TEST_RED",
+    "V4_ROUTING_IMPLEMENTATION",
+    "V4_ROUTING_VERIFIED",
+    "TOOLCHAIN_BOOTSTRAP_TEST_RED",
+    "TOOLCHAIN_BOOTSTRAP_EXECUTOR_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_WORKFLOW_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_FAST_GATE_VERIFIED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_TEST_RED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_VERIFIED"
+  ],
+  "next_action": "Merge v4 controller PR into main so workflow_run listener is active. When legacy run 33182381566 completes, Arthur Toolchain Bootstrap v4 auto-starts, then verify SDK/ImageBuilder/package repository/provenance/SHA256 artifacts and enable IMAGEBUILDER and SDK_BUILD lanes.",
+  "rollback_target": "main@b4ee915e94aad7bfea7a281ef2d0b59de781b6df + production/known-good.json stable v0.1.0"
+}
