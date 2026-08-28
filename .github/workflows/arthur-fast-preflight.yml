@@ -24,9 +24,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize test permissions
+      - name: Normalize script permissions
         run: |
-          chmod +x tests/*.sh || true
+          chmod +x tests/*.sh scripts/*.sh || true
 
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
@@ -55,9 +55,7 @@ jobs:
 
       - name: Run static project verification
         if: success() && steps.changes.outputs.scope != 'DOC_ONLY'
-        run: |
-          chmod +x scripts/*.sh
-          ./scripts/verify-project.sh
+        run: ./scripts/verify-project.sh
 
       - name: Preflight summary
         if: always()
