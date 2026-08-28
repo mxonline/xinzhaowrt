@@ -3,9 +3,9 @@
   "controller": "OpenWrt firmware production v4.0",
   "project": "新肇网络Wrt-京东云亚瑟固件",
   "device": "jdcloud_re-ss-01",
-  "migration_branch": "codex/v4-production-controller",
   "base_branch": "main",
-  "base_commit": "b4ee915e94aad7bfea7a281ef2d0b59de781b6df",
+  "controller_merge_commit": "e4d5953b8d3882c9b37e0d34e737bc7571a705de",
+  "acceptance_merge_commit": "f3425c36899d8f10c0d82655d7ceafd033e08200",
   "current_stage": "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_ARMED",
   "stage_status": "WAITING_FOR_LEGACY_RUN_COMPLETION",
   "reuse_gate": {
@@ -44,20 +44,22 @@
   },
   "toolchain_bootstrap": {
     "status": "AUTO_HANDOFF_ARMED",
-    "preflight_run": 33188621568,
     "workflow": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
     "executor": "scripts/v4-toolchain-bootstrap.sh",
+    "acceptance_verifier": "scripts/v4-verify-toolchain.sh",
+    "acceptance_preflight_run": 33190044867,
     "trigger_mode": "workflow_run_exact_id_or_manual_confirm",
     "handoff_source_workflow": "Arthur Known-Good Fast Lane v1",
     "handoff_source_run_id": 33182381566,
     "parallel_build_guard": true,
-    "reason": "The bootstrap workflow is prepared to start exactly once when legacy Full Build run 33182381566 reaches completed state. Stable v0.1.0 remains read-only.",
+    "publication_gate": "SDK/ImageBuilder/package repository/SHA256/provenance/Known-Good lock must verify before artifact upload or Release publication",
     "required_outputs": [
       "Known-Good-matched SDK",
       "Known-Good-matched standalone ImageBuilder",
       "package repository archive",
       "toolchain provenance JSON",
-      "SHA256SUMS"
+      "SHA256SUMS",
+      "toolchain acceptance JSON"
     ],
     "config": [
       "CONFIG_SDK=y",
@@ -87,18 +89,16 @@
     "REUSE_GATE",
     "KNOWN_GOOD_DISCOVERY",
     "KNOWN_GOOD_LOCK",
-    "V4_ISOLATED_BRANCH",
-    "V4_ROUTING_TEST_RED",
-    "V4_ROUTING_IMPLEMENTATION",
     "V4_ROUTING_VERIFIED",
-    "TOOLCHAIN_BOOTSTRAP_TEST_RED",
     "TOOLCHAIN_BOOTSTRAP_EXECUTOR_IMPLEMENTED",
     "TOOLCHAIN_BOOTSTRAP_WORKFLOW_IMPLEMENTED",
-    "TOOLCHAIN_BOOTSTRAP_FAST_GATE_VERIFIED",
-    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_TEST_RED",
-    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_IMPLEMENTED",
-    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_VERIFIED"
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_VERIFIED",
+    "V4_CONTROLLER_MERGED_TO_MAIN",
+    "TOOLCHAIN_ACCEPTANCE_TEST_RED",
+    "TOOLCHAIN_ACCEPTANCE_IMPLEMENTED",
+    "TOOLCHAIN_ACCEPTANCE_VERIFIED",
+    "TOOLCHAIN_ACCEPTANCE_MERGED_TO_MAIN"
   ],
-  "next_action": "Merge v4 controller PR into main so workflow_run listener is active. When legacy run 33182381566 completes, Arthur Toolchain Bootstrap v4 auto-starts, then verify SDK/ImageBuilder/package repository/provenance/SHA256 artifacts and enable IMAGEBUILDER and SDK_BUILD lanes.",
-  "rollback_target": "main@b4ee915e94aad7bfea7a281ef2d0b59de781b6df + production/known-good.json stable v0.1.0"
+  "next_action": "When legacy run 33182381566 reaches completed state, Arthur Toolchain Bootstrap v4 auto-starts from main. Verify its toolchain-acceptance.json and Release artifacts; only after acceptance passes enable IMAGEBUILDER and SDK_BUILD lanes.",
+  "rollback_target": "Stable firmware v0.1.0 + production/known-good.json"
 }
