@@ -27,18 +27,21 @@ run_case FAST_GATE \
 run_case FAST_GATE \
   scripts/analyze-error.sh \
   scripts/verify-project.sh \
-  tests/test-classify-build-scope.sh
+  tests/test-classify-build-scope.sh \
+  production/v4-state.json
 
 # v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
 run_case IMAGEBUILDER \
   production/v4/imagebuilder-request.json \
   v4/imagebuilder/packages.txt \
-  v4/imagebuilder/files/etc/config/xinzhao
+  v4/imagebuilder/files/etc/config/xinzhao \
+  scripts/v4-imagebuilder-build.sh
 
 # v4 explicit SDK lane. User-space package builds outrank ImageBuilder assembly.
 run_case SDK_BUILD \
   production/v4/sdk-request.json \
-  v4/sdk/packages/luci-app-example/Makefile
+  v4/sdk/packages/luci-app-example/Makefile \
+  scripts/v4-sdk-build.sh
 
 run_case FULL_BUILD \
   config/arthur.config
@@ -52,7 +55,8 @@ run_case FULL_BUILD \
   scripts/build.sh
 
 run_case FULL_BUILD \
-  production/v4/full-request.json
+  production/v4/full-request.json \
+  v4/full/kernel-change.marker
 
 run_case FULL_BUILD \
   some/new-unknown-path.txt
