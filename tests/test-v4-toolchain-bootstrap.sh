@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP="$ROOT/scripts/v4-toolchain-bootstrap.sh"
+WORKFLOW="$ROOT/.github/workflows/arthur-toolchain-bootstrap-v4.yml"
 
 [[ -x "$BOOTSTRAP" ]] || {
   echo "FAIL: missing executable scripts/v4-toolchain-bootstrap.sh" >&2
@@ -37,4 +38,17 @@ if KNOWN_GOOD_JSON="$tmp" "$BOOTSTRAP" --plan >/dev/null 2>&1; then
   exit 1
 fi
 
-echo 'PASS: v4 toolchain bootstrap planning gate is correct.'
+[[ -f "$WORKFLOW" ]] || {
+  echo 'FAIL: missing arthur-toolchain-bootstrap-v4.yml' >&2
+  exit 1
+}
+grep -q 'workflow_dispatch:' "$WORKFLOW"
+grep -q 'v4-toolchain-bootstrap.sh --plan' "$WORKFLOW"
+grep -q 'v4-toolchain-bootstrap.sh --execute' "$WORKFLOW"
+grep -q 'actions/upload-artifact@v4' "$WORKFLOW"
+if grep -Eq '^[[:space:]]+push:' "$WORKFLOW"; then
+  echo 'FAIL: v4 toolchain bootstrap must not auto-run on push' >&2
+  exit 1
+fi
+
+echo 'PASS: v4 toolchain bootstrap planning and workflow gates are correct.'
