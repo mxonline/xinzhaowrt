@@ -6,8 +6,8 @@
   "migration_branch": "codex/v4-production-controller",
   "base_branch": "main",
   "base_commit": "b4ee915e94aad7bfea7a281ef2d0b59de781b6df",
-  "current_stage": "TOOLCHAIN_BOOTSTRAP_READY",
-  "stage_status": "BLOCKED_BY_ACTIVE_LEGACY_FULL_BUILD",
+  "current_stage": "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_ARMED",
+  "stage_status": "WAITING_FOR_LEGACY_RUN_COMPLETION",
   "reuse_gate": {
     "status": "DONE",
     "decision": "REUSE_FORK",
@@ -43,12 +43,15 @@
     "policy": "Unknown or ABI-sensitive changes fail closed to FULL_BUILD."
   },
   "toolchain_bootstrap": {
-    "status": "READY_BLOCKED",
-    "preflight_run": 33188228235,
+    "status": "AUTO_HANDOFF_ARMED",
+    "preflight_run": 33188621568,
     "workflow": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
     "executor": "scripts/v4-toolchain-bootstrap.sh",
-    "trigger_mode": "manual_only",
-    "reason": "Bootstrap implementation and fast gates are verified, but legacy Full Build run 33182381566 is still active. v4 must not launch a second heavy build concurrently.",
+    "trigger_mode": "workflow_run_exact_id_or_manual_confirm",
+    "handoff_source_workflow": "Arthur Known-Good Fast Lane v1",
+    "handoff_source_run_id": 33182381566,
+    "parallel_build_guard": true,
+    "reason": "The bootstrap workflow is prepared to start exactly once when legacy Full Build run 33182381566 reaches completed state. Stable v0.1.0 remains read-only.",
     "required_outputs": [
       "Known-Good-matched SDK",
       "Known-Good-matched standalone ImageBuilder",
@@ -61,7 +64,7 @@
       "CONFIG_IB=y",
       "CONFIG_IB_STANDALONE=y"
     ],
-    "implementation_basis": "OpenWrt build system SDK and ImageBuilder bundle outputs"
+    "implementation_basis": "ImmortalWrt/OpenWrt native SDK and ImageBuilder bundle outputs"
   },
   "lanes": {
     "DOC_ONLY": "READY",
@@ -78,7 +81,7 @@
     "status": "IN_PROGRESS",
     "step": "Build frozen Arthur baseline",
     "role": "candidate_only",
-    "policy": "Do not let this legacy full build mutate the verified v0.1.0 Stable baseline automatically. Do not launch v4 Toolchain Bootstrap concurrently."
+    "policy": "Do not let this legacy full build mutate the verified v0.1.0 Stable baseline automatically. v4 Bootstrap waits for its completed event."
   },
   "completed_stages": [
     "REUSE_GATE",
@@ -91,8 +94,11 @@
     "TOOLCHAIN_BOOTSTRAP_TEST_RED",
     "TOOLCHAIN_BOOTSTRAP_EXECUTOR_IMPLEMENTED",
     "TOOLCHAIN_BOOTSTRAP_WORKFLOW_IMPLEMENTED",
-    "TOOLCHAIN_BOOTSTRAP_FAST_GATE_VERIFIED"
+    "TOOLCHAIN_BOOTSTRAP_FAST_GATE_VERIFIED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_TEST_RED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_VERIFIED"
   ],
-  "next_action": "As soon as legacy Full Build 33182381566 is no longer active, dispatch Arthur Toolchain Bootstrap v4 with confirm=BOOTSTRAP, verify SDK/ImageBuilder/package repository/provenance/SHA256 artifacts, then enable IMAGEBUILDER and SDK_BUILD lanes.",
+  "next_action": "Merge v4 controller PR into main so workflow_run listener is active. When legacy run 33182381566 completes, Arthur Toolchain Bootstrap v4 auto-starts, then verify SDK/ImageBuilder/package repository/provenance/SHA256 artifacts and enable IMAGEBUILDER and SDK_BUILD lanes.",
   "rollback_target": "main@b4ee915e94aad7bfea7a281ef2d0b59de781b6df + production/known-good.json stable v0.1.0"
 }
