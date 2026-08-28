@@ -18,7 +18,7 @@ make_fixture() {
   printf 'sdk\n' > "$dir/immortalwrt-sdk-test.tar.zst"
   printf 'imagebuilder\n' > "$dir/immortalwrt-imagebuilder-test.tar.zst"
   printf 'packages\n' > "$dir/package-repositories.tar.gz"
-  printf 'lock\n' > "$dir/arthur-known-good.lock"
+  cp "$ROOT/config/arthur-known-good.lock" "$dir/arthur-known-good.lock"
   cat > "$dir/toolchain-provenance.json" <<'JSON'
 {
   "schema_version": "1.0",
@@ -45,6 +45,7 @@ make_fixture "$valid"
 TOOLCHAIN_DIR="$valid" "$VERIFY" >/dev/null
 [[ -s "$valid/toolchain-acceptance.json" ]]
 grep -q '"status": "verified"' "$valid/toolchain-acceptance.json"
+grep -q '"known_good_tag": "v0.1.0"' "$valid/toolchain-acceptance.json"
 
 bad_checksum="$tmp/bad-checksum"
 make_fixture "$bad_checksum"
@@ -73,6 +74,22 @@ PY
 )
 if TOOLCHAIN_DIR="$bad_commit" "$VERIFY" >/dev/null 2>&1; then
   echo 'FAIL: verifier accepted mismatched Known-Good provenance' >&2
+  exit 1
+fi
+
+bad_lock="$tmp/bad-lock"
+make_fixture "$bad_lock"
+printf 'corrupt-lock\n' >> "$bad_lock/arthur-known-good.lock"
+(
+  cd "$bad_lock"
+  sha256sum immortalwrt-sdk-test.tar.zst \
+    immortalwrt-imagebuilder-test.tar.zst \
+    package-repositories.tar.gz \
+    arthur-known-good.lock \
+    toolchain-provenance.json > SHA256SUMS
+)
+if TOOLCHAIN_DIR="$bad_lock" "$VERIFY" >/dev/null 2>&1; then
+  echo 'FAIL: verifier accepted a Known-Good lock mismatch' >&2
   exit 1
 fi
 
