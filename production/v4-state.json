@@ -6,7 +6,7 @@
   "migration_branch": "codex/v4-production-controller",
   "base_branch": "main",
   "base_commit": "b4ee915e94aad7bfea7a281ef2d0b59de781b6df",
-  "current_stage": "TOOLCHAIN_BOOTSTRAP_GATE",
+  "current_stage": "TOOLCHAIN_BOOTSTRAP_READY",
   "stage_status": "BLOCKED_BY_ACTIVE_LEGACY_FULL_BUILD",
   "reuse_gate": {
     "status": "DONE",
@@ -43,21 +43,31 @@
     "policy": "Unknown or ABI-sensitive changes fail closed to FULL_BUILD."
   },
   "toolchain_bootstrap": {
-    "status": "BLOCKED",
-    "reason": "Stable v0.1.0 release does not contain matching SDK or ImageBuilder archives, and legacy Full Build run 33182381566 is still active. Do not launch a second heavy build concurrently.",
+    "status": "READY_BLOCKED",
+    "preflight_run": 33188228235,
+    "workflow": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
+    "executor": "scripts/v4-toolchain-bootstrap.sh",
+    "trigger_mode": "manual_only",
+    "reason": "Bootstrap implementation and fast gates are verified, but legacy Full Build run 33182381566 is still active. v4 must not launch a second heavy build concurrently.",
     "required_outputs": [
       "Known-Good-matched SDK",
-      "Known-Good-matched ImageBuilder",
-      "package repository/index for required packages",
-      "toolchain provenance and SHA256"
+      "Known-Good-matched standalone ImageBuilder",
+      "package repository archive",
+      "toolchain provenance JSON",
+      "SHA256SUMS"
     ],
-    "implementation_basis": "OpenWrt build system CONFIG_SDK + CONFIG_IB outputs"
+    "config": [
+      "CONFIG_SDK=y",
+      "CONFIG_IB=y",
+      "CONFIG_IB_STANDALONE=y"
+    ],
+    "implementation_basis": "OpenWrt build system SDK and ImageBuilder bundle outputs"
   },
   "lanes": {
     "DOC_ONLY": "READY",
     "FAST_GATE": "READY_VERIFIED",
-    "IMAGEBUILDER": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP",
-    "SDK_BUILD": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP",
+    "IMAGEBUILDER": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
+    "SDK_BUILD": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
     "FULL_BUILD": "READY_FALLBACK",
     "REAL_DEVICE": "HUMAN_REVIEW_GATE"
   },
@@ -68,7 +78,7 @@
     "status": "IN_PROGRESS",
     "step": "Build frozen Arthur baseline",
     "role": "candidate_only",
-    "policy": "Do not let this legacy full build block v4 control-plane migration or mutate the verified v0.1.0 Stable baseline automatically."
+    "policy": "Do not let this legacy full build mutate the verified v0.1.0 Stable baseline automatically. Do not launch v4 Toolchain Bootstrap concurrently."
   },
   "completed_stages": [
     "REUSE_GATE",
@@ -77,8 +87,12 @@
     "V4_ISOLATED_BRANCH",
     "V4_ROUTING_TEST_RED",
     "V4_ROUTING_IMPLEMENTATION",
-    "V4_ROUTING_VERIFIED"
+    "V4_ROUTING_VERIFIED",
+    "TOOLCHAIN_BOOTSTRAP_TEST_RED",
+    "TOOLCHAIN_BOOTSTRAP_EXECUTOR_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_WORKFLOW_IMPLEMENTED",
+    "TOOLCHAIN_BOOTSTRAP_FAST_GATE_VERIFIED"
   ],
-  "next_action": "When legacy Full Build 33182381566 is no longer active, perform one Known-Good-locked bootstrap build with CONFIG_SDK and CONFIG_IB enabled, publish SDK/ImageBuilder/package repository artifacts, verify provenance, then mark IMAGEBUILDER and SDK_BUILD READY.",
+  "next_action": "As soon as legacy Full Build 33182381566 is no longer active, dispatch Arthur Toolchain Bootstrap v4 with confirm=BOOTSTRAP, verify SDK/ImageBuilder/package repository/provenance/SHA256 artifacts, then enable IMAGEBUILDER and SDK_BUILD lanes.",
   "rollback_target": "main@b4ee915e94aad7bfea7a281ef2d0b59de781b6df + production/known-good.json stable v0.1.0"
 }
