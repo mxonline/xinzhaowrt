@@ -1,0 +1,148 @@
+name: Arthur Toolchain Bootstrap v4
+
+'on':
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Explicitly confirm the one-time heavy Known-Good toolchain bootstrap'
+        required: true
+        default: 'NO'
+        type: choice
+        options:
+          - 'NO'
+          - 'BOOTSTRAP'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-v4-toolchain-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: ${{ inputs.confirm == 'BOOTSTRAP' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout v4 project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Validate v4 bootstrap gates
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh tests/*.sh
+          ./tests/test-classify-build-scope.sh
+          ./tests/test-v4-toolchain-bootstrap.sh
+          ./scripts/verify-project.sh
+          ./scripts/v4-toolchain-bootstrap.sh --plan
+
+      - name: Restore Known-Good downloads and compiler cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/immortalwrt/dl
+            work/immortalwrt/.ccache
+          key: arthur-v4-toolchain-${{ runner.os }}-${{ hashFiles('config/arthur-known-good.lock', 'config/arthur.config', 'config/required-plugins.txt', 'scripts/build.sh', 'scripts/v4-toolchain-bootstrap.sh') }}
+          restore-keys: |
+            arthur-known-good-${{ runner.os }}-
+            arthur-${{ runner.os }}-
+
+      - name: Build Known-Good SDK and ImageBuilder
+        env:
+          JOBS: '2'
+          QUIET_BUILD: '1'
+          REUSE_SOURCE: '0'
+        run: |
+          set -Eeuo pipefail
+          ./scripts/v4-toolchain-bootstrap.sh --execute
+
+      - name: Analyze bootstrap failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          if [ -s output/logs/build.log ]; then
+            ./scripts/analyze-error.sh output/logs/build.log
+          elif [ -s output/logs/build-diagnostic.log ]; then
+            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
+          else
+            ./scripts/analyze-error.sh
+          fi
+
+      - name: Bootstrap summary
+        if: always()
+        run: |
+          {
+            echo '## Arthur Toolchain Bootstrap v4'
+            echo
+            echo '- Stable Known-Good is read-only during this workflow.'
+            echo '- Source and feeds are pinned by config/arthur-known-good.lock.'
+            echo '- Outputs required: SDK, standalone ImageBuilder, package repositories, provenance and SHA256.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s output/toolchain/toolchain-provenance.json ]; then
+            {
+              echo
+              echo '### Provenance'
+              echo '```json'
+              cat output/toolchain/toolchain-provenance.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s output/logs/error-summary.txt ]; then
+            {
+              echo
+              echo '### Failure diagnosis'
+              cat output/logs/error-summary.txt
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v4-toolchain-diagnostics-${{ github.run_id }}
+          path: |
+            output/logs/build.log
+            output/logs/build-diagnostic.log
+            output/logs/error-context.txt
+            output/logs/error-summary.txt
+            output/full.config
+            config/arthur-known-good.lock
+            production/known-good.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload verified toolchain bundle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v4-toolchain-${{ github.run_id }}
+          path: output/toolchain/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish toolchain candidate release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          stable_tag="$(python3 -c "import json; print(json.load(open('production/known-good.json'))['stable_tag'])")"
+          tag="arthur-toolchain-${stable_tag}-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            output/toolchain/* \
+            --title "Arthur v4 Toolchain ${stable_tag} / ${GITHUB_RUN_ID}" \
+            --notes "Known-Good-matched SDK, standalone ImageBuilder and package repository bundle. This is a toolchain Candidate only and does not mutate Stable firmware." \
+            --prerelease
