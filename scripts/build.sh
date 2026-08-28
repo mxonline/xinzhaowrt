@@ -85,6 +85,7 @@ rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 cp "$PROJECT_ROOT/config/arthur.config" .config
+bash "$PROJECT_ROOT/scripts/apply-version-identity.sh" .config
 if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
   printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
 fi
@@ -114,6 +115,17 @@ if ! make -j"$JOBS"; then
 fi
 
 "$PROJECT_ROOT/scripts/verify-upload-oom-build.sh" "$SRC"
+
+FINAL_ROOTFS_DIR=""
+while IFS= read -r release_file; do
+  candidate_root="${release_file%/etc/openwrt_release}"
+  if [[ -f "$candidate_root/etc/os-release" && -f "$candidate_root/etc/uci-defaults/99-xinzhao-defaults" ]]; then
+    FINAL_ROOTFS_DIR="$candidate_root"
+    break
+  fi
+done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
+[[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
+bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
 
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
 "$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"

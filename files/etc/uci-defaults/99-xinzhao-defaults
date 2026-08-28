@@ -11,8 +11,8 @@ fi
 
 current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
 case "$current_ip" in
-    ''|'192.168.1.1')
-        uci -q set network.lan.ipaddr='192.168.6.1'
+    ''|'192.168.1.1'|'192.168.1.1/24')
+        uci -q set network.lan.ipaddr='192.168.6.1/24'
         uci -q commit network
         logger -t xinzhaowrt 'Initial LAN IP set to 192.168.6.1'
         ;;
@@ -43,7 +43,7 @@ uci -q batch <<'UCI'
 set xinzhaowrt.system=system
 set xinzhaowrt.system.initialized='1'
 set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur'
+commit xinzhaowrt
 UCI
-uci -q commit xinzhaowrt
 
 exit 0

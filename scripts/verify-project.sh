@@ -27,6 +27,10 @@ done < config/required-plugins.txt
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
 
+for test_script in tests/test-first-boot-defaults.sh tests/test-version-identity.sh tests/test-final-rootfs-identity.sh; do
+  bash "$test_script"
+done
+
 for f in scripts/*.sh; do
   bash -n "$f"
 done
