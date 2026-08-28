@@ -27,6 +27,7 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+BUILD_TOOLCHAIN_BUNDLES="${BUILD_TOOLCHAIN_BUNDLES:-0}"
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -96,8 +97,26 @@ cp "$PROJECT_ROOT/config/arthur.config" .config
 if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
   printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
 fi
+if [[ "$BUILD_TOOLCHAIN_BUNDLES" == "1" ]]; then
+  echo "[5/10] Enable SDK and standalone ImageBuilder bundle outputs"
+  sed -i \
+    -e '/^CONFIG_SDK=/d' -e '/^# CONFIG_SDK is not set$/d' \
+    -e '/^CONFIG_IB=/d' -e '/^# CONFIG_IB is not set$/d' \
+    -e '/^CONFIG_IB_STANDALONE=/d' -e '/^# CONFIG_IB_STANDALONE is not set$/d' \
+    .config
+  cat >> .config <<'EOF'
+CONFIG_SDK=y
+CONFIG_IB=y
+CONFIG_IB_STANDALONE=y
+EOF
+fi
 make defconfig
 "$PROJECT_ROOT/scripts/check-config.sh" .config
+if [[ "$BUILD_TOOLCHAIN_BUNDLES" == "1" ]]; then
+  grep -qx 'CONFIG_SDK=y' .config || { echo 'ERROR: CONFIG_SDK did not survive defconfig'; exit 1; }
+  grep -qx 'CONFIG_IB=y' .config || { echo 'ERROR: CONFIG_IB did not survive defconfig'; exit 1; }
+  grep -qx 'CONFIG_IB_STANDALONE=y' .config || { echo 'ERROR: CONFIG_IB_STANDALONE did not survive defconfig'; exit 1; }
+fi
 cp .config "$OUT/full.config"
 
 echo "[6/10] Download source archives"
@@ -168,6 +187,7 @@ done
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
   echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
+  echo "Toolchain bundles enabled: $BUILD_TOOLCHAIN_BUNDLES"
   echo "Large-upload OOM guard: disk-backed Nginx/cgi-io transient buffering; final sysupgrade handoff /tmp/firmware.bin"
   if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
     echo "Lock file: config/arthur-known-good.lock"
