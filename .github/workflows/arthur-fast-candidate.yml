@@ -168,7 +168,7 @@ jobs:
           SYSUPGRADE_ROOT="$GITHUB_WORKSPACE/sysupgrade-root"
           SYSUPGRADE_ARCHIVE="$GITHUB_WORKSPACE/sysupgrade-rootfs.squashfs"
           tar -xf output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin --wildcards -O 'sysupgrade-*/root' > "$SYSUPGRADE_ARCHIVE"
-          unsquashfs -d "$SYSUPGRADE_ROOT" "$SYSUPGRADE_ARCHIVE"
+          sudo unsquashfs -d "$SYSUPGRADE_ROOT" "$SYSUPGRADE_ARCHIVE"
           mkdir -p "$SYSUPGRADE_ROOT/tmp"
           cp output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin "$SYSUPGRADE_ROOT/tmp/firmware.bin"
           sudo chroot "$SYSUPGRADE_ROOT" /bin/ash /sbin/sysupgrade -T /tmp/firmware.bin
