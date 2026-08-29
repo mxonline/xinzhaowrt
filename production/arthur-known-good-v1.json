@@ -124,7 +124,7 @@
     "report": "verification/arthur-real-device-verification.md",
     "handoff": "HANDOFF.md",
     "branch": "codex/arthur-fast-candidate",
-    "remote_head_at_review": "ec4e7f9d005759fe86721a998b79cf70f3d4ee4c"
+    "remote_head_at_review": "2d91693bdf1a79abc6917a8884718dc39a66b833"
   },
   "rollback_target": {
     "stable": "v0.1.0",
