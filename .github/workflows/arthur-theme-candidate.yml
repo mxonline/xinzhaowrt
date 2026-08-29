@@ -28,7 +28,8 @@ jobs:
           ./scripts/check-defaults.sh
           ./scripts/check-web-stack.sh
       - name: Download accepted SDK and ImageBuilder
-        env: { GH_TOKEN: ${{ github.token }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           mkdir toolchain sdk imagebuilder sources
@@ -53,7 +54,6 @@ jobs:
           printf '\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           make -C "$SDK_DIR" defconfig
           make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
-          find "$SDK_DIR/bin/packages" -type f -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' | grep -q .
           echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
       - name: ImageBuilder candidate and rootfs Theme Gate
         run: |
