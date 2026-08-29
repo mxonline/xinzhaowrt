@@ -132,11 +132,11 @@ jobs:
           test -x "$SDK_APK"
           (
             cd "$REPO_DIR"
-            "$SDK_APK" --allow-untrusted index --output packages.adb ./*.apk
+            "$SDK_APK" --allow-untrusted mkndx --output packages.adb ./*.apk
           )
           REPOSITORIES_CONF="$(find "$IB_DIR" -maxdepth 2 -name repositories.conf -print -quit)"
           test -n "$REPOSITORIES_CONF"
-          printf 'src/gz xinzhao_local file://%s\n' "$REPO_DIR" | cat - "$REPOSITORIES_CONF" > "$REPOSITORIES_CONF.new"
+          printf 'ndx file://%s/packages.adb\n' "$REPO_DIR" | cat - "$REPOSITORIES_CONF" > "$REPOSITORIES_CONF.new"
           mv "$REPOSITORIES_CONF.new" "$REPOSITORIES_CONF"
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           mkdir -p image-files
