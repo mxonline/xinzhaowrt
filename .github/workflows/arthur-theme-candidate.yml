@@ -137,7 +137,8 @@ jobs:
           done
           apk_bin="$(realpath "$IB_DIR/staging_dir/host/bin/apk")"
           test -x "$apk_bin" || { echo 'IMAGEBUILDER_APK_MISSING'; exit 1; }
-          "$apk_bin" mkndx --allow-untrusted --output "$IB_DIR/packages/packages.adb" "$IB_DIR/packages/"*.apk
+          make -C "$IB_DIR" _check_keys
+          "$apk_bin" mkndx --keys-dir "$IB_DIR/keys" --sign "$IB_DIR/keys/local-private-key.pem" --allow-untrusted --output "$IB_DIR/packages/packages.adb" "$IB_DIR/packages/"*.apk
           test -s "$IB_DIR/packages/packages.adb" || { echo 'IMAGEBUILDER_PACKAGE_INDEX_MISSING'; exit 1; }
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
