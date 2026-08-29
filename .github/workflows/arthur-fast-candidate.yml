@@ -102,7 +102,7 @@ jobs:
           make -C "$SDK_DIR" package/feeds/xinzhao/quickstart/compile V=s
           QUICKSTART_APK="$(find "$SDK_DIR/bin/packages/aarch64_cortex-a53" -type f -name 'quickstart-*.apk' -print -quit)"
           test -n "$QUICKSTART_APK"
-          SDK_APK="$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
+          SDK_APK="$(realpath "$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)")"
           test -x "$SDK_APK"
           mkdir quickstart-root
           "$SDK_APK" --allow-untrusted extract --destination quickstart-root "$QUICKSTART_APK"
@@ -128,7 +128,7 @@ jobs:
           REPO_DIR="$IB_DIR/repositories/packages/aarch64_cortex-a53/xinzhao"
           test -d "$REPO_DIR"
           cp "$QUICKSTART_APK" "$REPO_DIR/"
-          SDK_APK="$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
+          SDK_APK="$(realpath "$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)")"
           test -x "$SDK_APK"
           (
             cd "$REPO_DIR"

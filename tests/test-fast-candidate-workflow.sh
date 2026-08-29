@@ -22,6 +22,7 @@ grep -Fq 'WEB_STACK_GATE' "$workflow" || fail 'runtime web-stack gate output is 
 grep -Fq 'serve --unix /tmp/quickstart.sock' "$workflow" || fail 'QuickStart service execution probe is missing'
 grep -Fq 'test "$quickstart_exit" -ne 127' "$workflow" || fail 'QuickStart service probe does not reject procd-style exit 127'
 grep -Fq '"$SDK_APK" --allow-untrusted extract --destination quickstart-root "$QUICKSTART_APK"' "$workflow" || fail 'QuickStart package extraction must use the matching SDK apk implementation with the SDK-build signature scope'
+grep -Fq 'SDK_APK="$(realpath "$(find "$SDK_DIR/staging_dir"' "$workflow" || fail 'SDK apk tool path must remain valid after repository directory changes'
 ! grep -Fq 'tar -xf "$QUICKSTART_APK" -C quickstart-root' "$workflow" || fail 'QuickStart package extraction incorrectly treats apk as a tar archive'
 grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
 grep -Fq "grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack" "$workflow" || fail 'runtime web-stack gate does not validate the nginx restart action'
