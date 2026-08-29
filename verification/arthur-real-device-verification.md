@@ -1,5 +1,20 @@
 # Arthur Real Device Verification
 
+## Current result — Arthur FAST Candidate accepted
+
+- Release: `arthur-fast-candidate-33241309046`
+- Firmware: `XinZhaoWrt-Arthur-fast-33241309046-sysupgrade.bin`
+- SHA256: `733eeec1375403029f0b08b7307756b2edfd050ca52473891ab340051d3e5612`
+- Project commit: `9bc5f471a92048233ff123370830000e124ca32d`
+- Toolchain run: `33196164359`
+- Clean Flash: PASS — executed only after explicit authorization.
+- Device identity: PASS — JDCloud RE-SS-01 / `jdcloud,re-ss-01` / `qualcommax/ipq60xx`.
+- FIRST BOOT: PASS — LAN `192.168.6.1/24`, `initialized=1`, `firmware=XinZhaoWrt-Arthur`; `/tmp/xinzhaowrt-firstboot.log` contains `FIRSTBOOT_START`, `LAN_CONFIG_PASS`, `ROOT_CREDENTIAL_PASS`, `MARKER_CONFIG_PASS`, and `FIRSTBOOT_COMPLETE`, with no `FIRSTBOOT_FAIL`.
+- QuickStart: PASS — actual binary is `ELF 64-bit LSB ARM aarch64`, statically linked; service running and stable across reboot.
+- Web Stack: PASS — nginx 1.30.3 owns 80/443, HTTP redirects to HTTPS, LuCI returns expected unauthenticated 403, uhttpd is inactive with no listener or crash loop.
+- Functional gates: PASS — 22/22 plugins, WAN DHCP, DNS, HTTPS Internet egress, SSH, storage, memory, logs, overlay, reboot, and persistence.
+- Full Build Used: NO. Known-Good tag: NOT CREATED (await Baseline Freeze).
+
 ## Run 33182381566 — rejected FIRST BOOT candidate
 
 - Candidate: `XinZhaoWrt-Arthur-v0.1.3-20260828-sysupgrade.bin`
