@@ -140,6 +140,7 @@ jobs:
             packages+=("$package")
           done
           while IFS= read -r plugin; do
+            [[ -z "$plugin" || "$plugin" == \#* ]] && continue
             printf '%s\n' "${packages[@]}" | grep -Fx "$plugin" >/dev/null
           done < config/required-plugins.txt
           echo 'REQUIRED_PLUGIN_GATE=PASS'

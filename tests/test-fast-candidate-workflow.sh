@@ -28,6 +28,7 @@ grep -Fq 'cp "$QUICKSTART_APK" "$IB_DIR/packages/"' "$workflow" || fail 'SDK-bui
 ! grep -Fq 'repositories.conf' "$workflow" || fail 'ImageBuilder must use its native local package index instead of a nonexistent repository config'
 grep -Fq '"$package" == luci-i18n-base-zh-cn' "$workflow" || fail 'the unavailable non-required language pack must be explicitly handled'
 grep -Fq 'REQUIRED_PLUGIN_GATE=PASS' "$workflow" || fail 'ImageBuilder lane must assert all 22 required plugins remain selected'
+grep -Fq '[[ -z "$plugin" || "$plugin" == \#* ]] && continue' "$workflow" || fail 'required-plugin gate must ignore comments and blank lines'
 ! grep -Fq 'tar -xf "$QUICKSTART_APK" -C quickstart-root' "$workflow" || fail 'QuickStart package extraction incorrectly treats apk as a tar archive'
 grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
 grep -Fq "grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack" "$workflow" || fail 'runtime web-stack gate does not validate the nginx restart action'
