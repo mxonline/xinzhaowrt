@@ -6,6 +6,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$PROJECT_ROOT/build.env"
 FILE="$PROJECT_ROOT/files/etc/uci-defaults/99-xinzhao-defaults"
 
+[[ -x "$FILE" ]] || { echo "ERROR: first-boot defaults script must be executable in the rootfs overlay"; exit 1; }
+
 [[ "$DEFAULT_ROOT_USER" == "root" ]] || { echo "ERROR: OpenWrt admin user must remain root for this project."; exit 1; }
 grep -qF "network.lan.ipaddr='${DEFAULT_LAN_IP}/24'" "$FILE" || { echo "ERROR: LAN IP mismatch"; exit 1; }
 grep -qF "'192.168.1.1/24'" "$FILE" || { echo "ERROR: CIDR-form upstream LAN default is not handled"; exit 1; }
