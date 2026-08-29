@@ -89,10 +89,14 @@ jobs:
           set -Eeuo pipefail
           tar --zstd -xf toolchain/immortalwrt-imagebuilder-*.tar.zst -C imagebuilder
           IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -print -quit)"
-          mkdir -p "$IB_DIR/repositories"
-          tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
-          find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
+          mkdir -p repository-staging
+          tar -xzf toolchain/package-repositories.tar.gz -C repository-staging
+          find repository-staging/packages/aarch64_cortex-a53 -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
           find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          required_ib_packages=(luci-theme-argon luci-theme-kucat luci-i18n-base-zh-cn wget)
+          for package in "${required_ib_packages[@]}"; do
+            find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
+          done
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
           make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/files"
