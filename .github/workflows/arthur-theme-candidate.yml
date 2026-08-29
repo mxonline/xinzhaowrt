@@ -168,7 +168,7 @@ jobs:
           test -d "$rootfs/www/luci-static/bootstrap"
           apk_db="$rootfs/lib/apk/db/installed"
           test -s "$apk_db"
-          for package in luci-i18n-base-zh-cn luci-theme-kucat luci-theme-argon luci-app-openclash; do
+          for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash; do
             grep -Fq "P:$package" "$apk_db" || { echo "CANDIDATE_PACKAGE_MISSING=$package"; exit 1; }
           done
           while IFS= read -r package; do

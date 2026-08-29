@@ -55,6 +55,8 @@ grep -Fq "sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter\$/d'" "$workflow" || f
 grep -Fq 'name: Candidate Verification' "$workflow" || fail 'candidate firmware verification step is absent'
 grep -Fq 'actions/upload-artifact@v4' "$workflow" || fail 'candidate artifact upload is absent'
 grep -Fq 'THEME_CANDIDATE_READY' "$workflow" || fail 'candidate readiness marker is absent'
+grep -Fq 'for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash' "$workflow" || fail 'candidate package verification uses the wrong Argon package name'
+! grep -Fq 'for package in luci-i18n-base-zh-cn luci-theme-argon' "$workflow" || fail 'candidate package verification still expects a non-existent luci-theme-argon package'
 ! grep -Eq 'mediaurlbase=.*(argon|kucat)' "$workflow" || fail 'workflow forces a theme default'
 ! grep -Eq 'curl[[:space:]]+-k|--insecure|Client-ID' "$workflow" || fail 'workflow contains insecure online-theme logic'
 ! grep -Eq 'make world|FULL_BUILD' "$workflow" || fail 'workflow contains prohibited full build'
