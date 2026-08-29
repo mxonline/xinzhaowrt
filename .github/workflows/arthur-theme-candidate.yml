@@ -59,6 +59,17 @@ jobs:
           source config/arthur-theme.lock
           tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
           SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$SDK_DIR/feeds.conf.default"
+          test -x "$SDK_DIR/scripts/feeds"
+          luci_feed_config="$(awk '$2 == "luci" { print; exit }' "$SDK_DIR/feeds.conf.default")"
+          test -n "$luci_feed_config"
+          (cd "$SDK_DIR" && ./scripts/feeds update luci)
+          test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
+          luci_feed_source="$(awk '$2 == "luci" { print $3; exit }' "$SDK_DIR/feeds.conf.default")"
+          luci_feed_commit="$(git -C "$SDK_DIR/feeds/luci" rev-parse HEAD)"
+          mkdir -p output/theme-provenance
+          printf 'SDK_UPSTREAM_COMMIT=27e26e324bee0b0c2a4eb58e2e9121fea5d43194\nLUCI_FEED_CONFIG=%s\nLUCI_FEED_SOURCE=%s\nLUCI_FEED_COMMIT=%s\n' "$luci_feed_config" "$luci_feed_source" "$luci_feed_commit" > output/theme-provenance/luci-feed.lock
+          echo "SDK_FEEDS_PREPARE=PASS LUCI_FEED_COMMIT=$luci_feed_commit"
           git clone https://github.com/jerrykuku/luci-theme-argon.git sources/argon
           git -C sources/argon checkout "$ARGON_REF"
           git clone https://github.com/sirpdboy/luci-theme-kucat.git sources/kucat
