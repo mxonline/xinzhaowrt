@@ -90,6 +90,8 @@ PATH="$BIN:$PATH" \
 TEST_UCI_STATE="$STATE" \
 TEST_UCI_LOG="$TEST_ROOT/uci.log" \
 TEST_LOGGER_LOG="$TEST_ROOT/logger.log" \
+XINZHAO_CONFIG_DIR="$STATE" \
+XINZHAO_FIRSTBOOT_LOG="$TEST_ROOT/firstboot.log" \
 sh "${shell_args[@]}" "$SCRIPT_COPY"
 
 [[ "$(<"$STATE/network.lan.ipaddr")" == '192.168.6.1/24' ]] || {
@@ -104,8 +106,12 @@ sh "${shell_args[@]}" "$SCRIPT_COPY"
   echo 'FAIL: first boot must persist xinzhaowrt.system.initialized=1.' >&2
   exit 1
 }
-grep -Fxq -- '-t xinzhaowrt Initial LAN IP set to 192.168.6.1' "$TEST_ROOT/logger.log" || {
-  echo 'FAIL: first boot must log the LAN replacement.' >&2
+grep -Fxq -- 'FIRSTBOOT_START' "$TEST_ROOT/firstboot.log" || {
+  echo 'FAIL: first boot must persist its start stage.' >&2
+  exit 1
+}
+grep -Fxq -- 'FIRSTBOOT_COMPLETE' "$TEST_ROOT/firstboot.log" || {
+  echo 'FAIL: first boot must persist its completion stage.' >&2
   exit 1
 }
 

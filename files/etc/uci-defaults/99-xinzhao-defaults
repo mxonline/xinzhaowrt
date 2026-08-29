@@ -8,13 +8,13 @@ set -eu
 shadow_file="${XINZHAO_SHADOW_FILE:-/etc/shadow}"
 config_dir="${XINZHAO_CONFIG_DIR:-/etc/config}"
 marker_file="$config_dir/xinzhaowrt"
-
-log() {
-    logger -t xinzhaowrt "$*" || true
-}
+log_file="${XINZHAO_FIRSTBOOT_LOG:-/tmp/xinzhaowrt-firstboot.log}"
 
 fail() {
-    log "FIRSTBOOT_FAIL stage=$1"
+    message="FIRSTBOOT_FAIL stage=$1"
+    printf '%s\n' "$message" >> "$log_file" 2>/dev/null || true
+    logger -t xinzhaowrt "$message" 2>/dev/null || true
+    printf '%s\n' "$message" >&2
     exit 1
 }
 
@@ -22,7 +22,30 @@ if [ "$(uci -q get xinzhaowrt.system.initialized 2>/dev/null || true)" = "1" ]; 
     exit 0
 fi
 
-log 'FIRSTBOOT_START'
+if [ ! -e "$log_file" ]; then
+    log_tmp="$log_file.tmp.$$"
+    ( umask 077; : > "$log_tmp" ) || {
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_prepare' >&2
+        exit 1
+    }
+    chmod 600 "$log_tmp" || {
+        rm -f "$log_tmp"
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_mode' >&2
+        exit 1
+    }
+    mv -f "$log_tmp" "$log_file" || {
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_create' >&2
+        exit 1
+    }
+fi
+chmod 600 "$log_file" || fail log_file_mode
+
+log() {
+    printf '%s\n' "$*" >> "$log_file" || return 1
+    logger -t xinzhaowrt "$*" 2>/dev/null || true
+}
+
+log 'FIRSTBOOT_START' || fail log_write_start
 
 current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
 case "$current_ip" in
@@ -32,10 +55,10 @@ case "$current_ip" in
         [ "$(uci get network.lan.ipaddr)" = '192.168.6.1/24' ] || fail lan_verify
         ;;
     *)
-        log "Existing LAN IP preserved: $current_ip"
+        log "Existing LAN IP preserved: $current_ip" || fail log_write_lan_existing
         ;;
 esac
-log 'LAN_CONFIG_PASS'
+log 'LAN_CONFIG_PASS' || fail log_write_lan
 
 root_hash="$(awk -F: '$1 == "root" { print $2; exit }' "$shadow_file" 2>/dev/null || true)"
 case "$root_hash" in
@@ -51,10 +74,10 @@ case "$root_hash" in
         chmod 600 "$shadow_file" || fail root_password_mode
         ;;
     *)
-        log 'Existing root password preserved'
+        log 'Existing root password preserved' || fail log_write_root_existing
         ;;
 esac
-log 'ROOT_CREDENTIAL_PASS'
+log 'ROOT_CREDENTIAL_PASS' || fail log_write_root
 
 if [ ! -e "$marker_file" ]; then
     marker_tmp="$marker_file.tmp.$$"
@@ -70,6 +93,6 @@ uci commit xinzhaowrt || fail marker_commit
 [ "$(uci get xinzhaowrt.system.initialized)" = '1' ] || fail marker_verify_initialized
 [ "$(uci get xinzhaowrt.system.firmware)" = 'XinZhaoWrt-Arthur' ] || fail marker_verify_firmware
 
-log 'MARKER_CONFIG_PASS'
-log 'FIRSTBOOT_COMPLETE'
+log 'MARKER_CONFIG_PASS' || fail log_write_marker
+log 'FIRSTBOOT_COMPLETE' || fail log_write_complete
 exit 0

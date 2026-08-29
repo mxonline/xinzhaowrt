@@ -145,6 +145,10 @@ jobs:
             printf '%s\n' "${packages[@]}" | grep -Fx "$plugin" >/dev/null
           done < config/required-plugins.txt
           echo 'REQUIRED_PLUGIN_GATE=PASS'
+          # Nginx is the sole LuCI web stack; remove the profile's default
+          # uhttpd packages so no early init script can bind 80/443 before the
+          # defensive rootfs overlay runs.
+          packages+=("-uhttpd" "-uhttpd-mod-ubus" "-uhttpd-mod-lua" "-uhttpd-mod-tls")
           mkdir -p image-files
           cp -a files/. image-files/
           make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
@@ -169,6 +173,7 @@ jobs:
           SYSUPGRADE_ARCHIVE="$GITHUB_WORKSPACE/sysupgrade-rootfs.squashfs"
           tar -xf output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin --wildcards -O 'sysupgrade-*/root' > "$SYSUPGRADE_ARCHIVE"
           sudo unsquashfs -d "$SYSUPGRADE_ROOT" "$SYSUPGRADE_ARCHIVE"
+          test ! -e "$SYSUPGRADE_ROOT/etc/init.d/uhttpd"
           mkdir -p "$SYSUPGRADE_ROOT/tmp"
           sudo install -d "$SYSUPGRADE_ROOT/tmp/sysinfo"
           printf 'jdcloud,re-ss-01\n' | sudo tee "$SYSUPGRADE_ROOT/tmp/sysinfo/board_name" >/dev/null

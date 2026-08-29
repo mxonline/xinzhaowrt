@@ -1,6 +1,6 @@
 #!/bin/sh
-# Keep LuCI on nginx.  uhttpd may be pulled in by another package but must not
-# retain port 80/443 once the nginx stack is selected.
+# Keep LuCI on nginx.  The ImageBuilder package set removes uhttpd; this
+# overlay remains defensive for profiles that still carry its init script.
 
 set -eu
 
