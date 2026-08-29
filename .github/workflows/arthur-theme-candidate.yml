@@ -78,26 +78,10 @@ jobs:
           test -n "$ucode_source"
           test -n "$ucode_commit"
           test -n "$ucode_version"
-          make -C "$SDK_DIR" package/feeds/base/ucode/compile V=s
-          ucode_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/ucode/module.h' -type f -print -quit)"
-          test -n "$ucode_header" || { echo 'UCODE_HEADER_MISSING'; exit 1; }
-          ucode_library="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/lib/libucode.so*' -type f -print -quit)"
-          test -n "$ucode_library" || { echo 'UCODE_LIBRARY_MISSING'; exit 1; }
-          printf 'UCODE_SOURCE=%s\nUCODE_COMMIT=%s\nUCODE_VERSION=%s\nHEADER_PATH=%s\nLIBRARY_PATH=%s\n' "$ucode_source" "$ucode_commit" "$ucode_version" "$ucode_header" "$ucode_library" > output/theme-provenance/ucode.lock
-          echo "UCODE_HEADER=PASS PATH=$ucode_header"
-          echo "UCODE_STAGING=PASS LIBRARY=$ucode_library"
           (cd "$SDK_DIR" && ./scripts/feeds update luci)
           test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
           (cd "$SDK_DIR" && ./scripts/feeds install luci-base)
           test -f "$SDK_DIR/package/feeds/luci/luci-base/Makefile" || { echo 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING'; exit 1; }
-          make -C "$SDK_DIR" package/feeds/luci/lucihttp/compile V=s
-          echo 'LIBLUCIHTTP_UCODE_COMPILE=PASS'
-          test -f "$SDK_DIR/feeds/luci/luci.mk"
-          if grep -Eq '^CONFIG_PACKAGE_liblucihttp-lua=y$' "$SDK_DIR/.config"; then
-            lua_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/lua.h' -type f -print -quit)"
-            test -n "$lua_header" || { echo 'LUA_HEADER_MISSING'; exit 1; }
-          fi
-          echo 'SDK_DEPENDENCY_CLOSURE=PASS'
           luci_feed_source="$(awk '$2 == "luci" { print $3; exit }' "$SDK_DIR/feeds.conf.default")"
           luci_feed_commit="$(git -C "$SDK_DIR/feeds/luci" rev-parse HEAD)"
           mkdir -p output/theme-provenance
@@ -114,6 +98,22 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
           printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/feeds/base/ucode/compile V=s
+          ucode_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/ucode/module.h' -type f -print -quit)"
+          test -n "$ucode_header" || { echo 'UCODE_HEADER_MISSING'; exit 1; }
+          ucode_library="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/lib/libucode.so*' -type f -print -quit)"
+          test -n "$ucode_library" || { echo 'UCODE_LIBRARY_MISSING'; exit 1; }
+          printf 'UCODE_SOURCE=%s\nUCODE_COMMIT=%s\nUCODE_VERSION=%s\nHEADER_PATH=%s\nLIBRARY_PATH=%s\n' "$ucode_source" "$ucode_commit" "$ucode_version" "$ucode_header" "$ucode_library" > output/theme-provenance/ucode.lock
+          echo "UCODE_HEADER=PASS PATH=$ucode_header"
+          echo "UCODE_STAGING=PASS LIBRARY=$ucode_library"
+          make -C "$SDK_DIR" package/feeds/luci/lucihttp/compile V=s
+          echo 'LIBLUCIHTTP_UCODE_COMPILE=PASS'
+          test -f "$SDK_DIR/feeds/luci/luci.mk"
+          if grep -Eq '^CONFIG_PACKAGE_liblucihttp-lua=y$' "$SDK_DIR/.config"; then
+            lua_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/lua.h' -type f -print -quit)"
+            test -n "$lua_header" || { echo 'LUA_HEADER_MISSING'; exit 1; }
+          fi
+          echo 'SDK_DEPENDENCY_CLOSURE=PASS'
           make -C "$SDK_DIR" package/feeds/luci/luci-base/compile package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
           chinese_apk="$(find "$SDK_DIR/bin/packages" -type f -name 'luci-i18n-base-zh-cn-*.apk' -print -quit)"
           test -n "$chinese_apk" || { echo 'CHINESE_LUCI_PACKAGE_MISSING'; exit 1; }

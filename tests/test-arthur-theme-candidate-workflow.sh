@@ -34,6 +34,11 @@ grep -Fq 'UCODE_STAGING=PASS' "$workflow" || fail 'ucode library staging gate is
 grep -Fq 'UCODE_COMMIT' "$workflow" || fail 'ucode provenance is absent'
 grep -Fq 'package/feeds/luci/lucihttp/compile' "$workflow" || fail 'liblucihttp-ucode preflight compile is absent'
 grep -Fq 'SDK_DEPENDENCY_CLOSURE=PASS' "$workflow" || fail 'SDK dependency closure gate is absent'
+defconfig_line="$(grep -nF 'make -C "$SDK_DIR" defconfig' "$workflow" | cut -d: -f1 | head -n1)"
+ucode_compile_line="$(grep -nF 'package/feeds/base/ucode/compile' "$workflow" | cut -d: -f1 | head -n1)"
+lucihttp_compile_line="$(grep -nF 'package/feeds/luci/lucihttp/compile' "$workflow" | cut -d: -f1 | head -n1)"
+test -n "$defconfig_line" && test -n "$ucode_compile_line" && test "$defconfig_line" -lt "$ucode_compile_line" || fail 'ucode compile runs before SDK defconfig'
+test "$defconfig_line" -lt "$lucihttp_compile_line" || fail 'lucihttp preflight runs before SDK defconfig'
 grep -Fq 'immortalwrt.git\$#' "$workflow" || fail 'base feed sed anchor does not escape the shell $# expansion'
 ! grep -Fq 'immortalwrt.git$#' "$workflow" || fail 'base feed sed anchor still expands the shell $# token'
 grep -Fq 'CONFIG_PACKAGE_liblucihttp-lua=n' "$workflow" || fail 'SDK translation lane still enables the unnecessary Lua lucihttp variant'
