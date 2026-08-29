@@ -42,7 +42,7 @@ while IFS= read -r path; do
     README.md|README.*|docs/*|knowledge/*)
       ;;
 
-    .github/*|tests/*|scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|scripts/v4-controller*.sh|production/v3-request.json|production/request.json|production/known-good-request.json|production/v4-state.json)
+    .github/*|tests/*|scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|production/v3-request.json|production/request.json|production/known-good-request.json|production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json)
       promote_scope FAST_GATE
       ;;
 
@@ -50,7 +50,15 @@ while IFS= read -r path; do
       promote_scope IMAGEBUILDER
       ;;
 
+    files/etc/uci-defaults/*|files/etc/init.d/*|files/etc/config/*)
+      promote_scope IMAGEBUILDER
+      ;;
+
     production/v4/sdk-request.json|v4/sdk/*|scripts/v4-sdk*.sh)
+      promote_scope SDK_BUILD
+      ;;
+
+    sources/kenzok8/quickstart/*|package/feeds/*/quickstart/*)
       promote_scope SDK_BUILD
       ;;
 

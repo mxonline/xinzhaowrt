@@ -45,6 +45,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           chmod +x scripts/*.sh tests/*.sh
+          ./scripts/baseline-integrity-gate.sh
           ./scripts/check-defaults.sh
           ./scripts/check-web-stack.sh
           ./tests/test-fast-candidate-workflow.sh

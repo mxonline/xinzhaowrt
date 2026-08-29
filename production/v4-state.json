@@ -6,8 +6,8 @@
   "base_branch": "main",
   "controller_merge_commit": "e4d5953b8d3882c9b37e0d34e737bc7571a705de",
   "acceptance_merge_commit": "f3425c36899d8f10c0d82655d7ceafd033e08200",
-  "current_stage": "TOOLCHAIN_BOOTSTRAP_AUTO_HANDOFF_ARMED",
-  "stage_status": "WAITING_FOR_LEGACY_RUN_COMPLETION",
+  "current_stage": "AUTOMATED_BUILD_PIPELINE",
+  "stage_status": "READY",
   "reuse_gate": {
     "status": "DONE",
     "decision": "REUSE_FORK",
@@ -20,19 +20,25 @@
     "rule": "Do not rebuild from scratch when a smaller validated lane can produce the required artifact."
   },
   "known_good": {
-    "status": "VERIFIED",
-    "stable_tag": "v0.1.0",
-    "candidate_tag": "arthur-known-good-32853100232",
-    "firmware": "XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin",
-    "sha256": "9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d",
+    "status": "FROZEN_VERIFIED",
+    "tag": "arthur-known-good-v1",
+    "baseline_commit": "a47d994bbb434dbcfc8036a4acb4379747b65f9f",
+    "stable_tag": "arthur-known-good-v1",
+    "candidate_tag": "arthur-fast-candidate-33241309046",
+    "firmware": "XinZhaoWrt-Arthur-fast-33241309046-sysupgrade.bin",
+    "sha256": "733eeec1375403029f0b08b7307756b2edfd050ca52473891ab340051d3e5612",
+    "project_commit": "9bc5f471a92048233ff123370830000e124ca32d",
+    "toolchain_run": "33196164359",
+    "fast_candidate_run": "33241309046",
+    "manifest": "production/arthur-known-good-v1.json",
     "upstream_repo": "https://github.com/VIKINGYFY/immortalwrt.git",
     "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
     "verification": "real-device-confirmed",
     "verified_at": "2026-08-25T17:23:41.432638+00:00"
   },
   "routing": {
-    "status": "VERIFIED",
-    "workflow_run": 33187441194,
+    "status": "READY",
+    "workflow_run": 33241309046,
     "scopes": [
       "DOC_ONLY",
       "FAST_GATE",
@@ -40,10 +46,12 @@
       "SDK_BUILD",
       "FULL_BUILD"
     ],
-    "policy": "Unknown or ABI-sensitive changes fail closed to FULL_BUILD."
+    "policy": "NO_BUILD/DOC_ONLY -> FAST_GATE -> IMAGEBUILDER -> SDK_BUILD -> FULL_BUILD; unknown or ABI-sensitive changes fail closed to FULL_BUILD.",
+    "dry_run": "PASS"
   },
   "toolchain_bootstrap": {
-    "status": "AUTO_HANDOFF_ARMED",
+    "status": "VERIFIED",
+    "run": 33196164359,
     "workflow": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
     "executor": "scripts/v4-toolchain-bootstrap.sh",
     "acceptance_verifier": "scripts/v4-verify-toolchain.sh",
@@ -51,6 +59,7 @@
     "trigger_mode": "workflow_run_exact_id_or_manual_confirm",
     "handoff_source_workflow": "Arthur Known-Good Fast Lane v1",
     "handoff_source_run_id": 33182381566,
+    "provenance": "toolchain-acceptance.json, toolchain-provenance.json, Known-Good lock, SDK, ImageBuilder, package repository and SHA256 all verified",
     "parallel_build_guard": true,
     "publication_gate": "SDK/ImageBuilder/package repository/SHA256/provenance/Known-Good lock must verify before artifact upload or Release publication",
     "required_outputs": [
@@ -70,9 +79,9 @@
   },
   "lanes": {
     "DOC_ONLY": "READY",
-    "FAST_GATE": "READY_VERIFIED",
-    "IMAGEBUILDER": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
-    "SDK_BUILD": "BLOCKED_UNTIL_TOOLCHAIN_BOOTSTRAP_OUTPUT_VERIFIED",
+    "FAST_GATE": "READY",
+    "IMAGEBUILDER": "READY_VERIFIED",
+    "SDK_BUILD": "READY_VERIFIED",
     "FULL_BUILD": "READY_FALLBACK",
     "REAL_DEVICE": "HUMAN_REVIEW_GATE"
   },
@@ -80,10 +89,10 @@
     "run_id": 33182381566,
     "workflow": "Arthur Known-Good Fast Lane v1",
     "branch": "codex/v013-source-fetch-recovery",
-    "status": "IN_PROGRESS",
-    "step": "Build frozen Arthur baseline",
-    "role": "candidate_only",
-    "policy": "Do not let this legacy full build mutate the verified v0.1.0 Stable baseline automatically. v4 Bootstrap waits for its completed event."
+    "status": "COMPLETED / ARCHIVED",
+    "step": "Historical candidate run retained for audit",
+    "role": "historical_only",
+    "policy": "Archived; cannot mutate the frozen Arthur baseline or trigger a new build."
   },
   "completed_stages": [
     "REUSE_GATE",
@@ -97,8 +106,44 @@
     "TOOLCHAIN_ACCEPTANCE_TEST_RED",
     "TOOLCHAIN_ACCEPTANCE_IMPLEMENTED",
     "TOOLCHAIN_ACCEPTANCE_VERIFIED",
-    "TOOLCHAIN_ACCEPTANCE_MERGED_TO_MAIN"
+    "TOOLCHAIN_ACCEPTANCE_MERGED_TO_MAIN",
+    "ARTHUR_FAST_CANDIDATE_ACCEPTED",
+    "BASELINE_FREEZE_REVIEW",
+    "BASELINE_INTEGRITY_VERIFIED",
+    "PIPELINE_NO_CHANGE_DRY_RUN"
   ],
-  "next_action": "When legacy run 33182381566 reaches completed state, Arthur Toolchain Bootstrap v4 auto-starts from main. Verify its toolchain-acceptance.json and Release artifacts; only after acceptance passes enable IMAGEBUILDER and SDK_BUILD lanes.",
-  "rollback_target": "Stable firmware v0.1.0 + production/known-good.json"
+  "baseline_integrity": {
+    "status": "PASS",
+    "tag": "arthur-known-good-v1",
+    "tag_target": "a47d994bbb434dbcfc8036a4acb4379747b65f9f",
+    "manifest": "production/arthur-known-good-v1.json",
+    "firmware_sha256": "733eeec1375403029f0b08b7307756b2edfd050ca52473891ab340051d3e5612",
+    "toolchain_provenance": "PASS",
+    "plugins": "22/22 PASS",
+    "floating_dependencies": "REJECTED"
+  },
+  "no_change_dry_run": {
+    "status": "PASS",
+    "baseline_integrity": "PASS",
+    "routing": "PASS",
+    "toolchain": "PASS",
+    "unexpected_build": "NO",
+    "flash": "NO",
+    "candidate_created": "NO"
+  },
+  "routing_tests": {
+    "docs/example.md": "DOC_ONLY / NO_BUILD",
+    "files/etc/config/example": "IMAGEBUILDER",
+    "sources/kenzok8/quickstart/Makefile": "SDK_BUILD + IMAGEBUILDER",
+    "target/linux/qualcommax/patches/example.patch": "FULL_BUILD"
+  },
+  "routing_policy": [
+    "DOC_ONLY",
+    "FAST_GATE",
+    "IMAGEBUILDER",
+    "SDK_BUILD",
+    "FULL_BUILD"
+  ],
+  "next_action": "Normal automated firmware development; classify every change and run Baseline Integrity Gate before production.",
+  "rollback_target": "Stable firmware v0.1.0 + production/known-good.json (preserved under known_good.rollback)"
 }

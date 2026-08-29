@@ -30,6 +30,11 @@ run_case FAST_GATE \
   tests/test-classify-build-scope.sh \
   production/v4-state.json
 
+run_case FAST_GATE \
+  production/known-good.json \
+  production/arthur-known-good-v1.json \
+  scripts/baseline-integrity-gate.sh
+
 # v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
 run_case IMAGEBUILDER \
   production/v4/imagebuilder-request.json \
@@ -37,18 +42,26 @@ run_case IMAGEBUILDER \
   v4/imagebuilder/files/etc/config/xinzhao \
   scripts/v4-imagebuilder-build.sh
 
+run_case IMAGEBUILDER \
+  files/etc/uci-defaults/99-xinzhao-defaults \
+  files/etc/init.d/uhttpd \
+  files/etc/config/xinzhao
+
 # v4 explicit SDK lane. User-space package builds outrank ImageBuilder assembly.
 run_case SDK_BUILD \
   production/v4/sdk-request.json \
   v4/sdk/packages/luci-app-example/Makefile \
   scripts/v4-sdk-build.sh
 
+run_case SDK_BUILD \
+  sources/kenzok8/quickstart/Makefile
+
 run_case FULL_BUILD \
   config/arthur.config
 
 run_case FULL_BUILD \
   config/required-plugins.txt \
-  files/etc/config/xinzhao
+  target/linux/qualcommax/image/example.mk
 
 run_case FULL_BUILD \
   patches/901-arthur-upload-oom.patch \
@@ -67,10 +80,19 @@ run_case IMAGEBUILDER \
   .github/workflows/arthur-update-v3.yml \
   v4/imagebuilder/packages.txt
 
+run_case IMAGEBUILDER \
+  README.md \
+  files/etc/uci-defaults/99-xinzhao-defaults
+
 run_case SDK_BUILD \
   README.md \
   v4/imagebuilder/packages.txt \
   v4/sdk/packages/luci-app-example/Makefile
+
+run_case SDK_BUILD \
+  README.md \
+  files/etc/uci-defaults/99-xinzhao-defaults \
+  sources/kenzok8/quickstart/Makefile
 
 run_case FULL_BUILD \
   README.md \

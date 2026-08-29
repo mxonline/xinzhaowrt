@@ -35,6 +35,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Baseline Integrity Gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/baseline-integrity-gate.sh
+          ./scripts/baseline-integrity-gate.sh
+
       - name: Install Codex controller shim
         shell: powershell
         run: |
