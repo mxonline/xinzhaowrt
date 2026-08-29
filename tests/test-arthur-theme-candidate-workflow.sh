@@ -25,6 +25,7 @@ grep -Fq 'required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn wget
 grep -Fq 'CONFIG_LUCI_LANG_zh_Hans=y' "$workflow" || fail 'locked Chinese LuCI translation is not enabled as a boolean SDK symbol'
 grep -Fq 'scripts/feeds install luci-base' "$workflow" || fail 'locked LuCI base package is not installed through the SDK feed mechanism'
 grep -Fq 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING' "$workflow" || fail 'SDK LuCI base package presence gate is absent'
+grep -Fq 'CONFIG_PACKAGE_liblucihttp-lua=n' "$workflow" || fail 'SDK translation lane still enables the unnecessary Lua lucihttp variant'
 grep -Fq 'package/feeds/luci/luci-base/compile' "$workflow" || fail 'locked LuCI base translation package is not compiled by the SDK'
 grep -Fq -- "-name 'luci-i18n-base-zh-cn-*.apk'" "$workflow" || fail 'Chinese LuCI package is not staged for ImageBuilder'
 ! grep -Eq 'mediaurlbase=.*(argon|kucat)' "$workflow" || fail 'workflow forces a theme default'
