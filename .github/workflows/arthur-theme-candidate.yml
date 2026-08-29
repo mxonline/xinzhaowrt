@@ -34,7 +34,24 @@ jobs:
           set -Eeuo pipefail
           mkdir toolchain sdk imagebuilder sources
           gh release download arthur-toolchain-v0.1.0-33196164359 --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber --pattern SHA256SUMS --pattern arthur-known-good.lock --pattern package-repositories.tar.gz --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
-          (cd toolchain && sha256sum -c SHA256SUMS)
+          (
+            cd toolchain
+            step5_assets=(
+              arthur-known-good.lock
+              package-repositories.tar.gz
+              immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst
+              immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst
+            )
+            : > SHA256SUMS.step5
+            for asset in "${step5_assets[@]}"; do
+              test -s "$asset"
+              count="$(awk -v asset="$asset" '$2 == asset { count++ } END { print count + 0 }' SHA256SUMS)"
+              test "$count" -eq 1
+              awk -v asset="$asset" '$2 == asset { print }' SHA256SUMS >> SHA256SUMS.step5
+            done
+            test "$(wc -l < SHA256SUMS.step5)" -eq "${#step5_assets[@]}"
+            sha256sum -c SHA256SUMS.step5
+          )
           cmp -s config/arthur-known-good.lock toolchain/arthur-known-good.lock
       - name: SDK_BUILD frozen themes only
         run: |
