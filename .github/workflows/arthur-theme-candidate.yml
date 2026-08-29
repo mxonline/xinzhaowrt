@@ -92,13 +92,13 @@ jobs:
           mkdir -p repository-staging
           tar -xzf toolchain/package-repositories.tar.gz -C repository-staging
           find repository-staging/packages/aarch64_cortex-a53 -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
-          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
-          required_ib_packages=(luci-theme-argon luci-theme-kucat luci-i18n-base-zh-cn wget)
+          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn wget)
           for package in "${required_ib_packages[@]}"; do
             find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
           done
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
-          packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
           make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/files"
           firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -name '*sysupgrade.bin' -size +0c -print -quit)"
           test -n "$firmware"; mkdir -p output/firmware; cp "$firmware" output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin
