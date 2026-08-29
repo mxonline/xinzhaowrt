@@ -25,6 +25,7 @@ grep -Fq 'required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn)' "$
 ! grep -Fq 'required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn wget)' "$workflow" || fail 'ImageBuilder requires an unstaged, non-requested wget package'
 grep -Fq 'mkndx --allow-untrusted' "$workflow" || fail 'ImageBuilder package index must use explicit apk mkndx validation'
 ! grep -Fq 'make -C "$IB_DIR" package_index' "$workflow" || fail 'ImageBuilder package index must not hide apk errors behind make package_index'
+grep -Fq 'realpath "$IB_DIR/staging_dir/host/bin/apk"' "$workflow" || fail 'ImageBuilder apk path must be absolute before changing directories'
 grep -Fq 'CONFIG_LUCI_LANG_zh_Hans=y' "$workflow" || fail 'locked Chinese LuCI translation is not enabled as a boolean SDK symbol'
 grep -Fq 'scripts/feeds install luci-base' "$workflow" || fail 'locked LuCI base package is not installed through the SDK feed mechanism'
 grep -Fq 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING' "$workflow" || fail 'SDK LuCI base package presence gate is absent'

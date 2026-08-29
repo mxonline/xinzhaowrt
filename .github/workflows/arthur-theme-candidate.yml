@@ -135,9 +135,9 @@ jobs:
           for package in "${required_ib_packages[@]}"; do
             find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
           done
-          apk_bin="$IB_DIR/staging_dir/host/bin/apk"
+          apk_bin="$(realpath "$IB_DIR/staging_dir/host/bin/apk")"
           test -x "$apk_bin" || { echo 'IMAGEBUILDER_APK_MISSING'; exit 1; }
-          (cd "$IB_DIR/packages" && "$apk_bin" mkndx --allow-untrusted --output packages.adb *.apk)
+          "$apk_bin" mkndx --allow-untrusted --output "$IB_DIR/packages/packages.adb" "$IB_DIR/packages/"*.apk
           test -s "$IB_DIR/packages/packages.adb" || { echo 'IMAGEBUILDER_PACKAGE_INDEX_MISSING'; exit 1; }
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
