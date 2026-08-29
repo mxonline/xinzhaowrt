@@ -16,6 +16,21 @@
 - Web stack: static gate PASS — nginx remains primary and the new overlay stops/disables uhttpd before enabling/restarting nginx. Runtime gate is pending the rebuilt aarch64 QuickStart package.
 - Next: wait for bootstrap `33196164359` → SDK_BUILD QuickStart → ImageBuilder → runtime WEB_STACK_GATE → replacement candidate. Do not full-build or flash this rejected candidate.
 
+## Arthur FAST CANDIDATE — ready, not flashed
+
+- Release: `arthur-fast-candidate-33232376176`
+- Firmware: `XinZhaoWrt-Arthur-fast-33232376176-sysupgrade.bin`
+- SHA256: `1b6028911a2e53f226e24a41d65a825a8b2223c8f7bf41ac434c59a316f8bb0a`
+- Project commit: `528ac620a450d8c450920400fd46b1af604278f8`
+- Toolchain run: `33196164359` (accepted SDK, ImageBuilder, repository, SHA256, provenance, and lock)
+- SDK_BUILD QuickStart: PASS — matching `aarch64_cortex-a53` package was built and executed through the SDK gate.
+- FIRST_BOOT_RUNTIME_GATE / idempotence: PASS — isolated real UCI gate; rootfs defaults are now executable.
+- WEB_STACK_GATE: PASS — nginx primary, uhttpd disabled, QuickStart architecture/runtime probe passed.
+- ImageBuilder: PASS — 22 required LuCI applications asserted; the missing non-required `luci-i18n-base-zh-cn` is explicitly recorded as unavailable from the accepted package set.
+- `sysupgrade -T`: PASS — executed in an isolated rootfs extracted from this candidate with Arthur board identity `jdcloud,re-ss-01`.
+- Full Build Used: NO. No router connection, configuration modification, or flash occurred after the old failure evidence was preserved.
+- Next: await authorization for CLEAN FLASH + FIRST BOOT.
+
 - Started: 2026-08-28 15:58 +08:00
 - Scope: resumed from an already-flashed, booted firmware. No build, download, flash, factory reset, or configuration rewrite is permitted.
 
