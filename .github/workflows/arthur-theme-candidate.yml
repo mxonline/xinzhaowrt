@@ -66,6 +66,8 @@ jobs:
           test -n "$luci_feed_config"
           (cd "$SDK_DIR" && ./scripts/feeds update luci)
           test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
+          (cd "$SDK_DIR" && ./scripts/feeds install luci-base)
+          test -f "$SDK_DIR/package/feeds/luci/luci-base/Makefile" || { echo 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING'; exit 1; }
           luci_feed_source="$(awk '$2 == "luci" { print $3; exit }' "$SDK_DIR/feeds.conf.default")"
           luci_feed_commit="$(git -C "$SDK_DIR/feeds/luci" rev-parse HEAD)"
           mkdir -p output/theme-provenance
@@ -80,7 +82,7 @@ jobs:
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
-          printf '\nCONFIG_LUCI_LANG_zh_Hans=m\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
+          printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           make -C "$SDK_DIR" defconfig
           make -C "$SDK_DIR" package/feeds/luci/luci-base/compile package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
           chinese_apk="$(find "$SDK_DIR/bin/packages" -type f -name 'luci-i18n-base-zh-cn-*.apk' -print -quit)"
