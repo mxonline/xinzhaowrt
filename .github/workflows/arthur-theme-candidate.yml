@@ -93,6 +93,7 @@ jobs:
           git -C sources/kucat checkout "$KUCAT_REF"
           rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat sources/kucat/root/etc/uci-defaults/30_luci-kucat sources/kucat/root/usr/libexec/rpcd/luci.kucatget
           rm -f sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' sources/kucat/Makefile
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"

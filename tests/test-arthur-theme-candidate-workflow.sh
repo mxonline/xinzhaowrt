@@ -50,6 +50,8 @@ grep -Fq 'immortalwrt.git\$#' "$workflow" || fail 'base feed sed anchor does not
 grep -Fq 'CONFIG_PACKAGE_liblucihttp-lua=n' "$workflow" || fail 'SDK translation lane still enables the unnecessary Lua lucihttp variant'
 grep -Fq 'package/feeds/luci/luci-base/compile' "$workflow" || fail 'locked LuCI base translation package is not compiled by the SDK'
 grep -Fq -- "-name 'luci-i18n-base-zh-cn-*.apk'" "$workflow" || fail 'Chinese LuCI package is not staged for ImageBuilder'
+grep -Fq "LUCI_DEPENDS:=+wget +curl +jsonfilter" "$workflow" || fail 'Kucat dependency audit target is absent'
+grep -Fq "sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter\$/d'" "$workflow" || fail 'Kucat offline-only dependency reduction is absent'
 ! grep -Eq 'mediaurlbase=.*(argon|kucat)' "$workflow" || fail 'workflow forces a theme default'
 ! grep -Eq 'curl[[:space:]]+-k|--insecure|Client-ID' "$workflow" || fail 'workflow contains insecure online-theme logic'
 ! grep -Eq 'make world|FULL_BUILD' "$workflow" || fail 'workflow contains prohibited full build'
