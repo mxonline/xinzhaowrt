@@ -26,7 +26,7 @@ grep -Fq 'SDK_APK="$(realpath "$(find "$SDK_DIR/staging_dir"' "$workflow" || fai
 grep -Fq 'find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name' "$workflow" || fail 'matching aarch64 package repository must be injected into ImageBuilder'
 grep -Fq 'cp "$QUICKSTART_APK" "$IB_DIR/packages/"' "$workflow" || fail 'SDK-built QuickStart must replace the ImageBuilder package'
 ! grep -Fq 'repositories.conf' "$workflow" || fail 'ImageBuilder must use its native local package index instead of a nonexistent repository config'
-grep -Fq 'package == luci-i18n-base-zh-cn' "$workflow" || fail 'the unavailable non-required language pack must be explicitly handled'
+grep -Fq '"$package" == luci-i18n-base-zh-cn' "$workflow" || fail 'the unavailable non-required language pack must be explicitly handled'
 grep -Fq 'REQUIRED_PLUGIN_GATE=PASS' "$workflow" || fail 'ImageBuilder lane must assert all 22 required plugins remain selected'
 ! grep -Fq 'tar -xf "$QUICKSTART_APK" -C quickstart-root' "$workflow" || fail 'QuickStart package extraction incorrectly treats apk as a tar archive'
 grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
