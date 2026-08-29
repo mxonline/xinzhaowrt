@@ -89,6 +89,7 @@ jobs:
           set -Eeuo pipefail
           tar --zstd -xf toolchain/immortalwrt-imagebuilder-*.tar.zst -C imagebuilder
           IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          mkdir -p "$IB_DIR/repositories"
           tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
           find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
           find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;

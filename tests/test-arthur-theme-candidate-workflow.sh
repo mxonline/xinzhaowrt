@@ -18,6 +18,7 @@ grep -Fq 'cd "$SDK_DIR" && ./scripts/feeds update luci' "$workflow" || fail 'SDK
 grep -Fq 'SDK_LUCI_FEED_MISSING' "$workflow" || fail 'SDK LuCI feed missing gate is absent'
 grep -Fq 'feeds/luci/luci.mk' "$workflow" || fail 'SDK luci.mk gate is absent'
 grep -Fq 'LUCI_FEED_COMMIT' "$workflow" || fail 'LuCI feed provenance is absent'
+grep -Fq 'mkdir -p "$IB_DIR/repositories"' "$workflow" || fail 'ImageBuilder repository staging directory is not prepared'
 ! grep -Eq 'mediaurlbase=.*(argon|kucat)' "$workflow" || fail 'workflow forces a theme default'
 ! grep -Eq 'curl[[:space:]]+-k|--insecure|Client-ID' "$workflow" || fail 'workflow contains insecure online-theme logic'
 ! grep -Eq 'make world|FULL_BUILD' "$workflow" || fail 'workflow contains prohibited full build'
