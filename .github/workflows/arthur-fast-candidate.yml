@@ -132,7 +132,7 @@ jobs:
           test -x "$SDK_APK"
           (
             cd "$REPO_DIR"
-            "$SDK_APK" index --output packages.adb ./*.apk
+            "$SDK_APK" --allow-untrusted index --output packages.adb ./*.apk
           )
           REPOSITORIES_CONF="$(find "$IB_DIR" -maxdepth 2 -name repositories.conf -print -quit)"
           test -n "$REPOSITORIES_CONF"
