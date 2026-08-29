@@ -1,6 +1,17 @@
 {
   "device": "JDCloud RE-SS-01 / Arthur",
   "firmware": "XinZhaoWrt-Arthur-fast-33241309046",
+  "firmware_filename": "XinZhaoWrt-Arthur-fast-33241309046-sysupgrade.bin",
+  "firmware_sha256": "733eeec1375403029f0b08b7307756b2edfd050ca52473891ab340051d3e5612",
+  "fast_candidate_run": "33241309046",
+  "toolchain_run": "33196164359",
+  "toolchain_base_commit": "51a21eeeb4324085fadbd0763a2fbdf45b4b59bc",
+  "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
+  "target": "qualcommax",
+  "subtarget": "ipq60xx",
+  "profile": "jdcloud_re-ss-01",
+  "build_lane": "SDK_BUILD QuickStart + IMAGEBUILDER",
+  "full_build_used": false,
   "build": "SDK_BUILD QuickStart + ImageBuilder (run 33241309046)",
   "verification_started": "2026-08-28T15:58:00+08:00",
   "verification_completed": "2026-08-29T16:30:00+08:00",
@@ -60,6 +71,32 @@
   "reboot_test": "PASS",
   "persistence_test": "PASS",
   "known_good": false,
+  "candidate": "ACCEPTED",
+  "baseline_review": "PASS",
+  "clean_flash": "PASS",
+  "initialization_marker": "PASS (xinzhaowrt.system.initialized=1)",
+  "firmware_marker": "PASS (xinzhaowrt.system.firmware=XinZhaoWrt-Arthur)",
+  "provenance": {
+    "known_good_lock_sha256": "1f38f596607346d12097b89f5ab92341172ffbe7a6424c22231b212efbbcc3c1",
+    "toolchain_acceptance_sha256": "3af046845b7392467bef699d6623a4098a6663a817484e336aad72f3241a56f5",
+    "toolchain_provenance_sha256": "01b7ddac92ecd68d8bf45b67214755c1991afc2dfab0197d1614ae9c0bb9d60b",
+    "toolchain_sha256sums_sha256": "bfdb6e7d62fd1b6d39f667633d9ccba09da81d0ab3078d4aab75aa7e3c90ca20",
+    "sdk_sha256": "aca261d2362f3681a663627226b863d6507e44fe4a1fa56257ce8ad450c7a619",
+    "imagebuilder_sha256": "8bc55ac233869182942c72aec74ed71e93367b1083090aea7a5765271fcaf812",
+    "package_repositories_sha256": "b0a26b5a15dc919ef31082a1e5c88dcfa504f42688ccae444a5c86313b419426",
+    "build_info_sha256": "52b6c9b780f9e8c97b3554c1075fcfbea0976f1c5486e39d5eb1b5462fe4ce51"
+  },
+  "verification_record": {
+    "report": "verification/arthur-real-device-verification.md",
+    "handoff": "HANDOFF.md",
+    "branch": "codex/arthur-fast-candidate"
+  },
+  "rollback_target": {
+    "stable": "v0.1.0",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin",
+    "sha256": "9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d",
+    "recovery_method": "Preserved Stable sysupgrade firmware: verify local and router SHA256, run sysupgrade -T, then explicit sysupgrade -n; never use -F."
+  },
   "observations": {
     "openwrt": "ImmortalWRT SNAPSHOT r0+1-27e26e324",
     "kernel": "6.18.44",
