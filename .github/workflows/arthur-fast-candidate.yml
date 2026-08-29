@@ -123,6 +123,7 @@ jobs:
           tar --zstd -xf toolchain/immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst -C imagebuilder
           IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-imagebuilder-*' -print -quit)"
           test -n "$IB_DIR"
+          echo "IB_DIR=$IB_DIR" >> "$GITHUB_ENV"
           mkdir -p "$IB_DIR/repositories"
           tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
           test -d "$IB_DIR/repositories/packages/aarch64_cortex-a53"

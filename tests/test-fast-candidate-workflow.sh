@@ -30,6 +30,7 @@ grep -Fq '"$package" == luci-i18n-base-zh-cn' "$workflow" || fail 'the unavailab
 grep -Fq 'REQUIRED_PLUGIN_GATE=PASS' "$workflow" || fail 'ImageBuilder lane must assert all 22 required plugins remain selected'
 grep -Fq '[[ -z "$plugin" || "$plugin" == \#* ]] && continue' "$workflow" || fail 'required-plugin gate must ignore comments and blank lines'
 grep -Fq 'chroot "$SYSUPGRADE_ROOT" /bin/ash /sbin/sysupgrade -T /tmp/firmware.bin' "$workflow" || fail 'candidate must execute sysupgrade -T in an isolated target rootfs'
+grep -Fq 'echo "IB_DIR=$IB_DIR" >> "$GITHUB_ENV"' "$workflow" || fail 'ImageBuilder directory must persist for the artifact validation gate'
 ! grep -Fq 'tar -xf "$QUICKSTART_APK" -C quickstart-root' "$workflow" || fail 'QuickStart package extraction incorrectly treats apk as a tar archive'
 grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
 grep -Fq "grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack" "$workflow" || fail 'runtime web-stack gate does not validate the nginx restart action'
