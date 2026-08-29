@@ -1,0 +1,4 @@
+# Theme candidate provenance. Base remains immutable.
+BASELINE_TAG="arthur-known-good-v1"
+ARGON_REF="136eb5d42f30554e89cc737fd90f503909810660"
+KUCAT_REF="82ddd7e4196887089c43af19d4552cd54fa414d2"

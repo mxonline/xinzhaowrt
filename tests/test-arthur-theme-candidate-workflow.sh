@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+workflow="$root/.github/workflows/arthur-theme-candidate.yml"
+lock="$root/config/arthur-theme.lock"
+
+fail() { echo "ARTHUR_THEME_GATE: FAIL -- $*" >&2; exit 1; }
+
+[[ -f "$workflow" ]] || fail 'theme candidate workflow is missing'
+[[ -f "$lock" ]] || fail 'theme provenance lock is missing'
+grep -Fxq 'ARGON_REF="136eb5d42f30554e89cc737fd90f503909810660"' "$lock" || fail 'Argon ref is not frozen'
+grep -Fxq 'KUCAT_REF="82ddd7e4196887089c43af19d4552cd54fa414d2"' "$lock" || fail 'Kucat ref is not frozen'
+grep -Fq 'luci-theme-argon' "$workflow" || fail 'Argon package is absent'
+grep -Fq 'luci-theme-kucat' "$workflow" || fail 'Kucat package is absent'
+! grep -Eq 'mediaurlbase=.*(argon|kucat)' "$workflow" || fail 'workflow forces a theme default'
+! grep -Eq 'curl[[:space:]]+-k|--insecure|Client-ID' "$workflow" || fail 'workflow contains insecure online-theme logic'
+! grep -Eq 'make world|FULL_BUILD' "$workflow" || fail 'workflow contains prohibited full build'
+echo 'ARTHUR_THEME_GATE: PASS'
