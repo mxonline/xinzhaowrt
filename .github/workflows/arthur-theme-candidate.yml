@@ -25,6 +25,7 @@ jobs:
         run: |
           chmod +x tests/*.sh scripts/*.sh
           ./tests/test-arthur-theme-candidate-workflow.sh
+          ./tests/test-argon-default-theme.sh
           ./scripts/check-defaults.sh
           ./scripts/check-web-stack.sh
       - name: Download accepted SDK and ImageBuilder

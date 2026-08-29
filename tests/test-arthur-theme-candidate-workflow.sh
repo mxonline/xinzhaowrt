@@ -13,6 +13,7 @@ grep -Fxq 'ARGON_REF="136eb5d42f30554e89cc737fd90f503909810660"' "$lock" || fail
 grep -Fxq 'KUCAT_REF="82ddd7e4196887089c43af19d4552cd54fa414d2"' "$lock" || fail 'Kucat ref is not frozen'
 grep -Fq 'luci-theme-argon' "$workflow" || fail 'Argon package is absent'
 grep -Fq 'luci-theme-kucat' "$workflow" || fail 'Kucat package is absent'
+grep -Fq './tests/test-argon-default-theme.sh' "$workflow" || fail 'Argon factory-default regression test is not run by the workflow'
 grep -Fq 'cd "$SDK_DIR" && ./scripts/feeds update luci' "$workflow" || fail 'SDK LuCI feed update does not run from the SDK root'
 grep -Fq 'SDK_LUCI_FEED_MISSING' "$workflow" || fail 'SDK LuCI feed missing gate is absent'
 grep -Fq 'feeds/luci/luci.mk' "$workflow" || fail 'SDK luci.mk gate is absent'
