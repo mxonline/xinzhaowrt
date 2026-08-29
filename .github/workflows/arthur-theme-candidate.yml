@@ -1,0 +1,70 @@
+name: Arthur Theme Candidate SDK and ImageBuilder
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm frozen-theme SDK and ImageBuilder lane
+        required: true
+        default: 'NO'
+        type: choice
+        options: ['NO', 'BUILD_THEME_CANDIDATE']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  theme-candidate:
+    if: ${{ inputs.confirm == 'BUILD_THEME_CANDIDATE' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y squashfs-tools zstd
+      - name: Theme static gate
+        run: |
+          chmod +x tests/*.sh scripts/*.sh
+          ./tests/test-arthur-theme-candidate-workflow.sh
+          ./scripts/check-defaults.sh
+          ./scripts/check-web-stack.sh
+      - name: Download accepted SDK and ImageBuilder
+        env: { GH_TOKEN: ${{ github.token }} }
+        run: |
+          set -Eeuo pipefail
+          mkdir toolchain sdk imagebuilder sources
+          gh release download arthur-toolchain-v0.1.0-33196164359 --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber --pattern SHA256SUMS --pattern arthur-known-good.lock --pattern package-repositories.tar.gz --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+          (cd toolchain && sha256sum -c SHA256SUMS)
+          cmp -s config/arthur-known-good.lock toolchain/arthur-known-good.lock
+      - name: SDK_BUILD frozen themes only
+        run: |
+          set -Eeuo pipefail
+          source config/arthur-theme.lock
+          tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
+          SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          git clone https://github.com/jerrykuku/luci-theme-argon.git sources/argon
+          git -C sources/argon checkout "$ARGON_REF"
+          git clone https://github.com/sirpdboy/luci-theme-kucat.git sources/kucat
+          git -C sources/kucat checkout "$KUCAT_REF"
+          rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat sources/kucat/root/etc/uci-defaults/30_luci-kucat sources/kucat/root/usr/libexec/rpcd/luci.kucatget
+          rm -f sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          mkdir -p "$SDK_DIR/package/feeds/xinzhao"
+          ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
+          ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
+          printf '\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
+          make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          find "$SDK_DIR/bin/packages" -type f -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' | grep -q .
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+      - name: ImageBuilder candidate and rootfs Theme Gate
+        run: |
+          set -Eeuo pipefail
+          tar --zstd -xf toolchain/immortalwrt-imagebuilder-*.tar.zst -C imagebuilder
+          IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
+          find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/files"
+          firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -name '*sysupgrade.bin' -size +0c -print -quit)"
+          test -n "$firmware"; mkdir -p output/firmware; cp "$firmware" output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin
+          sha256sum output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
+          echo 'THEME_COMPATIBILITY_GATE=PASS'
