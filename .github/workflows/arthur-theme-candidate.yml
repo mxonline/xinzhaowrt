@@ -58,12 +58,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           source config/arthur-theme.lock
+          source config/arthur-known-good.lock
           tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
           SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
           test -f "$SDK_DIR/feeds.conf.default"
           test -x "$SDK_DIR/scripts/feeds"
+          base_feed_config="$(awk '$3 == "base" { print; exit }' "$SDK_DIR/feeds.conf.default")"
+          test -n "$base_feed_config"
+          sed -i "s#^src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git$#src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git^${IMMORTALWRT_REF}#" "$SDK_DIR/feeds.conf.default"
           luci_feed_config="$(awk '$2 == "luci" { print; exit }' "$SDK_DIR/feeds.conf.default")"
           test -n "$luci_feed_config"
+          (cd "$SDK_DIR" && ./scripts/feeds update base)
+          (cd "$SDK_DIR" && ./scripts/feeds install -p base ucode)
+          test -f "$SDK_DIR/package/feeds/base/ucode/Makefile" || { echo 'SDK_UCODE_FEED_PACKAGE_MISSING'; exit 1; }
           (cd "$SDK_DIR" && ./scripts/feeds update luci)
           test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
           (cd "$SDK_DIR" && ./scripts/feeds install luci-base)
