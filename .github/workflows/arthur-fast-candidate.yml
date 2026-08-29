@@ -39,7 +39,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static zstd
+          sudo apt-get install -y qemu-user-static squashfs-tools zstd
 
       - name: Validate source gates
         run: |
@@ -165,20 +165,11 @@ jobs:
           grep -Fq 'jdcloud_re-ss-01' toolchain/build-info.txt
           grep -Fq 'qualcommax/ipq60xx' toolchain/build-info.txt
           sha256sum -c output/firmware/SHA256SUMS.local
-          IB_APK="$(find "$IB_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
-          test -x "$IB_APK"
           SYSUPGRADE_ROOT="$GITHUB_WORKSPACE/sysupgrade-root"
+          SYSUPGRADE_ARCHIVE="$GITHUB_WORKSPACE/sysupgrade-rootfs.squashfs"
+          tar -xf output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin --wildcards -O 'sysupgrade-*/root' > "$SYSUPGRADE_ARCHIVE"
+          unsquashfs -d "$SYSUPGRADE_ROOT" "$SYSUPGRADE_ARCHIVE"
           mkdir -p "$SYSUPGRADE_ROOT/tmp"
-          for package in \
-            "$IB_DIR"/packages/base-files-*.apk \
-            "$IB_DIR"/packages/busybox-*.apk \
-            "$IB_DIR"/packages/libc-*.apk \
-            "$IB_DIR"/packages/libgcc1-*.apk \
-            "$IB_DIR"/packages/libubox*.apk \
-            "$IB_DIR"/packages/fwtool-*.apk \
-            "$IB_DIR"/packages/fstools-*.apk; do
-            "$IB_APK" --allow-untrusted extract --destination "$SYSUPGRADE_ROOT" "$package"
-          done
           cp output/firmware/XinZhaoWrt-Arthur-fast-${GITHUB_RUN_ID}-sysupgrade.bin "$SYSUPGRADE_ROOT/tmp/firmware.bin"
           sudo chroot "$SYSUPGRADE_ROOT" /bin/ash /sbin/sysupgrade -T /tmp/firmware.bin
           echo 'WEB_STACK_GATE=PASS'
