@@ -147,4 +147,61 @@ jobs:
           firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -name '*sysupgrade.bin' -size +0c -print -quit)"
           test -n "$firmware"; mkdir -p output/firmware; cp "$firmware" output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin
           sha256sum output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
+          echo "CANDIDATE_FIRMWARE=output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin" >> "$GITHUB_ENV"
           echo 'THEME_COMPATIBILITY_GATE=PASS'
+      - name: Candidate Verification
+        run: |
+          set -Eeuo pipefail
+          firmware="$CANDIDATE_FIRMWARE"
+          test -s "$firmware"
+          sha256sum -c output/firmware/SHA256SUMS.local
+          test -s output/theme-provenance/chinese-luci-package.lock
+          rootfs_archive="$GITHUB_WORKSPACE/theme-candidate-rootfs.squashfs"
+          rootfs="$GITHUB_WORKSPACE/theme-candidate-root"
+          rm -rf "$rootfs"
+          tar -xf "$firmware" --wildcards -O 'sysupgrade-*/root' > "$rootfs_archive"
+          sudo unsquashfs -d "$rootfs" "$rootfs_archive" >/dev/null
+          test -f "$rootfs/etc/config/luci"
+          grep -Eq "^[[:space:]]*option mediaurlbase '/luci-static/argon'[[:space:]]*$" "$rootfs/etc/config/luci"
+          test -d "$rootfs/www/luci-static/argon"
+          test -d "$rootfs/www/luci-static/kucat"
+          test -d "$rootfs/www/luci-static/bootstrap"
+          apk_db="$rootfs/lib/apk/db/installed"
+          test -s "$apk_db"
+          for package in luci-i18n-base-zh-cn luci-theme-kucat luci-theme-argon luci-app-openclash; do
+            grep -Fq "P:$package" "$apk_db" || { echo "CANDIDATE_PACKAGE_MISSING=$package"; exit 1; }
+          done
+          while IFS= read -r package; do
+            test -z "$package" && continue
+            grep -Fq "P:$package" "$apk_db" || { echo "PLUGIN_MISSING=$package"; exit 1; }
+          done < <(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; p' config/required-plugins.txt)
+          test -f "$rootfs/etc/config/network"
+          test -f "$rootfs/etc/config/firewall"
+          test -f "$rootfs/etc/config/nginx"
+          grep -Fq 'XINZHAO_NGINX_PRIMARY=1' "$rootfs/etc/init.d/uhttpd"
+          if find "$rootfs/etc/uci-defaults" "$rootfs/etc/init.d" -type f -print0 2>/dev/null | xargs -0 grep -nH 'mediaurlbase' 2>/dev/null; then
+            echo 'BOOT_THEME_OVERRIDE_PRESENT'; exit 1
+          fi
+          {
+            echo "FIRMWARE=$firmware"
+            sha256sum "$firmware"
+            echo 'ARGON_DEFAULT_THEME=PASS'
+            echo 'KUCAT_THEME=PASS'
+            echo 'ORIGINAL_THEME=PASS'
+            echo 'CHINESE_LUCI=PASS'
+            echo 'OPENCLASH=PASS'
+            echo 'NETWORK_FIREWALL=PASS'
+            echo 'NO_BOOT_THEME_OVERRIDE=PASS'
+          } > output/theme-provenance/candidate-verification.txt
+          echo 'CANDIDATE_VERIFICATION=PASS'
+          echo 'THEME_CANDIDATE_READY'
+      - name: Upload Arthur Theme Candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: arthur-theme-candidate-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            output/firmware/XinZhaoWrt-Arthur-theme-${{ github.run_id }}-sysupgrade.bin
+            output/firmware/SHA256SUMS.local
+            output/theme-provenance/*.lock
+            output/theme-provenance/candidate-verification.txt
