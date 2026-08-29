@@ -128,7 +128,21 @@ jobs:
           test -d "$IB_DIR/repositories/packages/aarch64_cortex-a53"
           find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp -f {} "$IB_DIR/packages/" \;
           cp "$QUICKSTART_APK" "$IB_DIR/packages/"
-          mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          mapfile -t configured_packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          packages=()
+          for package in "${configured_packages[@]}"; do
+            # The accepted SDK/ImageBuilder package set omits this optional locale.
+            # FAST lane rebuilds only QuickStart, so it must remain an explicit skip.
+            if [[ "$package" == luci-i18n-base-zh-cn ]]; then
+              echo 'FAST_LANE_SKIP=luci-i18n-base-zh-cn reason=absent-from-accepted-package-set'
+              continue
+            fi
+            packages+=("$package")
+          done
+          while IFS= read -r plugin; do
+            printf '%s\n' "${packages[@]}" | grep -Fx "$plugin" >/dev/null
+          done < config/required-plugins.txt
+          echo 'REQUIRED_PLUGIN_GATE=PASS'
           mkdir -p image-files
           cp -a files/. image-files/
           make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
