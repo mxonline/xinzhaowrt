@@ -103,7 +103,7 @@ jobs:
           QUICKSTART_APK="$(find "$SDK_DIR/bin/packages/aarch64_cortex-a53" -type f -name 'quickstart-*.apk' -print -quit)"
           test -n "$QUICKSTART_APK"
           mkdir quickstart-root
-          tar --zstd -xf "$QUICKSTART_APK" -C quickstart-root
+          tar -xf "$QUICKSTART_APK" -C quickstart-root
           file quickstart-root/usr/sbin/quickstart | grep -Eq 'ELF 64-bit.*ARM aarch64'
           qemu-aarch64-static quickstart-root/usr/sbin/quickstart --help >/dev/null
           set +e
