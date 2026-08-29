@@ -1,5 +1,7 @@
 name: Arthur Theme Candidate SDK and ImageBuilder
 on:
+  push:
+    branches: [codex/arthur-theme-candidate]
   workflow_dispatch:
     inputs:
       confirm:
@@ -13,7 +15,7 @@ permissions:
   actions: read
 jobs:
   theme-candidate:
-    if: ${{ inputs.confirm == 'BUILD_THEME_CANDIDATE' }}
+    if: ${{ github.event_name == 'push' || inputs.confirm == 'BUILD_THEME_CANDIDATE' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
