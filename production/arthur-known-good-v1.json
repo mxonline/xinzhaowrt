@@ -124,7 +124,7 @@
     "report": "verification/arthur-real-device-verification.md",
     "handoff": "HANDOFF.md",
     "branch": "codex/arthur-fast-candidate",
-    "remote_head_at_review": "7f0e44e8de5d6011c0e063e4df2981f7864eeb8b"
+    "remote_head_at_review": "verified by git ls-remote after final push"
   },
   "rollback_target": {
     "stable": "v0.1.0",
