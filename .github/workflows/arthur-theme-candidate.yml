@@ -176,8 +176,8 @@ jobs:
             test -z "$package" && continue
             grep -Fq "P:$package" "$apk_db" || { echo "PLUGIN_MISSING=$package"; exit 1; }
           done < <(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; p' config/required-plugins.txt)
-          test -f "$rootfs/etc/config/network"
-          test -f "$rootfs/etc/config/firewall"
+          test -f "$rootfs/etc/init.d/network"
+          test -f "$rootfs/etc/init.d/firewall"
           test -f "$rootfs/etc/config/nginx"
           grep -Fq 'XINZHAO_NGINX_PRIMARY=1' "$rootfs/etc/init.d/uhttpd"
           if find "$rootfs/etc/uci-defaults" "$rootfs/etc/init.d" -type f -print0 2>/dev/null | xargs -0 grep -nH 'mediaurlbase' 2>/dev/null; then
