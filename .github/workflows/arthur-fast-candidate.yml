@@ -105,7 +105,7 @@ jobs:
           SDK_APK="$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
           test -x "$SDK_APK"
           mkdir quickstart-root
-          "$SDK_APK" extract --destination quickstart-root "$QUICKSTART_APK"
+          "$SDK_APK" --allow-untrusted extract --destination quickstart-root "$QUICKSTART_APK"
           file quickstart-root/usr/sbin/quickstart | grep -Eq 'ELF 64-bit.*ARM aarch64'
           qemu-aarch64-static quickstart-root/usr/sbin/quickstart --help >/dev/null
           set +e
