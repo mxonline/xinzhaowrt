@@ -34,6 +34,8 @@ grep -Fq 'UCODE_STAGING=PASS' "$workflow" || fail 'ucode library staging gate is
 grep -Fq 'UCODE_COMMIT' "$workflow" || fail 'ucode provenance is absent'
 grep -Fq 'package/feeds/luci/lucihttp/compile' "$workflow" || fail 'liblucihttp-ucode preflight compile is absent'
 grep -Fq 'SDK_DEPENDENCY_CLOSURE=PASS' "$workflow" || fail 'SDK dependency closure gate is absent'
+grep -Fq 'immortalwrt.git\$#' "$workflow" || fail 'base feed sed anchor does not escape the shell $# expansion'
+! grep -Fq 'immortalwrt.git$#' "$workflow" || fail 'base feed sed anchor still expands the shell $# token'
 grep -Fq 'CONFIG_PACKAGE_liblucihttp-lua=n' "$workflow" || fail 'SDK translation lane still enables the unnecessary Lua lucihttp variant'
 grep -Fq 'package/feeds/luci/luci-base/compile' "$workflow" || fail 'locked LuCI base translation package is not compiled by the SDK'
 grep -Fq -- "-name 'luci-i18n-base-zh-cn-*.apk'" "$workflow" || fail 'Chinese LuCI package is not staged for ImageBuilder'

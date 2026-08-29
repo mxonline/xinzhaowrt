@@ -65,7 +65,7 @@ jobs:
           test -x "$SDK_DIR/scripts/feeds"
           base_feed_config="$(awk '$3 == "base" { print; exit }' "$SDK_DIR/feeds.conf.default")"
           test -n "$base_feed_config"
-          sed -i "s#^src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git$#src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git^${IMMORTALWRT_REF}#" "$SDK_DIR/feeds.conf.default"
+          sed -i "s#^src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git\$#src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git^${IMMORTALWRT_REF}#" "$SDK_DIR/feeds.conf.default"
           luci_feed_config="$(awk '$2 == "luci" { print; exit }' "$SDK_DIR/feeds.conf.default")"
           test -n "$luci_feed_config"
           (cd "$SDK_DIR" && ./scripts/feeds update base)
