@@ -133,7 +133,7 @@
     "recovery_method": "Verify preserved firmware locally and on router, run sysupgrade -T, then explicit sysupgrade -n; never use -F"
   },
   "evidence_sha256": {
-    "verification/status.json": "266b8cfba538f6851d05bb40b0edfeac31469fd477bd9ddcf03e926f50331064",
+    "verification/status.json": "cd6fa1e3f406048ce7a86e97f6c9b1e9ec720c6cd546af5b5162f2fc832ce9b9",
     "verification/arthur-real-device-verification.md": "6d5828f58501d1c45ac35d70b5e829d76645cdcad181fbee30a1bbdd6d08a8f8",
     "HANDOFF.md": "ef085bfb9a2d5a4c0c42a45efeb64a721fe8d9441bacdc5523bd0acd41bf6562"
   },
