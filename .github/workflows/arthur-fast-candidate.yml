@@ -58,6 +58,7 @@ jobs:
           mkdir -p toolchain
           gh release download "$TOOLCHAIN_TAG" --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber \
             --pattern SHA256SUMS \
+            --pattern build-info.txt \
             --pattern toolchain-acceptance.json \
             --pattern toolchain-provenance.json \
             --pattern arthur-known-good.lock \

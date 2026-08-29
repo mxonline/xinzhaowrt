@@ -13,6 +13,7 @@ fail() {
 grep -Fq 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' "$workflow" || fail 'matching SDK bundle is not required'
 grep -Fq 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst' "$workflow" || fail 'matching ImageBuilder bundle is not required'
 grep -Fq 'package-repositories.tar.gz' "$workflow" || fail 'verified package repository is not required'
+grep -Fq -- '--pattern build-info.txt' "$workflow" || fail 'build-info must be downloaded before validating every toolchain checksum'
 grep -Fq 'package/feeds/xinzhao/quickstart/compile V=s' "$workflow" || fail 'QuickStart-only SDK build is missing'
 grep -Fq 'image PROFILE=jdcloud_re-ss-01' "$workflow" || fail 'Arthur ImageBuilder assembly is missing'
 grep -Fq './scripts/check-defaults.sh' "$workflow" || fail 'first-boot static gate is missing'
