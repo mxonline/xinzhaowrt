@@ -53,6 +53,8 @@ grep -Fq -- "-name 'luci-i18n-base-zh-cn-*.apk'" "$workflow" || fail 'Chinese Lu
 grep -Fq "LUCI_DEPENDS:=+wget +curl +jsonfilter" "$workflow" || fail 'Kucat dependency audit target is absent'
 grep -Fq "sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter\$/d'" "$workflow" || fail 'Kucat offline-only dependency reduction is absent'
 grep -Fq 'name: Candidate Verification' "$workflow" || fail 'candidate firmware verification step is absent'
+grep -Fq 'CANDIDATE_VERIFICATION_FAILED_LINE=' "$workflow" || fail 'candidate verification failure-line diagnostic is absent'
+grep -Fq 'CANDIDATE_VERIFICATION_FAILED_COMMAND=' "$workflow" || fail 'candidate verification failure-command diagnostic is absent'
 grep -Fq 'actions/upload-artifact@v4' "$workflow" || fail 'candidate artifact upload is absent'
 grep -Fq 'THEME_CANDIDATE_READY' "$workflow" || fail 'candidate readiness marker is absent'
 grep -Fq 'for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash' "$workflow" || fail 'candidate package verification uses the wrong Argon package name'

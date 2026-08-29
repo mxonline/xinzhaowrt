@@ -152,6 +152,7 @@ jobs:
       - name: Candidate Verification
         run: |
           set -Eeuo pipefail
+          trap 'rc=$?; echo "CANDIDATE_VERIFICATION_FAILED_LINE=$LINENO"; echo "CANDIDATE_VERIFICATION_FAILED_COMMAND=$BASH_COMMAND"; exit "$rc"' ERR
           firmware="$CANDIDATE_FIRMWARE"
           test -s "$firmware"
           sha256sum -c output/firmware/SHA256SUMS.local
