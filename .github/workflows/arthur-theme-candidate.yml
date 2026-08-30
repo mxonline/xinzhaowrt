@@ -232,7 +232,7 @@ jobs:
           gh release create "arthur-theme-candidate-${GITHUB_RUN_ID}" \
             output/firmware/* \
             output/release/* \
-            rollback/* \
+            rollback/XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Arthur Theme Candidate ${GITHUB_RUN_ID}" \
