@@ -28,6 +28,9 @@ jobs:
         run: |
           chmod +x tests/*.sh scripts/*.sh || true
 
+      - name: Test Skill Framework preflight
+        run: ./tests/test-skill-framework-preflight.sh
+
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
 
@@ -68,6 +71,7 @@ jobs:
             echo
             echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
             echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
+            echo '- Skill Framework remains isolated and cannot take over the active Arthur production loop.'
             echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
             echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
             echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'
