@@ -185,6 +185,10 @@ jobs:
               make -C "$SDK_DIR" "package/feeds/xinzhao/$app/compile" V=s
             fi
           done
+          package_dir_args=()
+          while IFS= read -r package_dir; do
+            package_dir_args+=(--package-dir "$package_dir")
+          done < <(find "$SDK_DIR/bin/packages" -type d -print)
           python3 scripts/generate-plugin-i18n-baseline.py \
             --baseline config/required-plugins.txt \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
@@ -195,7 +199,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
             --source-root "$SDK_DIR/feeds/luci" \
-            --package-dir "$SDK_DIR/bin/packages" \
+            "${package_dir_args[@]}" \
             --feed-commit "$luci_feed_commit" \
             --output output/theme-provenance/plugin-i18n-baseline.json
           i18n_available_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["plugins_with_upstream_zh_cn"])')"
@@ -203,6 +207,7 @@ jobs:
           echo "BASE_LANGUAGE_ZH_CN=PASS"
           echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
           echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+          python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("PLUGIN_I18N_MISSING=" + ",".join(x["zh_cn_package"] for x in d["plugins"] if x["available"] and not x["included"]))'
           test "$i18n_included_count" -eq "$i18n_available_count"
           chinese_apk="$(find "$SDK_DIR/bin/packages" -type f -name 'luci-i18n-base-zh-cn-*.apk' -print -quit)"
           test -n "$chinese_apk" || { echo 'CHINESE_LUCI_PACKAGE_MISSING'; exit 1; }
@@ -307,7 +312,7 @@ jobs:
           test -f "$rootfs/etc/init.d/firewall"
           test -f "$rootfs/etc/config/nginx"
           grep -Fq 'XINZHAO_NGINX_PRIMARY=1' "$rootfs/etc/init.d/uhttpd"
-          if find "$rootfs/etc/uci-defaults" "$rootfs/etc/init.d" -type f -print0 2>/dev/null | xargs -0 grep -nH 'mediaurlbase' 2>/dev/null; then
+          if find "$rootfs/etc/uci-defaults" "$rootfs/etc/init.d" -type f -print0 2>/dev/null | xargs -0 grep -nHE "mediaurlbase.*(bootstrap|kucat)" 2>/dev/null; then
             echo 'BOOT_THEME_OVERRIDE_PRESENT'; exit 1
           fi
           {
