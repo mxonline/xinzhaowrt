@@ -441,7 +441,8 @@ You MUST NOT:
 - change the device target;
 - weaken acceptance gates;
 - promote Stable or alter Known-Good;
-- run sysupgrade, mtd, dd, U-Boot, eMMC/partition writes, or access the router;
+- run raw mtd, dd, U-Boot, eMMC/partition, SPI/NAND, or calibration writes, or access the router outside the verified production device path;
+- standard sysupgrade is executed only by the production runtime after AUTO_FLASH_SAFETY_GATE, then continues to WAIT_DEVICE and real-device verification;
 - git commit, git push, create Releases, or trigger GitHub Actions.
 
 Work directly in the current workspace if and only if a minimal deterministic repair is supported by evidence.
