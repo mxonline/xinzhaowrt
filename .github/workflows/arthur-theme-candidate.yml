@@ -130,6 +130,27 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns/luci-app-mosdns" "$SDK_DIR/package/feeds/xinzhao/luci-app-mosdns"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier/luci-app-easytier" "$SDK_DIR/package/feeds/xinzhao/luci-app-easytier"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter/luci-app-oaf" "$SDK_DIR/package/feeds/xinzhao/luci-app-oaf"
+          # kenzok8's pinned AdGuard Home source contains a real compiled
+          # zh-cn LMO but does not expose a separate translation subpackage.
+          # Wrap that exact upstream artifact in the canonical package name;
+          # do not invent translations or silently treat it as unavailable.
+          adguard_lmo="$(find "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-adguardhome" -path '*/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo' -type f -print -quit)"
+          test -n "$adguard_lmo" || { echo 'ADGUARDHOME_ZH_CN_SOURCE_MISSING'; exit 1; }
+          adguard_i18n_dir="$SDK_DIR/package/feeds/xinzhao/luci-i18n-adguardhome-zh-cn"
+          mkdir -p "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n"
+          cp "$adguard_lmo" "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"
+          cat > "$adguard_i18n_dir/Makefile" <<'EOF'
+          include $(TOPDIR)/rules.mk
+          LUCI_TITLE:=Simplified Chinese translation for LuCI AdGuard Home
+          LUCI_DEPENDS:=+luci-app-adguardhome
+          LUCI_PKGARCH:=all
+          include $(TOPDIR)/feeds/luci/luci.mk
+          define Package/luci-i18n-adguardhome-zh-cn/install
+            $(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+            $(INSTALL_DATA) ./root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/
+          endef
+          $(eval $(call BuildPackage,luci-i18n-adguardhome-zh-cn))
+          EOF
           printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           python3 scripts/generate-plugin-i18n-baseline.py \
             --baseline config/required-plugins.txt \
@@ -141,6 +162,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
             --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
             --feed-commit "$luci_feed_commit" \
             --output output/theme-provenance/plugin-i18n-baseline.json
           mapfile -t i18n_apps < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["luci_package"] for x in d["plugins"] if x["available"]))')
@@ -189,6 +211,9 @@ jobs:
               make -C "$SDK_DIR" "package/feeds/xinzhao/$app/compile" V=s
             fi
           done
+          if printf '%s\n' "${i18n_packages[@]}" | grep -Fxq 'luci-i18n-adguardhome-zh-cn'; then
+            make -C "$SDK_DIR" package/feeds/xinzhao/luci-i18n-adguardhome-zh-cn/compile V=s
+          fi
           package_dir_args=()
           while IFS= read -r package_dir; do
             package_dir_args+=(--package-dir "$package_dir")
@@ -203,6 +228,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
             --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
             "${package_dir_args[@]}" \
             --feed-commit "$luci_feed_commit" \
             --output output/theme-provenance/plugin-i18n-baseline.json
@@ -296,6 +322,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
             --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
             --rootfs "$rootfs" \
             --feed-commit "$(awk -F= '$1 == "LUCI_FEED_COMMIT" { print $2 }' output/theme-provenance/luci-feed.lock)" \
             --output output/theme-provenance/plugin-i18n-baseline.json

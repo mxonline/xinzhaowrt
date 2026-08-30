@@ -3,10 +3,10 @@
 
 The LuCI build system creates luci-i18n-*-zh-cn only for packages using the
 LuCI translation machinery (normally ``luci.mk``) and an actual Chinese PO
-tree.  Some external applications, notably OpenClash, embed PO files in their
-main package without defining a separate luci-i18n package.  This script must
-distinguish those cases: an embedded translation is not an available
-``luci-i18n-*-zh-cn`` package.
+tree.  A pinned external application may instead ship a verified Chinese LMO
+inside its source tree.  The workflow wraps that existing upstream artifact in
+an explicit luci-i18n package; arbitrary names without a PO/LMO artifact are
+still not treated as translations.
 """
 
 from __future__ import annotations
@@ -57,6 +57,12 @@ def has_zh_cn_source(path: Path) -> bool:
         zh_dir = path / "po" / language_dir
         if zh_dir.is_dir() and any(p.suffix == ".po" for p in zh_dir.iterdir()):
             return True
+    # Some pinned external LuCI applications ship the compiled translation
+    # artifact directly.  It remains source-verifiable and is packaged by the
+    # workflow under the canonical luci-i18n-* name.
+    lmo_root = path / "root" / "usr" / "lib" / "lua" / "luci" / "i18n"
+    if any(p.is_file() and p.name.endswith(".zh-cn.lmo") for p in lmo_root.glob("*.lmo")):
+        return True
     return False
 
 
@@ -77,6 +83,16 @@ def has_separate_translation_package(path: Path, basename: str) -> bool:
         return True
     package_name = f"luci-i18n-{basename}-zh-cn"
     return any(package_name in line for line in lines)
+
+
+def translation_package_candidates(root: Path, package: str) -> list[Path]:
+    """Find explicit translation-package recipes added by the build lane."""
+    found: list[Path] = []
+    for current, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in {".git", "build_dir", "staging_dir", "tmp"}]
+        if Path(current).name == package and "Makefile" in files:
+            found.append(Path(current))
+    return found
 
 
 def package_present(package: str, package_dirs: list[Path], rootfs: Path | None) -> bool:
@@ -124,6 +140,20 @@ def main() -> int:
             for p in sources
             if has_zh_cn_source(p) and has_separate_translation_package(p, basename)
         ]
+        # A source tree may expose a real embedded zh-cn LMO while the
+        # upstream package does not define a separate subpackage.  The
+        # workflow can provide an explicit wrapper recipe for that artifact.
+        if not available_sources:
+            for root in args.source_root:
+                candidates = translation_package_candidates(root, zh_package)
+                if candidates:
+                    sources = candidates
+                    break
+            available_sources = [
+                p
+                for p in sources
+                if has_zh_cn_source(p) and has_separate_translation_package(p, basename)
+            ]
         available = bool(available_sources)
         included = package_present(zh_package, args.package_dir, args.rootfs)
         records.append(
