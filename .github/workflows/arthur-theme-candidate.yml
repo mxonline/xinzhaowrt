@@ -43,6 +43,9 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber \
             --pattern SHA256SUMS \
             --pattern arthur-known-good.lock \
+            --pattern build-info.txt \
+            --pattern full.config \
+            --pattern toolchain-provenance.json \
             --pattern package-repositories.tar.gz \
             --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' \
             --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
