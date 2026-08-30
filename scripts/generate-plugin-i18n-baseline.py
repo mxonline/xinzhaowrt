@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Discover real LuCI zh-cn translation packages for the frozen plugin baseline.
 
-The LuCI build system creates luci-i18n-*-zh-cn from an application's
-po/zh_Hans tree.  This script records that source fact and, when a package
-directory or rootfs is supplied, records whether the resulting APK is present.
-It never infers availability from a package name alone.
+The LuCI build system creates luci-i18n-*-zh-cn only for packages using the
+LuCI translation machinery (normally ``luci.mk``) and an actual Chinese PO
+tree.  Some external applications, notably OpenClash, embed PO files in their
+main package without defining a separate luci-i18n package.  This script must
+distinguish those cases: an embedded translation is not an available
+``luci-i18n-*-zh-cn`` package.
 """
 
 from __future__ import annotations
@@ -58,6 +60,25 @@ def has_zh_cn_source(path: Path) -> bool:
     return False
 
 
+def has_separate_translation_package(path: Path, basename: str) -> bool:
+    """Return whether this source defines a separate LuCI translation package.
+
+    ``luci.mk`` dynamically defines luci-i18n-* packages from the PO tree.  A
+    few packages define the same package explicitly, so accept that form as
+    well.  Merely having ``po/zh-cn`` is insufficient (OpenClash embeds those
+    files in luci-app-openclash).
+    """
+    makefile = path / "Makefile"
+    if not makefile.is_file():
+        return False
+    text = makefile.read_text(encoding="utf-8", errors="replace")
+    lines = [line.split("#", 1)[0] for line in text.splitlines()]
+    if any("luci.mk" in line for line in lines):
+        return True
+    package_name = f"luci-i18n-{basename}-zh-cn"
+    return any(package_name in line for line in lines)
+
+
 def package_present(package: str, package_dirs: list[Path], rootfs: Path | None) -> bool:
     prefix = f"{package}-"
     for directory in package_dirs:
@@ -98,7 +119,11 @@ def main() -> int:
                 if candidates:
                     sources = candidates
                     break
-        available_sources = [p for p in sources if has_zh_cn_source(p)]
+        available_sources = [
+            p
+            for p in sources
+            if has_zh_cn_source(p) and has_separate_translation_package(p, basename)
+        ]
         available = bool(available_sources)
         included = package_present(zh_package, args.package_dir, args.rootfs)
         records.append(
