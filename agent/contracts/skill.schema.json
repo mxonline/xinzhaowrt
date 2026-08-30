@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinzhao.local/schemas/skill.schema.json",
+  "title": "Agent Skill Contract",
+  "type": "object",
+  "required": ["id", "version", "layer", "triggers", "non_triggers", "inputs", "preconditions", "permissions", "risk", "implementation", "evidence", "verification", "failure_handling", "fallback"],
+  "properties": {
+    "id": {"type": "string"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "layer": {"enum": ["core", "domain", "project", "vendor"]},
+    "triggers": {"type": "array", "items": {"type": "string"}},
+    "non_triggers": {"type": "array", "items": {"type": "string"}},
+    "inputs": {"type": "array", "items": {"type": "string"}},
+    "preconditions": {"type": "array", "items": {"type": "string"}},
+    "permissions": {"type": "array", "items": {"enum": ["read", "write", "network", "git", "device", "execute"]}},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "implementation": {
+      "type": "object",
+      "required": ["type", "binding"],
+      "properties": {
+        "type": {"enum": ["local", "vendor", "adapter"]},
+        "binding": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "verification": {"type": "array", "items": {"type": "string"}},
+    "failure_handling": {"type": "string"},
+    "fallback": {"type": "string"}
+  },
+  "additionalProperties": true
+}
