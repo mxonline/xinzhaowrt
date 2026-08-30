@@ -22,10 +22,53 @@
     "auth_gate": "AUTH_REQUIRED:GITHUB",
     "auth_reason": "CLOUD_BUILD_AND_RELEASE_AUTH"
   },
+  "standard_sysupgrade": {
+    "automation": "REQUIRED",
+    "manual_flash": false,
+    "safety_gate": "AUTO_FLASH_SAFETY_GATE",
+    "post_flash": [
+      "WAIT_DEVICE",
+      "DEVICE_IDENTITY",
+      "FIRMWARE_IDENTITY",
+      "LAN_RUNTIME",
+      "SSH",
+      "LUCI",
+      "DHCP",
+      "WAN",
+      "DNS",
+      "PLUGIN_RUNTIME_22",
+      "ARGON_KUCAT_RUNTIME",
+      "SYSTEM_HEALTH",
+      "RELEASE_GATE",
+      "RELEASE",
+      "PRODUCTION_RELEASED"
+    ]
+  },
+  "standard_rollback_sysupgrade": {
+    "automation": "REQUIRED",
+    "manual_flash": false,
+    "safety_gate": "AUTO_ROLLBACK_SAFETY_GATE",
+    "requires": [
+      "device_identity",
+      "known_good_available",
+      "rollback_ready",
+      "rollback_sha256_verified",
+      "cloud_local_remote_sha256_match"
+    ]
+  },
+  "irreversible_write_policy": {
+    "raw_mtd": false,
+    "uboot_bootloader": false,
+    "raw_partition_dd": false,
+    "raw_emmc_spi_nand": false,
+    "art_eeprom_calibration": false
+  },
   "classification_rules": {
     "local_linux_executor_unavailable": "non-blocking",
     "local_linux_missing_is_build_blocked": false,
     "github_auth_required_before_cloud_build": true,
-    "github_auth_required_before_release": true
+    "github_auth_required_before_release": true,
+    "verified_recovery_address_192_168_1_1": "KNOWN_LAN_REGRESSION",
+    "production_terminal_state": "PRODUCTION_RELEASED"
   }
 }

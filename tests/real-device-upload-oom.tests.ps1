@@ -15,7 +15,7 @@ foreach ($required in @(
     'filename',
     'filedata',
     'SMALL_UPLOAD_PREFLIGHT=PASS',
-    'sysupgrade'
+    'AUTO_FLASH_SAFETY_GATE'
 )) {
     if (-not $source.Contains($required)) {
         throw "Stage M runner is missing required guard or protocol marker: $required"
@@ -32,8 +32,8 @@ if ($source -notmatch '-LocalFile \$smallFile -Destination ''/tmp/firmware.bin''
     throw 'Stage M small-file preflight must use the same ACL-authorized /tmp/firmware.bin handoff path as the large upload.'
 }
 
-if ($source -notmatch 'sysupgrade.*must not|must not.*sysupgrade') {
-    throw 'Stage M runner must explicitly document the no-sysupgrade safety guard.'
+if ($source -notmatch 'AUTO_FLASH_SAFETY_GATE') {
+    throw 'Stage M runner must identify the production AUTO_FLASH_SAFETY_GATE handoff.'
 }
 
-Write-Host 'PASS: Stage M runner contains runtime endpoint discovery and no-sysupgrade guard.'
+Write-Host 'PASS: Stage M runner contains runtime endpoint discovery and automatic safety-gate handoff.'

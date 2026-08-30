@@ -4,6 +4,8 @@ JDCloud RE-SS-01 is an eMMC device with A/B-style kernel/rootfs handling in curr
 
 ## Before flashing
 
+The production pipeline automatically performs the verified, configuration-preserving standard OpenWrt/ImmortalWrt `sysupgrade` after `AUTO_FLASH_SAFETY_GATE` passes. Manual LuCI clicking is not part of the production path. Raw MTD, U-Boot/bootloader, `dd` raw-partition, raw eMMC/SPI/NAND, and ART/EEPROM/calibration writes remain prohibited.
+
 Back up device-specific data and the partition table before modifying a stock unit. Keep MAC/calibration/device-specific partitions safe. Do not use DiskMan to repartition the system eMMC until you fully understand the partition map.
 
 ## First installation from stock firmware

@@ -16,7 +16,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# This Stage M runner must not call sysupgrade. It only tests the LuCI cgi-upload handoff.
+# This Stage M runner validates only the LuCI cgi-upload handoff. The production
+# orchestrator performs standard sysupgrade after AUTO_FLASH_SAFETY_GATE.
 function Invoke-TargetSsh {
     param([Parameter(Mandatory = $true)][string]$Command)
     $result = & ssh -o BatchMode=yes -o ConnectTimeout=8 $Target $Command 2>&1

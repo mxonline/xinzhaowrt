@@ -17,6 +17,11 @@ Candidate 只代表“构建与产物检查通过”，不代表已经完成实�
 
 Stable/Latest 版本必须在 Candidate 基础上完成实机验证后再晋升。
 
+标准 sysupgrade 自动化：
+- `AUTO_FLASH_SAFETY_GATE` 全部通过后，标准 configuration-preserving sysupgrade 自动执行；不设置人工刷机门禁。
+- 自动完成 `WAIT_DEVICE`、设备身份、固件身份、LAN/WAN/DNS、22 个插件、Argon/Kucat、服务、存储、Overlay、Boot Log 与实机验收。
+- 只有身份无法确认、无安全 rollback 或请求 raw/bootloader/partition 写入时才进入安全阻断。
+
 实机验证建议至少确认：
 - 正常启动
 - LAN/WAN 正常

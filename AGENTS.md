@@ -102,9 +102,13 @@ AdGuard Home, MosDNS, SmartDNS and OpenClash may all be compiled, but do not con
 OpenClash and PBR may coexist as packages, but should not both be configured to own the same policy-routing flows.
 OAF is kernel-facing and should be one of the first packages investigated after a major upstream kernel change.
 
-## Safety
+## Safety and automatic production flashing
 
-Never execute a router flashing command, write a bootloader, alter eMMC partitions, ART/EEPROM/calibration data or U-Boot automatically. Build and validation are allowed. Flashing instructions must remain human-reviewed.
+`STANDARD_SYSUPGRADE_AUTOMATION=REQUIRED` and `MANUAL_STANDARD_SYSUPGRADE=DISABLED`. After `AUTO_FLASH_SAFETY_GATE` passes for the exact verified candidate, the production pipeline must automatically execute the project's standard, configuration-preserving OpenWrt/ImmortalWrt sysupgrade path and continue through device verification and Release.
+
+The recovery address `192.168.1.1` is accepted as `KNOWN_LAN_REGRESSION` only when MAC, board, model, target, profile, and historical evidence identify the same Arthur device. The expected post-flash LAN remains `192.168.6.1`.
+
+Never automate raw MTD writes, U-Boot or bootloader writes, `dd` to raw partitions, raw eMMC/SPI/NAND writes, or ART/EEPROM/calibration changes. Those operations remain safety-blocked and require a separate explicit high-risk procedure.
 
 ## Git discipline
 

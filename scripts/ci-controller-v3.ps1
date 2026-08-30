@@ -714,7 +714,7 @@ function Process-V3Run {
 
             Set-ControllerState -Status 'success' -Stage 'candidate_published' -Conclusion 'success' `
                 -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode -CandidateTag $tag `
-                -Message 'v3 Candidate build verified. Next hard gate is manual flash plus real-device verification.'
+                -Message 'v3 Candidate build verified. Next automatic gate is AUTO_FLASH_SAFETY_GATE, followed by standard sysupgrade and real-device verification.'
             return
         }
 

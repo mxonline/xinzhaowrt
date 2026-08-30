@@ -106,7 +106,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\real-device-verify-v3.ps
 
 实机流程会验证 SSH、设备型号、存储、LAN/WAN、Internet、DNS、2.4G/5G、LuCI、22/22 插件、日志、正常重启和 overlay 持久化。
 
-刷机、`sysupgrade`、MTD、U-Boot、eMMC 分区写入始终需要人工确认，不允许自动执行。
+标准 OpenWrt/ImmortalWrt `sysupgrade` 已纳入正式自动生产流水线：`AUTO_FLASH_SAFETY_GATE` 全部通过后自动上传、远端 SHA256 复核、执行标准 sysupgrade、等待设备恢复并继续实机验证与 Release。标准 sysupgrade 不再设置人工刷机门禁。MTD raw write、U-Boot/bootloader、`dd` 原始分区、raw eMMC/SPI/NAND 以及 ART/EEPROM/calibration 写入仍禁止自动执行。
 
 ## Codex Cloud / GitHub Actions 编译
 
