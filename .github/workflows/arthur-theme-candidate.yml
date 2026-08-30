@@ -143,7 +143,19 @@ jobs:
           test -s "$IB_DIR/packages/packages.adb" || { echo 'IMAGEBUILDER_PACKAGE_INDEX_MISSING'; exit 1; }
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
-          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/files"
+          mkdir -p image-files/etc
+          cp -a files/. image-files/
+          version="$(tr -d '[:space:]' < VERSION)"
+          cat > image-files/etc/openwrt_release <<EOF
+          DISTRIB_ID='XinZhaoWrt'
+          DISTRIB_RELEASE='$version'
+          DISTRIB_REVISION='r0+1-27e26e324'
+          DISTRIB_TARGET='qualcommax/ipq60xx'
+          DISTRIB_ARCH='aarch64_cortex-a53'
+          DISTRIB_DESCRIPTION='XinZhaoWrt $version r0+1-27e26e324'
+          DISTRIB_TAINTS='no-all'
+          EOF
+          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
           firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -name '*sysupgrade.bin' -size +0c -print -quit)"
           test -n "$firmware"; mkdir -p output/firmware; cp "$firmware" output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin
           sha256sum output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
@@ -163,6 +175,8 @@ jobs:
           tar -xf "$firmware" --wildcards -O 'sysupgrade-*/root' > "$rootfs_archive"
           sudo unsquashfs -d "$rootfs" "$rootfs_archive" >/dev/null
           test -f "$rootfs/etc/config/luci"
+          grep -Fq "DISTRIB_ID='XinZhaoWrt'" "$rootfs/etc/openwrt_release"
+          grep -Fq "DISTRIB_RELEASE='0.1.3'" "$rootfs/etc/openwrt_release"
           grep -Eq "^[[:space:]]*option lang 'zh_cn'[[:space:]]*$" "$rootfs/etc/config/luci"
           grep -Eq "^[[:space:]]*option mediaurlbase '/luci-static/argon'[[:space:]]*$" "$rootfs/etc/config/luci"
           test -d "$rootfs/www/luci-static/argon"
