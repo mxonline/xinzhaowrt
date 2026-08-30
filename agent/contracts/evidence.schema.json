@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinzhao.local/schemas/evidence.schema.json",
+  "title": "Agent Evidence Record",
+  "type": "object",
+  "required": ["task_id", "skill_id", "status", "artifacts", "checks", "timestamp"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "skill_id": {"type": "string"},
+    "status": {"enum": ["PASS", "FAIL", "BLOCKED", "INFO"]},
+    "artifacts": {"type": "array"},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL", "BLOCKED", "INFO"]}
+        }
+      }
+    },
+    "timestamp": {"type": "string"}
+  },
+  "additionalProperties": true
+}
