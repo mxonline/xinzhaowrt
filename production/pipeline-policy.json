@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "cloud_build_first": true,
+  "control_plane": {
+    "platform": "windows",
+    "executor": "GPT/Codex Orchestrator"
+  },
+  "build_plane": {
+    "primary_executor": "github-actions",
+    "runner": "ubuntu-24.04",
+    "fallback_executors": ["verified-cloud-linux-runner"],
+    "local_wsl": "emergency-fallback-only"
+  },
+  "device_validation": {
+    "device": "Arthur",
+    "target": "qualcommax/ipq60xx",
+    "profile": "jdcloud_re-ss-01",
+    "expected_lan": "192.168.6.1"
+  },
+  "release_plane": {
+    "executor": "github-release",
+    "auth_gate": "AUTH_REQUIRED:GITHUB",
+    "auth_reason": "CLOUD_BUILD_AND_RELEASE_AUTH"
+  },
+  "classification_rules": {
+    "local_linux_executor_unavailable": "non-blocking",
+    "local_linux_missing_is_build_blocked": false,
+    "github_auth_required_before_cloud_build": true,
+    "github_auth_required_before_release": true
+  }
+}

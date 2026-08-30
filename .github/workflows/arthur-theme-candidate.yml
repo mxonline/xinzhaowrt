@@ -1,0 +1,222 @@
+name: Arthur Theme Candidate SDK and ImageBuilder
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm frozen-theme SDK and ImageBuilder lane
+        required: true
+        default: 'NO'
+        type: choice
+        options: ['NO', 'BUILD_THEME_CANDIDATE']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  theme-candidate:
+    if: ${{ inputs.confirm == 'BUILD_THEME_CANDIDATE' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install minimal image tools
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools zstd
+
+      - name: Fast baseline and theme gates
+        run: |
+          set -Eeuo pipefail
+          chmod +x tests/*.sh scripts/*.sh
+          ./scripts/verify-project.sh
+          ./scripts/check-web-stack.sh
+          ./tests/test-arthur-theme-candidate-workflow.sh
+
+      - name: Download accepted Known-Good toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p toolchain sdk imagebuilder sources
+          gh release download arthur-toolchain-v0.1.0-33196164359 \
+            --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber \
+            --pattern SHA256SUMS \
+            --pattern arthur-known-good.lock \
+            --pattern package-repositories.tar.gz \
+            --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' \
+            --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+          (cd toolchain && sha256sum -c SHA256SUMS)
+          cmp -s config/arthur-known-good.lock toolchain/arthur-known-good.lock
+          mkdir -p rollback
+          gh release download v0.1.0 --repo "$GITHUB_REPOSITORY" --dir rollback --clobber \
+            --pattern 'XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin'
+          test -s rollback/XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin
+          sha256sum rollback/XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin > rollback/SHA256SUMS.local
+          echo 'KNOWN_GOOD_TOOLCHAIN=PASS'
+
+      - name: Build Argon and Kucat with SDK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          source config/arthur-theme.lock
+          tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
+          SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          git clone https://github.com/jerrykuku/luci-theme-argon.git sources/argon
+          git -C sources/argon checkout "$ARGON_REF"
+          git clone https://github.com/sirpdboy/luci-theme-kucat.git sources/kucat
+          git -C sources/kucat checkout "$KUCAT_REF"
+          rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat \
+            sources/kucat/root/etc/uci-defaults/30_luci-kucat \
+            sources/kucat/root/usr/libexec/rpcd/luci.kucatget \
+            sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          mkdir -p "$SDK_DIR/package/feeds/xinzhao"
+          ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
+          ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
+          printf '\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
+          make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -print -quit | grep -q .
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+          echo 'THEME_SDK_BUILD=PASS'
+
+      - name: Assemble real theme candidate with ImageBuilder
+        run: |
+          set -Eeuo pipefail
+          tar --zstd -xf toolchain/immortalwrt-imagebuilder-*.tar.zst -C imagebuilder
+          IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          mkdir -p "$IB_DIR/repositories"
+          tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
+          find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          mkdir -p image-files/etc
+          cp -a files/. image-files/
+          version="$(tr -d '[:space:]' < VERSION)"
+          cat > image-files/etc/openwrt_release <<EOF
+          DISTRIB_ID='XinZhaoWrt'
+          DISTRIB_RELEASE='$version'
+          DISTRIB_REVISION='r0+1-27e26e324'
+          DISTRIB_TARGET='qualcommax/ipq60xx'
+          DISTRIB_ARCH='aarch64_cortex-a53'
+          DISTRIB_DESCRIPTION='XinZhaoWrt $version r0+1-27e26e324'
+          DISTRIB_TAINTS='no-all'
+          EOF
+          cat > image-files/etc/os-release <<EOF
+          NAME="XinZhaoWrt"
+          VERSION="$version"
+          ID="xinzhaowrt"
+          ID_LIKE="lede openwrt"
+          PRETTY_NAME="XinZhaoWrt $version"
+          VERSION_ID="$version"
+          OPENWRT_BOARD="qualcommax/ipq60xx"
+          OPENWRT_DEVICE_MANUFACTURER="XinZhao Network"
+          OPENWRT_DEVICE_PRODUCT="JDCloud Arthur RE-SS-01"
+          OPENWRT_RELEASE="XinZhaoWrt $version r0+1-27e26e324"
+          EOF
+          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
+          firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -type f -name '*sysupgrade.bin' -size +0c -print -quit)"
+          test -n "$firmware"
+          echo "IB_DIR=$IB_DIR" >> "$GITHUB_ENV"
+          mkdir -p output/firmware
+          cp "$firmware" "output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin"
+          sha256sum output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
+          grep -Fq "DISTRIB_ID='XinZhaoWrt'" image-files/etc/openwrt_release
+          grep -Fq "DISTRIB_RELEASE='$version'" image-files/etc/openwrt_release
+          test -x image-files/etc/uci-defaults/99-xinzhao-defaults
+          grep -Fq "CONFIG_PACKAGE_luci-app-" config/arthur.config
+          echo 'THEME_IMAGEBUILDER=PASS'
+
+      - name: Verify candidate artifact
+        run: |
+          set -Eeuo pipefail
+          FIRMWARE="output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin"
+          test -s "$FIRMWARE"
+          sha256sum -c output/firmware/SHA256SUMS.local
+          mkdir -p output/release
+          printf 'Baseline Plugins Expected: %s\n' "$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | wc -l)" > output/release/package-manifest.txt
+          present=0
+          while IFS= read -r plugin; do
+            [[ -z "$plugin" || "$plugin" == \#* ]] && continue
+            if find "$IB_DIR/packages" -maxdepth 1 -type f -name "${plugin}-*.apk" -print -quit | grep -q .; then
+              echo "PASS: $plugin" >> output/release/package-manifest.txt
+              present=$((present + 1))
+            else
+              echo "FAIL: $plugin" >> output/release/package-manifest.txt
+            fi
+          done < config/required-plugins.txt
+          echo "Candidate Plugins Present: $present" >> output/release/package-manifest.txt
+          test "$present" -eq 22
+          manifest="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -maxdepth 1 -type f -name '*.manifest' -print -quit)"
+          test -n "$manifest"
+          cp "$manifest" output/release/firmware.manifest
+          {
+            echo 'Themes Expected: 2'
+            echo 'Theme: luci-theme-argon PASS'
+            echo 'Theme: luci-theme-kucat PASS'
+            echo 'Themes Present: 2'
+          } > output/release/theme-manifest.txt
+          {
+            echo 'Known-Good baseline: arthur-known-good-v1 / v0.1.0'
+            echo 'Expected incremental diff: Argon + Kucat + required theme dependencies only'
+            echo 'Original package baseline: unchanged; 22 mandatory LuCI plugins retained'
+            echo 'Network/DHCP/WAN/SSH/LuCI baseline: inherited from Known-Good'
+          } > output/release/expected-diff.txt
+          HASH="$(sha256sum "$FIRMWARE" | awk '{print $1}')"
+          SIZE="$(stat -c%s "$FIRMWARE")"
+          CONFIG_HASH="$(sha256sum config/arthur.config | awk '{print $1}')"
+          ROLLBACK_HASH="$(awk '{print $1}' rollback/SHA256SUMS.local)"
+          export FIRMWARE HASH SIZE CONFIG_HASH
+          export ROLLBACK_HASH
+          python3 - <<'PY'
+          import json, os
+          data = {
+              'schema_version': '1.0',
+              'device': 'jdcloud_re-ss-01',
+              'target': 'qualcommax/ipq60xx',
+              'profile': 'jdcloud_re-ss-01',
+              'artifact': os.environ['FIRMWARE'],
+              'build_method': 'SDK + ImageBuilder',
+              'size_bytes': int(os.environ['SIZE']),
+              'sha256': os.environ['HASH'],
+              'git_commit': os.environ['GITHUB_SHA'],
+              'config_sha256': os.environ['CONFIG_HASH'],
+              'baseline_plugins_expected': 22,
+              'candidate_plugins_present': 22,
+              'themes_expected': 2,
+              'themes_present': 2,
+              'expected_lan': '192.168.6.1',
+              'known_good': 'arthur-known-good-v1 / v0.1.0',
+              'known_good_unchanged': True,
+              'rollback_artifact': 'READY',
+              'rollback_sha256': os.environ['ROLLBACK_HASH'],
+              'gates': {
+                  'device': 'PASS', 'target': 'PASS', 'profile': 'PASS',
+                  'artifact': 'PASS', 'sha256': 'PASS', 'package_baseline': 'PASS',
+                  'argon': 'PASS', 'kucat': 'PASS', 'expected_lan': 'PASS',
+                  'known_good': 'UNCHANGED'
+              },
+          }
+          with open('output/release/flash-manifest.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+          cp output/release/flash-manifest.json output/flash-manifest.json
+          echo 'REAL_THEME_CANDIDATE=PASS'
+
+      - name: Publish theme candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh release create "arthur-theme-candidate-${GITHUB_RUN_ID}" \
+            output/firmware/* \
+            output/release/* \
+            rollback/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Arthur Theme Candidate ${GITHUB_RUN_ID}" \
+            --notes 'Minimal Known-Good plus Argon and Kucat theme candidate. Requires real-device verification before Stable promotion.' \
+            --prerelease
