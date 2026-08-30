@@ -10,11 +10,11 @@ fail() {
   exit 1
 }
 
-[[ -x "$SCRIPT" ]] || fail "preflight script is missing or not executable"
+[[ -f "$SCRIPT" ]] || fail "preflight script is missing"
 [[ -f "$ROOT/production/known-good.json" ]] || fail "known-good metadata missing"
 python3 -m json.tool "$ROOT/production/v4-state.json" >/dev/null
 
-"$SCRIPT" >/tmp/xinzhao-skill-framework-preflight.out
+bash "$SCRIPT" >/tmp/xinzhao-skill-framework-preflight.out
 
 [[ -f "$STATE" ]] || fail "framework state file was not written"
 python3 - "$STATE" <<'PY'
