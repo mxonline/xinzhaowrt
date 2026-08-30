@@ -162,15 +162,11 @@ jobs:
           cp "$adguard_lmo" "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"
           cat > "$adguard_i18n_dir/Makefile" <<'EOF'
           include $(TOPDIR)/rules.mk
+          LUCI_NAME:=luci-i18n-adguardhome-zh-cn
           LUCI_TITLE:=Simplified Chinese translation for LuCI AdGuard Home
           LUCI_DEPENDS:=+luci-app-adguardhome
           LUCI_PKGARCH:=all
           include $(TOPDIR)/feeds/luci/luci.mk
-          define Package/luci-i18n-adguardhome-zh-cn/install
-            $(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
-            $(INSTALL_DATA) ./root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/
-          endef
-          $(eval $(call BuildPackage,luci-i18n-adguardhome-zh-cn))
           EOF
           printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           python3 scripts/generate-plugin-i18n-baseline.py \
