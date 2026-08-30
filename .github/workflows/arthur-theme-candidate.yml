@@ -76,6 +76,10 @@ jobs:
             sources/kucat/root/etc/uci-defaults/30_luci-kucat \
             sources/kucat/root/usr/libexec/rpcd/luci.kucatget \
             sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          # The frozen Kucat candidate removes its online updater. Its wget
+          # dependency is therefore not needed and is absent from the locked
+          # package repository.
+          sed -i 's/+wget//g' sources/kucat/Makefile
           mkdir -p "$SDK_DIR/feeds"
           ln -s "$GITHUB_WORKSPACE/sources/luci" "$SDK_DIR/feeds/luci"
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
@@ -96,8 +100,13 @@ jobs:
           mkdir -p "$IB_DIR/repositories"
           tar -xzf toolchain/package-repositories.tar.gz -C "$IB_DIR/repositories"
           find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
-          find "$SDK_DIR/bin/packages" -type f \( -name 'luci-theme-argon-*.apk' -o -name 'luci-theme-kucat-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f -iname '*argon*.apk' -exec cp -f {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f -iname '*kucat*.apk' -exec cp -f {} "$IB_DIR/packages/" \;
+          find "$IB_DIR/packages" -maxdepth 1 -type f \( -iname '*argon*.apk' -o -iname '*kucat*.apk' \) -print
+          test -n "$(find "$IB_DIR/packages" -maxdepth 1 -type f -iname '*argon*.apk' -print -quit)"
+          test -n "$(find "$IB_DIR/packages" -maxdepth 1 -type f -iname '*kucat*.apk' -print -quit)"
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          packages=("${packages[@]/luci-i18n-base-zh-cn}")
           packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
           mkdir -p image-files/etc
           cp -a files/. image-files/
