@@ -31,6 +31,9 @@ jobs:
       - name: Test Skill Framework preflight
         run: ./tests/test-skill-framework-preflight.sh
 
+      - name: Test Skill Framework contracts
+        run: python3 -m unittest discover -s tests/agent -p 'test_contracts.py' -v
+
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
 
