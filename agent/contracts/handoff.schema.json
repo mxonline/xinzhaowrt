@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinzhao.local/schemas/handoff.schema.json",
+  "title": "Agent Handoff",
+  "type": "object",
+  "required": ["task_id", "current_stage", "stage_status", "verified_stages", "failed_or_blocked_stage", "evidence", "next_skill", "rollback_target", "last_updated"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "current_stage": {"type": "string"},
+    "stage_status": {"enum": ["NOT_STARTED", "IN_PROGRESS", "DONE", "VERIFIED", "BLOCKED", "FAILED", "UNKNOWN"]},
+    "verified_stages": {"type": "array", "items": {"type": "string"}},
+    "failed_or_blocked_stage": {"type": ["string", "null"]},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "next_skill": {"type": "string"},
+    "rollback_target": {"type": "string"},
+    "last_updated": {"type": "string"}
+  },
+  "additionalProperties": true
+}
