@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xinzhao.local/schemas/task-packet.schema.json",
+  "title": "Agent Task Packet",
+  "type": "object",
+  "required": ["task_id", "goal", "project", "domain", "current_state", "requested_action", "constraints", "risk", "resume_state"],
+  "properties": {
+    "task_id": {"type": "string", "minLength": 1},
+    "goal": {"type": "string", "minLength": 1},
+    "project": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "current_state": {"type": "string", "minLength": 1},
+    "requested_action": {"type": "string", "minLength": 1},
+    "constraints": {"type": "array", "items": {"type": "string"}},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "resume_state": {"type": "object"}
+  },
+  "additionalProperties": true
+}
