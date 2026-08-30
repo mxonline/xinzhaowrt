@@ -94,10 +94,72 @@ jobs:
           rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat sources/kucat/root/etc/uci-defaults/30_luci-kucat sources/kucat/root/usr/libexec/rpcd/luci.kucatget
           rm -f sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
           sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' sources/kucat/Makefile
+          # The frozen plugin baseline uses the same pinned external sources
+          # as the normal build lane.  Only these repositories are needed to
+          # build their real zh_Hans translation subpackages.
+          mkdir -p i18n-sources
+          git clone --filter=blob:none --no-checkout https://github.com/kenzok8/openwrt-packages.git i18n-sources/kenzok8-openwrt-packages
+          git -C i18n-sources/kenzok8-openwrt-packages fetch --depth=1 origin "$KENZOK8_REF"
+          git -C i18n-sources/kenzok8-openwrt-packages -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/sbwml/luci-app-diskman.git i18n-sources/luci-app-diskman
+          git -C i18n-sources/luci-app-diskman fetch --depth=1 origin "$DISKMAN_REF"
+          git -C i18n-sources/luci-app-diskman -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/vernesong/OpenClash.git i18n-sources/OpenClash
+          git -C i18n-sources/OpenClash fetch --depth=1 origin "$OPENCLASH_REF"
+          git -C i18n-sources/OpenClash -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/sbwml/luci-app-mosdns.git i18n-sources/luci-app-mosdns
+          git -C i18n-sources/luci-app-mosdns fetch --depth=1 origin "$MOSDNS_REF"
+          git -C i18n-sources/luci-app-mosdns -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/EasyTier/luci-app-easytier.git i18n-sources/luci-app-easytier
+          git -C i18n-sources/luci-app-easytier fetch --depth=1 origin "$EASYTIER_REF"
+          git -C i18n-sources/luci-app-easytier -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/destan19/OpenAppFilter.git i18n-sources/OpenAppFilter
+          git -C i18n-sources/OpenAppFilter fetch --depth=1 origin "$OPENAPPFILTER_REF"
+          git -C i18n-sources/OpenAppFilter -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/istore.git i18n-sources/istore
+          git -C i18n-sources/istore fetch --depth=1 origin "$ISTORE_REF"
+          git -C i18n-sources/istore -c advice.detachedHead=false checkout --detach FETCH_HEAD
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-lucky/luci-app-lucky" "$SDK_DIR/package/feeds/xinzhao/luci-app-lucky"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-quickfile/luci-app-quickfile" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickfile"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-quickstart" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickstart"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman/luci-app-diskman" "$SDK_DIR/package/feeds/xinzhao/luci-app-diskman"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenClash/luci-app-openclash" "$SDK_DIR/package/feeds/xinzhao/luci-app-openclash"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns/luci-app-mosdns" "$SDK_DIR/package/feeds/xinzhao/luci-app-mosdns"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier/luci-app-easytier" "$SDK_DIR/package/feeds/xinzhao/luci-app-easytier"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter/luci-app-oaf" "$SDK_DIR/package/feeds/xinzhao/luci-app-oaf"
           printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --feed-commit "$luci_feed_commit" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          mapfile -t i18n_apps < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["luci_package"] for x in d["plugins"] if x["available"]))')
+          mapfile -t i18n_packages < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["zh_cn_package"] for x in d["plugins"] if x["available"]))')
+          official_i18n_apps=()
+          for app in "${i18n_apps[@]}"; do
+            case "$app" in
+              luci-app-diskman|luci-app-lucky|luci-app-quickfile|luci-app-quickstart|luci-app-openclash|luci-app-mosdns|luci-app-easytier|luci-app-oaf) continue ;;
+            esac
+            if [[ -d "$SDK_DIR/feeds/luci/applications/$app" ]]; then
+              official_i18n_apps+=("$app")
+            fi
+          done
+          if ((${#official_i18n_apps[@]})); then
+            (cd "$SDK_DIR" && ./scripts/feeds install -p luci "${official_i18n_apps[@]}")
+          fi
+          for package in "${i18n_packages[@]}"; do
+            printf 'CONFIG_PACKAGE_%s=m\n' "$package" >> "$SDK_DIR/.config"
+          done
           make -C "$SDK_DIR" defconfig
           make -C "$SDK_DIR" package/feeds/base/ucode/compile V=s
           ucode_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/ucode/module.h' -type f -print -quit)"
@@ -116,6 +178,32 @@ jobs:
           fi
           echo 'SDK_DEPENDENCY_CLOSURE=PASS'
           make -C "$SDK_DIR" package/feeds/luci/luci-base/compile package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          for app in "${i18n_apps[@]}"; do
+            if [[ -d "$SDK_DIR/package/feeds/luci/$app" ]]; then
+              make -C "$SDK_DIR" "package/feeds/luci/$app/compile" V=s
+            else
+              make -C "$SDK_DIR" "package/feeds/xinzhao/$app/compile" V=s
+            fi
+          done
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --package-dir "$SDK_DIR/bin/packages" \
+            --feed-commit "$luci_feed_commit" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          i18n_available_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["plugins_with_upstream_zh_cn"])')"
+          i18n_included_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["zh_cn_packages_included"])')"
+          echo "BASE_LANGUAGE_ZH_CN=PASS"
+          echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+          echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+          test "$i18n_included_count" -eq "$i18n_available_count"
           chinese_apk="$(find "$SDK_DIR/bin/packages" -type f -name 'luci-i18n-base-zh-cn-*.apk' -print -quit)"
           test -n "$chinese_apk" || { echo 'CHINESE_LUCI_PACKAGE_MISSING'; exit 1; }
           chinese_version="$(basename "$chinese_apk")"
@@ -131,7 +219,7 @@ jobs:
           mkdir -p repository-staging
           tar -xzf toolchain/package-repositories.tar.gz -C repository-staging
           find repository-staging/packages/aarch64_cortex-a53 -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
-          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' -o -name 'luci-i18n-base-zh-cn-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' -o -name 'luci-i18n-*-zh-cn-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
           required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn)
           for package in "${required_ib_packages[@]}"; do
             find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
@@ -143,6 +231,8 @@ jobs:
           test -s "$IB_DIR/packages/packages.adb" || { echo 'IMAGEBUILDER_PACKAGE_INDEX_MISSING'; exit 1; }
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          mapfile -t i18n_packages < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["zh_cn_package"] for x in d["plugins"] if x["available"]))')
+          packages+=("${i18n_packages[@]}")
           mkdir -p image-files/etc
           cp -a files/. image-files/
           version="$(tr -d '[:space:]' < VERSION)"
@@ -179,12 +269,33 @@ jobs:
           grep -Fq "DISTRIB_RELEASE='0.1.3'" "$rootfs/etc/openwrt_release"
           grep -Eq "^[[:space:]]*option lang 'zh_cn'[[:space:]]*$" "$rootfs/etc/config/luci"
           grep -Eq "^[[:space:]]*option mediaurlbase '/luci-static/argon'[[:space:]]*$" "$rootfs/etc/config/luci"
+          grep -Fq "uci -q set luci.main.mediaurlbase='/luci-static/argon'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
+          grep -Fq "uci -q set luci.themes.KuCat='/luci-static/kucat'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
           test -d "$rootfs/www/luci-static/argon"
           test -d "$rootfs/www/luci-static/kucat"
           test -d "$rootfs/www/luci-static/bootstrap"
           ! grep -R -Eq "mediaurlbase.*bootstrap|mediaurlbase.*kucat" "$rootfs/etc/config" "$rootfs/etc/uci-defaults" 2>/dev/null
           apk_db="$rootfs/lib/apk/db/installed"
           test -s "$apk_db"
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --rootfs "$rootfs" \
+            --feed-commit "$(awk -F= '$1 == "LUCI_FEED_COMMIT" { print $2 }' output/theme-provenance/luci-feed.lock)" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          i18n_available_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["plugins_with_upstream_zh_cn"])')"
+          i18n_included_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["zh_cn_packages_included"])')"
+          test "$i18n_included_count" -eq "$i18n_available_count"
+          echo "BASE_LANGUAGE_ZH_CN=PASS"
+          echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+          echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
           for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash; do
             grep -Fq "P:$package" "$apk_db" || { echo "CANDIDATE_PACKAGE_MISSING=$package"; exit 1; }
           done
@@ -206,6 +317,9 @@ jobs:
             echo 'KUCAT_THEME=PASS'
             echo 'ORIGINAL_THEME=PASS'
             echo 'CHINESE_LUCI=PASS'
+            echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+            echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+            echo 'PLUGIN_CHINESE_GATE=PASS'
             echo 'OPENCLASH=PASS'
             echo 'NETWORK_FIREWALL=PASS'
             echo 'NO_BOOT_THEME_OVERRIDE=PASS'
@@ -221,4 +335,5 @@ jobs:
             output/firmware/XinZhaoWrt-Arthur-theme-${{ github.run_id }}-sysupgrade.bin
             output/firmware/SHA256SUMS.local
             output/theme-provenance/*.lock
+            output/theme-provenance/plugin-i18n-baseline.json
             output/theme-provenance/candidate-verification.txt

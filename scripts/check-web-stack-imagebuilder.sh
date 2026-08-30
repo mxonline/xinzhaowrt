@@ -12,5 +12,7 @@ grep -qF 'XINZHAO_NGINX_PRIMARY=1' "$UHTTPD_INIT" || { echo 'ERROR: uhttpd init 
 grep -qF 'XINZHAO_NGINX_PRIMARY=1' "$WORKFLOW" || { echo 'ERROR: runtime gate does not verify the uhttpd init guard'; exit 1; }
 grep -qF '/etc/init.d/nginx restart' "$OVERLAY" || { echo 'ERROR: Nginx restart guard missing'; exit 1; }
 grep -qF '/etc/init.d/uhttpd disable' "$OVERLAY" || { echo 'ERROR: defensive uhttpd disable missing'; exit 1; }
+grep -qF "uci -q add_list nginx._lan.listen='0.0.0.0:80'" "$OVERLAY" || { echo 'ERROR: public HTTP/80 listener is not enforced'; exit 1; }
+grep -qF 'uci -q delete nginx._redirect2ssl' "$OVERLAY" || { echo 'ERROR: HTTP-to-HTTPS redirect is not removed'; exit 1; }
 
 echo 'WEB_STACK_IMAGEBUILDER_STATIC_CHECK: PASS'

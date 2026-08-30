@@ -1,0 +1,15 @@
+#!/bin/sh
+# Deterministic first-boot LuCI defaults for the Arthur image.
+# LuCI's package-provided /etc/config/luci is installed after FILES overlays
+# during ImageBuilder assembly, so factory defaults must be applied here.
+
+set -eu
+
+uci -q set luci.main.lang='zh_cn'
+uci -q set luci.main.mediaurlbase='/luci-static/argon'
+uci -q set luci.themes.Argon='/luci-static/argon'
+uci -q set luci.themes.KuCat='/luci-static/kucat'
+uci -q commit luci
+
+logger -t xinzhaowrt 'LUCI_DEFAULTS_PASS lang=zh_cn theme=Argon kucat=registered' 2>/dev/null || true
+exit 0
