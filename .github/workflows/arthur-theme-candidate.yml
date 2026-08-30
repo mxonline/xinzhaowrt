@@ -242,6 +242,8 @@ jobs:
           test -n "$ucode_package_dir" || { echo 'UCODE_PACKAGE_SOURCE_MISSING'; exit 1; }
           ucode_package_target="${ucode_package_dir#"$SDK_DIR/"}"
           make -C "$SDK_DIR" "$ucode_package_target/compile" V=s
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-argon/compile V=s
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-kucat/compile V=s
           for app in "${i18n_apps[@]}"; do
             if [[ -d "$SDK_DIR/package/feeds/luci/$app" ]]; then
               make -C "$SDK_DIR" "package/feeds/luci/$app/compile" V=s
