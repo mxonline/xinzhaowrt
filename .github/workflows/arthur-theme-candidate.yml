@@ -107,7 +107,9 @@ jobs:
           test -n "$(find "$IB_DIR/packages" -maxdepth 1 -type f -iname '*kucat*.apk' -print -quit)"
           mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
           packages=("${packages[@]/luci-i18n-base-zh-cn}")
-          packages+=(luci-theme-argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          # Argon's upstream package declares PKG_NAME=argon; Kucat keeps
+          # luci-theme-kucat. Both source families remain hard requirements.
+          packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
           mkdir -p image-files/etc
           cp -a files/. image-files/
           version="$(tr -d '[:space:]' < VERSION)"
@@ -170,7 +172,7 @@ jobs:
           cp "$manifest" output/release/firmware.manifest
           {
             echo 'Themes Expected: 2'
-            echo 'Theme: luci-theme-argon PASS'
+            echo 'Theme: Argon (package argon) PASS'
             echo 'Theme: luci-theme-kucat PASS'
             echo 'Themes Present: 2'
           } > output/release/theme-manifest.txt
