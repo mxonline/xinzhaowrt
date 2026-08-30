@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "framework": "Agent Skill Framework",
+  "project": "新肇网络Wrt-京东云亚瑟固件",
+  "device": "jdcloud_re-ss-01",
+  "framework_mode": "DRY_RUN_ONLY",
+  "baseline_integrity": "UNKNOWN_UNTIL_PREFLIGHT",
+  "flash_policy_sync": "BLOCKED",
+  "verified_flash_method": "BLOCKED",
+  "production_takeover": false,
+  "build_requested": false,
+  "flash_requested": false,
+  "conflicts": [
+    "production/v4-state.json contains HUMAN_REVIEW_GATE for REAL_DEVICE",
+    "stale human/manual flash policy remains in repository documentation"
+  ],
+  "next_action": "Run isolated preflight and continue framework implementation without taking over the active Arthur production loop.",
+  "rollback_target": "Disable Skill Framework and continue the pre-existing Arthur production pipeline unchanged."
+}
