@@ -173,6 +173,14 @@ jobs:
             DEPENDS:=+luci-app-adguardhome
             PKGARCH:=all
           endef
+          define Build/Prepare
+          EOF
+          printf '\tmkdir -p $(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n\n' >> "$adguard_i18n_dir/Makefile"
+          printf '\t$(CP) ./root/. $(PKG_BUILD_DIR)/root/\n' >> "$adguard_i18n_dir/Makefile"
+          cat >> "$adguard_i18n_dir/Makefile" <<'EOF'
+          endef
+          define Build/Compile
+          endef
           define Package/$(PKG_NAME)/install
           EOF
           printf '\t$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n\n' >> "$adguard_i18n_dir/Makefile"
