@@ -70,10 +70,14 @@ jobs:
           git -C sources/argon checkout "$ARGON_REF"
           git clone https://github.com/sirpdboy/luci-theme-kucat.git sources/kucat
           git -C sources/kucat checkout "$KUCAT_REF"
+          git clone https://github.com/immortalwrt/luci.git sources/luci
+          git -C sources/luci checkout 5eb439f0f87e125cf0c2ffcbecffa79e4c7c441b
           rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat \
             sources/kucat/root/etc/uci-defaults/30_luci-kucat \
             sources/kucat/root/usr/libexec/rpcd/luci.kucatget \
             sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          mkdir -p "$SDK_DIR/feeds"
+          ln -s "$GITHUB_WORKSPACE/sources/luci" "$SDK_DIR/feeds/luci"
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
