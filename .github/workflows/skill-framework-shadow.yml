@@ -1,0 +1,47 @@
+name: Skill Framework Shadow Tests
+
+'on':
+  push:
+    branches:
+      - codex/agent-skill-framework-v0.1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skill-framework-shadow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shadow-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize shadow test scripts
+        run: chmod +x tests/test-skill-framework-preflight.sh scripts/skill-framework-preflight.sh || true
+
+      - name: Verify framework remains isolated
+        run: ./tests/test-skill-framework-preflight.sh
+
+      - name: Run framework contract tests
+        run: python3 -m unittest discover -s tests/agent -p 'test_*.py' -v
+
+      - name: Shadow summary
+        if: always()
+        run: |
+          {
+            echo '## Skill Framework Shadow Tests'
+            echo
+            echo '- No firmware build is invoked.'
+            echo '- No candidate is created.'
+            echo '- No router/device connection is used.'
+            echo '- No sysupgrade or flash action is permitted.'
+            echo '- Arthur production pipeline is not called or modified.'
+          } >> "$GITHUB_STEP_SUMMARY"
