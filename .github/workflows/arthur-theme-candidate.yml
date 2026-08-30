@@ -301,7 +301,7 @@ jobs:
           echo "BASE_LANGUAGE_ZH_CN=PASS"
           echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
           echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
-          for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash; do
+          for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash ucode-mod-math; do
             grep -Fq "P:$package" "$apk_db" || { echo "CANDIDATE_PACKAGE_MISSING=$package"; exit 1; }
           done
           while IFS= read -r package; do
