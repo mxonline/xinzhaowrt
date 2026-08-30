@@ -178,6 +178,10 @@ jobs:
           fi
           echo 'SDK_DEPENDENCY_CLOSURE=PASS'
           make -C "$SDK_DIR" package/feeds/luci/luci-base/compile package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          ucode_package_dir="$(find "$SDK_DIR/package/feeds" -type d -name ucode -print -quit)"
+          test -n "$ucode_package_dir" || { echo 'UCODE_PACKAGE_SOURCE_MISSING'; exit 1; }
+          ucode_package_target="${ucode_package_dir#"$SDK_DIR/"}"
+          make -C "$SDK_DIR" "$ucode_package_target/compile" V=s
           for app in "${i18n_apps[@]}"; do
             if [[ -d "$SDK_DIR/package/feeds/luci/$app" ]]; then
               make -C "$SDK_DIR" "package/feeds/luci/$app/compile" V=s
@@ -224,8 +228,8 @@ jobs:
           mkdir -p repository-staging
           tar -xzf toolchain/package-repositories.tar.gz -C repository-staging
           find repository-staging/packages/aarch64_cortex-a53 -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
-          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' -o -name 'luci-i18n-*-zh-cn-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
-          required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn)
+          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' -o -name 'luci-i18n-*-zh-cn-*.apk' -o -name 'ucode-mod-math-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn ucode-mod-math)
           for package in "${required_ib_packages[@]}"; do
             find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
           done
