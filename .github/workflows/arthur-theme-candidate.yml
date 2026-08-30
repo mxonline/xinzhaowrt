@@ -24,6 +24,13 @@ jobs:
       - name: Theme static gate
         run: |
           chmod +x tests/*.sh scripts/*.sh
+          test -s assets/branding/xz-icon.png
+          for asset in favicon.ico favicon-32x32.png favicon-192x192.png favicon-512x512.png apple-touch-icon.png logo.png; do
+            test -s "files/www/luci-static/xinzhao/$asset"
+          done
+          echo 'XZ_ICON_SOURCE=PASS'
+          echo 'XZ_FAVICON_PRESENT=PASS'
+          echo 'XZ_LOGO_PRESENT=PASS'
           ./tests/test-arthur-theme-candidate-workflow.sh
           ./tests/test-argon-default-theme.sh
           ./scripts/check-defaults.sh
@@ -94,6 +101,20 @@ jobs:
           rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat sources/kucat/root/etc/uci-defaults/30_luci-kucat sources/kucat/root/usr/libexec/rpcd/luci.kucatget
           rm -f sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
           sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' sources/kucat/Makefile
+          for theme_dir in sources/argon sources/kucat; do
+            while IFS= read -r -d '' template; do
+              sed -i \
+                -e 's#/luci-static/argon/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+                -e 's#/luci-static/argon/icon/favicon-32x32.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+                -e 's#/luci-static/argon/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+                -e 's#/luci-static/argon/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+                -e 's#/luci-static/argon/img/argon.svg#/luci-static/xinzhao/logo.png#g' \
+                -e 's#/luci-static/kucat/logo.svg#/luci-static/xinzhao/logo.png#g' \
+                -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
+                -e 's#ImmortalWRT#XinZhaoWrt#g' \
+                -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' "$template"
+            done < <(find "$theme_dir" -type f \( -name '*.htm' -o -name '*.html' \) -print0)
+          done
           # The frozen plugin baseline uses the same pinned external sources
           # as the normal build lane.  Only these repositories are needed to
           # build their real zh_Hans translation subpackages.
@@ -271,6 +292,24 @@ jobs:
           mkdir -p image-files/etc
           cp -a files/. image-files/
           version="$(tr -d '[:space:]' < VERSION)"
+          build_date="$(TZ=Asia/Hong_Kong date +%F)"
+          short_commit="${GITHUB_SHA:0:7}"
+          build_id="$GITHUB_RUN_ID"
+          sed -i \
+            -e "s/@VERSION@/$version/g" \
+            -e "s/@BUILD_DATE@/$build_date/g" \
+            -e "s/@GIT_COMMIT@/$short_commit/g" \
+            -e "s/@BUILD_ID@/$build_id/g" \
+            image-files/etc/xinzhao-build-info image-files/www/luci-static/xinzhao/build-info.json
+          test -s image-files/etc/xinzhao-build-info
+          grep -Fq "Firmware: XinZhaoWrt" image-files/etc/xinzhao-build-info
+          grep -Fq "Version: $version" image-files/etc/xinzhao-build-info
+          grep -Fq "Git Commit: $short_commit" image-files/etc/xinzhao-build-info
+          grep -Fq "Build ID: $build_id" image-files/etc/xinzhao-build-info
+          echo 'BUILD_INFO_PRESENT=PASS'
+          echo 'BUILD_INFO_VERSION=PASS'
+          echo 'BUILD_INFO_COMMIT=PASS'
+          echo 'BUILD_INFO_RUN_ID=PASS'
           cat > image-files/etc/openwrt_release <<EOF
           DISTRIB_ID='XinZhaoWrt'
           DISTRIB_RELEASE='$version'
@@ -302,12 +341,23 @@ jobs:
           test -f "$rootfs/etc/config/luci"
           grep -Fq "DISTRIB_ID='XinZhaoWrt'" "$rootfs/etc/openwrt_release"
           grep -Fq "DISTRIB_RELEASE='0.1.3'" "$rootfs/etc/openwrt_release"
+          test -s "$rootfs/etc/xinzhao-build-info"
+          grep -Fq 'Firmware: XinZhaoWrt' "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Version: 0.1.3" "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Git Commit: ${GITHUB_SHA:0:7}" "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Build ID: $GITHUB_RUN_ID" "$rootfs/etc/xinzhao-build-info"
+          echo 'BUILD_INFO_ROOTFS=PASS'
           grep -Eq "^[[:space:]]*option lang 'zh_cn'[[:space:]]*$" "$rootfs/etc/config/luci"
           grep -Eq "^[[:space:]]*option mediaurlbase '/luci-static/argon'[[:space:]]*$" "$rootfs/etc/config/luci"
           grep -Fq "uci -q set luci.main.mediaurlbase='/luci-static/argon'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
           grep -Fq "uci -q set luci.themes.KuCat='/luci-static/kucat'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
           test -d "$rootfs/www/luci-static/argon"
           test -d "$rootfs/www/luci-static/kucat"
+          for asset in favicon.ico favicon-32x32.png favicon-192x192.png favicon-512x512.png apple-touch-icon.png logo.png branding.js build-info.json; do
+            test -s "$rootfs/www/luci-static/xinzhao/$asset" || { echo "BRANDING_ASSET_MISSING=$asset"; exit 1; }
+          done
+          grep -R -Fq '/luci-static/xinzhao/favicon.ico' "$rootfs/usr/lib/lua/luci" "$rootfs/www" 2>/dev/null || { echo 'BRANDING_FAVICON_REFERENCE_MISSING'; exit 1; }
+          grep -R -Fq '/luci-static/xinzhao/logo.png' "$rootfs/usr/lib/lua/luci" "$rootfs/www" 2>/dev/null || { echo 'BRANDING_LOGO_REFERENCE_MISSING'; exit 1; }
           test -d "$rootfs/www/luci-static/bootstrap"
           ! grep -R -Eq "mediaurlbase.*bootstrap|mediaurlbase.*kucat" "$rootfs/etc/config" "$rootfs/etc/uci-defaults" 2>/dev/null
           apk_db="$rootfs/lib/apk/db/installed"
