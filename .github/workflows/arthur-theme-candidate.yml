@@ -162,11 +162,24 @@ jobs:
           cp "$adguard_lmo" "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"
           cat > "$adguard_i18n_dir/Makefile" <<'EOF'
           include $(TOPDIR)/rules.mk
-          LUCI_NAME:=luci-i18n-adguardhome-zh-cn
-          LUCI_TITLE:=Simplified Chinese translation for LuCI AdGuard Home
-          LUCI_DEPENDS:=+luci-app-adguardhome
-          LUCI_PKGARCH:=all
-          include $(TOPDIR)/feeds/luci/luci.mk
+          PKG_NAME:=luci-i18n-adguardhome-zh-cn
+          PKG_RELEASE:=1
+          include $(INCLUDE_DIR)/package.mk
+          define Package/$(PKG_NAME)
+            SECTION:=luci
+            CATEGORY:=LuCI
+            SUBMENU:=3. Applications
+            TITLE:=Simplified Chinese translation for LuCI AdGuard Home
+            DEPENDS:=+luci-app-adguardhome
+            PKGARCH:=all
+          endef
+          define Package/$(PKG_NAME)/install
+          EOF
+          printf '\t$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n\n' >> "$adguard_i18n_dir/Makefile"
+          printf '\t$(INSTALL_DATA) ./root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/\n' >> "$adguard_i18n_dir/Makefile"
+          cat >> "$adguard_i18n_dir/Makefile" <<'EOF'
+          endef
+          $(eval $(call BuildPackage,$(PKG_NAME)))
           EOF
           printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
           python3 scripts/generate-plugin-i18n-baseline.py \
