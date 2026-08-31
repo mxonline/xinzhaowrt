@@ -1,0 +1,100 @@
+name: Arthur Production Agent Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'production/production-agent.json'
+      - 'production/arthur-flash-profile.json'
+      - 'scripts/production-agent.ps1'
+      - 'scripts/fetch-production-artifact.ps1'
+      - 'scripts/auto-flash-safety-gate.ps1'
+      - 'scripts/install-production-agent.ps1'
+      - 'scripts/uninstall-production-agent.ps1'
+      - 'scripts/start-production-agent.ps1'
+      - 'scripts/production-agent-status.ps1'
+      - '.github/workflows/production-agent-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: arthur-production-agent-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout deployment source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate deployment source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/production-agent.tests.ps1
+
+      - name: Sync stable Production Agent runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $repo = 'https://github.com/mxonline/xinzhaowrt.git'
+          New-Item -ItemType Directory -Force -Path (Split-Path $runtime -Parent) | Out-Null
+
+          if (-not (Test-Path (Join-Path $runtime '.git'))) {
+            if (Test-Path $runtime) { Remove-Item -Recurse -Force $runtime }
+            git clone --branch main --single-branch $repo $runtime
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to create stable Production Agent runtime clone.' }
+          } else {
+            git -C $runtime fetch origin main --prune
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch main into stable Production Agent runtime.' }
+            git -C $runtime checkout -f main
+            git -C $runtime reset --hard origin/main
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize stable Production Agent runtime.' }
+          }
+          Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
+
+      - name: Verify persistent GitHub authentication
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+          gh auth status --hostname github.com
+          if ($LASTEXITCODE -ne 0) {
+            throw 'NEW_CREDENTIAL_PROVISIONING: persistent gh credential store is unavailable to the Windows runner account.'
+          }
+          Write-Host 'PERSISTENT_GITHUB_AUTH=PASS'
+
+      - name: Install and start persistent Production Agent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\install-production-agent.ps1')
+          if ($LASTEXITCODE -ne 0) { throw "Production Agent install failed: $LASTEXITCODE" }
+          Start-Sleep -Seconds 5
+          $task = Get-ScheduledTask -TaskName 'XinZhaoWrt-Arthur-Production-Agent' -ErrorAction Stop
+          Write-Host "PRODUCTION_AGENT_TASK=$($task.State)"
+          if (Test-Path (Join-Path $runtime 'output\production-agent\state.json')) {
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\production-agent-status.ps1')
+          } else {
+            Write-Host 'PRODUCTION_AGENT_STATE=STARTING'
+          }
+          Write-Host 'PRODUCTION_AGENT_DEPLOY=PASS'
