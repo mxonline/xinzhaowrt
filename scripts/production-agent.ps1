@@ -164,6 +164,7 @@ function Invoke-SafetyGate($State,[string]$Target,[string]$Rollback,[string]$Rem
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'auto-flash-safety-gate.ps1') `
         -CandidateManifest $ManifestPath -RollbackPath $Rollback -Target $Target -RemoteCandidate $Remote | Tee-Object -FilePath (Join-Path $Out 'auto-flash-safety-gate.log') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "AUTO_FLASH_SAFETY_GATE failed exit=$LASTEXITCODE" }
+    Write-Host 'AUTO_FLASH_SAFETY_GATE=PASS'
     Save-State $State 'AUTO_FLASH_SAFETY_GATE' 'VERIFIED'
 }
 
