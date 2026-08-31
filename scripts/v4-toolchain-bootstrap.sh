@@ -17,13 +17,19 @@ MODE="${1:---execute}"
 [[ -s "$KNOWN_GOOD_JSON" ]] || { echo "ERROR: Known-Good JSON missing: $KNOWN_GOOD_JSON" >&2; exit 1; }
 [[ -s "$LOCK_FILE" ]] || { echo "ERROR: Known-Good lock missing: $LOCK_FILE" >&2; exit 1; }
 
-readarray -t KG < <(python3 - "$KNOWN_GOOD_JSON" <<'PY'
+mapfile -t KG < <(python3 - "$KNOWN_GOOD_JSON" <<'PY'
 import json, re, sys
 p = sys.argv[1]
 with open(p, encoding='utf-8') as f:
     d = json.load(f)
-if d.get('verified') is not True or d.get('status') != 'verified':
-    raise SystemExit('ERROR: Known-Good record is not verified')
+status = d.get('status')
+# A production Known-Good may be either the original verified state or the
+# later immutable/frozen state. Both require explicit verified=true and
+# real-device confirmation; candidate/unverified states remain fail-closed.
+if d.get('verified') is not True or status not in {'verified', 'frozen'}:
+    raise SystemExit('ERROR: Known-Good record is not verified/frozen')
+if d.get('verification') != 'real-device-confirmed':
+    raise SystemExit('ERROR: Known-Good lacks real-device confirmation')
 if d.get('device') != 'jdcloud_re-ss-01':
     raise SystemExit('ERROR: Known-Good device mismatch')
 commit = d.get('upstream_commit') or ''
@@ -40,6 +46,11 @@ for value in (
     print(value)
 PY
 )
+
+if (( ${#KG[@]} != 6 )); then
+  echo "ERROR: Known-Good parser returned ${#KG[@]} fields; expected 6" >&2
+  exit 1
+fi
 
 KNOWN_GOOD_TAG="${KG[0]}"
 UPSTREAM_COMMIT="${KG[1]}"
