@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: codex/arthur-fast-candidate
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Bootstrap uv
         uses: astral-sh/setup-uv@v6
