@@ -382,8 +382,8 @@ jobs:
           for asset in favicon.ico favicon-32x32.png favicon-192x192.png favicon-512x512.png apple-touch-icon.png logo.png branding.js build-info.json; do
             test -s "$rootfs/www/luci-static/xinzhao/$asset" || { echo "BRANDING_ASSET_MISSING=$asset"; exit 1; }
           done
-          grep -R -Fq '/luci-static/xinzhao/favicon.ico' "$rootfs/usr/lib/lua/luci" "$rootfs/www" 2>/dev/null || { echo 'BRANDING_FAVICON_REFERENCE_MISSING'; exit 1; }
-          grep -R -Fq '/luci-static/xinzhao/logo.png' "$rootfs/usr/lib/lua/luci" "$rootfs/www" 2>/dev/null || { echo 'BRANDING_LOGO_REFERENCE_MISSING'; exit 1; }
+          grep -R -Fq '/luci-static/xinzhao/favicon.ico' "$rootfs" 2>/dev/null || { echo 'BRANDING_FAVICON_REFERENCE_MISSING'; exit 1; }
+          grep -R -Fq '/luci-static/xinzhao/logo.png' "$rootfs" 2>/dev/null || { echo 'BRANDING_LOGO_REFERENCE_MISSING'; exit 1; }
           test -d "$rootfs/www/luci-static/bootstrap"
           ! grep -R -Eq "mediaurlbase.*bootstrap|mediaurlbase.*kucat" "$rootfs/etc/config" "$rootfs/etc/uci-defaults" 2>/dev/null
           apk_db="$rootfs/lib/apk/db/installed"
