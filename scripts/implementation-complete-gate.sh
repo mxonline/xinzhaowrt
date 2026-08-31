@@ -4,7 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_FILE="${CHANGESET_STATE_FILE:-$ROOT/production/current-changeset.json}"
 EXPECTED_CHANGESET_ID="${EXPECTED_CHANGESET_ID:-}"
-EXPECTED_SOURCE_SHA="${EXPECTED_SOURCE_SHA:-}"
+EXPECTED_CANDIDATE_SHA="${EXPECTED_CANDIDATE_SHA:-${EXPECTED_SOURCE_SHA:-}}"
+EXPECTED_IMPLEMENTATION_SHA="${EXPECTED_IMPLEMENTATION_SHA:-}"
 
 fail() {
   echo "IMPLEMENTATION_COMPLETE_GATE=FAIL" >&2
@@ -18,9 +19,14 @@ fail() {
 
 if [[ -n "${GATE_HEAD:-}" ]]; then
   HEAD_SHA="$GATE_HEAD"
+  PARENT_SHA="${GATE_PARENT:-}"
+  FREEZE_FILES="${GATE_FREEZE_FILES:-}"
+  [[ -n "$PARENT_SHA" ]] || fail 'GATE_PARENT is required when GATE_HEAD override is used'
 else
-  command -v git >/dev/null 2>&1 || fail 'git is required to resolve source HEAD'
-  HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || fail 'cannot resolve source HEAD'
+  command -v git >/dev/null 2>&1 || fail 'git is required to resolve source commits'
+  HEAD_SHA="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || fail 'cannot resolve candidate HEAD'
+  PARENT_SHA="$(git -C "$ROOT" rev-parse HEAD^ 2>/dev/null)" || fail 'cannot resolve freeze parent commit'
+  FREEZE_FILES="$(git -C "$ROOT" diff --name-only "$PARENT_SHA..$HEAD_SHA")" || fail 'cannot inspect freeze commit diff'
 fi
 
 PYTHON_BIN=""
@@ -33,13 +39,29 @@ else
 fi
 
 set +e
-GATE_OUTPUT="$($PYTHON_BIN - "$STATE_FILE" "$HEAD_SHA" "$EXPECTED_CHANGESET_ID" "$EXPECTED_SOURCE_SHA" <<'PY'
+GATE_OUTPUT="$($PYTHON_BIN - \
+  "$STATE_FILE" \
+  "$HEAD_SHA" \
+  "$PARENT_SHA" \
+  "$FREEZE_FILES" \
+  "$EXPECTED_CHANGESET_ID" \
+  "$EXPECTED_CANDIDATE_SHA" \
+  "$EXPECTED_IMPLEMENTATION_SHA" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 
-state_path, head_sha, expected_id, expected_sha = sys.argv[1:5]
+(
+    state_path,
+    candidate_sha,
+    implementation_sha,
+    freeze_files_raw,
+    expected_id,
+    expected_candidate_sha,
+    expected_implementation_sha,
+) = sys.argv[1:8]
+
 try:
     state = json.loads(Path(state_path).read_text(encoding="utf-8"))
 except Exception as exc:
@@ -100,33 +122,44 @@ if state.get("state") != "FROZEN":
     print("state must be FROZEN")
     sys.exit(13)
 
-frozen_sha = state.get("frozen_source_sha")
-if not isinstance(frozen_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", frozen_sha):
+for label, value in (("candidate HEAD", candidate_sha), ("implementation parent", implementation_sha)):
+    if not re.fullmatch(r"[0-9a-f]{40}", value or ""):
+        print(f"{label} is not a full git SHA")
+        sys.exit(14)
+
+frozen_source_sha = state.get("frozen_source_sha")
+if not isinstance(frozen_source_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", frozen_source_sha):
     print("frozen_source_sha must be a full 40-character lowercase git SHA")
-    sys.exit(14)
-if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
-    print("resolved HEAD is not a full git SHA")
     sys.exit(15)
-if frozen_sha != head_sha:
-    print(f"frozen source mismatch: frozen={frozen_sha} head={head_sha}")
+if frozen_source_sha != implementation_sha:
+    print(f"frozen implementation mismatch: state={frozen_source_sha} parent={implementation_sha}")
     sys.exit(16)
-if expected_sha and frozen_sha != expected_sha:
-    print(f"expected source mismatch: frozen={frozen_sha} expected={expected_sha}")
+if expected_candidate_sha and candidate_sha != expected_candidate_sha:
+    print(f"candidate source mismatch: head={candidate_sha} expected={expected_candidate_sha}")
     sys.exit(17)
+if expected_implementation_sha and frozen_source_sha != expected_implementation_sha:
+    print(f"implementation source mismatch: frozen={frozen_source_sha} expected={expected_implementation_sha}")
+    sys.exit(18)
+
+freeze_files = [line.strip() for line in freeze_files_raw.splitlines() if line.strip()]
+if freeze_files != ["production/current-changeset.json"]:
+    print("freeze commit must modify only production/current-changeset.json; got: " + repr(freeze_files))
+    sys.exit(19)
 
 # This gate authorizes only the production candidate build. Flash, real-device
 # verification and release remain controlled by their own downstream gates.
 policy = state.get("candidate_policy", {})
 if policy.get("allow_candidate_build") is not True:
     print("candidate_policy.allow_candidate_build must be true after freeze")
-    sys.exit(18)
+    sys.exit(20)
 
 if state.get("production_terminal_state") != "PRODUCTION_RELEASED":
     print("production_terminal_state must be PRODUCTION_RELEASED")
-    sys.exit(19)
+    sys.exit(21)
 
 print(f"CHANGESET_ID={changeset_id}")
-print(f"FROZEN_SOURCE_SHA={frozen_sha}")
+print(f"FROZEN_IMPLEMENTATION_SHA={frozen_source_sha}")
+print(f"FROZEN_CANDIDATE_SHA={candidate_sha}")
 PY
 )"
 GATE_RC=$?
