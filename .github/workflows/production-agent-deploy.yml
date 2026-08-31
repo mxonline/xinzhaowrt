@@ -42,13 +42,13 @@ jobs:
           fetch-depth: 1
 
       - name: Validate deployment source
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & ./tests/production-agent.tests.ps1
 
       - name: Sync stable Production Agent runtime
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
@@ -69,7 +69,7 @@ jobs:
           Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
 
       - name: Verify persistent GitHub authentication
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
@@ -81,19 +81,19 @@ jobs:
           Write-Host 'PERSISTENT_GITHUB_AUTH=PASS'
 
       - name: Install and start persistent Production Agent
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
           Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
           $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\install-production-agent.ps1')
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\install-production-agent.ps1')
           if ($LASTEXITCODE -ne 0) { throw "Production Agent install failed: $LASTEXITCODE" }
           Start-Sleep -Seconds 5
           $task = Get-ScheduledTask -TaskName 'XinZhaoWrt-Arthur-Production-Agent' -ErrorAction Stop
           Write-Host "PRODUCTION_AGENT_TASK=$($task.State)"
           if (Test-Path (Join-Path $runtime 'output\production-agent\state.json')) {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\production-agent-status.ps1')
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\production-agent-status.ps1')
           } else {
             Write-Host 'PRODUCTION_AGENT_STATE=STARTING'
           }
