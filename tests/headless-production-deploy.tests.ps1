@@ -46,14 +46,17 @@ Assert-Contains $deploy 'install-headless-production.ps1' 'deploy must install/s
 Assert-Contains $deploy 'ai_orchestrator/**' 'orchestrator changes must redeploy the daemon'
 Assert-Contains $deploy 'scripts/start-headless-production.ps1' 'start-wrapper changes must redeploy the daemon'
 
-$implIndex = $pipeline.IndexOf('IMPLEMENTATION_COMPLETE_GATE',[System.StringComparison]::Ordinal)
+$workIndex = $pipeline.IndexOf('CHANGESET_IMPLEMENTATION',[System.StringComparison]::Ordinal)
 $freezeIndex = $pipeline.IndexOf('CHANGESET_FREEZE',[System.StringComparison]::Ordinal)
+$gateIndex = $pipeline.IndexOf('IMPLEMENTATION_COMPLETE_GATE',[System.StringComparison]::Ordinal)
 $buildIndex = $pipeline.IndexOf('"BUILD"',[System.StringComparison]::Ordinal)
-Assert-True ($implIndex -ge 0) 'Arthur pipeline must include IMPLEMENTATION_COMPLETE_GATE'
+Assert-True ($workIndex -ge 0) 'Arthur pipeline must include CHANGESET_IMPLEMENTATION'
 Assert-True ($freezeIndex -ge 0) 'Arthur pipeline must include CHANGESET_FREEZE'
+Assert-True ($gateIndex -ge 0) 'Arthur pipeline must include IMPLEMENTATION_COMPLETE_GATE'
 Assert-True ($buildIndex -ge 0) 'Arthur pipeline must include BUILD'
-Assert-True ($implIndex -lt $freezeIndex) 'implementation gate must occur before changeset freeze'
-Assert-True ($freezeIndex -lt $buildIndex) 'changeset freeze must occur before production build'
+Assert-True ($workIndex -lt $freezeIndex) 'changeset implementation must finish before freeze'
+Assert-True ($freezeIndex -lt $gateIndex) 'state-only freeze must occur before the candidate hard gate'
+Assert-True ($gateIndex -lt $buildIndex) 'candidate hard gate must pass before production build'
 
 Assert-Contains $start "'resume'" 'start wrapper must expose resume mode'
 
