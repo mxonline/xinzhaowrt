@@ -1,5 +1,7 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "4.3",
+  "pipeline_name": "OpenWrt Automated Firmware Pipeline v4.3",
+  "production_terminal_state": "PRODUCTION_RELEASED",
   "cloud_build_first": true,
   "control_plane": {
     "platform": "windows",
@@ -11,21 +13,50 @@
     "fallback_executors": ["verified-cloud-linux-runner"],
     "local_wsl": "emergency-fallback-only"
   },
+  "changeset_execution": {
+    "mode": "BATCHED_CHANGESET",
+    "state_file": "production/current-changeset.json",
+    "implementation_gate": "scripts/implementation-complete-gate.sh",
+    "freeze_gate": "CHANGESET_FREEZE",
+    "rules": [
+      "collect_all_pending_changes_before production build",
+      "all required tasks must be PASS",
+      "implementation_complete must be true",
+      "frozen must be true",
+      "frozen_source_sha must equal checkout HEAD",
+      "one frozen changeset produces one production candidate before real-device failure",
+      "one frozen changeset performs one standard sysupgrade before real-device failure",
+      "real-device failures are collected and repaired as one batch"
+    ]
+  },
+  "candidate_hard_gate": {
+    "required": true,
+    "fail_closed": true,
+    "before": ["SDK_BUILD", "IMAGEBUILDER", "FULL_BUILD", "CANDIDATE_ARTIFACT", "AUTO_FLASH"],
+    "success_markers": ["IMPLEMENTATION_COMPLETE_GATE=PASS", "CHANGESET_FREEZE=PASS", "CANDIDATE_ELIGIBLE=YES"],
+    "intermediate_artifact_policy": "NO_FLASH_NO_RELEASE"
+  },
   "device_validation": {
     "device": "Arthur",
     "target": "qualcommax/ipq60xx",
     "profile": "jdcloud_re-ss-01",
-    "expected_lan": "192.168.6.1"
+    "expected_lan": "192.168.6.1",
+    "expected_http_port": 80,
+    "expected_language": "zh_cn",
+    "wifi_gates": ["WIFI_CONFIG_GATE", "WIFI_RUNTIME_GATE", "WIFI_CLIENT_CONNECT_GATE"],
+    "adguardhome_final_state": "DISABLED"
   },
   "release_plane": {
     "executor": "github-release",
     "auth_gate": "AUTH_REQUIRED:GITHUB",
-    "auth_reason": "CLOUD_BUILD_AND_RELEASE_AUTH"
+    "auth_reason": "CLOUD_BUILD_AND_RELEASE_AUTH",
+    "sha256_invariant": "BUILD_SHA256=FLASHED_SHA256=VERIFIED_SHA256=RELEASE_SHA256"
   },
   "standard_sysupgrade": {
     "automation": "REQUIRED",
     "manual_flash": false,
     "safety_gate": "AUTO_FLASH_SAFETY_GATE",
+    "validated_transport": "PowerShell -> ssh.exe -> remote SHA256 -> /sbin/sysupgrade",
     "post_flash": [
       "WAIT_DEVICE",
       "DEVICE_IDENTITY",
@@ -36,8 +67,14 @@
       "DHCP",
       "WAN",
       "DNS",
+      "WIFI_CONFIG_GATE",
+      "WIFI_RUNTIME_GATE",
+      "WIFI_CLIENT_CONNECT_GATE",
       "PLUGIN_RUNTIME_22",
       "ARGON_KUCAT_RUNTIME",
+      "QUICKSTART_RUNTIME",
+      "ADGUARDHOME_RUNTIME_CONTROLLED_TEST",
+      "ADGUARDHOME_FINAL_STATE_DISABLED",
       "SYSTEM_HEALTH",
       "RELEASE_GATE",
       "RELEASE",
