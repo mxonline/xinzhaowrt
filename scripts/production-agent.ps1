@@ -154,7 +154,7 @@ function Ensure-Artifact($State) {
 function Upload-Candidate($State,[string]$Target) {
     $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
     $remote = [string]$Profile.remote_candidate
-    Log "Uploading candidate to $Target:$remote"
+    Log "Uploading candidate to ${Target}:$remote"
     $scp = Invoke-Process 'scp.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=10',[string]$State.candidate_path,"${Target}:$remote") -AllowFailure
     if ($scp.ExitCode -ne 0) { throw "Candidate upload failed: $($scp.Output)" }
     return $remote
@@ -171,12 +171,10 @@ function Invoke-VerifiedSysupgrade($State,[string]$Target,[string]$Remote) {
     $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
     if (-not $Profile.verified) { throw 'UNRECOVERABLE_IRREVERSIBLE_OPERATION' }
     $args = ([string]$Profile.argument_template).Replace('{remote_candidate}',$Remote)
-    # Historical verified command shape: ssh.exe root@host "/sbin/sysupgrade -n /tmp/<candidate>.bin"
     $command = "$( [string]$Profile.remote_upgrade_binary ) $args"
     Save-State $State 'FLASH_STARTED' 'LIVE'
     Log "Executing historically verified standard sysupgrade on $Target"
     $result = Invoke-Process 'ssh.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=10',$Target,$command) -AllowFailure
-    # SSH is expected to disconnect as sysupgrade tears networking down.
     if ($result.ExitCode -ne 0 -and $result.Output -notmatch '(?i)closed|reset|broken pipe|connection') {
         throw "sysupgrade did not enter expected reboot/disconnect path: $($result.Output)"
     }
@@ -227,7 +225,6 @@ function Invoke-RepairController($State) {
 }
 
 function Complete-Release($State) {
-    # Release publication is intentionally idempotent: if a matching release already exists, reuse it.
     $tag = "arthur-production-$($State.run_id)"
     $existing = Invoke-Process 'gh' @('release','view',$tag,'--repo',[string]$Config.repository) -AllowFailure
     if ($existing.ExitCode -ne 0) {
@@ -259,7 +256,6 @@ if ($Mode -eq 'Status') {
     exit 0
 }
 
-# Single-instance lock. Stale lock is replaced when its PID no longer exists.
 if (Test-Path $LockPath) {
     try {
         $oldPid = [int](Get-Content -Raw $LockPath)
