@@ -3,9 +3,22 @@ $ErrorActionPreference='Stop'
 $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Agent=Join-Path $PSScriptRoot 'production-agent.ps1'
 if (-not (Test-Path $Agent)) { throw "Production agent missing: $Agent" }
+
+function Resolve-AgentPowerShell {
+    $currentHost = Join-Path $PSHOME 'pwsh.exe'
+    if (Test-Path $currentHost) { return $currentHost }
+    $systemPwsh = Get-Command 'pwsh.exe' -ErrorAction SilentlyContinue
+    if ($systemPwsh) { return $systemPwsh.Source }
+    $portable = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
+    if (Test-Path $portable) { return $portable }
+    throw 'Production Agent requires PowerShell 7; run install-production-agent.ps1 to bootstrap the private portable runtime automatically.'
+}
+
+$Pwsh=Resolve-AgentPowerShell
+$env:Path="$(Split-Path $Pwsh);$env:Path"
 if ($Mode -eq 'Status') {
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $Agent -Mode Status
+    & $Pwsh -NoProfile -ExecutionPolicy Bypass -File $Agent -Mode Status
     exit $LASTEXITCODE
 }
-$proc=Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$Agent,'-Mode',$Mode) -WorkingDirectory $Root -WindowStyle Hidden -PassThru
-Write-Host "PRODUCTION_AGENT_STARTED pid=$($proc.Id) mode=$Mode"
+$proc=Start-Process -FilePath $Pwsh -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$Agent,'-Mode',$Mode) -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+Write-Host "PRODUCTION_AGENT_STARTED pid=$($proc.Id) mode=$Mode host=$Pwsh"
