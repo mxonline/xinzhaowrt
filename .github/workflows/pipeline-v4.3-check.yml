@@ -4,6 +4,8 @@ name: OpenWrt Pipeline v4.3 Static Gate Check
   push:
     branches:
       - codex/openwrt-pipeline-v4.3
+      - codex/arthur-fast-candidate
+      - main
     paths:
       - 'production/**'
       - 'scripts/**'
