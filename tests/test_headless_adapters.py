@@ -30,6 +30,12 @@ class HeadlessAdapterTests(unittest.TestCase):
 
         self.assertFalse(DECISION_JSON_SCHEMA["additionalProperties"])
 
+    def test_controller_candidate_schema_requires_every_declared_property(self):
+        from ai_orchestrator.adapters import DECISION_JSON_SCHEMA
+
+        candidate = DECISION_JSON_SCHEMA["properties"]["metadata"]["properties"]["candidate"]
+        self.assertEqual(set(candidate["properties"]), set(candidate["required"]))
+
     def test_no_backend_is_a_credential_required_preflight_blocker(self):
         backend = choose_controller_backend(None, [])
 

@@ -22,6 +22,7 @@ from .runtime import ProductionRuntime
 from .state_store import StateStore
 from .observability import age_seconds, process_is_alive, publish_runtime_status
 from .windows_process import hidden_creation_flags, hidden_startupinfo
+from .supervisor import RuntimeSupervisor, ensure_windows_startup
 
 
 SDK_REQUIREMENT = "openai-codex>=0.147.0"
@@ -55,6 +56,10 @@ def main(argv=None):
     _common_options(publisher_parser)
     publisher_parser.add_argument("--interval", type=float, default=5.0)
     publisher_parser.add_argument("--once", action="store_true")
+    supervisor_parser = subparsers.add_parser("supervisor", help="run the independent runtime supervisor")
+    _common_options(supervisor_parser)
+    supervisor_parser.add_argument("--interval", type=float, default=30.0)
+    supervisor_parser.add_argument("--once", action="store_true")
 
     args = parser.parse_args(argv)
     if args.command == "status":
@@ -64,6 +69,8 @@ def main(argv=None):
         return 0
     if args.command == "status-publisher":
         return _status_publisher(args.state_dir, args.interval, args.once)
+    if args.command == "supervisor":
+        return _supervisor(args.state_dir, args.interval, args.once)
     if args.command == "run-production":
         if args.detach and not args.foreground:
             return _detach(args)
@@ -267,6 +274,19 @@ def _status_publisher(state_dir, interval=5.0, once=False):
         if once:
             return 0
         time.sleep(max(1.0, interval))
+
+
+def _supervisor(state_dir, interval=30.0, once=False):
+    supervisor = RuntimeSupervisor(state_dir, project_root=Path.cwd(), interval=interval)
+    startup = ensure_windows_startup(Path.cwd(), state_dir)
+    supervisor._append_log("startup_registration", **startup)
+    with supervisor.locked():
+        supervisor.run_once()
+        if once:
+            return 0
+        while True:
+            time.sleep(supervisor.interval)
+            supervisor.run_once()
 
 
 def _detach(args):

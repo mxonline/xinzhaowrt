@@ -3,6 +3,7 @@
 import os
 import time
 import json
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,8 +31,20 @@ def process_is_alive(pid):
                 return code.value == 259  # STILL_ACTIVE
             finally:
                 kernel32.CloseHandle(handle)
-        except (AttributeError, OSError, TypeError, ValueError, SystemError):
-            return False
+        except (AttributeError, ImportError, OSError, TypeError, ValueError, SystemError):
+            # Some bundled pythonw environments cannot load ``_ctypes`` when
+            # detached.  Use the native task list as a read-only fallback so a
+            # missing optional module cannot kill the bridge watchdog.
+            try:
+                result = subprocess.run(
+                    ["tasklist.exe", "/FI", "PID eq %d" % int(pid), "/NH"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                return result.returncode == 0 and str(pid) in result.stdout
+            except (OSError, ValueError, subprocess.SubprocessError):
+                return False
     try:
         os.kill(int(pid), 0)
         return True
@@ -97,7 +110,7 @@ def process_cpu_snapshot(pid):
                 return (to_int(kernel) + to_int(user)) / 10_000_000.0
             finally:
                 kernel32.CloseHandle(handle)
-        except (AttributeError, OSError, TypeError):
+        except (AttributeError, ImportError, OSError, TypeError):
             return None
     proc_stat = Path("/proc") / str(pid) / "stat"
     try:

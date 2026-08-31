@@ -102,6 +102,7 @@ DECISION_JSON_SCHEMA = {
                     "required": [
                         "filename",
                         "sha256",
+                        "size_bytes",
                         "target",
                         "profile",
                         "build_report",

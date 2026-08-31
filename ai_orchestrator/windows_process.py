@@ -1,6 +1,7 @@
 """Windows process policy for the headless daemon and Codex SDK bridge."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,45 @@ def pythonw_path():
     executable = Path(sys.executable)
     candidate = executable.with_name("pythonw.exe")
     return candidate if candidate.exists() else executable
+
+
+def runtime_python_path():
+    """Choose a supported Python for resumed Runtime processes.
+
+    The system ``python.exe`` on this host is 3.8, while the Codex SDK needs
+    3.10+.  Prefer the bundled workspace runtime used by the successful
+    preflight, then an explicit override, then the current interpreter.
+    """
+    override = os.environ.get("XINZHAO_RUNTIME_PYTHON")
+    candidates = []
+    if override:
+        candidates.append(Path(override))
+    candidates.append(Path.home() / "AppData" / "Local" / "Programs" / "Python" / "Python314" / "python.exe")
+    candidates.append(Path.home() / ".cache" / "codex-runtimes" / "codex-primary-runtime" / "dependencies" / "python" / "python.exe")
+    found = shutil.which("python3")
+    if found:
+        candidates.append(Path(found))
+    candidates.append(Path(sys.executable))
+    for candidate in candidates:
+        try:
+            exists = candidate.exists()
+        except OSError:
+            exists = False
+        if exists:
+            try:
+                if sys.version_info >= (3, 10) and candidate == Path(sys.executable):
+                    return candidate
+                probe = subprocess.run(
+                    [str(candidate), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                )
+                if probe.returncode == 0:
+                    return candidate
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return Path(sys.executable)
 
 
 def hidden_codex_launch_args():
