@@ -35,7 +35,12 @@ done < config/required-plugins.txt
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
 
-for test_script in tests/test-first-boot-defaults.sh tests/test-version-identity.sh tests/test-final-rootfs-identity.sh; do
+for test_script in \
+  tests/test-first-boot-defaults.sh \
+  tests/test-version-identity.sh \
+  tests/test-final-rootfs-identity.sh \
+  tests/test-implementation-complete-gate.sh \
+  tests/test-pipeline-v4.3-hard-gate.sh; do
   bash "$test_script"
 done
 
