@@ -45,7 +45,7 @@ Assert-Contains $deploy 'xinzhaowrt-controller' 'deploy must bind the existing c
 Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'deploy must sync from the already checked-out workspace'
 Assert-Contains $deploy 'actions/setup-python@v5' 'deploy must bootstrap Python instead of requiring a preinstalled interpreter'
 Assert-Contains $deploy "python-version: '3.12'" 'deploy must pin the bootstrap Python version'
-Assert-Contains $deploy 'python -m pip install' 'deploy must install headless runtime dependencies into the pinned interpreter'
+Assert-Contains $deploy '$pythonExe -m pip install' 'deploy must install headless runtime dependencies into the pinned interpreter'
 Assert-Contains $deploy 'requirements-headless.txt' 'deploy must use the project headless dependency lock/input'
 Assert-Contains $deploy '-PythonExe $pythonExe' 'deploy must pass the pinned interpreter path into the persistent scheduled task installer'
 Assert-Contains $deploy 'gh auth status' 'deploy must verify persistent GitHub authentication'
