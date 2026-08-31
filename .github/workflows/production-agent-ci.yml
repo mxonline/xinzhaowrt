@@ -1,0 +1,42 @@
+name: Arthur Production Agent CI
+
+on:
+  push:
+    branches:
+      - codex/arthur-production-agent-clean
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-agent-contract:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell syntax and production-agent contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @(
+            'tests/production-agent.tests.ps1',
+            'scripts/production-agent.ps1',
+            'scripts/fetch-production-artifact.ps1',
+            'scripts/auto-flash-safety-gate.ps1',
+            'scripts/install-production-agent.ps1',
+            'scripts/uninstall-production-agent.ps1',
+            'scripts/start-production-agent.ps1',
+            'scripts/production-agent-status.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+            }
+          }
+          & ./tests/production-agent.tests.ps1
