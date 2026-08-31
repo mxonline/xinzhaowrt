@@ -11,7 +11,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputDir,
 
-    [string]$RouterPassword = 'passwort'
+    [string]$RouterPassword = 'password'
 )
 
 $ErrorActionPreference = 'Stop'
