@@ -4,6 +4,14 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# v4.3 production hard gate. Ordinary local/preflight use remains available,
+# while the generic Arthur production workflow cannot enter the expensive
+# build path until the full changeset is complete and frozen to this HEAD.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_WORKFLOW:-}" == "Build XinZhaoWrt Arthur" ]]; then
+  bash ./scripts/check-changeset-complete.sh
+  echo 'PRODUCTION_HARD_GATE=PASS'
+fi
+
 COUNT="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | wc -l | tr -d ' ')"
 [[ "$COUNT" == "22" ]] || { echo "ERROR: expected 22 mandatory LuCI plugins, found $COUNT"; exit 1; }
 
