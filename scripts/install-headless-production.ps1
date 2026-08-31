@@ -41,9 +41,10 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-$escapedStart = $StartScript.Replace("'", "''")
-$escapedState = $absoluteStateDir.Replace("'", "''")
-$resumeInvocation = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File '$escapedStart' -Command 'resume' -StateDir '$escapedState'"
+$escapedStart = $StartScript.Replace('"', '\"')
+$escapedState = $absoluteStateDir.Replace('"', '\"')
+# Semantic contract: the persistent task always runs -Command 'resume'.
+$resumeInvocation = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$escapedStart`" -Command resume -StateDir `"$escapedState`""
 $Action = New-ScheduledTaskAction `
     -Execute 'powershell.exe' `
     -Argument $resumeInvocation `
