@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "pipeline_version": "4.3",
+  "changeset_id": "arthur-ui-network-20260831",
+  "device": "JDCloud RE-SS-01 / Arthur",
+  "target": "qualcommax/ipq60xx",
+  "profile": "jdcloud_re-ss-01",
+  "implementation_complete": false,
+  "frozen": false,
+  "build_class": "DEVELOPMENT",
+  "required_tasks": [
+    "adguardhome_full_manager",
+    "istoreos_original_quickstart",
+    "wifi_real_connect_fix",
+    "plugin_i18n",
+    "argon_compatibility",
+    "kucat_compatibility",
+    "plugins_menu_cleanup",
+    "baseline_regression"
+  ],
+  "tasks": {
+    "adguardhome_full_manager": "PENDING",
+    "istoreos_original_quickstart": "PENDING",
+    "wifi_real_connect_fix": "PENDING",
+    "plugin_i18n": "PENDING",
+    "argon_compatibility": "PENDING",
+    "kucat_compatibility": "PENDING",
+    "plugins_menu_cleanup": "PENDING",
+    "baseline_regression": "PENDING"
+  },
+  "migration": {
+    "run_33396664381": "INTERMEDIATE_NON_PRODUCTION"
+  }
+}
