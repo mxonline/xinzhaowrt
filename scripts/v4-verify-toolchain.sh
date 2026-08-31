@@ -26,12 +26,17 @@ mapfile -t ib_files < <(find "$TOOLCHAIN_DIR" -maxdepth 1 -type f -iname '*image
   sha256sum -c SHA256SUMS
 )
 
-readarray -t KG < <(python3 - "$KNOWN_GOOD_JSON" <<'PY'
+mapfile -t KG < <(python3 - "$KNOWN_GOOD_JSON" <<'PY'
 import json, re, sys
 with open(sys.argv[1], encoding='utf-8') as f:
     d = json.load(f)
-if d.get('verified') is not True or d.get('status') != 'verified':
-    raise SystemExit('ERROR: Stable Known-Good is not verified')
+status = d.get('status')
+if d.get('verified') is not True or status not in {'verified', 'frozen'}:
+    raise SystemExit('ERROR: Stable Known-Good is not verified/frozen')
+if d.get('verification') != 'real-device-confirmed':
+    raise SystemExit('ERROR: Stable Known-Good lacks real-device confirmation')
+if d.get('device') != 'jdcloud_re-ss-01':
+    raise SystemExit('ERROR: Stable Known-Good device mismatch')
 commit = d.get('upstream_commit') or ''
 if not re.fullmatch(r'[0-9a-fA-F]{40}', commit):
     raise SystemExit('ERROR: invalid Stable Known-Good upstream commit')
@@ -39,6 +44,11 @@ for key in ('stable_tag', 'device', 'target', 'subtarget', 'upstream_commit', 'l
     print(d.get(key) or '')
 PY
 )
+
+if (( ${#KG[@]} != 6 )); then
+  echo "ERROR: Stable Known-Good parser returned ${#KG[@]} fields; expected 6" >&2
+  exit 1
+fi
 
 KNOWN_GOOD_TAG="${KG[0]}"
 DEVICE="${KG[1]}"

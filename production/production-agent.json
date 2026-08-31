@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "repository": "mxonline/xinzhaowrt",
+  "device": "jdcloud_re-ss-01",
+  "target": "qualcommax/ipq60xx",
+  "profile": "jdcloud_re-ss-01",
+  "expected_lan": "192.168.6.1",
+  "recovery_addresses": ["192.168.6.1", "192.168.1.1"],
+  "luci_http_port": 80,
+  "default_language": "zh_cn",
+  "default_theme": "argon",
+  "secondary_theme": "kucat",
+  "required_plugin_count": 22,
+  "adguardhome_default_enabled": false,
+  "bootstrap": {
+    "run_id": 33400519410,
+    "artifact_id": 9761717873,
+    "artifact_name": "arthur-theme-candidate-33400519410",
+    "source_sha": "2f1b8883ccdf65a98ef13cac5ad1da12d80155db",
+    "candidate_filename": "XinZhaoWrt-Arthur-theme-33400519410-sysupgrade.bin",
+    "candidate_size": 99000595,
+    "candidate_sha256": "118d82d07ef7690a0f3ad45edf7f401024ca7fa4c641cc250dee7cc358336058"
+  },
+  "poll_seconds": 30,
+  "artifact_retry_seconds": [15, 30, 60, 120, 300],
+  "wait_device_timeout_seconds": 420,
+  "human_stop_classes": [
+    "NEW_CREDENTIAL_PROVISIONING",
+    "UNKNOWN_DEVICE_IDENTITY",
+    "NO_SAFE_ROLLBACK",
+    "UNRECOVERABLE_IRREVERSIBLE_OPERATION"
+  ]
+}

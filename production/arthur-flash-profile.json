@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "device": "jdcloud_re-ss-01",
+  "transport": "windows-openssh",
+  "remote_user": "root",
+  "remote_candidate": "/tmp/XinZhaoWrt-Arthur-production-sysupgrade.bin",
+  "remote_upgrade_binary": "/sbin/sysupgrade",
+  "argument_template": "-n {remote_candidate}",
+  "preflight_template": "-T {remote_candidate}",
+  "verified": true,
+  "verification_evidence": "historical-success: ssh.exe root@192.168.1.1 \"sysupgrade -n /tmp/XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin\"",
+  "preserve_config": false,
+  "forbid_raw_writes": true
+}

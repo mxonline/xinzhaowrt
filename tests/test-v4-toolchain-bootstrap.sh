@@ -11,21 +11,46 @@ LEGACY_RUN_ID='33182381566'
   exit 1
 }
 
+readarray -t EXPECTED < <(python3 - "$ROOT/production/known-good.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as f:
+    d = json.load(f)
+print(d['stable_tag'])
+print(d['upstream_commit'])
+print(f"{d['target']}/{d['subtarget']}")
+print(d['device'])
+PY
+)
+
 plan="$("$BOOTSTRAP" --plan)"
 
 grep -qx 'MODE=PLAN' <<<"$plan"
-grep -qx 'KNOWN_GOOD_TAG=v0.1.0' <<<"$plan"
-grep -qx 'UPSTREAM_COMMIT=27e26e324bee0b0c2a4eb58e2e9121fea5d43194' <<<"$plan"
-grep -qx 'TARGET=qualcommax/ipq60xx' <<<"$plan"
-grep -qx 'PROFILE=jdcloud_re-ss-01' <<<"$plan"
+grep -qx "KNOWN_GOOD_TAG=${EXPECTED[0]}" <<<"$plan"
+grep -qx "UPSTREAM_COMMIT=${EXPECTED[1]}" <<<"$plan"
+grep -qx "TARGET=${EXPECTED[2]}" <<<"$plan"
+grep -qx "PROFILE=${EXPECTED[3]}" <<<"$plan"
 grep -qx 'CONFIG_SDK=y' <<<"$plan"
 grep -qx 'CONFIG_IB=y' <<<"$plan"
 grep -qx 'CONFIG_IB_STANDALONE=y' <<<"$plan"
 
-# Bootstrap must fail closed if the Known-Good record is not verified.
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-python3 - "$ROOT/production/known-good.json" "$tmp" <<'PY'
+# The current production schema uses verified=true + status=frozen for an
+# immutable real-device-confirmed Known-Good. That state must remain accepted.
+tmp_frozen="$(mktemp)"
+tmp_bad="$(mktemp)"
+trap 'rm -f "$tmp_frozen" "$tmp_bad"' EXIT
+python3 - "$ROOT/production/known-good.json" "$tmp_frozen" <<'PY'
+import json, sys
+src, dst = sys.argv[1:]
+obj = json.load(open(src, encoding='utf-8'))
+obj['verified'] = True
+obj['status'] = 'frozen'
+obj['verification'] = 'real-device-confirmed'
+json.dump(obj, open(dst, 'w', encoding='utf-8'), indent=2)
+PY
+KNOWN_GOOD_JSON="$tmp_frozen" "$BOOTSTRAP" --plan >/dev/null
+
+# Bootstrap must still fail closed for unverified/candidate records.
+python3 - "$ROOT/production/known-good.json" "$tmp_bad" <<'PY'
 import json, sys
 src, dst = sys.argv[1:]
 obj = json.load(open(src, encoding='utf-8'))
@@ -34,7 +59,7 @@ obj['status'] = 'candidate'
 json.dump(obj, open(dst, 'w', encoding='utf-8'), indent=2)
 PY
 
-if KNOWN_GOOD_JSON="$tmp" "$BOOTSTRAP" --plan >/dev/null 2>&1; then
+if KNOWN_GOOD_JSON="$tmp_bad" "$BOOTSTRAP" --plan >/dev/null 2>&1; then
   echo 'FAIL: bootstrap accepted an unverified Known-Good record' >&2
   exit 1
 fi
@@ -64,4 +89,4 @@ grep -q '^[[:space:]]*ref: main$' "$WORKFLOW" || {
   exit 1
 }
 
-echo 'PASS: v4 toolchain bootstrap planning, manual gate and one-time auto-handoff are correct.'
+echo 'PASS: v4 toolchain bootstrap accepts verified frozen baseline and rejects unverified candidates.'
