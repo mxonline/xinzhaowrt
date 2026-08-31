@@ -38,12 +38,8 @@ jobs:
           ref: codex/arthur-fast-candidate
           fetch-depth: 1
 
-      - name: Bootstrap Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: requirements-headless.txt
+      - name: Bootstrap uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Validate headless persistence contract
         shell: powershell
@@ -51,21 +47,38 @@ jobs:
           $ErrorActionPreference = 'Stop'
           ./tests/headless-production-deploy.tests.ps1
 
-      - name: Install headless runtime dependencies
+      - name: Bootstrap persistent Python 3.12 and dependencies
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $pythonExe = (Get-Command python -ErrorAction Stop).Source
-          & $pythonExe -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-          if ($LASTEXITCODE -ne 0) { throw "Python 3.10+ bootstrap failed: $pythonExe" }
-          & $pythonExe -m pip install --upgrade pip
-          if ($LASTEXITCODE -ne 0) { throw 'pip bootstrap failed.' }
-          & $pythonExe -m pip install -r requirements-headless.txt
+          $pythonHome = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessPython'
+          $managedPython = Join-Path $pythonHome 'python'
+          $uvCache = Join-Path $pythonHome 'cache'
+          $venv = Join-Path $pythonHome '.venv'
+          New-Item -ItemType Directory -Force -Path $pythonHome | Out-Null
+
+          $env:UV_PYTHON_INSTALL_DIR = $managedPython
+          $env:UV_CACHE_DIR = $uvCache
+          uv python install 3.12
+          if ($LASTEXITCODE -ne 0) { throw 'uv managed Python 3.12 install failed.' }
+
+          uv venv $venv --python 3.12 --clear
+          if ($LASTEXITCODE -ne 0) { throw 'uv persistent venv creation failed.' }
+
+          $pythonExe = Join-Path $venv 'Scripts\python.exe'
+          if (-not (Test-Path $pythonExe)) {
+            throw "Persistent Python executable was not created: $pythonExe"
+          }
+
+          uv pip install --python $pythonExe -r requirements-headless.txt
           if ($LASTEXITCODE -ne 0) { throw 'Headless dependency installation failed.' }
-          & $pythonExe -c "import openai_codex; print('HEADLESS_CODEX_SDK_IMPORT=PASS')"
-          if ($LASTEXITCODE -ne 0) { throw 'openai_codex import verification failed.' }
+
+          & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Persistent Python/Codex SDK verification failed.' }
+
           "HEADLESS_PYTHON_EXE=$pythonExe" >> $env:GITHUB_ENV
           Write-Host "HEADLESS_PYTHON=PASS interpreter=$pythonExe"
+          Write-Host 'HEADLESS_CODEX_SDK_IMPORT=PASS'
 
       - name: Quiesce previous headless runtime
         shell: powershell
