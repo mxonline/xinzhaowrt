@@ -10,7 +10,7 @@ function Assert-True {
 
 function Assert-Contains {
     param([string]$Text,[string]$Needle,[string]$Message)
-    if (-not $Text.Contains($Needle,[System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
         throw "TEST_FAIL: $Message (missing '$Needle')"
     }
 }
@@ -104,8 +104,6 @@ Assert-Contains $install 'Register-ScheduledTask' 'installation must create a Sc
 Assert-Contains $install 'LogonTrigger' 'Scheduled Task must start in current-user logon context'
 Assert-Contains $install '$env:USERDOMAIN' 'Scheduled Task principal must come from current interactive user'
 Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to bootstrap official portable PowerShell when pwsh is absent'
-# Only reject actual account/principal assignment to LocalSystem/SYSTEM. Names such as
-# $systemPwsh merely describe an already-installed PowerShell executable and are safe.
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
