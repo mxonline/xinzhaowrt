@@ -117,6 +117,10 @@ jobs:
                 -e 's#{{ media }}/icon/ms-icon-144x144.png#/luci-static/xinzhao/favicon-192x192.png#g' \
                 -e 's#{{ media }}/logo.png#/luci-static/xinzhao/logo.png#g' \
                 -e 's#{{ media }}/img/logo[0-9]*.png#/luci-static/xinzhao/logo.png#g' \
+                -e "s#const hostname = striptags(boardinfo?.hostname ?? '?');#const hostname = 'XinZhaoWrt';#g" \
+                -e 's#{{ media }}/img/logo180.png#/luci-static/xinzhao/logo.png#g' \
+                -e 's#{{ media }}/img/logo150.png#/luci-static/xinzhao/logo.png#g' \
+                -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt">XinZhaoWrt</a>|g' \
                 -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
                 -e 's#ImmortalWRT#XinZhaoWrt#g' \
                 -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' "$template"
