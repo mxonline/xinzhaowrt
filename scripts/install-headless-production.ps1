@@ -1,6 +1,7 @@
 param(
     [string]$TaskName = 'XinZhaoWrt-Arthur-Headless-Production',
-    [string]$StateDir = 'output\headless-production'
+    [string]$StateDir = 'output\headless-production',
+    [string]$PythonExe = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,29 @@ $absoluteStateDir = if ([System.IO.Path]::IsPathRooted($StateDir)) {
 }
 New-Item -ItemType Directory -Force -Path $absoluteStateDir | Out-Null
 
+# The persistent scheduled task must not depend on the machine-global PATH.
+# Prefer the explicit interpreter bootstrapped by GitHub Actions; retain a
+# local fallback only for manual installs outside the deploy workflow.
+$resolvedPython = $PythonExe
+if ([string]::IsNullOrWhiteSpace($resolvedPython)) {
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if ($pythonCommand) {
+        $resolvedPython = $pythonCommand.Source
+    } else {
+        $py = Get-Command py -ErrorAction SilentlyContinue
+        if ($py) {
+            $resolvedPython = (& $py.Source -3 -c "import sys; print(sys.executable)").Trim()
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($resolvedPython) -or -not (Test-Path $resolvedPython)) {
+    throw 'RUNTIME_REQUIRED: a persistent Python 3.10+ interpreter path is required.'
+}
+& $resolvedPython -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+if ($LASTEXITCODE -ne 0) {
+    throw "RUNTIME_REQUIRED: Python 3.10+ is required. interpreter=$resolvedPython"
+}
+
 # Ask an older daemon using this same durable state directory to stop cleanly.
 # The stop marker is cleared automatically by the resume command.
 try {
@@ -41,12 +65,11 @@ if ($existing) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-$escapedStart = $StartScript.Replace('"', '\"')
 $escapedState = $absoluteStateDir.Replace('"', '\"')
-# Semantic contract: the persistent task always runs -Command 'resume'.
-$resumeInvocation = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$escapedStart`" -Command resume -StateDir `"$escapedState`""
+# Run the pinned interpreter directly so logon/restart recovery does not rely on PATH.
+$resumeInvocation = "-m ai_orchestrator resume --state-dir `"$escapedState`""
 $Action = New-ScheduledTaskAction `
-    -Execute 'powershell.exe' `
+    -Execute $resolvedPython `
     -Argument $resumeInvocation `
     -WorkingDirectory $RepoRoot
 
@@ -80,4 +103,5 @@ Write-Host "HEADLESS_TASK=$TaskName"
 Write-Host "HEADLESS_TASK_USER=$userId"
 Write-Host "HEADLESS_TASK_STATE=$($task.State)"
 Write-Host "HEADLESS_STATE_DIR=$absoluteStateDir"
+Write-Host "HEADLESS_PYTHON_EXE=$resolvedPython"
 Write-Host 'HEADLESS_PERSISTENT_INSTALL=PASS'
