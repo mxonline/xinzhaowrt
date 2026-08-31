@@ -17,7 +17,7 @@ write_state() {
   local frozen="$2"
   local task_state="$3"
   local frozen_sha="$4"
-  local allow="$5"
+  local allow_candidate="$5"
   cat > "$TMP/state.json" <<JSON
 {
   "schema_version": "4.3",
@@ -37,10 +37,10 @@ write_state() {
     "baseline_regression": "$task_state"
   },
   "candidate_policy": {
-    "allow_candidate_build": $allow,
-    "allow_flash": $allow,
-    "allow_real_device_verify": $allow,
-    "allow_release": $allow
+    "allow_candidate_build": $allow_candidate,
+    "allow_flash": false,
+    "allow_real_device_verify": false,
+    "allow_release": false
   },
   "production_terminal_state": "PRODUCTION_RELEASED"
 }
@@ -92,6 +92,8 @@ expect_fail policy_closed env \
   GATE_HEAD="$HEAD_SHA" \
   bash "$GATE"
 
+# Candidate authorization is sufficient here. Flash/verify/release remain false
+# and are controlled by downstream gates after the candidate exists.
 write_state true true PASS "$HEAD_SHA" true
 env \
   CHANGESET_STATE_FILE="$TMP/state.json" \
