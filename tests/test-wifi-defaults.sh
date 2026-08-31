@@ -21,6 +21,14 @@ grep -Fq 'wifi config' "$wifi_defaults" || {
   echo 'FAIL: Wi-Fi defaults must generate radio config when first-boot UCI is absent.' >&2
   exit 1
 }
+grep -Fq 'XinZhaoWrt-5G' "$wifi_defaults" || {
+  echo 'FAIL: 5 GHz default SSID is not configured.' >&2
+  exit 1
+}
+grep -Fq 'XinZhaoWrt-2.4G' "$wifi_defaults" || {
+  echo 'FAIL: 2.4 GHz default SSID is not configured.' >&2
+  exit 1
+}
 
 grep -Fq "wifi_default_password='12356789'" "$defaults" || {
   echo 'FAIL: first-boot defaults must define the locked default Wi-Fi password.' >&2
@@ -28,6 +36,14 @@ grep -Fq "wifi_default_password='12356789'" "$defaults" || {
 }
 grep -Fq 'wireless.$wifi_section.key=$wifi_default_password' "$defaults" || {
   echo 'FAIL: first-boot defaults must apply the password to each Wi-Fi interface.' >&2
+  exit 1
+}
+grep -Fq 'XinZhaoWrt-5G' "$defaults" || {
+  echo 'FAIL: first-boot defaults must configure the 5 GHz SSID.' >&2
+  exit 1
+}
+grep -Fq 'XinZhaoWrt-2.4G' "$defaults" || {
+  echo 'FAIL: first-boot defaults must configure the 2.4 GHz SSID.' >&2
   exit 1
 }
 grep -Fq 'uci commit wireless' "$defaults" || {

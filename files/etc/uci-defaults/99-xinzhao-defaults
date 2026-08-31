@@ -67,6 +67,10 @@ for wifi_section in $wifi_sections; do
     wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
     case "$wifi_band" in
         2g|5g)
+            case "$wifi_band" in
+                5g) uci set "wireless.$wifi_section.ssid=XinZhaoWrt-5G" || fail wifi_ssid_set ;;
+                2g) uci set "wireless.$wifi_section.ssid=XinZhaoWrt-2.4G" || fail wifi_ssid_set ;;
+            esac
             uci set "wireless.$wifi_section.key=$wifi_default_password" || fail wifi_set
             wifi_changed=1
             ;;
