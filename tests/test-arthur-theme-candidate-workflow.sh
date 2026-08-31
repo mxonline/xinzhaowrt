@@ -4,11 +4,15 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="$root/.github/workflows/arthur-theme-candidate.yml"
 lock="$root/config/arthur-theme.lock"
+quickstart_lock="$root/config/istore-quickstart.lock"
 
 fail() { echo "ARTHUR_THEME_GATE: FAIL -- $*" >&2; exit 1; }
 
 [[ -f "$workflow" ]] || fail 'theme candidate workflow is missing'
 [[ -f "$lock" ]] || fail 'theme provenance lock is missing'
+[[ -f "$quickstart_lock" ]] || fail 'official QuickStart provenance lock is missing'
+grep -Fxq 'ISTORE_QUICKSTART_LUCI_REF="8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449"' "$quickstart_lock" || fail 'official QuickStart LuCI ref is not frozen'
+grep -Fxq 'ISTORE_QUICKSTART_REF="0c789dc2b88f684476f6174201105da6ca6f5133"' "$quickstart_lock" || fail 'official QuickStart service ref is not frozen'
 grep -Fxq 'ARGON_REF="136eb5d42f30554e89cc737fd90f503909810660"' "$lock" || fail 'Argon ref is not frozen'
 grep -Fxq 'KUCAT_REF="82ddd7e4196887089c43af19d4552cd54fa414d2"' "$lock" || fail 'Kucat ref is not frozen'
 grep -Fq 'luci-theme-argon' "$workflow" || fail 'Argon package is absent'
@@ -66,6 +70,10 @@ grep -Fq 'PLUGIN_I18N_INCLUDED' "$workflow" || fail 'plugin zh-cn inclusion gate
 grep -Fq 'XZ_ICON_SOURCE=PASS' "$workflow" || fail 'XZ icon source gate is absent'
 grep -Fq 'BUILD_INFO_PRESENT=PASS' "$workflow" || fail 'build info gate is absent'
 grep -Fq 'luci-i18n-adguardhome-zh-cn' "$workflow" || fail 'AdGuard Home zh-cn package gate is absent'
+grep -Fq 'nas-packages-luci.git' "$workflow" || fail 'official QuickStart LuCI source is absent from the candidate workflow'
+grep -Fq 'nas-packages.git' "$workflow" || fail 'official QuickStart service source is absent from the candidate workflow'
+grep -Fq 'ISTORE_QUICKSTART_LUCI_REF' "$workflow" || fail 'official QuickStart LuCI ref is absent from the candidate workflow'
+grep -Fq 'ISTORE_QUICKSTART_REF' "$workflow" || fail 'official QuickStart service ref is absent from the candidate workflow'
 branding="$root/files/www/luci-static/xinzhao/branding.js"
 [[ -f "$branding" ]] || fail 'branding runtime override is missing'
 grep -Fq 'window.location.pathname' "$branding" || fail 'branding metadata does not inspect the actual LuCI status route'

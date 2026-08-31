@@ -35,6 +35,7 @@ jobs:
           ./tests/test-adguard-manager.sh
           ./tests/test-adguard-defaults.sh
           ./tests/test-argon-default-theme.sh
+          ./scripts/check-changeset-complete.sh
           ./scripts/check-defaults.sh
           ./scripts/check-web-stack.sh
       - name: Download accepted SDK and ImageBuilder
@@ -68,6 +69,7 @@ jobs:
           set -Eeuo pipefail
           source config/arthur-theme.lock
           source config/arthur-known-good.lock
+          source config/istore-quickstart.lock
           tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
           SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
           test -f "$SDK_DIR/feeds.conf.default"
@@ -153,12 +155,22 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/linkease/istore.git i18n-sources/istore
           git -C i18n-sources/istore fetch --depth=1 origin "$ISTORE_REF"
           git -C i18n-sources/istore -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/nas-packages-luci.git i18n-sources/istoreos-luci
+          git -C i18n-sources/istoreos-luci fetch --depth=1 origin "$ISTORE_QUICKSTART_LUCI_REF"
+          git -C i18n-sources/istoreos-luci -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/nas-packages.git i18n-sources/istoreos-packages
+          git -C i18n-sources/istoreos-packages fetch --depth=1 origin "$ISTORE_QUICKSTART_REF"
+          git -C i18n-sources/istoreos-packages -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          test -f i18n-sources/istoreos-luci/luci/luci-app-quickstart/Makefile
+          test -f i18n-sources/istoreos-packages/network/services/quickstart/Makefile
+          grep -Fq 'PKG_ARCH_quickstart:=$(ARCH)' i18n-sources/istoreos-packages/network/services/quickstart/Makefile
           mkdir -p "$SDK_DIR/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
           ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-lucky/luci-app-lucky" "$SDK_DIR/package/feeds/xinzhao/luci-app-lucky"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-quickfile/luci-app-quickfile" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickfile"
-          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-quickstart" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickstart"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci/luci/luci-app-quickstart" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickstart"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/istoreos-packages/network/services/quickstart" "$SDK_DIR/package/feeds/xinzhao/quickstart"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman/luci-app-diskman" "$SDK_DIR/package/feeds/xinzhao/luci-app-diskman"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenClash/luci-app-openclash" "$SDK_DIR/package/feeds/xinzhao/luci-app-openclash"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns/luci-app-mosdns" "$SDK_DIR/package/feeds/xinzhao/luci-app-mosdns"
@@ -212,6 +224,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
             --source-root "$SDK_DIR/feeds/luci" \
             --source-root "$SDK_DIR/package/feeds/xinzhao" \
             --feed-commit "$luci_feed_commit" \
@@ -280,6 +293,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
             --source-root "$SDK_DIR/feeds/luci" \
             --source-root "$SDK_DIR/package/feeds/xinzhao" \
             "${package_dir_args[@]}" \
@@ -403,6 +417,7 @@ jobs:
             --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
             --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
             --source-root "$SDK_DIR/feeds/luci" \
             --source-root "$SDK_DIR/package/feeds/xinzhao" \
             --rootfs "$rootfs" \

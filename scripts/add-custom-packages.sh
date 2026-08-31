@@ -11,6 +11,12 @@ if [[ -f "$LOCK_FILE" ]]; then
   source "$LOCK_FILE"
   echo "KNOWN_GOOD_LOCK: $LOCK_FILE"
 fi
+QUICKSTART_LOCK_FILE="${ISTORE_QUICKSTART_LOCK:-$PROJECT_ROOT/config/istore-quickstart.lock}"
+if [[ -f "$QUICKSTART_LOCK_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$QUICKSTART_LOCK_FILE"
+  echo "ISTORE_QUICKSTART_LOCK: $QUICKSTART_LOCK_FILE"
+fi
 
 SOURCES="$SRC/.xinzhao-sources"
 FEED="$SRC/.xinzhao-feed"
@@ -45,32 +51,42 @@ link_pkg() {
   ln -s "$src" "$FEED/$pkg"
 }
 
-# iStoreX/QuickStart ecosystem + Lucky + QuickFile.
+# iStoreX ecosystem + Lucky + QuickFile. QuickStart itself is sourced from
+# the official iStoreOS LinkEase repositories below.
 clone_or_update \
   kenzok8-openwrt-packages \
   https://github.com/kenzok8/openwrt-packages.git \
   "${KENZOK8_REF:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# Arthur emits aarch64_cortex-a53 packages.  The QuickStart Makefile chooses a
-# matching upstream artifact through PKG_ARCH_quickstart; never substitute the
-# 32-bit generic ARM executable into an aarch64 package.
-QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
-if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
-   grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
-  echo 'QUICKSTART_ARTIFACT_ARCH: use quickstart.$(PKG_ARCH_quickstart) for the SDK target architecture'
-else
-  echo 'ERROR: QuickStart Makefile architecture selection changed; refusing to replace the target artifact.' >&2
-  exit 1
-fi
-
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"
 link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
-link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
-link_pkg quickstart "$KENZO/quickstart"
+# iStoreOS Original QuickStart: keep frontend/RPC/backend/service sources
+# paired at fixed, auditable upstream revisions.
+clone_or_update \
+  istoreos-luci \
+  "${ISTORE_QUICKSTART_LUCI_REPO:-https://github.com/linkease/nas-packages-luci.git}" \
+  "${ISTORE_QUICKSTART_LUCI_REF:?ISTORE_QUICKSTART_LUCI_REF is required}"
+clone_or_update \
+  istoreos-packages \
+  "${ISTORE_QUICKSTART_REPO:-https://github.com/linkease/nas-packages.git}" \
+  "${ISTORE_QUICKSTART_REF:?ISTORE_QUICKSTART_REF is required}"
+ISTOREOS_LUCI="$SOURCES/istoreos-luci"
+ISTOREOS_PACKAGES="$SOURCES/istoreos-packages"
+QUICKSTART_MAKEFILE="$ISTOREOS_PACKAGES/network/services/quickstart/Makefile"
+grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" || {
+  echo 'ERROR: official QuickStart must select the target architecture artifact.' >&2
+  exit 1
+}
+grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' "$QUICKSTART_MAKEFILE" || {
+  echo 'ERROR: official QuickStart artifact selector is missing.' >&2
+  exit 1
+}
+link_pkg luci-app-quickstart "$ISTOREOS_LUCI/luci/luci-app-quickstart"
+link_pkg quickstart "$ISTOREOS_PACKAGES/network/services/quickstart"
 
 # 官方 iStore feed。
 clone_or_update \

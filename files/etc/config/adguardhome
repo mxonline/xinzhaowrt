@@ -1,5 +1,6 @@
 config adguardhome 'config'
-	option enabled '1'
+	# Keep AdGuard Home opt-in so it cannot claim DNS port 53 at first boot.
+	option enabled '0'
 	option config_file '/etc/adguardhome/adguardhome.yaml'
 	option work_dir '/var/lib/adguardhome'
 	option user 'adguardhome'

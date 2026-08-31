@@ -10,6 +10,10 @@ fail() {
   exit 1
 }
 
+grep -Fq 'nas-packages-luci.git' "$source_script" || fail 'QuickStart LuCI source is not the official iStoreOS repository'
+grep -Fq 'nas-packages.git' "$source_script" || fail 'QuickStart service source is not the official iStoreOS repository'
+grep -Fq 'ISTORE_QUICKSTART_LUCI_REF' "$source_script" || fail 'QuickStart LuCI revision is not pinned'
+grep -Fq 'ISTORE_QUICKSTART_REF' "$source_script" || fail 'QuickStart service revision is not pinned'
 grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' "$source_script" || fail 'QuickStart does not select the target-architecture artifact'
 ! grep -Fq 'quickstart.arm' "$source_script" || fail 'QuickStart still forces a 32-bit ARM artifact'
 grep -Fq 'CONFIG_PACKAGE_luci-nginx=y' "$root/config/arthur.config" || fail 'nginx LuCI stack is not enabled'

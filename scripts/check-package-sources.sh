@@ -68,11 +68,15 @@ assert_source() {
   fi
 }
 
-# Verify iStoreX/QuickStart use Kenzok8 and store uses official linkease/istore.
+# Verify iStoreX uses Kenzok8, QuickStart uses the official iStoreOS LinkEase
+# repositories, and store uses official linkease/istore.
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
 ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
+ISTOREOS_LUCI_SOURCE="$SRC/.xinzhao-sources/istoreos-luci"
+ISTOREOS_PACKAGES_SOURCE="$SRC/.xinzhao-sources/istoreos-packages"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
-assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
+assert_source luci-app-quickstart "$ISTOREOS_LUCI_SOURCE/luci/luci-app-quickstart"
+assert_source quickstart "$ISTOREOS_PACKAGES_SOURCE/network/services/quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
 assert_istore_source() {
   local pkg="$1" expected="$2" actual
