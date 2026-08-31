@@ -34,7 +34,7 @@ Assert-Contains $installer 'XinZhaoWrt-Arthur-Headless-Production' 'installer mu
 Assert-Contains $installer 'Register-ScheduledTask' 'installer must register a Windows Scheduled Task'
 Assert-Contains $installer 'LogonTrigger' 'installer must restart the runtime at user logon'
 Assert-Contains $installer '$env:USERDOMAIN' 'task must run as the authenticated interactive user, not SYSTEM'
-Assert-Contains $installer "-Command 'resume'" 'scheduled task must resume persisted state rather than start an unrelated new request'
+Assert-Contains $installer '-Command resume' 'scheduled task must resume persisted state rather than start an unrelated new request'
 Assert-True ($installer -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'headless runtime must not run as SYSTEM/LocalSystem'
 
 Assert-Contains $deploy 'codex/arthur-fast-candidate' 'deploy must track the active Arthur production branch'
