@@ -32,6 +32,7 @@ jobs:
           echo 'XZ_FAVICON_PRESENT=PASS'
           echo 'XZ_LOGO_PRESENT=PASS'
           ./tests/test-arthur-theme-candidate-workflow.sh
+          ./tests/test-adguard-manager.sh
           ./tests/test-argon-default-theme.sh
           ./scripts/check-defaults.sh
           ./scripts/check-web-stack.sh
