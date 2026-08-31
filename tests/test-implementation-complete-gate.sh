@@ -9,14 +9,16 @@ fail() { echo "IMPLEMENTATION_GATE_TEST: FAIL -- $*" >&2; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-HEAD_SHA="1111111111111111111111111111111111111111"
+CANDIDATE_SHA="1111111111111111111111111111111111111111"
+IMPLEMENTATION_SHA="0000000000000000000000000000000000000000"
 CHANGESET_ID="arthur-ui-network-20260831"
+FREEZE_FILE="production/current-changeset.json"
 
 write_state() {
   local implementation_complete="$1"
   local frozen="$2"
   local task_state="$3"
-  local frozen_sha="$4"
+  local frozen_source_sha="$4"
   local allow_candidate="$5"
   cat > "$TMP/state.json" <<JSON
 {
@@ -25,7 +27,7 @@ write_state() {
   "state": "FROZEN",
   "implementation_complete": $implementation_complete,
   "frozen": $frozen,
-  "frozen_source_sha": "$frozen_sha",
+  "frozen_source_sha": "$frozen_source_sha",
   "required_tasks": {
     "adguardhome_full_manager": "$task_state",
     "istoreos_original_quickstart": "$task_state",
@@ -47,6 +49,18 @@ write_state() {
 JSON
 }
 
+run_gate() {
+  env \
+    CHANGESET_STATE_FILE="$TMP/state.json" \
+    EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
+    EXPECTED_CANDIDATE_SHA="$CANDIDATE_SHA" \
+    EXPECTED_IMPLEMENTATION_SHA="$IMPLEMENTATION_SHA" \
+    GATE_HEAD="$CANDIDATE_SHA" \
+    GATE_PARENT="$IMPLEMENTATION_SHA" \
+    GATE_FREEZE_FILES="$FREEZE_FILE" \
+    bash "$GATE"
+}
+
 expect_fail() {
   local label="$1"
   shift
@@ -60,52 +74,39 @@ expect_fail() {
   }
 }
 
-write_state false false PENDING "$HEAD_SHA" false
-expect_fail incomplete env \
-  CHANGESET_STATE_FILE="$TMP/state.json" \
-  EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
-  EXPECTED_SOURCE_SHA="$HEAD_SHA" \
-  GATE_HEAD="$HEAD_SHA" \
-  bash "$GATE"
+write_state false false PENDING "$IMPLEMENTATION_SHA" false
+expect_fail incomplete run_gate
 
-write_state true true FAIL "$HEAD_SHA" true
-expect_fail failed_task env \
-  CHANGESET_STATE_FILE="$TMP/state.json" \
-  EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
-  EXPECTED_SOURCE_SHA="$HEAD_SHA" \
-  GATE_HEAD="$HEAD_SHA" \
-  bash "$GATE"
+write_state true true FAIL "$IMPLEMENTATION_SHA" true
+expect_fail failed_task run_gate
 
 write_state true true PASS "2222222222222222222222222222222222222222" true
-expect_fail wrong_sha env \
-  CHANGESET_STATE_FILE="$TMP/state.json" \
-  EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
-  EXPECTED_SOURCE_SHA="$HEAD_SHA" \
-  GATE_HEAD="$HEAD_SHA" \
-  bash "$GATE"
+expect_fail wrong_parent run_gate
 
-write_state true true PASS "$HEAD_SHA" false
-expect_fail policy_closed env \
+write_state true true PASS "$IMPLEMENTATION_SHA" false
+expect_fail policy_closed run_gate
+
+write_state true true PASS "$IMPLEMENTATION_SHA" true
+expect_fail dirty_freeze env \
   CHANGESET_STATE_FILE="$TMP/state.json" \
   EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
-  EXPECTED_SOURCE_SHA="$HEAD_SHA" \
-  GATE_HEAD="$HEAD_SHA" \
+  EXPECTED_CANDIDATE_SHA="$CANDIDATE_SHA" \
+  EXPECTED_IMPLEMENTATION_SHA="$IMPLEMENTATION_SHA" \
+  GATE_HEAD="$CANDIDATE_SHA" \
+  GATE_PARENT="$IMPLEMENTATION_SHA" \
+  GATE_FREEZE_FILES=$'production/current-changeset.json\nfiles/etc/config/wireless' \
   bash "$GATE"
 
 # Candidate authorization is sufficient here. Flash/verify/release remain false
 # and are controlled by downstream gates after the candidate exists.
-write_state true true PASS "$HEAD_SHA" true
-env \
-  CHANGESET_STATE_FILE="$TMP/state.json" \
-  EXPECTED_CHANGESET_ID="$CHANGESET_ID" \
-  EXPECTED_SOURCE_SHA="$HEAD_SHA" \
-  GATE_HEAD="$HEAD_SHA" \
-  bash "$GATE" >"$TMP/pass.out" 2>&1 || {
-    cat "$TMP/pass.out" >&2
-    fail 'valid frozen state was rejected'
-  }
+run_gate >"$TMP/pass.out" 2>&1 || {
+  cat "$TMP/pass.out" >&2
+  fail 'valid state-only freeze commit was rejected'
+}
 grep -Fq 'IMPLEMENTATION_COMPLETE_GATE=PASS' "$TMP/pass.out" || fail 'PASS marker missing'
 grep -Fq 'CHANGESET_FREEZE=PASS' "$TMP/pass.out" || fail 'freeze marker missing'
 grep -Fq 'CANDIDATE_ELIGIBLE=YES' "$TMP/pass.out" || fail 'candidate eligibility marker missing'
+grep -Fq "FROZEN_IMPLEMENTATION_SHA=$IMPLEMENTATION_SHA" "$TMP/pass.out" || fail 'implementation SHA marker missing'
+grep -Fq "FROZEN_CANDIDATE_SHA=$CANDIDATE_SHA" "$TMP/pass.out" || fail 'candidate SHA marker missing'
 
 echo 'IMPLEMENTATION_GATE_TEST=PASS'
