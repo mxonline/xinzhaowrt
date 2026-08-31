@@ -1,0 +1,31 @@
+#!/bin/sh
+# Apply the XinZhaoWrt default Wi-Fi credential on first boot of each image.
+# A legacy 12345678 value is migrated; an explicitly customized key is kept.
+
+set -eu
+
+wifi_default_password='12356789'
+wifi_changed=0
+wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+
+for wifi_section in $wifi_sections; do
+    wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
+    case "$wifi_band" in
+        2g|5g)
+            wifi_key="$(uci -q get "wireless.$wifi_section.key" 2>/dev/null || true)"
+            case "$wifi_key" in
+                ''|'12345678')
+                    uci set "wireless.$wifi_section.key=$wifi_default_password"
+                    wifi_changed=1
+                    ;;
+            esac
+            ;;
+    esac
+done
+
+if [ "$wifi_changed" -eq 1 ]; then
+    uci commit wireless
+fi
+
+logger -t xinzhaowrt 'WIFI_DEFAULTS_PASS' 2>/dev/null || true
+exit 0

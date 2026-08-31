@@ -60,6 +60,23 @@ case "$current_ip" in
 esac
 log 'LAN_CONFIG_PASS' || fail log_write_lan
 
+wifi_default_password='12356789'
+wifi_changed=0
+wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+for wifi_section in $wifi_sections; do
+    wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
+    case "$wifi_band" in
+        2g|5g)
+            uci set "wireless.$wifi_section.key=$wifi_default_password" || fail wifi_set
+            wifi_changed=1
+            ;;
+    esac
+done
+if [ "$wifi_changed" -eq 1 ]; then
+    uci commit wireless || fail wifi_commit
+fi
+log 'WIFI_DEFAULTS_PASS' || fail log_write_wifi
+
 root_hash="$(awk -F: '$1 == "root" { print $2; exit }' "$shadow_file" 2>/dev/null || true)"
 case "$root_hash" in
     ''|'!'|'*')

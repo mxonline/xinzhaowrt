@@ -66,6 +66,13 @@ grep -Fq 'PLUGIN_I18N_INCLUDED' "$workflow" || fail 'plugin zh-cn inclusion gate
 grep -Fq 'XZ_ICON_SOURCE=PASS' "$workflow" || fail 'XZ icon source gate is absent'
 grep -Fq 'BUILD_INFO_PRESENT=PASS' "$workflow" || fail 'build info gate is absent'
 grep -Fq 'luci-i18n-adguardhome-zh-cn' "$workflow" || fail 'AdGuard Home zh-cn package gate is absent'
+branding="$root/files/www/luci-static/xinzhao/branding.js"
+[[ -f "$branding" ]] || fail 'branding runtime override is missing'
+grep -Fq 'window.location.pathname' "$branding" || fail 'branding metadata does not inspect the actual LuCI status route'
+grep -Fq 'status' "$branding" || fail 'branding metadata must retain status route compatibility'
+grep -Fq 'object-fit:contain' "$branding" || fail 'sidebar logo must use contain sizing'
+grep -Fq 'white-space:nowrap' "$branding" || fail 'sidebar brand text must not wrap'
+grep -Fq 'xz-brand-logo' "$workflow" || fail 'theme templates must mark the responsive XZ logo element'
 grep -Fq 'for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash' "$workflow" || fail 'candidate package verification uses the wrong Argon package name'
 ! grep -Fq 'for package in luci-i18n-base-zh-cn luci-theme-argon' "$workflow" || fail 'candidate package verification still expects a non-existent luci-theme-argon package'
 ! grep -Eq 'curl[[:space:]]+-k|--insecure|Client-ID' "$workflow" || fail 'workflow contains insecure online-theme logic'

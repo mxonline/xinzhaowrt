@@ -120,7 +120,7 @@ jobs:
                 -e "s#const hostname = striptags(boardinfo?.hostname ?? '?');#const hostname = 'XinZhaoWrt';#g" \
                 -e 's#{{ media }}/img/logo180.png#/luci-static/xinzhao/logo.png#g' \
                 -e 's#{{ media }}/img/logo150.png#/luci-static/xinzhao/logo.png#g' \
-                -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt">XinZhaoWrt</a>|g' \
+                -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img class="xz-brand-logo" src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt"><span class="xz-brand-label">XinZhaoWrt</span></a>|g' \
                 -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
                 -e 's#ImmortalWRT#XinZhaoWrt#g' \
                 -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' "$template"
