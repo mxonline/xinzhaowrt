@@ -39,6 +39,8 @@ pass BASELINE_REGRESSION_GATE
 source config/istore-quickstart.lock
 [[ "$ISTORE_QUICKSTART_LUCI_REF" =~ ^[0-9a-f]{40}$ ]] || fail 'QuickStart LuCI ref is not a full SHA'
 [[ "$ISTORE_QUICKSTART_REF" =~ ^[0-9a-f]{40}$ ]] || fail 'QuickStart service ref is not a full SHA'
+[[ "$ISTORE_QUICKSTART_LUCI_LICENSE" == "Apache-2.0" ]] || fail 'QuickStart LuCI license provenance is missing'
+[[ "$ISTORE_QUICKSTART_LICENSE" == "GPL-3.0-only" ]] || fail 'QuickStart service license provenance is missing'
 grep -Fq 'nas-packages-luci.git' scripts/add-custom-packages.sh || fail 'official QuickStart LuCI source missing'
 grep -Fq 'nas-packages.git' scripts/add-custom-packages.sh || fail 'official QuickStart service source missing'
 pass SOURCE_PIN_GATE

@@ -13,6 +13,8 @@ fail() { echo "ARTHUR_THEME_GATE: FAIL -- $*" >&2; exit 1; }
 [[ -f "$quickstart_lock" ]] || fail 'official QuickStart provenance lock is missing'
 grep -Fxq 'ISTORE_QUICKSTART_LUCI_REF="8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449"' "$quickstart_lock" || fail 'official QuickStart LuCI ref is not frozen'
 grep -Fxq 'ISTORE_QUICKSTART_REF="0c789dc2b88f684476f6174201105da6ca6f5133"' "$quickstart_lock" || fail 'official QuickStart service ref is not frozen'
+grep -Fxq 'ISTORE_QUICKSTART_LUCI_LICENSE="Apache-2.0"' "$quickstart_lock" || fail 'official QuickStart LuCI license is not recorded'
+grep -Fxq 'ISTORE_QUICKSTART_LICENSE="GPL-3.0-only"' "$quickstart_lock" || fail 'official QuickStart service license is not recorded'
 grep -Fxq 'ARGON_REF="136eb5d42f30554e89cc737fd90f503909810660"' "$lock" || fail 'Argon ref is not frozen'
 grep -Fxq 'KUCAT_REF="82ddd7e4196887089c43af19d4552cd54fa414d2"' "$lock" || fail 'Kucat ref is not frozen'
 grep -Fq 'luci-theme-argon' "$workflow" || fail 'Argon package is absent'
