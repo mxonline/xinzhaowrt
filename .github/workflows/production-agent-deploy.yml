@@ -53,21 +53,41 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $workspace = $env:GITHUB_WORKSPACE
           $repo = 'https://github.com/mxonline/xinzhaowrt.git'
-          New-Item -ItemType Directory -Force -Path (Split-Path $runtime -Parent) | Out-Null
+          $sourceSha = (git -C $workspace rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
+            throw 'Unable to resolve the already checked-out deployment source SHA.'
+          }
 
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
           if (-not (Test-Path (Join-Path $runtime '.git'))) {
-            if (Test-Path $runtime) { Remove-Item -Recurse -Force $runtime }
-            git clone --branch main --single-branch $repo $runtime
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to create stable Production Agent runtime clone.' }
+            git -C $runtime init
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize stable Production Agent runtime.' }
+            git -C $runtime remote add origin $repo
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to configure Production Agent origin.' }
           } else {
-            git -C $runtime fetch origin main --prune
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to fetch main into stable Production Agent runtime.' }
-            git -C $runtime checkout -f main
-            git -C $runtime reset --hard origin/main
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize stable Production Agent runtime.' }
+            git -C $runtime remote set-url origin $repo
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize Production Agent origin.' }
+          }
+
+          # Reuse the worktree that actions/checkout has already downloaded.
+          # This removes the redundant second GitHub clone/fetch boundary that
+          # previously failed on a transient Windows schannel close_notify error.
+          git -C $runtime fetch --force $workspace 'refs/heads/main:refs/remotes/deploy/main'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to import main from the local checked-out workspace.' }
+          git -C $runtime checkout -B main refs/remotes/deploy/main
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to checkout locally imported main in Production Agent runtime.' }
+          git -C $runtime reset --hard $sourceSha
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize Production Agent runtime to the checked-out source SHA.' }
+
+          $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
+          if ($runtimeSha -ne $sourceSha) {
+            throw "Production Agent runtime SHA mismatch: source=$sourceSha runtime=$runtimeSha"
           }
           Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
+          Write-Host "PRODUCTION_AGENT_RUNTIME_SHA=$runtimeSha"
+          Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC=PASS'
 
       - name: Verify persistent GitHub authentication
         shell: powershell
