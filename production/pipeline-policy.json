@@ -18,12 +18,16 @@
     "state_file": "production/current-changeset.json",
     "implementation_gate": "scripts/implementation-complete-gate.sh",
     "freeze_gate": "CHANGESET_FREEZE",
+    "freeze_commit_policy": "STATE_ONLY",
     "rules": [
       "collect_all_pending_changes_before production build",
       "all required tasks must be PASS",
       "implementation_complete must be true",
       "frozen must be true",
-      "frozen_source_sha must equal checkout HEAD",
+      "frozen_source_sha must equal the freeze commit first parent",
+      "freeze commit may modify only production/current-changeset.json",
+      "candidate checkout HEAD is the state-only freeze commit",
+      "any commit after freeze invalidates candidate eligibility until a new freeze is created",
       "one frozen changeset produces one production candidate before real-device failure",
       "one frozen changeset performs one standard sysupgrade before real-device failure",
       "real-device failures are collected and repaired as one batch"
