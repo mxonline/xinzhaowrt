@@ -24,7 +24,8 @@ $requiredFiles = @(
     'scripts/start-production-agent.ps1',
     'scripts/production-agent-status.ps1',
     'production/production-agent.json',
-    'production/arthur-flash-profile.json'
+    'production/arthur-flash-profile.json',
+    '.github/workflows/production-agent-deploy.yml'
 )
 
 foreach ($relative in $requiredFiles) {
@@ -35,6 +36,7 @@ $agentPath = Join-Path $Root 'scripts/production-agent.ps1'
 $fetchPath = Join-Path $Root 'scripts/fetch-production-artifact.ps1'
 $gatePath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
+$deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
 
@@ -42,6 +44,7 @@ $agent = Get-Content -Raw $agentPath
 $fetch = Get-Content -Raw $fetchPath
 $gate = Get-Content -Raw $gatePath
 $install = Get-Content -Raw $installPath
+$deploy = Get-Content -Raw $deployPath
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
 $flashProfile = Get-Content -Raw $flashProfilePath | ConvertFrom-Json
 
@@ -107,7 +110,15 @@ Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to boot
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
+# Deployment already has a successfully checked-out main worktree. It must not
+# introduce a second GitHub clone/fetch boundary just to create the stable Agent
+# runtime, because transient TLS failures there used to abort unattended deploys.
+Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'deploy must source the persistent runtime from the already checked-out workspace'
+Assert-True ($deploy -notmatch '(?im)^\s*git\s+clone\b') 'deploy must not perform a second network git clone'
+Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\s+origin\b') 'deploy must not perform a second network git fetch during runtime sync'
+
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_RESUME_CONTRACT=PASS'
+Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC_CONTRACT=PASS'
