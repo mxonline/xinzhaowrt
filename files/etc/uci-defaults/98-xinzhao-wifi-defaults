@@ -8,6 +8,14 @@ wifi_default_password='12356789'
 wifi_changed=0
 wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
 
+# On some Arthur images the board-generated wireless UCI is created after the
+# first uci-defaults pass. Generate it here when absent, then apply the
+# password to the real 2.4 GHz/5 GHz interfaces.
+if [ -z "$wifi_sections" ] && command -v wifi >/dev/null 2>&1; then
+    wifi config >/dev/null 2>&1 || true
+    wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+fi
+
 for wifi_section in $wifi_sections; do
     wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
     case "$wifi_band" in

@@ -17,6 +17,10 @@ grep -Fq 'uci commit wireless' "$wifi_defaults" || {
   echo 'FAIL: Wi-Fi migration defaults must commit persistent UCI.' >&2
   exit 1
 }
+grep -Fq 'wifi config' "$wifi_defaults" || {
+  echo 'FAIL: Wi-Fi defaults must generate radio config when first-boot UCI is absent.' >&2
+  exit 1
+}
 
 grep -Fq "wifi_default_password='12356789'" "$defaults" || {
   echo 'FAIL: first-boot defaults must define the locked default Wi-Fi password.' >&2
