@@ -64,7 +64,8 @@ wifi_default_password='12356789'
 wifi_changed=0
 wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
 for wifi_section in $wifi_sections; do
-    wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
+    wifi_device="$(uci -q get "wireless.$wifi_section.device" 2>/dev/null || true)"
+    wifi_band="$(uci -q get "wireless.$wifi_device.band" 2>/dev/null || true)"
     case "$wifi_band" in
         2g|5g)
             case "$wifi_band" in

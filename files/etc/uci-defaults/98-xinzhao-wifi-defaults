@@ -17,7 +17,8 @@ if [ -z "$wifi_sections" ] && command -v wifi >/dev/null 2>&1; then
 fi
 
 for wifi_section in $wifi_sections; do
-    wifi_band="$(uci -q get "wireless.$wifi_section.band" 2>/dev/null || true)"
+    wifi_device="$(uci -q get "wireless.$wifi_section.device" 2>/dev/null || true)"
+    wifi_band="$(uci -q get "wireless.$wifi_device.band" 2>/dev/null || true)"
     case "$wifi_band" in
         2g|5g)
             wifi_ssid="$(uci -q get "wireless.$wifi_section.ssid" 2>/dev/null || true)"

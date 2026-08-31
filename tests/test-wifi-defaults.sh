@@ -21,6 +21,10 @@ grep -Fq 'wifi config' "$wifi_defaults" || {
   echo 'FAIL: Wi-Fi defaults must generate radio config when first-boot UCI is absent.' >&2
   exit 1
 }
+grep -Fq 'wireless.$wifi_device.band' "$wifi_defaults" || {
+  echo 'FAIL: Wi-Fi defaults must resolve band through each interface device.' >&2
+  exit 1
+}
 grep -Fq 'XinZhaoWrt-5G' "$wifi_defaults" || {
   echo 'FAIL: 5 GHz default SSID is not configured.' >&2
   exit 1
