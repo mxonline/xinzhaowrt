@@ -14,6 +14,23 @@ WORKFLOW="$ROOT/.github/workflows/arthur-toolchain-bootstrap-v4.yml"
   exit 1
 }
 
+readarray -t KG < <(python3 - "$ROOT/production/known-good.json" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding='utf-8') as f:
+    d = json.load(f)
+print(d['stable_tag'])
+print(d['device'])
+print(d['target'])
+print(d['subtarget'])
+print(d['upstream_commit'])
+PY
+)
+KNOWN_GOOD_TAG="${KG[0]}"
+DEVICE="${KG[1]}"
+TARGET="${KG[2]}"
+SUBTARGET="${KG[3]}"
+UPSTREAM_COMMIT="${KG[4]}"
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -24,17 +41,22 @@ make_fixture() {
   printf 'imagebuilder\n' > "$dir/immortalwrt-imagebuilder-test.tar.zst"
   printf 'packages\n' > "$dir/package-repositories.tar.gz"
   cp "$ROOT/config/arthur-known-good.lock" "$dir/arthur-known-good.lock"
-  cat > "$dir/toolchain-provenance.json" <<'JSON'
-{
-  "schema_version": "1.0",
-  "lane": "TOOLCHAIN_BOOTSTRAP",
-  "known_good_tag": "v0.1.0",
-  "device": "jdcloud_re-ss-01",
-  "target": "qualcommax",
-  "subtarget": "ipq60xx",
-  "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194"
+  python3 - "$dir/toolchain-provenance.json" "$KNOWN_GOOD_TAG" "$DEVICE" "$TARGET" "$SUBTARGET" "$UPSTREAM_COMMIT" <<'PY'
+import json, sys
+path, tag, device, target, subtarget, upstream = sys.argv[1:]
+obj = {
+  'schema_version': '1.0',
+  'lane': 'TOOLCHAIN_BOOTSTRAP',
+  'known_good_tag': tag,
+  'device': device,
+  'target': target,
+  'subtarget': subtarget,
+  'upstream_commit': upstream,
 }
-JSON
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(obj, f, indent=2)
+    f.write('\n')
+PY
   (
     cd "$dir"
     sha256sum immortalwrt-sdk-test.tar.zst \
@@ -50,7 +72,7 @@ make_fixture "$valid"
 TOOLCHAIN_DIR="$valid" "$VERIFY" >/dev/null
 [[ -s "$valid/toolchain-acceptance.json" ]]
 grep -q '"status": "verified"' "$valid/toolchain-acceptance.json"
-grep -q '"known_good_tag": "v0.1.0"' "$valid/toolchain-acceptance.json"
+grep -q "\"known_good_tag\": \"$KNOWN_GOOD_TAG\"" "$valid/toolchain-acceptance.json"
 
 bad_checksum="$tmp/bad-checksum"
 make_fixture "$bad_checksum"
@@ -115,4 +137,4 @@ grep -q '^[[:space:]]*ref: main$' "$WORKFLOW" || {
   exit 1
 }
 
-echo 'PASS: v4 toolchain acceptance gate behavior and workflow integration are correct.'
+echo 'PASS: v4 toolchain acceptance follows current verified frozen Known-Good and remains fail-closed.'
