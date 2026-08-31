@@ -6,7 +6,14 @@
 
 ## Hard rule
 
-No production candidate may enter SDK, ImageBuilder or Full Build until `production/current-changeset.json` is committed with every required task `PASS`, `implementation_complete=true`, `frozen=true`, and `frozen_source_sha` equal to the exact checkout HEAD.
+No production candidate may enter SDK, ImageBuilder or Full Build until `production/current-changeset.json` is committed with every required task `PASS`, `implementation_complete=true`, `frozen=true`, and `candidate_policy.allow_candidate_build=true`.
+
+Freeze uses two commits:
+
+1. The final implementation commit contains all code/config changes and is recorded as `frozen_source_sha`.
+2. The immediately following **state-only freeze commit** may modify only `production/current-changeset.json` and becomes the Candidate checkout HEAD.
+
+The hard gate verifies that the Candidate HEAD parent equals `frozen_source_sha`. Any additional commit after freeze invalidates Candidate eligibility automatically.
 
 The code-level authority is `scripts/implementation-complete-gate.sh`. Natural-language claims from GPT/Codex are not sufficient.
 
@@ -16,10 +23,11 @@ A normal cycle is:
 
 1. Collect all pending changes.
 2. Implement and statically verify all of them.
-3. Freeze one changeset.
-4. Build one production candidate.
-5. Perform one standard automatic sysupgrade.
-6. Run one full real-device verification.
+3. Commit the final implementation source.
+4. Create one state-only freeze commit.
+5. Build one production candidate.
+6. Perform one standard automatic sysupgrade.
+7. Run one full real-device verification.
 
 If real-device verification fails, collect every failure first, then create one batch repair changeset. Do not rebuild/reflash once per individual failure.
 
