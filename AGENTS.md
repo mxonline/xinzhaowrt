@@ -45,6 +45,24 @@ After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAI
 - No explicit `USE / REUSE / FORK / BUILD` decision means no new source/fork/custom compatibility implementation should be adopted.
 - The gate never authorizes dropping a mandatory plugin or weakening acceptance criteria to get a green build.
 
+## Frozen RELEASE-FIRST automation baseline
+
+This section is a frozen project-level development rule. Do not rename, replace, bypass or redesign this control model unless the user explicitly requests a change to the development standard.
+
+- The only primary workflow is `RELEASE-FIRST AUTOMATION MODE`.
+- The only successful terminal state is `PRODUCTION_RELEASED`.
+- The automation control plane must keep one Arthur release task as a single, continuous and recoverable execution chain. It must not spend extended time recovering or optimizing Codex, Bridge, Runtime, Supervisor or Skill while the real firmware release is stalled.
+- GPT, Codex, Bridge, Runtime, Supervisor and Skill are supporting components only. None of them may become the release workflow owner.
+- Skill may provide local auxiliary capabilities only; it must not take over firmware pipeline orchestration.
+- Bridge is limited to GPT ↔ Codex dispatch. Runtime and Supervisor are limited to execution, guarding and recovery.
+- When a supporting component fails, apply the smallest repair needed to restore the real firmware task, then immediately return to the release pipeline. Do not turn a component failure into a new automation-platform project.
+- The recovery target is the Arthur release task itself, not a specific Codex process or thread. After a computer restart, Codex crash, network interruption or controller failure, recover from durable `HANDOFF`/state plus live GitHub, artifact and device evidence, and continue from the last valid checkpoint.
+- Completed or `VERIFIED` stages must not be repeated without evidence that their result is invalid. Reuse an existing GitHub build if it is still valid. Reuse an already verified artifact. If sysupgrade may already have started, reconcile the real device state before taking any further write action; never blindly flash again.
+- Do not create probe workflows, Bridge E2E tests, recovery experiments, parallel writers or new orchestration architectures inside an active Arthur production release unless a new, concrete release blocker cannot be removed by a minimal repair.
+- If the same failure is retried with the same fingerprint and `last_progress` does not advance, trigger a circuit breaker. Stop repeating the same `resume`/`relaunch` method and switch to a clean execution or another minimal release-unblocking repair.
+- Every proposed action must pass one fixed test: does it move the current Arthur firmware more quickly and safely toward `PRODUCTION_RELEASED`? If not, do not perform it during the active release.
+- Live firmware progress has priority over platform cleanup. Automation-platform improvements are lower priority and must never block the current production release.
+
 ## Mandatory plugins
 
 `config/required-plugins.txt` is the authoritative list. It contains exactly 22 required LuCI applications. Every one must remain `=y` after `make defconfig`.
@@ -135,9 +153,21 @@ AdGuard Home, MosDNS, SmartDNS and OpenClash may all be compiled, but do not con
 OpenClash and PBR may coexist as packages, but should not both be configured to own the same policy-routing flows.
 OAF is kernel-facing and should be one of the first packages investigated after a major upstream kernel change.
 
-## Safety
+## Safety and flashing boundary
 
-Never execute a router flashing command, write a bootloader, alter eMMC partitions, ART/EEPROM/calibration data or U-Boot automatically. Build and validation are allowed. Flashing instructions must remain human-reviewed.
+Standard Arthur sysupgrade is part of the automated release path only when `AUTO_FLASH_SAFETY_GATE` is fully satisfied.
+
+The verified automatic flashing method is:
+
+`GitHub Actions build → candidate integrity/SHA256 verification → AUTO_FLASH_SAFETY_GATE → Windows PowerShell → OpenSSH ssh.exe upload → remote SHA256 verification → remote /sbin/sysupgrade using previously verified Arthur parameters → WAIT_DEVICE → real-device verification → Release Gate`.
+
+Automatic standard sysupgrade is allowed only when all required safety evidence is positive, including exact device identity/model/target/profile/storage-layout match, candidate integrity, cloud/local/remote SHA256 consistency, required plugin/theme/config gates, healthy current device state, expected LAN configuration, and a verified Known-Good rollback artifact/path.
+
+Never guess sysupgrade arguments. Reuse the project's previously verified Arthur upgrade parameters.
+
+Raw or boot-critical write paths are outside automated flashing. Never automatically perform MTD, U-Boot, bootloader, `dd`, raw eMMC/SPI/NAND writes, partition-table changes, ART/EEPROM/calibration writes, or any equivalent raw-storage operation. These require explicit human authorization or remain prohibited according to the project safety policy.
+
+If device identity, storage layout, rollback safety, candidate hash or flash state is unknown, stop automatic write actions and preserve evidence. If a previous sysupgrade may already have occurred, reconcile the real device before considering another flash.
 
 ## Git discipline
 
