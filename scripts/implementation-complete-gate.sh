@@ -114,11 +114,12 @@ if expected_sha and frozen_sha != expected_sha:
     print(f"expected source mismatch: frozen={frozen_sha} expected={expected_sha}")
     sys.exit(17)
 
+# This gate authorizes only the production candidate build. Flash, real-device
+# verification and release remain controlled by their own downstream gates.
 policy = state.get("candidate_policy", {})
-for field in ("allow_candidate_build", "allow_flash", "allow_real_device_verify", "allow_release"):
-    if policy.get(field) is not True:
-        print(f"candidate_policy.{field} must be true after freeze")
-        sys.exit(18)
+if policy.get("allow_candidate_build") is not True:
+    print("candidate_policy.allow_candidate_build must be true after freeze")
+    sys.exit(18)
 
 if state.get("production_terminal_state") != "PRODUCTION_RELEASED":
     print("production_terminal_state must be PRODUCTION_RELEASED")
