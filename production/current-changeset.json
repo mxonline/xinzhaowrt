@@ -31,7 +31,7 @@
   "production_terminal_state": "PRODUCTION_RELEASED",
   "notes": [
     "All required tasks must be PASS before implementation_complete can become true.",
-    "frozen_source_sha must be the exact commit used by the production candidate.",
+    "When freezing, frozen_source_sha records the final implementation commit. The next and only freeze commit may modify production/current-changeset.json; candidate HEAD is that freeze commit.",
     "Intermediate build 33396664381 and its artifacts are non-production and not flash/release eligible."
   ]
 }
