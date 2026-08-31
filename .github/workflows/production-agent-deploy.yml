@@ -14,6 +14,7 @@ on:
       - 'scripts/uninstall-production-agent.ps1'
       - 'scripts/start-production-agent.ps1'
       - 'scripts/production-agent-status.ps1'
+      - 'tests/production-agent.tests.ps1'
       - '.github/workflows/production-agent-deploy.yml'
   workflow_dispatch:
 
