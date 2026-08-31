@@ -1,0 +1,37 @@
+name: OpenWrt Pipeline v4.3 Static Gate Check
+
+'on':
+  push:
+    branches:
+      - codex/openwrt-pipeline-v4.3
+    paths:
+      - 'production/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+      - 'docs/superpowers/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-v4-3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pipeline v4.3 hard gates
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh tests/*.sh
+          bash tests/test-implementation-complete-gate.sh
+          bash tests/test-pipeline-v4.3-hard-gate.sh
+          bash -n scripts/implementation-complete-gate.sh
+          bash -n scripts/check-changeset-complete.sh
+          bash -n scripts/verify-project.sh
+          echo 'PIPELINE_V4_3_STATIC_VERIFY=PASS'
