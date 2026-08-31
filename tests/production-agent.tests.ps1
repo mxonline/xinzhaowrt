@@ -98,12 +98,16 @@ $automaticPath = ($agent + "`n" + $gate + "`n" + $fetch).ToLowerInvariant()
 foreach ($forbidden in @(' mtd ', 'mtd write', ' nandwrite', 'uboot', 'u-boot write', ' raw_emmc', ' raw spi', ' raw nand')) {
     Assert-True (-not $automaticPath.Contains($forbidden)) "automatic path contains forbidden raw flash token: $forbidden"
 }
-# Reject executable dd raw-write shapes but allow words such as 'add' or documentation strings.
 Assert-True ($automaticPath -notmatch '(?m)(^|[;&|]\s*)dd\s+if=') 'automatic path must not execute dd raw writes'
 
 Assert-Contains $install 'Register-ScheduledTask' 'installation must create a Scheduled Task'
 Assert-Contains $install 'LogonTrigger' 'Scheduled Task must start in current-user logon context'
-Assert-True ($install -notmatch '(?i)SYSTEM|LocalSystem') 'authenticated production agent must not run as LocalSystem'
+Assert-Contains $install '$env:USERDOMAIN' 'Scheduled Task principal must come from current interactive user'
+Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to bootstrap official portable PowerShell when pwsh is absent'
+# Only reject actual account/principal assignment to LocalSystem/SYSTEM. Names such as
+# $systemPwsh merely describe an already-installed PowerShell executable and are safe.
+Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
+Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
