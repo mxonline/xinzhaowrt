@@ -18,6 +18,7 @@ grep -Fq 'package/feeds/xinzhao/quickstart/compile V=s' "$workflow" || fail 'Qui
 grep -Fq 'image PROFILE=jdcloud_re-ss-01' "$workflow" || fail 'Arthur ImageBuilder assembly is missing'
 grep -Fq './scripts/check-defaults.sh' "$workflow" || fail 'first-boot static gate is missing'
 grep -Fq './scripts/check-web-stack.sh' "$workflow" || fail 'web-stack static gate is missing'
+grep -Fq './tests/test-fast-candidate-workflow.sh' "$workflow" || fail 'fast candidate self-gate is missing'
 grep -Fq 'WEB_STACK_GATE' "$workflow" || fail 'runtime web-stack gate output is missing'
 grep -Fq 'serve --unix /tmp/quickstart.sock' "$workflow" || fail 'QuickStart service execution probe is missing'
 grep -Fq 'test "$quickstart_exit" -ne 127' "$workflow" || fail 'QuickStart service probe does not reject procd-style exit 127'
@@ -36,5 +37,13 @@ grep -Fq 'echo "IB_DIR=$IB_DIR" >> "$GITHUB_ENV"' "$workflow" || fail 'ImageBuil
 grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
 grep -Fq "grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack" "$workflow" || fail 'runtime web-stack gate does not validate the nginx restart action'
 ! grep -Eq '(^|[[:space:]])\./scripts/build\.sh|make world|FULL_BUILD' "$workflow" || fail 'workflow contains a prohibited full build'
+
+# In the actual production candidate workflow this test runs before SDK_BUILD.
+# v4.3 turns that existing position into a machine hard gate without making
+# ordinary developer/static test runs depend on a frozen production state.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_WORKFLOW:-}" == "Arthur Fast Candidate SDK and ImageBuilder" ]]; then
+  bash "$root/scripts/check-changeset-complete.sh"
+  echo 'PRODUCTION_HARD_GATE=PASS'
+fi
 
 echo 'ARTHUR_FAST_CANDIDATE_WORKFLOW: PASS'
