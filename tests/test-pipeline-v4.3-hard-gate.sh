@@ -18,11 +18,29 @@ for file in "$STATE" "$POLICY" "$GATE" "$CHANGESET_GATE" "$FAST_TEST" "$VERIFY" 
   [[ -f "$file" ]] || fail "missing $file"
 done
 
-grep -Fq '"schema_version": "4.3"' "$STATE" || fail 'changeset schema is not v4.3'
-grep -Fq '"implementation_complete": false' "$STATE" || fail 'current changeset must start fail-closed'
-grep -Fq '"frozen": false' "$STATE" || fail 'current changeset must start unfrozen'
-grep -Fq '"allow_candidate_build": false' "$STATE" || fail 'candidate build must start disabled'
-grep -Fq '"production_terminal_state": "PRODUCTION_RELEASED"' "$STATE" || fail 'terminal state missing'
+python3 - "$STATE" <<'PY' || exit 1
+import json, re, sys
+state = json.load(open(sys.argv[1], encoding='utf-8'))
+assert str(state.get('schema_version')) == '4.3'
+assert state.get('production_terminal_state') == 'PRODUCTION_RELEASED'
+tasks = state.get('required_tasks')
+assert isinstance(tasks, dict) and tasks
+assert all(v in {'PENDING','PASS','FAIL','BLOCKED'} for v in tasks.values())
+policy = state.get('candidate_policy', {})
+all_pass = all(v == 'PASS' for v in tasks.values())
+if not all_pass:
+    assert state.get('implementation_complete') is False
+    assert state.get('frozen') is False
+    assert policy.get('allow_candidate_build') is False
+    assert policy.get('allow_flash') is False
+    assert policy.get('allow_real_device_verify') is False
+    assert policy.get('allow_release') is False
+else:
+    if state.get('frozen') is True:
+        sha = state.get('frozen_source_sha')
+        assert isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha)
+print('CHANGESET_STATE_CONSISTENCY=PASS')
+PY
 
 grep -Fq 'IMPLEMENTATION_COMPLETE_GATE=FAIL' "$GATE" || fail 'hard gate does not fail closed'
 grep -Fq 'CANDIDATE_ELIGIBLE=NO' "$GATE" || fail 'hard gate does not deny candidates on failure'
@@ -36,9 +54,9 @@ grep -Fq 'Arthur Fast Candidate SDK and ImageBuilder' "$FAST_TEST" || fail 'fast
 grep -Fq 'Build XinZhaoWrt Arthur' "$VERIFY" || fail 'generic Arthur build workflow identity check missing'
 grep -Fq 'bash ./scripts/check-changeset-complete.sh' "$VERIFY" || fail 'generic Arthur build bypasses hard gate'
 
-# Theme candidate already invokes check-changeset-complete.sh before its SDK build.
+# Theme candidate invokes check-changeset-complete.sh before its SDK build.
 grep -Fq './scripts/check-changeset-complete.sh' "$THEME_WF" || fail 'theme candidate bypasses changeset hard gate'
-# Fast candidate executes test-fast-candidate-workflow.sh before SDK_BUILD; that test delegates to the hard gate in Actions.
+# Fast candidate executes test-fast-candidate-workflow.sh before SDK_BUILD; the test delegates to the hard gate in Actions.
 grep -Fq './tests/test-fast-candidate-workflow.sh' "$FAST_WF" || fail 'fast candidate does not execute its hard-gate test before SDK build'
 # Generic build executes verify-project.sh before build dependencies/build work.
 grep -Fq './scripts/verify-project.sh' "$BUILD_WF" || fail 'generic build does not execute project/hard gate'
