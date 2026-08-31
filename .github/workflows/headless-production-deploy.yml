@@ -6,7 +6,6 @@ name: Arthur Headless Production Deploy
       - codex/arthur-fast-candidate
     paths:
       - 'ai_orchestrator/**'
-      - 'production/current-changeset.json'
       - 'production/pipeline-policy.json'
       - 'requirements-headless.txt'
       - 'scripts/start-headless-production.ps1'
@@ -67,12 +66,33 @@ jobs:
           }
           throw 'RUNTIME_REQUIRED: Python 3.10+ is required for the headless production runtime.'
 
+      - name: Quiesce previous headless runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessProduction'
+          $stateDir = Join-Path $runtime 'output\headless-production'
+          $stopper = Join-Path $runtime 'scripts\start-headless-production.ps1'
+          if (Test-Path $stopper) {
+            try {
+              & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopper -Command stop -StateDir $stateDir | Out-Null
+            } catch {
+              Write-Warning "Existing runtime stop marker failed: $($_.Exception.Message)"
+            }
+          }
+          if (Get-ScheduledTask -TaskName 'XinZhaoWrt-Arthur-Headless-Production' -ErrorAction SilentlyContinue) {
+            Stop-ScheduledTask -TaskName 'XinZhaoWrt-Arthur-Headless-Production' -ErrorAction SilentlyContinue
+          }
+          Start-Sleep -Seconds 3
+          Write-Host 'HEADLESS_RUNTIME_QUIESCE=PASS'
+
       - name: Sync persistent headless runtime
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessProduction'
           $workspace = $env:GITHUB_WORKSPACE
+          $repo = 'https://github.com/mxonline/xinzhaowrt.git'
           $sourceSha = (git -C $workspace rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
             throw 'Unable to resolve checked-out Arthur production source SHA.'
@@ -82,6 +102,16 @@ jobs:
           if (-not (Test-Path (Join-Path $runtime '.git'))) {
             git -C $runtime init
             if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize persistent headless runtime repository.' }
+            git -C $runtime remote add origin $repo
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to configure persistent runtime origin.' }
+          } else {
+            $origin = git -C $runtime remote get-url origin 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              git -C $runtime remote set-url origin $repo
+            } else {
+              git -C $runtime remote add origin $repo
+            }
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize persistent runtime origin.' }
           }
 
           # Import the already checked-out source over the local filesystem. Do not add
@@ -92,13 +122,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Failed to checkout active Arthur source in the persistent runtime.' }
           git -C $runtime reset --hard $sourceSha
           if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize persistent runtime to source SHA.' }
+          git -C $runtime config branch.codex/arthur-fast-candidate.remote origin
+          git -C $runtime config branch.codex/arthur-fast-candidate.merge refs/heads/codex/arthur-fast-candidate
 
           $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
           if ($runtimeSha -ne $sourceSha) {
             throw "HEADLESS_RUNTIME_SHA_MISMATCH source=$sourceSha runtime=$runtimeSha"
           }
+          $runtimeOrigin = (git -C $runtime remote get-url origin).Trim()
+          if ($runtimeOrigin -ne $repo) {
+            throw "HEADLESS_RUNTIME_ORIGIN_MISMATCH origin=$runtimeOrigin"
+          }
           Write-Host "HEADLESS_RUNTIME=$runtime"
           Write-Host "HEADLESS_RUNTIME_SHA=$runtimeSha"
+          Write-Host "HEADLESS_RUNTIME_ORIGIN=$runtimeOrigin"
           Write-Host 'HEADLESS_RUNTIME_LOCAL_SYNC=PASS'
 
       - name: Verify persistent GitHub authentication
@@ -111,6 +148,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'NEW_CREDENTIAL_PROVISIONING: persistent gh credential store is unavailable to the Windows controller user.'
           }
+          gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Persistent GitHub authentication cannot configure git credential routing.' }
           Write-Host 'PERSISTENT_GITHUB_AUTH=PASS'
 
       - name: Install and start persistent GPT Codex runtime
