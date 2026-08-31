@@ -2,6 +2,12 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# v4.3 production hard gate. Development/preflight workflows are explicitly
+# skipped by production-build-entry-gate.sh, while candidate workflows are
+# denied until the complete batched changeset is marked PASS and frozen.
+bash "$PROJECT_ROOT/scripts/production-build-entry-gate.sh"
+
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 FILE="$PROJECT_ROOT/files/etc/uci-defaults/99-xinzhao-defaults"
