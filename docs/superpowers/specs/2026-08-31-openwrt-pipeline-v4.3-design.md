@@ -12,6 +12,10 @@
 
 仓库维护 `production/current-changeset.json`，记录 `changeset_id`、`required_tasks`、`implementation_complete`、`frozen`、`frozen_source_sha`。状态文件是 Candidate Build 的机器可读授权源，不依赖 Codex/GPT 的自然语言判断。
 
+`frozen_source_sha` 不是 freeze commit 自身的 SHA。它固定指向“全部实现代码完成后的最后一个 implementation commit”。随后只允许创建一个 **state-only freeze commit**，该 commit 只修改 `production/current-changeset.json`，把任务置为 PASS、`implementation_complete=true`、`frozen=true`、`allow_candidate_build=true`，并写入前一个 implementation commit 的 SHA。
+
+Candidate 实际 checkout 的是 state-only freeze commit。这样避免“提交内容中存储自身 SHA”的自引用不可能问题，也保证 freeze 后任何新的代码提交都会自动使 Hard Gate 失败。
+
 ## Hard gate
 
 `scripts/implementation-complete-gate.sh` 必须验证：
@@ -20,8 +24,10 @@
 - 所有 REQUIRED TASK 为 `PASS`；
 - `implementation_complete=true`；
 - `frozen=true`；
-- `frozen_source_sha` 与实际 checkout HEAD 一致；
-- 可选输入的 `EXPECTED_CHANGESET_ID` 与 `EXPECTED_SOURCE_SHA` 一致。
+- `frozen_source_sha` 等于 Candidate HEAD 的第一父提交；
+- freeze commit 从 parent 到 HEAD 只允许修改 `production/current-changeset.json`；
+- `candidate_policy.allow_candidate_build=true`；
+- 可选输入的 changeset/candidate/implementation SHA 与实际状态一致。
 
 任意条件失败时立即退出非零，输出 `IMPLEMENTATION_COMPLETE_GATE=FAIL`，Candidate 不得继续。
 
