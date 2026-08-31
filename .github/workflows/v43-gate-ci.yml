@@ -1,0 +1,28 @@
+name: Arthur Pipeline v4.3 Gate CI
+
+on:
+  push:
+    branches:
+      - codex/arthur-pipeline-v4.3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          bash -n tests/test-implementation-complete-gate.sh
+          if [[ -f scripts/implementation-complete-gate.sh ]]; then
+            bash -n scripts/implementation-complete-gate.sh
+          fi
+      - name: Implementation complete gate tests
+        run: bash tests/test-implementation-complete-gate.sh
+      - name: Workflow hard-gate static tests
+        if: ${{ hashFiles('tests/test-v43-workflow-hard-gate.sh') != '' }}
+        run: bash tests/test-v43-workflow-hard-gate.sh
