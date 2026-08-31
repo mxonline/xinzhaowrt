@@ -6,6 +6,18 @@ set -eu
 
 wifi_default_password='12356789'
 wifi_changed=0
+
+reload_wireless() {
+    # UCI may be committed after netifd/hostapd has already started on
+    # recovery images. Reload the running AP so its WPA key matches UCI;
+    # when networking is not up yet, normal boot will consume the commit.
+    if command -v wifi >/dev/null 2>&1; then
+        wifi reload >/dev/null 2>&1 || true
+    elif command -v ubus >/dev/null 2>&1 && ubus -q list network.wireless >/dev/null 2>&1; then
+        ubus call network reload >/dev/null 2>&1 || true
+    fi
+}
+
 wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
 
 # On some Arthur images the board-generated wireless UCI is created after the
@@ -39,6 +51,7 @@ done
 
 if [ "$wifi_changed" -eq 1 ]; then
     uci commit wireless
+    reload_wireless
 fi
 
 logger -t xinzhaowrt 'WIFI_DEFAULTS_PASS' 2>/dev/null || true

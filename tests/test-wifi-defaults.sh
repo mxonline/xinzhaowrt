@@ -17,6 +17,10 @@ grep -Fq 'uci commit wireless' "$wifi_defaults" || {
   echo 'FAIL: Wi-Fi migration defaults must commit persistent UCI.' >&2
   exit 1
 }
+grep -Fq 'wifi reload' "$wifi_defaults" || {
+  echo 'FAIL: Wi-Fi migration defaults must reload a running wireless service.' >&2
+  exit 1
+}
 grep -Fq 'wifi config' "$wifi_defaults" || {
   echo 'FAIL: Wi-Fi defaults must generate radio config when first-boot UCI is absent.' >&2
   exit 1
@@ -52,6 +56,10 @@ grep -Fq 'XinZhaoWrt-2.4G' "$defaults" || {
 }
 grep -Fq 'uci commit wireless' "$defaults" || {
   echo 'FAIL: Wi-Fi defaults must be committed to persistent UCI configuration.' >&2
+  exit 1
+}
+grep -Fq 'wifi reload' "$defaults" || {
+  echo 'FAIL: first-boot defaults must reload a running wireless service.' >&2
   exit 1
 }
 

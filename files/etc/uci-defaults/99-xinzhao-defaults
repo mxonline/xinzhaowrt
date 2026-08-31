@@ -62,6 +62,17 @@ log 'LAN_CONFIG_PASS' || fail log_write_lan
 
 wifi_default_password='12356789'
 wifi_changed=0
+
+reload_wireless() {
+    # Keep a running hostapd instance synchronized with committed defaults.
+    # If firstboot precedes networking this is a harmless no-op.
+    if command -v wifi >/dev/null 2>&1; then
+        wifi reload >/dev/null 2>&1 || true
+    elif command -v ubus >/dev/null 2>&1 && ubus -q list network.wireless >/dev/null 2>&1; then
+        ubus call network reload >/dev/null 2>&1 || true
+    fi
+}
+
 wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
 for wifi_section in $wifi_sections; do
     wifi_device="$(uci -q get "wireless.$wifi_section.device" 2>/dev/null || true)"
@@ -79,6 +90,7 @@ for wifi_section in $wifi_sections; do
 done
 if [ "$wifi_changed" -eq 1 ]; then
     uci commit wireless || fail wifi_commit
+    reload_wireless
 fi
 log 'WIFI_DEFAULTS_PASS' || fail log_write_wifi
 
