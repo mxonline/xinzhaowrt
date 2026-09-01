@@ -78,14 +78,15 @@ Assert-Contains $agent 'ci-controller-v3.ps1' 'failed builds must reuse the exis
 Assert-Contains $agent 'AUTO_FLASH_SAFETY_GATE=PASS' 'agent must require safety gate before flash'
 Assert-Contains $agent 'real-device-verify' 'agent must reuse existing real-device verification'
 Assert-Contains $agent 'PRODUCTION_RELEASED=YES' 'agent must expose the sole production terminal state'
-Assert-Contains $agent "@('api',\"repos/$([string]$Config.repository)\")" 'production agent must verify the credential by making a real GitHub API request, not by trusting gh auth status alone'
-Assert-True ($agent -notmatch "(?m)gh'\s*,?\s*@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
+Assert-Contains $agent "Invoke-Process 'gh' @('api'" 'production agent must verify credentials by a real GitHub API request'
+Assert-Contains $agent 'repos/$([string]$Config.repository)' 'production agent GitHub API probe must target the configured repository'
+Assert-True ($agent -notmatch "(?m)Invoke-Process\s+'gh'\s+@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
 
 Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
 Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
 Assert-True ($controller -notmatch 'Next hard gate is manual flash plus real-device verification') 'controller must not stop at Candidate publication waiting for manual flash'
-Assert-True ($controller -notmatch "Codex repair timed out after .*BLOCKED") 'Codex timeout must not become a terminal BLOCKED state'
+Assert-True ($controller -notmatch "throw \"BLOCKED: Codex repair timed out") 'Codex timeout must not become a terminal BLOCKED state'
 
 Assert-Contains $gate 'jdcloud_re-ss-01' 'safety gate must bind Arthur profile'
 Assert-Contains $gate '192.168.6.1' 'safety gate must bind expected Arthur LAN'
@@ -123,12 +124,13 @@ Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to boot
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
-# Deployment already has a successfully checked-out main worktree. It must not
-# introduce a second GitHub clone/fetch boundary just to create the stable Agent
-# runtime, because transient TLS failures there used to abort unattended deploys.
 Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'deploy must source the persistent runtime from the already checked-out workspace'
 Assert-True ($deploy -notmatch '(?im)^\s*git\s+clone\b') 'deploy must not perform a second network git clone'
 Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\s+origin\b') 'deploy must not perform a second network git fetch during runtime sync'
+Assert-Contains $deploy "'scripts/ci-controller-v3.ps1'" 'controller changes must redeploy the persistent Windows runtime'
+Assert-Contains $deploy "gh api repos/mxonline/xinzhaowrt" 'deploy must verify the machine credential by a real GitHub API request'
+Assert-True ($deploy -notmatch 'gh auth status') 'deploy must not reject a usable GitHub App/machine credential because gh auth status is stale'
+Assert-Contains $deploy 'Start persistent v3 controller' 'deployment must ensure the existing v3 controller loop is running'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
