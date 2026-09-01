@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "branch": "main",
+  "require_pull_request": true,
+  "require_status_checks": true,
+  "required_approvals": 1,
+  "required_status_checks": [
+    "Arthur Production Agent CI / production-agent-contract"
+  ],
+  "protected_control_files": [
+    "AGENTS.md",
+    "production/release-policy.md",
+    "production/production-agent.json",
+    "production/release-control-protection.json",
+    "scripts/ci-controller-v3.ps1",
+    "scripts/production-agent.ps1",
+    "scripts/auto-flash-safety-gate.ps1",
+    ".github/workflows/production-agent-deploy.yml",
+    ".github/workflows/production-agent-ci.yml",
+    "tests/production-agent.tests.ps1"
+  ],
+  "notes": "This manifest records the repository rules required to make the frozen unattended release contract enforceable at the GitHub branch boundary. Repository ruleset enforcement is an external GitHub setting and must match this file before the contract is considered fully protected."
+}
