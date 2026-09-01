@@ -121,6 +121,8 @@ Assert-Contains $install 'Register-ScheduledTask' 'installation must create a Sc
 Assert-Contains $install 'LogonTrigger' 'Scheduled Task must start in current-user logon context'
 Assert-Contains $install '$env:USERDOMAIN' 'Scheduled Task principal must come from current interactive user'
 Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to bootstrap official portable PowerShell when pwsh is absent'
+Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'installer must probe a real repository API request instead of gh auth status'
+Assert-True ($install -notmatch 'gh auth status') 'installer must not reject a valid GitHub App/machine credential based on stale gh auth status'
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
