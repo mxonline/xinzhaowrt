@@ -110,15 +110,18 @@ Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to boot
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
-# Deployment already has a successfully checked-out main worktree. It must not
-# introduce a second GitHub clone/fetch boundary just to create the stable Agent
-# runtime, because transient TLS failures there used to abort unattended deploys.
+# Deployment already has a successfully checked-out main worktree. It must copy
+# that exact worktree into the persistent Agent runtime and preserve output/state.
+# No second git clone/fetch is allowed: neither network nor local fetch, because
+# actions/checkout is shallow and importing its shallow root into another repo is unsafe.
 Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'deploy must source the persistent runtime from the already checked-out workspace'
+Assert-Contains $deploy 'robocopy' 'deploy must copy the already checked-out workspace into the persistent runtime'
+Assert-Contains $deploy 'PRODUCTION_AGENT_WORKSPACE_COPY=PASS' 'deploy must prove exact workspace copy completed'
 Assert-True ($deploy -notmatch '(?im)^\s*git\s+clone\b') 'deploy must not perform a second network git clone'
-Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\s+origin\b') 'deploy must not perform a second network git fetch during runtime sync'
+Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\b') 'deploy must not perform any second git fetch during runtime sync'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_RESUME_CONTRACT=PASS'
-Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC_CONTRACT=PASS'
+Write-Host 'PRODUCTION_AGENT_WORKSPACE_COPY_CONTRACT=PASS'
