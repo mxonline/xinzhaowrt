@@ -24,7 +24,7 @@ qualcommax/ipq60xx/jdcloud_re-ss-01
 
 - 管理地址：`192.168.6.1`
 - 用户：`root`
-- 初始密码：`passwort`
+- 初始密码：`password`
 
 这是公开的初始密码。刷入固件并首次登录后，应立即在 LuCI 的系统管理页面修改 root 密码。
 
@@ -89,24 +89,27 @@ Candidate 必须经过 JDCloud RE-SS-01 实机验证，只有输出：
 REAL DEVICE VERIFICATION PASS
 ```
 
-并归档验收报告后，才能运行 `.github/workflows/promote-stable-v3.yml` 晋升新的 Stable。Stable 晋升成功后，Candidate lock 才会替换正式 `config/arthur-known-good.lock`。
+并归档验收报告后，才能晋升新的 Stable。Stable 晋升成功后，Candidate lock 才会替换正式 `config/arthur-known-good.lock`。
 
-完整规则见 `docs/OPENWRT_CI_V3.md`。
+完整规则以 `production/release-policy.md` 和 `AGENTS.md` 的冻结 RELEASE-FIRST 主线为准。
 
 ## Codex 本机实机验收
 
-刷入 Candidate 后，在与亚瑟同一局域网的 Windows / Codex Desktop 环境执行：
+Candidate 通过 `AUTO_FLASH_SAFETY_GATE` 后，使用项目已验证的自动刷入路径：
 
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\real-device-verify-v3.ps1 `
-  -Candidate arthur-update-<run_id> `
-  -Commit <candidate-project-commit> `
-  -Target root@192.168.1.1
+```text
+GitHub Actions → candidate 完整性与 cloud/local SHA256 → AUTO_FLASH_SAFETY_GATE → Windows PowerShell → OpenSSH ssh.exe 上传 → remote SHA256 → /sbin/sysupgrade → WAIT_DEVICE → REAL_DEVICE_VERIFY → Release Gate
 ```
 
-实机流程会验证 SSH、设备型号、存储、LAN/WAN、Internet、DNS、2.4G/5G、LuCI、22/22 插件、日志、正常重启和 overlay 持久化。
+在与亚瑟同一局域网的 Windows / Codex Desktop 环境，实机验收目标设备为：
 
-刷机、`sysupgrade`、MTD、U-Boot、eMMC 分区写入始终需要人工确认，不允许自动执行。
+```text
+root@192.168.6.1
+```
+
+实机流程必须验证 SSH、设备型号、存储、LAN/WAN、Internet、DNS、Wi-Fi、LuCI、22/22 插件、主题、指定服务、日志、正常重启和 overlay 持久化。任何实机门禁失败都禁止 Release。
+
+只有标准 Arthur sysupgrade 在 `AUTO_FLASH_SAFETY_GATE` 全部通过时允许自动执行。MTD、U-Boot、bootloader、`dd`、raw eMMC/SPI/NAND、原始分区、ART/EEPROM/校准数据写入不属于自动刷入路径，继续要求明确人工授权或按项目安全策略禁止自动执行。
 
 ## Codex Cloud / GitHub Actions 编译
 
@@ -144,7 +147,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-ci-controller.ps1 -Mode
 powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1
 ```
 
-新固件更新与 Stable 发布优先按 Known-Good v3 流程执行。
+新固件更新与 Stable 发布统一服从 `RELEASE-FIRST AUTOMATION MODE`，唯一成功终点为 `PRODUCTION_RELEASED`。
 
 ## 本地编译
 
@@ -171,8 +174,9 @@ OAF 带有内核相关组件。上游发生较大的 Linux 内核变化时，如
 
 ## 文档
 
-- `AGENTS.md`：Codex 项目硬规则
-- `docs/OPENWRT_CI_V3.md`：当前 Known-Good 自动编译、Candidate、实机验收与 Stable 晋升流程
+- `AGENTS.md`：Codex 项目硬规则与冻结 RELEASE-FIRST 主线
+- `production/release-policy.md`：Candidate、自动刷入、REAL_DEVICE_VERIFY、Release Gate 与 Stable 晋升策略
+- `docs/OPENWRT_CI_V3.md`：Known-Good 自动编译、Candidate、实机验收与 Stable 晋升细节
 - `docs/OPENWRT_CI_V2.md`：旧版持久控制器流程，保留作为历史兼容
 - `docs/PERSISTENT_CI_CONTROLLER.md`：Windows 持久控制器与 `codex exec`
 - `docs/CODEX_CLOUD.md`：Codex Cloud 全编译流程
