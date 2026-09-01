@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-v0.1.2-upload-oom-zero-copy-gate-retry-20260827-001",
+  "request_id": "arthur-restored-verified-baseline-release-20260901-2300z",
   "mode": "rebuild_known_good",
-  "base_stable": "v0.1.0",
+  "base_stable": "arthur-known-good-v1",
   "device": "jdcloud_re-ss-01",
-  "reason": "Retry the v0.1.2 zero-copy Candidate after the previous build itself succeeded but the Candidate acceptance gate used a stale OOM PASS phrase. The current workflow gate is synchronized with the new v0.1.2 verification output. Keep the verified v0.1.0 Known-Good source lock unchanged.",
-  "requested_at": "2026-08-27T04:29:00+08:00"
+  "reason": "Build one formal production Candidate from the restored verified product baseline on current main. Preserve the frozen Known-Good source lock and rollback target. The Candidate must inherit the approved Wi-Fi defaults, Argon and Kucat themes, XinZhaoWrt branding, zh_cn, required 22 LuCI plugins, AdGuard Home acceptance behavior, and iStore QuickStart acceptance behavior. Continue only through the existing RELEASE-FIRST v3 pipeline; no new gates, no alternate theme/fast candidate workflow, and no release before AUTO_FLASH_SAFETY_GATE plus REAL_DEVICE_VERIFY pass.",
+  "requested_at": "2026-09-01T23:00:28Z"
 }
