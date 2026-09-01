@@ -13,16 +13,27 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $BaseScript = Join-Path $PSScriptRoot 'real-device-verify.ps1'
+$BuildEnv = Join-Path $PSScriptRoot '..\build.env'
 
 if (-not (Test-Path $BaseScript)) {
     throw "Base real-device verification script is missing: $BaseScript"
 }
 
+if ([string]::IsNullOrWhiteSpace($RootPassword) -and (Test-Path $BuildEnv)) {
+    $passwordLine = Get-Content $BuildEnv | Where-Object { $_ -match '^DEFAULT_ROOT_PASSWORD="[^"]+"$' } | Select-Object -First 1
+    if ($passwordLine -match '^DEFAULT_ROOT_PASSWORD="([^"]+)"$') {
+        $RootPassword = $Matches[1]
+    }
+}
+if ([string]::IsNullOrWhiteSpace($RootPassword)) {
+    throw 'ARTHUR_ROOT_PASSWORD is unavailable and build.env contains no approved root credential; authenticated LuCI verification is fail-closed.'
+}
+
 if ($Candidate -notmatch '^arthur-(known-good|update)-\d+$') {
     throw "Unsupported Candidate tag: $Candidate"
 }
-if ($Candidate -match '33462873812') {
-    throw 'REJECTED_FOR_RELEASE: candidate 33462873812 is REAL_DEVICE_VERIFY_INVALIDATED and may not be reflashed or released.'
+if ($Candidate -match '33462873812|33569029385') {
+    throw "REJECTED_FOR_RELEASE: candidate $Candidate predates the current functional AdGuard/iStore acceptance target and may not be flashed or released."
 }
 
 if ($Commit -notmatch '^[0-9a-f]{40}$') {
@@ -30,7 +41,7 @@ if ($Commit -notmatch '^[0-9a-f]{40}$') {
 }
 
 if ($Target -notmatch '^[A-Za-z0-9._-]+@([0-9]{1,3}(?:\.[0-9]{1,3}){3})$') {
-    throw "Target must look like root@192.168.1.1: $Target"
+    throw "Target must look like root@192.168.6.1: $Target"
 }
 
 $HostIp = $Matches[1]
