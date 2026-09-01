@@ -165,8 +165,8 @@ foreach ($relative in $expectedProtectedFiles) {
 }
 
 # CI validates the frozen contract on PRs and on direct main pushes. Repository ruleset requirements are persisted as data and must be applied externally.
-Assert-Contains $contractCi "push:`n    branches:`n      - main" 'production-agent contract CI must run on direct main pushes'
-Assert-Contains $contractCi "pull_request:`n    branches:`n      - main" 'production-agent contract CI must run on PRs targeting main'
+Assert-True ($contractCi -match '(?ms)^\s*push:\s*\r?\n\s*branches:\s*\r?\n\s*-\s*main\b') 'production-agent contract CI must run on direct main pushes'
+Assert-True ($contractCi -match '(?ms)^\s*pull_request:\s*\r?\n\s*branches:\s*\r?\n\s*-\s*main\b') 'production-agent contract CI must run on PRs targeting main'
 Assert-True ([string]$protection.branch -eq 'main') 'release-control protection must target main'
 Assert-True ($protection.require_pull_request -eq $true) 'release-control protection must require pull requests'
 Assert-True ($protection.require_status_checks -eq $true) 'release-control protection must require status checks'
