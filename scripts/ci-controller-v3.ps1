@@ -26,6 +26,8 @@ $RequestFile = Join-Path $RepoRoot 'production\v3-request.json'
 $RequiredFile = Join-Path $RepoRoot 'config\required-plugins.txt'
 $KnownGoodFile = Join-Path $RepoRoot 'production\known-good.json'
 $KnownGoodLock = Join-Path $RepoRoot 'config\arthur-known-good.lock'
+$ProductionAgent = Join-Path $RepoRoot 'scripts\production-agent.ps1'
+$ProductionStateFile = Join-Path $RepoRoot 'output\production-agent\state.json'
 
 $HardFiles = @(
     'config/required-plugins.txt',
@@ -67,7 +69,7 @@ function Set-ControllerState {
     )
 
     [ordered]@{
-        schema_version = '3.0'
+        schema_version = '3.1'
         controller = 'XinZhaoWrt Arthur v3 persistent auto-repair controller'
         status = $Status
         stage = $Stage
@@ -128,16 +130,16 @@ function Assert-Tools {
         }
     }
 
-    $auth = Invoke-Captured -FilePath 'gh' -Arguments @('auth','status','--hostname','github.com') -AllowFailure
+    $auth = Invoke-Captured -FilePath 'gh' -Arguments @('api',"repos/$Repository",'--jq','.full_name') -AllowFailure
     if ($auth.ExitCode -ne 0) {
-        throw "GitHub CLI is not authenticated.`n$($auth.Output)"
+        throw "RECOVERABLE_GITHUB_AUTH: GitHub API credential probe failed.`n$($auth.Output)"
     }
 }
 
 function Assert-CleanRepository {
     $dirty = Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'status','--porcelain')
     if ($dirty.Output) {
-        throw "Repository has uncommitted changes. Refusing automatic repair.`n$($dirty.Output)"
+        throw "RECOVERABLE_DIRTY_WORKTREE: Repository has uncommitted changes.`n$($dirty.Output)"
     }
 }
 
@@ -145,7 +147,7 @@ function Sync-Branch {
     Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'fetch','--quiet','origin',$Branch) | Out-Null
     $currentBranch = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'branch','--show-current')).Output.Trim()
     if ($currentBranch -ne $Branch) {
-        throw "Controller requires local branch '$Branch'; current branch is '$currentBranch'."
+        throw "RECOVERABLE_BRANCH_MISMATCH: Controller requires local branch '$Branch'; current branch is '$currentBranch'."
     }
     Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'pull','--ff-only','origin',$Branch) | Out-Null
 }
@@ -390,9 +392,18 @@ function ConvertFrom-CodexJson {
     $first = $clean.IndexOf('{')
     $last = $clean.LastIndexOf('}')
     if ($first -lt 0 -or $last -le $first) {
-        throw 'BLOCKED: Codex did not return valid JSON.'
+        throw 'RECOVERABLE_CODEX_INVALID_JSON'
     }
     return ($clean.Substring($first,$last-$first+1) | ConvertFrom-Json)
+}
+
+function New-RecoverableCodexDecision([string]$FirstError,[string]$Summary) {
+    return [pscustomobject]@{
+        decision = 'retry'
+        first_error = $FirstError
+        summary = $Summary
+        changed_files = @()
+    }
 }
 
 function Invoke-CodexRepair {
@@ -400,7 +411,7 @@ function Invoke-CodexRepair {
 
     $evidence = Get-RepairEvidence -RunDir $RunDir
     if (-not $evidence) {
-        throw 'BLOCKED: diagnostics contain no usable repair evidence.'
+        return (New-RecoverableCodexDecision -FirstError 'RECOVERABLE_EVIDENCE_MISSING' -Summary 'No usable diagnostics were downloaded; retry the same release chain and reacquire evidence instead of stopping for the user.')
     }
 
     $resultPath = Join-Path $RunDir ("codex-repair-round-{0}.json" -f $Round)
@@ -446,7 +457,8 @@ You MUST NOT:
 
 Work directly in the current workspace if and only if a minimal deterministic repair is supported by evidence.
 If the failure is clearly transient infrastructure/network and no source change is justified, make NO file changes and choose decision=retry.
-If the evidence is insufficient, the required fix needs a protected file/product decision, or safe automatic repair is not possible, make NO file changes and choose decision=blocked.
+If evidence is insufficient, use available read-only repository/GitHub evidence where possible; if it is still insufficient, make NO file changes and choose decision=retry so the persistent loop can reacquire evidence. Do not stop for ordinary engineering uncertainty.
+Choose decision=blocked only for a genuine frozen safety boundary that cannot be resolved automatically without an irreversible or product-authority decision.
 
 After any edit, inspect git diff and keep the change minimal.
 Return JSON only in this exact shape:
@@ -478,20 +490,26 @@ $evidence
     if (-not $done) {
         Stop-Job $job -ErrorAction SilentlyContinue
         Remove-Job $job -Force -ErrorAction SilentlyContinue
-        throw "BLOCKED: Codex repair timed out after $CodexTimeoutSeconds seconds."
+        Write-ControllerLog "RECOVERABLE_CODEX_TIMEOUT after $CodexTimeoutSeconds seconds; circuit breaker returns to the release loop."
+        return (New-RecoverableCodexDecision -FirstError 'RECOVERABLE_CODEX_TIMEOUT' -Summary 'Codex timed out; retry via clean execution without user intervention.')
     }
 
     $jobResult = Receive-Job $job
     Remove-Job $job -Force -ErrorAction SilentlyContinue
 
     if ($jobResult.ExitCode -ne 0) {
-        throw "BLOCKED: Codex repair failed with exit code $($jobResult.ExitCode)."
+        return (New-RecoverableCodexDecision -FirstError 'RECOVERABLE_CODEX_EXEC_FAILURE' -Summary "Codex exited with code $($jobResult.ExitCode); retry cleanly without user intervention.")
     }
     if (-not (Test-Path $resultPath)) {
-        throw 'BLOCKED: Codex produced no repair decision.'
+        return (New-RecoverableCodexDecision -FirstError 'RECOVERABLE_CODEX_NO_RESULT' -Summary 'Codex produced no result file; retry cleanly without user intervention.')
     }
 
-    return (ConvertFrom-CodexJson -Text (Get-Content -Raw $resultPath))
+    try {
+        return (ConvertFrom-CodexJson -Text (Get-Content -Raw $resultPath))
+    }
+    catch {
+        return (New-RecoverableCodexDecision -FirstError 'RECOVERABLE_CODEX_INVALID_JSON' -Summary $_.Exception.Message)
+    }
 }
 
 function Get-ChangedPaths {
@@ -550,7 +568,7 @@ function Assert-RepairSafe {
 
     $changed = @(Get-ChangedPaths)
     if ($changed.Count -eq 0) {
-        throw 'BLOCKED: Codex reported a repair but produced no file changes.'
+        throw 'RECOVERABLE_REPAIR_NO_CHANGES: Codex reported a repair but produced no file changes.'
     }
 
     foreach ($path in $changed) {
@@ -581,7 +599,7 @@ function Assert-RepairSafe {
 
     $diffCheck = Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'diff','--check') -AllowFailure
     if ($diffCheck.ExitCode -ne 0) {
-        throw "BLOCKED: git diff --check failed.`n$($diffCheck.Output)"
+        throw "RECOVERABLE_DIFF_CHECK: git diff --check failed.`n$($diffCheck.Output)"
     }
 
     Assert-PowerShellSyntax -ChangedPaths $changed
@@ -596,7 +614,7 @@ function Commit-And-PushRepair {
     }
 
     $cached = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'diff','--cached','--name-only')).Output
-    if (-not $cached) { throw 'BLOCKED: no safe repair changes were staged.' }
+    if (-not $cached) { throw 'RECOVERABLE_NO_STAGED_REPAIR: no safe repair changes were staged.' }
 
     $message = "fix: auto-repair Arthur v3 build round $Round"
     Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'commit','-m',$message) | Out-Null
@@ -693,6 +711,55 @@ function Verify-SuccessfulCandidate {
     return $tag
 }
 
+function Invoke-ProductionContinuation {
+    param([long]$Id,[int]$RepairRound,[string]$RequestedMode,[string]$CandidateTag)
+
+    if (-not (Test-Path $ProductionAgent)) { throw "Production Agent missing: $ProductionAgent" }
+
+    Set-ControllerState -Status 'continuing' -Stage 'production-agent' -Conclusion 'success' `
+        -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
+        -Message 'Candidate verified; handing the same run to the persistent Production Agent and following it to PRODUCTION_RELEASED.'
+
+    while ($true) {
+        $running = Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match 'production-agent\.ps1' -and $_.CommandLine -match "-RunId\s+$Id(\s|$)" } |
+            Select-Object -First 1
+
+        if (-not $running) {
+            Write-ControllerLog "Starting existing Production Agent for run $Id."
+            Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ProductionAgent,'-Mode','Resume','-RunId',[string]$Id) -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
+        }
+
+        Start-Sleep -Seconds ([Math]::Max(10,$PollSeconds))
+        if (-not (Test-Path $ProductionStateFile)) { continue }
+
+        try { $pstate = Get-Content -Raw $ProductionStateFile | ConvertFrom-Json }
+        catch { continue }
+
+        if ([long]$pstate.run_id -ne $Id) { continue }
+        $stage = [string]$pstate.stage
+        $status = [string]$pstate.status
+        $humanGate = if ($pstate.PSObject.Properties.Name -contains 'human_gate') { [string]$pstate.human_gate } else { '' }
+
+        Write-ControllerLog "Production Agent run=${Id}: stage=$stage status=$status human_gate=$humanGate"
+
+        if ($stage -eq 'PRODUCTION_RELEASED') {
+            Set-ControllerState -Status 'success' -Stage 'PRODUCTION_RELEASED' -Conclusion 'success' `
+                -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
+                -Message 'PRODUCTION_RELEASED'
+            Write-Host 'PRODUCTION_RELEASED=YES'
+            return $true
+        }
+
+        if ($humanGate -in @('UNKNOWN_DEVICE_IDENTITY','NO_SAFE_ROLLBACK','UNRECOVERABLE_IRREVERSIBLE_OPERATION')) {
+            Set-ControllerState -Status 'blocked' -Stage $stage -Conclusion 'safety-blocked' `
+                -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
+                -Message "Frozen flash-safety boundary requires human resolution: $humanGate"
+            return $false
+        }
+    }
+}
+
 function Process-V3Run {
     param([long]$InitialRunId,[string]$RequestedMode,[int]$InitialRepairRound = 0)
 
@@ -712,24 +779,34 @@ function Process-V3Run {
             $runDir = Download-RunEvidence -Id $currentRunId
             $tag = Verify-SuccessfulCandidate -Id $currentRunId -RunDir $runDir -RequestedMode $RequestedMode -Baseline $baseline
 
-            Set-ControllerState -Status 'success' -Stage 'candidate_published' -Conclusion 'success' `
-                -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode -CandidateTag $tag `
-                -Message 'v3 Candidate build verified. Next hard gate is manual flash plus real-device verification.'
+            $released = Invoke-ProductionContinuation -Id $currentRunId -RepairRound $round -RequestedMode $RequestedMode -CandidateTag $tag
+            if ($released) { return }
             return
         }
 
         if ($conclusion -in @('cancelled','skipped','stale')) {
-            Set-ControllerState -Status 'blocked' -Stage 'github-actions' -Conclusion $conclusion `
+            Sync-Branch
+            $currentHead = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
+            $runHead = [string]$run.headSha
+            if ($currentHead -and $runHead -and $currentHead -ne $runHead) {
+                Write-ControllerLog "Run $currentRunId ended $conclusion on stale source $runHead; current source is $currentHead. Automatically dispatching the current release source."
+                $currentRunId = Start-V3Run -RequestedMode $RequestedMode
+                $round = 0
+                continue
+            }
+            Set-ControllerState -Status 'waiting' -Stage 'github-actions' -Conclusion $conclusion `
                 -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
-                -Message "Run ended with conclusion=$conclusion; automatic source repair is not appropriate."
+                -Message "Run ended with conclusion=$conclusion on current source; waiting for a new release source without inventing a repair."
             return
         }
 
         if ($round -ge $MaxRepairRounds) {
-            Set-ControllerState -Status 'blocked' -Stage 'repair-limit' -Conclusion $conclusion `
-                -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
-                -Message "Automatic repair limit reached ($MaxRepairRounds rounds)."
-            return
+            Write-ControllerLog "CIRCUIT_BREAKER: $MaxRepairRounds repair rounds reached with no terminal release. Switching to a clean GitHub runner execution instead of stopping."
+            Reset-RepairChanges
+            Sync-Branch
+            $round = 0
+            $currentRunId = Start-V3Run -RequestedMode $RequestedMode
+            continue
         }
 
         $runDir = Download-RunEvidence -Id $currentRunId -Failure
@@ -744,6 +821,7 @@ function Process-V3Run {
         $baselineBefore = Assert-KnownGoodBaseline
         $protectedBefore = Get-ProtectedHashes
 
+        $action = 'retry'
         try {
             $decision = Invoke-CodexRepair -Id $currentRunId -RunDir $runDir -Round $round -RequestedMode $RequestedMode
             $action = [string]$decision.decision
@@ -751,20 +829,15 @@ function Process-V3Run {
 
             if ($action -eq 'blocked') {
                 Reset-RepairChanges
-                Set-ControllerState -Status 'blocked' -Stage 'codex-auto-repair' -Conclusion $conclusion `
-                    -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
-                    -Message "Codex blocked automatic repair: $($decision.first_error) - $($decision.summary)"
-                return
+                Write-ControllerLog "RECOVERABLE_CODEX_BLOCKED: ordinary Codex blocked result is not a human stop in the build/repair path. $($decision.first_error) - $($decision.summary)"
+                $action = 'retry'
             }
 
             if ($action -eq 'retry') {
                 $changes = @(Get-ChangedPaths)
-                if ($changes.Count -gt 0) {
-                    Reset-RepairChanges
-                    throw 'BLOCKED: Codex chose retry but modified repository files.'
-                }
+                if ($changes.Count -gt 0) { Reset-RepairChanges }
                 Assert-ProtectedFilesUnchanged -Before $protectedBefore
-                Write-ControllerLog 'Failure classified as transient; re-running the same v3 mode without source changes.'
+                Write-ControllerLog 'Failure classified as retry/reacquire-evidence; continuing the same release without user intervention.'
             }
             elseif ($action -eq 'repaired') {
                 $changed = @(Assert-RepairSafe -ProtectedBefore $protectedBefore -BaselineBefore $baselineBefore)
@@ -773,26 +846,25 @@ function Process-V3Run {
             }
             else {
                 Reset-RepairChanges
-                throw "BLOCKED: unsupported Codex decision: $action"
+                Write-ControllerLog "RECOVERABLE_CODEX_DECISION: unsupported decision=$action; falling back to clean retry."
+                $action = 'retry'
             }
         }
         catch {
             Reset-RepairChanges
-            Set-ControllerState -Status 'blocked' -Stage 'codex-auto-repair' -Conclusion $conclusion `
-                -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
-                -Message $_.Exception.Message
-            Write-ControllerLog $_.Exception.Message
-            return
+            Write-ControllerLog "RECOVERABLE_REPAIR_HANDLER: $($_.Exception.Message); returning to clean execution instead of stopping."
+            $action = 'retry'
         }
 
         Set-ControllerState -Status 'retrying' -Stage 'trigger-next-run' -Conclusion '' `
             -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
-            -Message 'Safe repair/retry decision accepted; triggering next Arthur v3 build.'
+            -Message 'Safe repair/retry decision accepted; triggering next Arthur v3 build automatically.'
 
         $currentRunId = Start-V3Run -RequestedMode $RequestedMode
     }
 }
 
+$restartAfterRecoverable = $false
 try {
     Write-ControllerLog "Starting Arthur v3 controller. Mode=$Mode UpdateMode=$UpdateMode MaxRepairRounds=$MaxRepairRounds"
     Assert-Tools
@@ -836,7 +908,7 @@ try {
 
         $latestId = [long]$latest.databaseId
         $state = Get-ControllerState
-        if ($state -and [long]$state.run_id -eq $latestId -and [string]$state.status -in @('success','blocked')) {
+        if ($state -and [long]$state.run_id -eq $latestId -and [string]$state.status -in @('success','blocked','waiting')) {
             Start-Sleep $PollSeconds
             continue
         }
@@ -849,8 +921,24 @@ try {
 }
 catch {
     $message = $_.Exception.Message
-    Write-ControllerLog "CONTROLLER BLOCKED: $message"
-    Set-ControllerState -Status 'blocked' -Stage 'controller' -Conclusion 'failure' -CurrentRunId $RunId `
+    if ($message -match '^(BLOCKED: production/known-good|BLOCKED: Known-Good device|BLOCKED: required plugin count|BLOCKED: Known-Good lock)') {
+        Write-ControllerLog "CONTROLLER SAFETY BLOCKED: $message"
+        Set-ControllerState -Status 'blocked' -Stage 'controller' -Conclusion 'safety-blocked' -CurrentRunId $RunId `
+            -RepairRound 0 -CurrentUpdateMode $UpdateMode -Message $message
+        exit 1
+    }
+
+    Write-ControllerLog "RECOVERABLE_CONTROLLER_ERROR: $message"
+    Set-ControllerState -Status 'retrying' -Stage 'controller' -Conclusion 'recoverable' -CurrentRunId $RunId `
         -RepairRound 0 -CurrentUpdateMode $UpdateMode -Message $message
-    exit 1
+    $restartAfterRecoverable = $true
+}
+
+if ($restartAfterRecoverable) {
+    Start-Sleep -Seconds $PollSeconds
+    $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-Mode',$Mode,'-UpdateMode',$UpdateMode,'-MaxRepairRounds',[string]$MaxRepairRounds,'-PollSeconds',[string]$PollSeconds,'-CodexTimeoutSeconds',[string]$CodexTimeoutSeconds,'-Repository',$Repository,'-Branch',$Branch,'-Workflow',$Workflow)
+    if ($RunId -gt 0) { $args += @('-RunId',[string]$RunId) }
+    Write-ControllerLog 'RECOVERABLE_CONTROLLER_RESTART: relaunching clean execution without user intervention.'
+    & pwsh.exe @args
+    exit $LASTEXITCODE
 }
