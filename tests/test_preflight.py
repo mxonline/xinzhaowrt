@@ -14,6 +14,11 @@ class PreflightTests(unittest.TestCase):
         self.assertTrue(report["checks"]["target_profile"])
         self.assertTrue(report["checks"]["known_good"])
         self.assertEqual(22, report["checks"]["required_plugins"])
+        self.assertEqual("github-actions", report["build_plane"]["executor"])
+        self.assertEqual("ubuntu-24.04", report["build_plane"]["runner"])
+        self.assertEqual("NOT_APPLICABLE", report["build_plane"]["host_tools"]["uci"])
+        self.assertEqual("NOT_APPLICABLE", report["build_plane"]["host_tools"]["make"])
+        self.assertEqual("PINNED_SOURCE_VALIDATION_REQUIRED_ON_LINUX", report["build_plane"]["feed_provenance"])
 
     def test_missing_source_tree_is_environment_blocker_not_auth_required(self):
         with tempfile.TemporaryDirectory() as directory:

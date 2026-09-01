@@ -24,7 +24,7 @@ qualcommax/ipq60xx/jdcloud_re-ss-01
 
 - 管理地址：`192.168.6.1`
 - 用户：`root`
-- 初始密码：`password`
+- 初始密码：`passwort`
 
 这是公开的初始密码。刷入固件并首次登录后，应立即在 LuCI 的系统管理页面修改 root 密码。
 

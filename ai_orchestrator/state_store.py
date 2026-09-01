@@ -21,8 +21,31 @@ class StateStore:
             return None
         with self.snapshot_path.open("r", encoding="utf-8") as handle:
             state = PipelineState.from_dict(json.load(handle))
+        self._migrate_non_pipeline_prebuild_checkpoint(state)
         self._migrate_standard_flash_approval(state)
         return state
+
+    @staticmethod
+    def _migrate_non_pipeline_prebuild_checkpoint(state):
+        # PRE_BUILD_FINAL_CHECK was an auxiliary acceptance report, not an
+        # Arthur RELEASE-FIRST phase.  Resume at the persisted frozen flow's
+        # real checkpoint without inventing a new pipeline stage.
+        if state.phase != "PRE_BUILD_FINAL_CHECK":
+            return
+        state.phase = "CHANGE_IMPACT"
+        state.next_codex_prompt = (
+            "Resume the frozen Arthur production flow at CHANGE_IMPACT_GATE. "
+            "Treat Windows-only uci/make checks as NOT_APPLICABLE; use the "
+            "existing pinned source validation on the GitHub Linux runner, "
+            "then continue automatically through the next safe phase."
+        )
+        state.observability["change_impact_checkpoint_migration"] = {
+            "from": "PRE_BUILD_FINAL_CHECK",
+            "to": "CHANGE_IMPACT",
+            "acceptance_contract_role": "AUXILIARY_ONLY",
+            "windows_uci": "NOT_APPLICABLE",
+            "windows_make": "NOT_APPLICABLE",
+        }
 
     @staticmethod
     def _migrate_standard_flash_approval(state):

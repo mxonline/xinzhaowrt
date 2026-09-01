@@ -35,7 +35,7 @@ Successful builds produce:
 
 - Router IP: `192.168.6.1`
 - User: `root`
-- Initial password: `password`
+- Initial password: `passwort`
 
 Change the password immediately after first login.
 

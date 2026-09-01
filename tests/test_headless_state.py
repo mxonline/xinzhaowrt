@@ -50,6 +50,24 @@ class HeadlessStateTests(unittest.TestCase):
             store.clear_stop()
             self.assertFalse(store.stop_requested())
 
+    def test_non_pipeline_prebuild_checkpoint_is_migrated_to_change_impact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory))
+            state = PipelineState(
+                "request-prebuild",
+                "jdcloud_re-ss-01",
+                "PRE_BUILD_FINAL_CHECK",
+                "Recover the pre-build final check.",
+            )
+            state.observability.update({"runtime": "STOPPED", "next_action": "RECOVERABLE_PREFLIGHT_TOOLING_OR_LINUX_PREFLIGHT"})
+            store.save(state)
+
+            loaded = store.load()
+
+            self.assertEqual("CHANGE_IMPACT", loaded.phase)
+            self.assertIn("change_impact_checkpoint_migration", loaded.observability)
+            self.assertIn("CHANGE_IMPACT", loaded.next_codex_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

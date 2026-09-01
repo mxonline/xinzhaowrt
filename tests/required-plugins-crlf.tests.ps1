@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $scripts = @(
     (Join-Path $projectRoot 'scripts\check-config.sh'),
-    (Join-Path $projectRoot 'scripts\verify-project.sh')
+    (Join-Path $projectRoot 'scripts\verify-project.sh'),
+    (Join-Path $projectRoot 'scripts\check-package-existence.sh')
 )
 
 foreach ($scriptPath in $scripts) {

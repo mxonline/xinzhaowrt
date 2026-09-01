@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -39,5 +41,27 @@ def inspect_project(root):
         "known_good": known_good,
         "state_store": True,
     }
+    # The Windows control plane is not the OpenWrt build environment.  Do not
+    # turn the absence of Linux-only uci/make into a false pre-build blocker or
+    # install substitute binaries.  The pinned source validation and actual
+    # build run on the GitHub Linux runner.
+    if os.name == "nt":
+        host_tools = {"uci": "NOT_APPLICABLE", "make": "NOT_APPLICABLE"}
+    else:
+        host_tools = {
+            name: "PASS" if shutil.which(name) else "UNKNOWN"
+            for name in ("uci", "make")
+        }
+    build_plane = {
+        "executor": "github-actions",
+        "runner": "ubuntu-24.04",
+        "host_tools": host_tools,
+        "feed_provenance": "PINNED_SOURCE_VALIDATION_REQUIRED_ON_LINUX",
+        "source_locks": {
+            "known_good": (root / "config" / "arthur-known-good.lock").is_file(),
+            "quickstart": (root / "config" / "istore-quickstart.lock").is_file(),
+            "package_validation": (root / "scripts" / "check-package-sources.sh").is_file(),
+        },
+    }
     status = "READY" if checks["source_tree"] and checks["target_profile"] and checks["required_plugins"] == 22 and known_good else "INVALID_ENVIRONMENT"
-    return {"status": status, "checks": checks, "root": str(root)}
+    return {"status": status, "checks": checks, "build_plane": build_plane, "root": str(root)}

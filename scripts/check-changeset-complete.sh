@@ -57,10 +57,12 @@ pass EXPECTED_DIFF_GATE
 pass BASELINE_INHERITANCE_GATE
 
 mkdir -p output
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python3
-else
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python
+else
+  fail 'a working Python interpreter is required for changeset evidence'
 fi
 "$PYTHON_BIN" - <<'PY'
 import json

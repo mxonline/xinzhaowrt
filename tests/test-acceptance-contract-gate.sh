@@ -3,7 +3,14 @@ set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 bash scripts/acceptance-contract-gate.sh >/tmp/xinzhao-acceptance-contract-gate.log
-if command -v python3 >/dev/null 2>&1; then PYTHON_BIN=python3; else PYTHON_BIN=python; fi
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
+  PYTHON_BIN=python
+else
+  echo 'ACCEPTANCE_CONTRACT_TEST: FAIL -- no working Python interpreter' >&2
+  exit 1
+fi
 "$PYTHON_BIN" - <<'PY'
 import json
 from pathlib import Path

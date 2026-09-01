@@ -12,7 +12,7 @@ acl="$root/files/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 
 grep -Fxq 'DEFAULT_WIFI_SSID="xinzhaowrt"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi SSID'
 grep -Fxq 'DEFAULT_WIFI_PASSWORD="12345678"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi password'
-grep -Fxq 'DEFAULT_ROOT_PASSWORD="password"' "$build_env" || fail 'build.env must define the authoritative initial root password'
+grep -Fxq 'DEFAULT_ROOT_PASSWORD="passwort"' "$build_env" || fail 'build.env must define the authoritative initial root password'
 grep -Fq "wifi_default_ssid='xinzhaowrt'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative SSID'
 grep -Fq "wifi_default_password='12345678'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative password'
 grep -Fq "wifi_default_ssid='xinzhaowrt'" "$firstboot_defaults" || fail 'first-boot defaults must use the authoritative SSID'
@@ -21,9 +21,9 @@ grep -Fq "wifi_default_password='12345678'" "$firstboot_defaults" || fail 'first
 ! grep -Eq 'XinZhaoWrt-(2\.4G|5G)' "$firstboot_defaults" || fail 'legacy band-specific SSIDs remain in first-boot defaults'
 
 [[ -s "$acl" ]] || fail 'AdGuard Home RPC ACL is missing'
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   python_bin=python3
-elif command -v python >/dev/null 2>&1; then
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   python_bin=python
 else
   fail 'Python 3 is required to validate the AdGuard rpcd ACL JSON'
