@@ -16,6 +16,7 @@ on:
       - 'scripts/start-production-agent.ps1'
       - 'scripts/production-agent-status.ps1'
       - 'scripts/bridge-runtime-status.ps1'
+      - 'scripts/recover-existing-bridge-context.ps1'
       - 'tests/production-agent.tests.ps1'
       - '.github/workflows/production-agent-deploy.yml'
   workflow_dispatch:
@@ -57,6 +58,13 @@ jobs:
           & ./scripts/bridge-runtime-status.ps1
           exit 0
 
+      - name: Recover existing Bridge in original user context
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & ./scripts/recover-existing-bridge-context.ps1
+          exit 0
+
       - name: Sync stable Production Agent runtime
         shell: powershell
         run: |
@@ -80,8 +88,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize Production Agent origin.' }
           }
 
-          # Reuse the already checked-out workspace. No second remote clone/fetch boundary.
-          # Full-depth checkout above avoids shallow-root rejection when importing this local ref.
           git -C $runtime fetch --force $workspace 'refs/heads/main:refs/remotes/deploy/main'
           if ($LASTEXITCODE -ne 0) { throw 'Failed to import main from the local checked-out workspace.' }
           git -C $runtime checkout -B main refs/remotes/deploy/main
@@ -101,8 +107,6 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          # Remove only the ephemeral Actions token. Preserve GH_TOKEN if the
-          # Windows runtime injects a GitHub App installation token there.
           Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
           $probe = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
           if ($LASTEXITCODE -eq 0 -and (($probe -join "`n") -match 'mxonline/xinzhaowrt')) {
