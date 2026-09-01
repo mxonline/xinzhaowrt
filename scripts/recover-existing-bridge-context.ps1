@@ -12,7 +12,12 @@ $CommonStartup = [Environment]::GetFolderPath('CommonStartup')
 $StartupWrapper = if ($CommonStartup) { Join-Path $CommonStartup 'XinZhaoWrt-Existing-Bridge-Recovery.cmd' } else { '' }
 
 New-Item -ItemType Directory -Force -Path $RecoveryRoot | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue $ResultPath,$LogPath
+if (Test-Path $ResultPath) {
+    Write-Host 'BRIDGE_CONTEXT_RECOVERY=RESULT_READY_EXISTING'
+    Write-Host "BRIDGE_CONTEXT_RESULT=$(Get-Content -Raw $ResultPath)"
+    exit 0
+}
+Remove-Item -Force -ErrorAction SilentlyContinue $LogPath
 
 $prompt = @'
 You are recovering the EXISTING GPT-Codex Bridge runtime for the XinZhaoWrt Arthur firmware project.
