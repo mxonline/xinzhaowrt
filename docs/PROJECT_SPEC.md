@@ -27,7 +27,7 @@
 
 - LAN IP：192.168.6.1
 - 管理员：root
-- 初始密码：passwort
+- 初始密码：password
 
 初始密码是公开固定值，只用于首次登录。正式使用前必须修改。
 
@@ -54,4 +54,4 @@ Codex Cloud 只有同时满足以下条件才可以声明构建成功：
 6. `output/build-info.txt` 存在；
 7. `output/firmware/SHA256SUMS.local` 存在；
 8. 首次启动 defaults overlay 被复制进源码 `files/etc/uci-defaults/`；
-9. 不执行任何真实路由器刷写、分区写入或 bootloader 操作。
+9. Cloud 构建任务本身不直接刷写真实路由器；真实刷写与实机验证由冻结的 RELEASE-FIRST 主线在 `AUTO_FLASH_SAFETY_GATE` 后执行。
