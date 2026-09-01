@@ -24,7 +24,7 @@ qualcommax/ipq60xx/jdcloud_re-ss-01
 
 - 管理地址：`192.168.6.1`
 - 用户：`root`
-- 初始密码：`passwort`
+- 初始密码：`password`
 
 这是公开的初始密码。刷入固件并首次登录后，应立即在 LuCI 的系统管理页面修改 root 密码。
 
@@ -145,6 +145,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1
 ```
 
 新固件更新与 Stable 发布优先按 Known-Good v3 流程执行。
+
+## Headless Production Runtime v2
+
+真正的 Arthur 生产任务由独立 Python daemon 接管，不依赖当前 Codex UI 页面保持打开：
+
+```powershell
+py -3 -m ai_orchestrator run-production arthur --detach
+py -3 -m ai_orchestrator status
+py -3 -m ai_orchestrator resume
+py -3 -m ai_orchestrator stop
+```
+
+Runtime 会自动串联 Codex Executor 与独立 GPT Controller，普通开发、构建、依赖、标准 sysupgrade 和回归问题自动恢复。只有凭据、无法确认的设备身份、无安全 rollback，以及 MTD/U-Boot/raw partition 等不可逆高风险事件进入白名单 Gate。详见 `docs/HEADLESS_PRODUCTION_RUNTIME.md`。
 
 ## 本地编译
 

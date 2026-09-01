@@ -18,6 +18,8 @@ for test_script in \
   tests/test-argon-default-theme.sh; do
   bash "$test_script"
 done
+pass CHANGE_IMPACT_GATE
+./scripts/acceptance-contract-gate.sh
 pass ADGUARDHOME_IMPLEMENTATION_READY
 pass ISTORE_QUICKSTART_REUSE_READY
 pass WIFI_IMPLEMENTATION_READY
