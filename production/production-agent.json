@@ -49,6 +49,8 @@
       "scripts/production-agent.ps1",
       "scripts/auto-flash-safety-gate.ps1",
       ".github/workflows/production-agent-deploy.yml",
+      ".github/workflows/production-agent-ci.yml",
+      ".github/CODEOWNERS",
       "tests/production-agent.tests.ps1"
     ]
   },
