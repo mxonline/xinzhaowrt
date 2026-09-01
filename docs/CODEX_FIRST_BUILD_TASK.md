@@ -26,8 +26,8 @@ Success requires:
 - at least one Arthur firmware image under output/firmware;
 - output/build-info.txt;
 - output/firmware/SHA256SUMS.local;
-- first-boot defaults included: 192.168.6.1, root, initial password passwort;
-- no flashing or eMMC/bootloader write operation is executed.
+- first-boot defaults included: 192.168.6.1, root, initial password password;
+- the Cloud build task itself does not flash the router; production flashing and REAL_DEVICE_VERIFY are handled by the frozen RELEASE-FIRST pipeline after AUTO_FLASH_SAFETY_GATE.
 
 When successful, summarize the resulting image names, upstream ImmortalWrt commit, external source commits, kernel version if available, and any compatibility patches applied.
 ```
