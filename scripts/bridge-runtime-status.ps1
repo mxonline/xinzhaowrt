@@ -22,30 +22,25 @@ Write-Host "BRIDGE_ORCHESTRATOR_EXISTS=$(Safe-TestPath $orchestrator)"
 Write-Host "BRIDGE_STATE_DIR_EXISTS=$(Safe-TestPath $state)"
 Write-Host "BRIDGE_CODEX_EXE_EXISTS=$(Safe-TestPath $codex)"
 
-if (Safe-TestPath $orchestrator) {
-    foreach ($name in @('runtime.py','supervisor.py','controller.py','bridge.py','policy.py')) {
-        Write-Host ("BRIDGE_FILE_{0}={1}" -f $name.ToUpperInvariant().Replace('.','_'), (Safe-TestPath (Join-Path $orchestrator $name)))
+# Query Task Scheduler through schtasks instead of the ScheduledTasks object model;
+# this works across heterogeneous action types and reveals the configured run-as user.
+try {
+    $taskCsv = & schtasks.exe /Query /FO CSV /V 2>&1
+    $taskRows = @($taskCsv | ConvertFrom-Csv -ErrorAction SilentlyContinue)
+    $matches = @($taskRows | Where-Object {
+        $flat = ($_ | ConvertTo-Json -Compress -Depth 3)
+        $flat -match '(?i)gpt|codex|bridge|orchestrator|xinzhao|C:\\Users\\chenz'
+    })
+    if ($matches.Count -eq 0) {
+        Write-Host 'BRIDGE_SCHTASKS_MATCHES=NONE'
+    } else {
+        foreach ($row in $matches) {
+            $flat = ($row | ConvertTo-Json -Compress -Depth 3)
+            Write-Host "BRIDGE_SCHTASK=$flat"
+        }
     }
-}
-
-if (Safe-TestPath $state) {
-    $names = @(Get-ChildItem -Path $state -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-    Write-Host "BRIDGE_STATE_FILES=$($names -join ',')"
-}
-
-$allTasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue)
-$tasks = @($allTasks | Where-Object {
-    $execute = @($_.Actions | ForEach-Object { $_.Execute }) -join ';'
-    $_.TaskName -match '(?i)gpt|codex|bridge|orchestrator|xinzhao' -or $execute -like 'C:\Users\chenz\*'
-})
-if ($tasks.Count -eq 0) {
-    Write-Host 'BRIDGE_TASKS=NONE'
-} else {
-    foreach ($task in $tasks) {
-        $execute = @($task.Actions | ForEach-Object { $_.Execute }) -join ';'
-        $workdir = @($task.Actions | ForEach-Object { $_.WorkingDirectory }) -join ';'
-        Write-Host "BRIDGE_TASK name=$($task.TaskName) state=$($task.State) user=$($task.Principal.UserId) execute=$execute workdir=$workdir"
-    }
+} catch {
+    Write-Host "BRIDGE_SCHTASKS_QUERY=FAILED $($_.Exception.Message)"
 }
 
 try {
@@ -55,15 +50,49 @@ try {
     Write-Host "BRIDGE_USER_SESSIONS=UNAVAILABLE"
 }
 
-$processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+# Capture relevant processes plus two ancestor levels to determine whether the
+# existing chenz-side Codex runtime is still parented by the old bridge/supervisor.
+$all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+$byPid = @{}
+foreach ($p in $all) { $byPid[[int]$p.ProcessId] = $p }
+$seeds = @($all | Where-Object {
     $_.ExecutablePath -and ($_.ExecutablePath -like 'C:\Users\chenz\*' -or $_.Name -match '(?i)codex|python')
 })
-if ($processes.Count -eq 0) {
+if ($seeds.Count -eq 0) {
     Write-Host 'BRIDGE_PROCESSES=NONE'
 } else {
-    foreach ($p in $processes) {
-        Write-Host "BRIDGE_PROCESS pid=$($p.ProcessId) ppid=$($p.ParentProcessId) name=$($p.Name) path=$($p.ExecutablePath)"
+    $seen = @{}
+    foreach ($seed in $seeds) {
+        $current = $seed
+        for ($depth = 0; $depth -lt 3 -and $null -ne $current; $depth++) {
+            $pid = [int]$current.ProcessId
+            if (-not $seen.ContainsKey($pid)) {
+                $seen[$pid] = $true
+                $cmd = ''
+                try { $cmd = [string]$current.CommandLine } catch {}
+                if ($cmd.Length -gt 500) { $cmd = $cmd.Substring(0,500) }
+                Write-Host "BRIDGE_PROCESS depth=$depth pid=$pid ppid=$($current.ParentProcessId) name=$($current.Name) path=$($current.ExecutablePath) cmd=$cmd"
+            }
+            $parentId = [int]$current.ParentProcessId
+            if ($parentId -le 0 -or -not $byPid.ContainsKey($parentId)) { break }
+            $current = $byPid[$parentId]
+        }
     }
+}
+
+try {
+    $services = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object {
+        $_.PathName -match '(?i)chenz|codex|bridge|orchestrator|xinzhao'
+    })
+    if ($services.Count -eq 0) {
+        Write-Host 'BRIDGE_SERVICES=NONE'
+    } else {
+        foreach ($svc in $services) {
+            Write-Host "BRIDGE_SERVICE name=$($svc.Name) state=$($svc.State) start=$($svc.StartName) path=$($svc.PathName)"
+        }
+    }
+} catch {
+    Write-Host "BRIDGE_SERVICES_QUERY=FAILED $($_.Exception.Message)"
 }
 
 Write-Host 'BRIDGE_RUNTIME_DIAG=PASS'
