@@ -25,7 +25,6 @@
   "artifact_retry_seconds": [15, 30, 60, 120, 300],
   "wait_device_timeout_seconds": 420,
   "human_stop_classes": [
-    "NEW_CREDENTIAL_PROVISIONING",
     "UNKNOWN_DEVICE_IDENTITY",
     "NO_SAFE_ROLLBACK",
     "UNRECOVERABLE_IRREVERSIBLE_OPERATION"
