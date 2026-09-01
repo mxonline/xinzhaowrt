@@ -14,10 +14,6 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Config = Get-Content -Raw (Join-Path $Root 'production\production-agent.json') | ConvertFrom-Json
 if ($RunId -le 0) { $RunId = [long]$Config.bootstrap.run_id }
-if ($ArtifactId -le 0) { $ArtifactId = [long]$Config.bootstrap.artifact_id }
-if (-not $ArtifactName) { $ArtifactName = [string]$Config.bootstrap.artifact_name }
-if (-not $ExpectedCandidateSha256) { $ExpectedCandidateSha256 = [string]$Config.bootstrap.candidate_sha256 }
-if ($ExpectedCandidateSize -le 0) { $ExpectedCandidateSize = [long]$Config.bootstrap.candidate_size }
 if (-not $Destination) { $Destination = Join-Path $Root 'output\production-agent\artifact' }
 
 $OutRoot = Join-Path $Root 'output\production-agent'
@@ -39,18 +35,41 @@ function Invoke-Gh([string[]]$Args,[switch]$AllowFailure) {
     return [pscustomobject]@{ ExitCode = $code; Output = $text }
 }
 
-# Production authentication contract: use the current Windows user's persistent GitHub CLI credential store.
-# Literal command retained for static contract visibility: gh auth status --hostname github.com
-$auth = Invoke-Gh @('auth','status','--hostname','github.com') -AllowFailure
+# Validate the credential by exercising the API. This supports persistent gh credentials
+# and machine/App tokens even when `gh auth status` is not a reliable signal.
+$auth = Invoke-Gh @('api',"repos/$Repository",'--jq','.full_name') -AllowFailure
 if ($auth.ExitCode -ne 0) {
-    Log 'NEW_CREDENTIAL_PROVISIONING: gh auth status failed; artifact fetch stopped without rebuild.'
-    [pscustomobject]@{ status='BLOCKED'; human_gate='NEW_CREDENTIAL_PROVISIONING'; run_id=$RunId; artifact_id=$ArtifactId; rebuild=$false } | ConvertTo-Json -Depth 6
+    Log "NEW_CREDENTIAL_PROVISIONING: GitHub API credential probe failed; same artifact will be retried. $($auth.Output)"
+    [pscustomobject]@{ status='RETRYING'; recovery='NEW_CREDENTIAL_PROVISIONING'; run_id=$RunId; artifact_id=$ArtifactId; rebuild=$false } | ConvertTo-Json -Depth 6
     exit 41
 }
 
+$runView = Invoke-Gh @('run','view',[string]$RunId,'--repo',$Repository,'--json','headSha,status,conclusion')
+$run = $runView.Output | ConvertFrom-Json
+if ([string]$run.status -ne 'completed' -or [string]$run.conclusion -ne 'success') {
+    throw "Run $RunId is not a successful completed production Candidate run: status=$($run.status) conclusion=$($run.conclusion)"
+}
+$SourceSha = [string]$run.headSha
+if ($SourceSha -notmatch '^[0-9a-f]{40}$') { throw "Run $RunId returned invalid headSha: $SourceSha" }
+
 $api = Invoke-Gh @('api',"repos/$Repository/actions/runs/$RunId/artifacts")
 $payload = $api.Output | ConvertFrom-Json
-$artifact = @($payload.artifacts | Where-Object { [long]$_.id -eq $ArtifactId -and [string]$_.name -eq $ArtifactName }) | Select-Object -First 1
+$artifacts = @($payload.artifacts)
+
+if ($ArtifactId -gt 0 -and $ArtifactName) {
+    $artifact = @($artifacts | Where-Object { [long]$_.id -eq $ArtifactId -and [string]$_.name -eq $ArtifactName }) | Select-Object -First 1
+} else {
+    $expectedName = "Arthur-v3-Candidate-$RunId"
+    $matches = @($artifacts | Where-Object { [string]$_.name -eq $expectedName -and $_.expired -ne $true })
+    if ($matches.Count -ne 1) {
+        $names = (@($artifacts | ForEach-Object { [string]$_.name }) -join ', ')
+        throw "Expected exactly one live production Candidate artifact named $expectedName for run $RunId; found $($matches.Count). Available: $names"
+    }
+    $artifact = $matches[0]
+    $ArtifactId = [long]$artifact.id
+    $ArtifactName = [string]$artifact.name
+}
+
 if (-not $artifact) { throw "Artifact identity not found: run=$RunId id=$ArtifactId name=$ArtifactName" }
 if ($artifact.expired -eq $true) { throw "Artifact is expired: id=$ArtifactId" }
 
@@ -62,21 +81,24 @@ $metadata = [ordered]@{
     artifact_name = [string]$artifact.name
     artifact_size_in_bytes = [long]$artifact.size_in_bytes
     artifact_digest = [string]$artifact.digest
+    source_sha = $SourceSha
     expired = [bool]$artifact.expired
     verified_at = (Get-Date).ToString('o')
 }
 $metadata | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $MetadataPath
-Log 'ARTIFACT_METADATA_VERIFIED'
+Log "ARTIFACT_METADATA_VERIFIED id=$ArtifactId name=$ArtifactName source=$SourceSha"
 
-$existing = Get-ChildItem -Path $Destination -Recurse -File -Filter '*sysupgrade.bin' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($existing) {
+$existing = Get-ChildItem -Path $Destination -Recurse -File -Filter '*sysupgrade.bin' -ErrorAction SilentlyContinue | Select-Object -First 2
+if (@($existing).Count -eq 1) {
+    $existing = @($existing)[0]
     $existingHash = (Get-FileHash -Algorithm SHA256 $existing.FullName).Hash.ToLowerInvariant()
-    if (($ExpectedCandidateSha256 -and $existingHash -eq $ExpectedCandidateSha256.ToLowerInvariant()) -and (($ExpectedCandidateSize -le 0) -or $existing.Length -eq $ExpectedCandidateSize)) {
-        Log "ARTIFACT_BYTES_VERIFIED reuse=$($existing.FullName)"
-    } else {
+    if (($ExpectedCandidateSha256 -and $existingHash -ne $ExpectedCandidateSha256.ToLowerInvariant()) -or (($ExpectedCandidateSize -gt 0) -and $existing.Length -ne $ExpectedCandidateSize)) {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Destination
         $existing = $null
     }
+} else {
+    if (@($existing).Count -gt 1) { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Destination }
+    $existing = $null
 }
 
 if (-not $existing) {
@@ -89,7 +111,7 @@ if (-not $existing) {
         if ($dl.ExitCode -eq 0) { $downloaded = $true; break }
         $msg = [string]$dl.Output
         if ($msg -match '(?i)authentication|not logged|token.*expired|bad credentials|HTTP 401') {
-            Log 'NEW_CREDENTIAL_PROVISIONING: authenticated artifact download rejected; no rebuild.'
+            Log 'NEW_CREDENTIAL_PROVISIONING: authenticated artifact download rejected; persistent agent will recover/retry without rebuild.'
             exit 41
         }
         if ($msg -notmatch '(?i)rate limit|HTTP 403|HTTP 5\d\d|timeout|timed out|EOF|connection reset|connection refused') {
@@ -99,7 +121,7 @@ if (-not $existing) {
         Log "Transient artifact download failure; retry same run/artifact after ${delay}s. $msg"
         Start-Sleep -Seconds $delay
     }
-    if (-not $downloaded) { throw "Artifact download retries exhausted for same run $RunId; rebuild prohibited." }
+    if (-not $downloaded) { throw "Artifact download retries exhausted for same run $RunId; rebuild prohibited and persistent agent will retry later." }
     $existing = Get-ChildItem -Path $Destination -Recurse -File -Filter '*sysupgrade.bin' -ErrorAction SilentlyContinue | Select-Object -First 2
     if (@($existing).Count -ne 1) { throw "Expected exactly one sysupgrade.bin, found $(@($existing).Count)" }
     $existing = @($existing)[0]
@@ -110,6 +132,16 @@ $hash = (Get-FileHash -Algorithm SHA256 $existing.FullName).Hash.ToLowerInvarian
 if ($ExpectedCandidateSha256 -and $hash -ne $ExpectedCandidateSha256.ToLowerInvariant()) { throw "Candidate SHA256 mismatch expected=$ExpectedCandidateSha256 actual=$hash" }
 if ($ExpectedCandidateSize -gt 0 -and $existing.Length -ne $ExpectedCandidateSize) { throw "Candidate size mismatch expected=$ExpectedCandidateSize actual=$($existing.Length)" }
 
+# The production v3 artifact carries its own SHA256SUMS.local. Verify the exact
+# sysupgrade bytes against that immutable build evidence when no bootstrap hash was supplied.
+$checksumFile = Get-ChildItem -Path $Destination -Recurse -File -Filter 'SHA256SUMS.local' -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $checksumFile) { throw 'Production Candidate artifact is missing SHA256SUMS.local.' }
+$checksumLine = Get-Content $checksumFile.FullName | Where-Object { $_ -match "(?i)^([0-9a-f]{64})\s+\*?$([regex]::Escape($existing.Name))$" } | Select-Object -First 1
+if (-not $checksumLine) { throw "SHA256SUMS.local has no entry for $($existing.Name)." }
+$checksumLine -match '^([0-9a-fA-F]{64})' | Out-Null
+$buildHash = $Matches[1].ToLowerInvariant()
+if ($buildHash -ne $hash) { throw "Candidate SHA256 disagrees with build evidence expected=$buildHash actual=$hash" }
+
 $manifest = [ordered]@{
     status = 'ARTIFACT_BYTES_VERIFIED'
     candidate_status = 'CANDIDATE_VERIFIED'
@@ -117,15 +149,16 @@ $manifest = [ordered]@{
     run_id = $RunId
     artifact_id = $ArtifactId
     artifact_name = $ArtifactName
+    artifact_digest = [string]$artifact.digest
     candidate_path = $existing.FullName
     candidate_filename = $existing.Name
     candidate_size = [long]$existing.Length
     candidate_sha256 = $hash
     target = [string]$Config.target
     profile = [string]$Config.profile
-    source_sha = [string]$Config.bootstrap.source_sha
+    source_sha = $SourceSha
     verified_at = (Get-Date).ToString('o')
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $ManifestPath
-Log "ARTIFACT_BYTES_VERIFIED candidate=$($existing.Name) sha256=$hash"
+Log "ARTIFACT_BYTES_VERIFIED candidate=$($existing.Name) sha256=$hash source=$SourceSha"
 $manifest | ConvertTo-Json -Depth 8
