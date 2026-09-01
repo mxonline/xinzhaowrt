@@ -22,6 +22,19 @@ function Remote([string]$Command) {
     [pscustomobject]@{ ExitCode=$LASTEXITCODE; Output=($out -join "`n").Trim() }
 }
 
+$runId = [long]$Candidate.run_id
+if ($runId -le 0) { Fail 'CANDIDATE_INCOMPLETE' 'Candidate manifest has no valid production run_id.' }
+$rejectionPath = Join-Path $Root ("production\candidate-rejection-{0}.json" -f $runId)
+if (Test-Path $rejectionPath) {
+    $rejection = Get-Content -Raw $rejectionPath | ConvertFrom-Json
+    $rejected = ([string]$rejection.status -eq 'REJECTED_FOR_RELEASE') -or
+                ($rejection.PSObject.Properties.Name -contains 'flash_allowed' -and $rejection.flash_allowed -eq $false) -or
+                ($rejection.PSObject.Properties.Name -contains 'release_allowed' -and $rejection.release_allowed -eq $false)
+    if ($rejected) {
+        Fail 'CANDIDATE_REJECTED' "Run $runId is blocked by durable rejection evidence: $([string]$rejection.reason)"
+    }
+}
+
 if ([string]$Config.device -ne 'jdcloud_re-ss-01' -or [string]$Candidate.profile -ne 'jdcloud_re-ss-01') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Arthur profile mismatch.' }
 if ([string]$Candidate.target -ne 'qualcommax/ipq60xx') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Arthur target mismatch.' }
 if (-not $Profile.verified -or [string]$Profile.remote_upgrade_binary -ne '/sbin/sysupgrade') { Fail 'UNRECOVERABLE_IRREVERSIBLE_OPERATION' 'No historically verified standard sysupgrade profile.' }
