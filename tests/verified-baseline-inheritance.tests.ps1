@@ -47,8 +47,9 @@ foreach ($relative in @(
 
 Assert-Contains $deploy 'ai_orchestrator' 'deployment must include the existing GPT-Codex Bridge runtime'
 Assert-Contains $deploy 'supervisor' 'deployment must start or resume the existing Bridge supervisor'
-Assert-Contains $deploy 'actions/setup-python@v5' 'deployment must bootstrap a supported Python instead of using the host Python 3.8'
-Assert-Contains $deploy "python-version: '3.12'" 'deployment must pin the unattended Bridge Python version'
+Assert-Contains $deploy 'astral-sh/setup-uv@v6' 'deployment must use the previously proven user-space Python bootstrap on the self-hosted runner'
+Assert-Contains $deploy 'uv python install 3.12' 'deployment must install the pinned unattended Bridge Python in user space'
+Assert-Contains $deploy 'HeadlessPython' 'deployment must keep the supported Bridge interpreter in a persistent user-space directory'
 Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path into the supervisor step'
 Assert-True (Test-Path $requirementsPath) 'deployment must retain the existing headless runtime dependency input'
 $requirements = Get-Content -Raw $requirementsPath
