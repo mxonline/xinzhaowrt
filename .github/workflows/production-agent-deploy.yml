@@ -17,7 +17,10 @@ on:
       - 'scripts/production-agent-status.ps1'
       - 'scripts/bridge-runtime-status.ps1'
       - 'scripts/recover-existing-bridge-context.ps1'
+      - 'scripts/run-supervisor.py'
+      - 'ai_orchestrator/**'
       - 'tests/production-agent.tests.ps1'
+      - 'tests/verified-baseline-inheritance.tests.ps1'
       - '.github/workflows/production-agent-deploy.yml'
   workflow_dispatch:
 
@@ -50,6 +53,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & ./tests/production-agent.tests.ps1
+          if (Test-Path ./tests/verified-baseline-inheritance.tests.ps1) {
+            & ./tests/verified-baseline-inheritance.tests.ps1
+          }
 
       - name: Inspect existing GPT Codex Bridge runtime
         shell: powershell
@@ -99,9 +105,16 @@ jobs:
           if ($runtimeSha -ne $sourceSha) {
             throw "Production Agent runtime SHA mismatch: source=$sourceSha runtime=$runtimeSha"
           }
+          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\runtime.py'))) {
+            throw 'Existing GPT-Codex Bridge runtime was not synchronized into the persistent runtime.'
+          }
+          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\supervisor.py'))) {
+            throw 'Existing GPT-Codex Bridge supervisor was not synchronized into the persistent runtime.'
+          }
           Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
           Write-Host "PRODUCTION_AGENT_RUNTIME_SHA=$runtimeSha"
           Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC=PASS'
+          Write-Host 'GPT_CODEX_BRIDGE_RUNTIME_SYNC=PASS'
 
       - name: Verify persistent GitHub machine credential
         shell: powershell
@@ -133,6 +146,37 @@ jobs:
             Write-Host 'PRODUCTION_AGENT_STATE=STARTING'
           }
           Write-Host 'PRODUCTION_AGENT_DEPLOY=PASS'
+
+      - name: Start existing GPT Codex Bridge supervisor
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $launcher = Join-Path $runtime 'scripts\run-supervisor.py'
+          if (-not (Test-Path $launcher)) { throw "Existing Bridge supervisor launcher missing: $launcher" }
+
+          $python = Get-Command python.exe -ErrorAction SilentlyContinue
+          if (-not $python) { $python = Get-Command python3.exe -ErrorAction SilentlyContinue }
+          if (-not $python) { throw 'Python 3 is required to resume the existing GPT-Codex Bridge supervisor.' }
+          $pythonPath = $python.Source
+          $versionOk = & $pythonPath -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw "Bridge supervisor requires Python >=3.10: $pythonPath" }
+
+          $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
+          $currentUser = "$env:USERDOMAIN\$env:USERNAME"
+          $stateDir = Join-Path $runtime 'output\headless-production'
+          New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+          $action = New-ScheduledTaskAction -Execute $pythonPath -Argument "`"$launcher`" --state-dir `"$stateDir`" --interval 30" -WorkingDirectory $runtime
+          $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
+          $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 50 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+          $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
+          $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'Existing GPT-Codex Bridge supervisor. Resumes durable Bridge state and continuously routes GPT decisions to Codex without changing firmware release policy.'
+          Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
+          Start-ScheduledTask -TaskName $taskName
+          Start-Sleep -Seconds 3
+          $registered = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+          Write-Host "GPT_CODEX_BRIDGE_SUPERVISOR_TASK=$($registered.State)"
+          Write-Host 'GPT_CODEX_BRIDGE_SUPERVISOR=STARTED'
 
       - name: Start persistent v3 controller
         shell: powershell
