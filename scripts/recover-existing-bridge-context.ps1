@@ -108,7 +108,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$InnerScript"
 if exist "$ResultPath" del /f /q "%~f0" >nul 2>&1
 exit /b 0
 "@
-        [IO.File]::WriteAllText($StartupWrapper,$wrapper,(New-Object Text.ASCIIEncoding),$false)
+        [IO.File]::WriteAllText($StartupWrapper,$wrapper,(New-Object Text.ASCIIEncoding))
         Write-Host "BRIDGE_CONTEXT_RECOVERY=STAGED_FOR_CHENZ_LOGON path=$StartupWrapper"
     } catch {
         Write-Host "BRIDGE_CONTEXT_RECOVERY=BLOCKED_STARTUP_WRITE reason=$($_.Exception.Message)"
