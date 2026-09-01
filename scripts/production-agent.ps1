@@ -16,11 +16,13 @@ $StatePath = Join-Path $Out 'state.json'
 $HandoffPath = Join-Path $Out 'handoff.json'
 $LogPath = Join-Path $Out 'agent.log'
 $ManifestPath = Join-Path $Out 'candidate-manifest.json'
+$MetadataPath = Join-Path $Out 'artifact-metadata.json'
 $ArtifactDir = Join-Path $Out 'artifact'
 $RollbackDir = Join-Path $Out 'rollback'
 $LockPath = Join-Path $Out 'production-agent.lock'
 New-Item -ItemType Directory -Force -Path $Out,$RollbackDir | Out-Null
 if ($PollSeconds -le 0) { $PollSeconds = [int]$Config.poll_seconds }
+$ExplicitRunId = $RunId -gt 0
 if ($RunId -le 0) { $RunId = [long]$Config.bootstrap.run_id }
 
 $Stages = @(
@@ -42,16 +44,33 @@ function Log([string]$Message) {
     Write-Host $line
 }
 
-function Load-State {
-    if (-not (Test-Path $StatePath)) {
-        return [pscustomobject]@{
-            schema_version='1.0'; stage='REQUESTED'; status='LIVE'; run_id=$RunId;
-            artifact_id=[long]$Config.bootstrap.artifact_id; artifact_name=[string]$Config.bootstrap.artifact_name;
-            source_sha=[string]$Config.bootstrap.source_sha; candidate_sha256=''; candidate_path='';
-            target=''; last_error=''; human_gate=$null; updated_at=(Get-Date).ToString('o')
-        }
+function New-State([long]$RequestedRunId) {
+    return [pscustomobject]@{
+        schema_version='1.1'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
+        artifact_id=[long]0; artifact_name=''; source_sha=''; candidate_sha256=''; candidate_path='';
+        remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false;
+        updated_at=(Get-Date).ToString('o')
     }
-    return (Get-Content -Raw $StatePath | ConvertFrom-Json)
+}
+
+function Reset-RunLocalEvidence([long]$RequestedRunId) {
+    if (Test-Path $StatePath) {
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        Copy-Item -Force $StatePath (Join-Path $Out "state-${stamp}-before-run-${RequestedRunId}.json") -ErrorAction SilentlyContinue
+    }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $ArtifactDir
+    Remove-Item -Force -ErrorAction SilentlyContinue $ManifestPath,$MetadataPath
+}
+
+function Load-State {
+    if (-not (Test-Path $StatePath)) { return (New-State -RequestedRunId $RunId) }
+    $state = Get-Content -Raw $StatePath | ConvertFrom-Json
+    if ($ExplicitRunId -and [long]$state.run_id -ne $RunId) {
+        Log "RUN_RECONCILE old=$($state.run_id) new=$RunId; preserving old evidence and starting the requested production run."
+        Reset-RunLocalEvidence -RequestedRunId $RunId
+        return (New-State -RequestedRunId $RunId)
+    }
+    return $state
 }
 
 function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Message='') {
@@ -71,7 +90,7 @@ function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Messag
         candidate_sha256 = $State.candidate_sha256
         target = $State.target
         human_gate = $State.human_gate
-        next_action = if ($Stage -eq 'PRODUCTION_RELEASED') { 'NONE' } else { 'AUTO_RESUME_FIRST_INCOMPLETE_GATE' }
+        next_action = if ($Stage -eq 'PRODUCTION_RELEASED') { 'NONE' } elseif ($Status -eq 'BLOCKED') { 'WAIT_FOR_SAFETY_GATE_CLEARANCE' } else { 'AUTO_RESUME_FIRST_INCOMPLETE_GATE' }
         last_updated = $State.updated_at
     } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $HandoffPath
     Log "STATE stage=$Stage status=$Status run=$($State.run_id)"
@@ -88,11 +107,11 @@ function Invoke-Process([string]$File,[string[]]$Args,[switch]$AllowFailure) {
 }
 
 function Assert-GitHubAuth($State) {
-    $auth = Invoke-Process 'gh' @('auth','status','--hostname','github.com') -AllowFailure
+    $auth = Invoke-Process 'gh' @('api',"repos/$([string]$Config.repository)",'--jq','.full_name') -AllowFailure
     if ($auth.ExitCode -ne 0) {
-        $State.human_gate = 'NEW_CREDENTIAL_PROVISIONING'
-        Save-State $State ([string]$State.stage) 'BLOCKED' 'GitHub CLI authentication unavailable.'
-        throw 'NEW_CREDENTIAL_PROVISIONING'
+        $State.human_gate = $null
+        Save-State $State ([string]$State.stage) 'RETRYING' "GITHUB_AUTH_RECOVERABLE: API credential probe failed. $($auth.Output)"
+        throw 'GITHUB_AUTH_RECOVERABLE'
     }
     $State.human_gate = $null
 }
@@ -105,12 +124,20 @@ function Ensure-Rollback($State) {
         Log "Downloading verified rollback from release $($Known.stable_tag)"
         $dl = Invoke-Process 'gh' @('release','download',[string]$Known.stable_tag,'--repo',[string]$Config.repository,'--dir',$RollbackDir,'--clobber','--pattern',[string]$Known.firmware_file) -AllowFailure
         if ($dl.ExitCode -ne 0) {
+            if ([string]$dl.Output -match '(?i)authentication|bad credentials|HTTP 401|rate limit|HTTP 403|HTTP 5\d\d|timeout|timed out|EOF|connection reset|connection refused') {
+                Save-State $State ([string]$State.stage) 'RETRYING' "ROLLBACK_FETCH_RECOVERABLE: $($dl.Output)"
+                throw 'ROLLBACK_FETCH_RECOVERABLE'
+            }
             $State.human_gate = 'NO_SAFE_ROLLBACK'
-            Save-State $State ([string]$State.stage) 'BLOCKED' "Rollback download failed: $($dl.Output)"
+            Save-State $State ([string]$State.stage) 'BLOCKED' "Rollback download failed deterministically: $($dl.Output)"
             throw 'NO_SAFE_ROLLBACK'
         }
     }
-    if (-not (Test-Path $rollback)) { throw 'NO_SAFE_ROLLBACK' }
+    if (-not (Test-Path $rollback)) {
+        $State.human_gate = 'NO_SAFE_ROLLBACK'
+        Save-State $State ([string]$State.stage) 'BLOCKED' 'Verified rollback artifact is unavailable.'
+        throw 'NO_SAFE_ROLLBACK'
+    }
     $hash = (Get-FileHash -Algorithm SHA256 $rollback).Hash.ToLowerInvariant()
     if ($hash -ne ([string]$Known.sha256).ToLowerInvariant()) {
         $State.human_gate = 'NO_SAFE_ROLLBACK'
@@ -138,17 +165,21 @@ function Get-DeviceTarget($State) {
 function Ensure-Artifact($State) {
     if ((At-Or-After $State 'CANDIDATE_VERIFIED') -and (Test-Path ([string]$State.candidate_path))) { return }
     Assert-GitHubAuth $State
-    Log "Fetching immutable artifact for Run $($State.run_id)"
+    Log "Fetching immutable production artifact for Run $($State.run_id)"
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'fetch-production-artifact.ps1') `
-        -RunId ([long]$State.run_id) -ArtifactId ([long]$State.artifact_id) -ArtifactName ([string]$State.artifact_name) `
-        -ExpectedCandidateSha256 ([string]$Config.bootstrap.candidate_sha256) -ExpectedCandidateSize ([long]$Config.bootstrap.candidate_size) `
-        -Repository ([string]$Config.repository) -Destination $ArtifactDir | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "Artifact fetch failed exit=$LASTEXITCODE" }
+        -RunId ([long]$State.run_id) -Repository ([string]$Config.repository) -Destination $ArtifactDir | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Save-State $State ([string]$State.stage) 'RETRYING' "ARTIFACT_FETCH_RECOVERABLE exit=$LASTEXITCODE; same run will be retried without rebuild."
+        throw "ARTIFACT_FETCH_RECOVERABLE_$LASTEXITCODE"
+    }
     $manifest = Get-Content -Raw $ManifestPath | ConvertFrom-Json
+    $metadata = Get-Content -Raw $MetadataPath | ConvertFrom-Json
+    $State.artifact_id = [long]$metadata.artifact_id
+    $State.artifact_name = [string]$metadata.artifact_name
     $State.candidate_sha256 = [string]$manifest.candidate_sha256
     $State.candidate_path = [string]$manifest.candidate_path
     $State.source_sha = [string]$manifest.source_sha
-    Save-State $State 'CANDIDATE_VERIFIED' 'LIVE'
+    Save-State $State 'CANDIDATE_VERIFIED' 'VERIFIED'
 }
 
 function Upload-Candidate($State,[string]$Target) {
@@ -156,7 +187,9 @@ function Upload-Candidate($State,[string]$Target) {
     $remote = [string]$Profile.remote_candidate
     Log "Uploading candidate to ${Target}:$remote"
     $scp = Invoke-Process 'scp.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=10',[string]$State.candidate_path,"${Target}:$remote") -AllowFailure
-    if ($scp.ExitCode -ne 0) { throw "Candidate upload failed: $($scp.Output)" }
+    if ($scp.ExitCode -ne 0) { throw "CANDIDATE_UPLOAD_RECOVERABLE: $($scp.Output)" }
+    $State.remote_candidate = $remote
+    Save-State $State ([string]$State.stage) 'LIVE'
     return $remote
 }
 
@@ -170,7 +203,11 @@ function Invoke-SafetyGate($State,[string]$Target,[string]$Rollback,[string]$Rem
 
 function Invoke-VerifiedSysupgrade($State,[string]$Target,[string]$Remote) {
     $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
-    if (-not $Profile.verified) { throw 'UNRECOVERABLE_IRREVERSIBLE_OPERATION' }
+    if (-not $Profile.verified) {
+        $State.human_gate = 'UNRECOVERABLE_IRREVERSIBLE_OPERATION'
+        Save-State $State ([string]$State.stage) 'BLOCKED' 'Arthur sysupgrade profile is not historically verified.'
+        throw 'UNRECOVERABLE_IRREVERSIBLE_OPERATION'
+    }
     $args = ([string]$Profile.argument_template).Replace('{remote_candidate}',$Remote)
     $command = "$( [string]$Profile.remote_upgrade_binary ) $args"
     Save-State $State 'FLASH_STARTED' 'LIVE'
@@ -197,12 +234,26 @@ function Wait-Device($State) {
     throw "WAIT_DEVICE timeout: Arthur did not recover at $($Config.expected_lan)"
 }
 
+function Invoke-RepairController($State) {
+    if ($State.PSObject.Properties.Name -contains 'repair_controller_started' -and $State.repair_controller_started -eq $true) {
+        Log 'AUTO_REMEDIATION_CONTROLLER already started for this run; not launching a duplicate.'
+        return
+    }
+    $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
+    if (-not (Test-Path $controller)) { throw 'Existing ci-controller-v3.ps1 repair controller is missing.' }
+    Log 'Routing deterministic build/verification failure to existing Codex auto-repair controller.'
+    $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Resume','-RunId',[string]$State.run_id) -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+    $State.repair_controller_started = $true
+    Save-State $State ([string]$State.stage) ([string]$State.status)
+    Log "AUTO_REMEDIATION_CONTROLLER_STARTED pid=$($proc.Id) run=$($State.run_id)"
+}
+
 function Invoke-RealDeviceVerify($State,[string]$Target) {
     $tag = "arthur-update-$($State.run_id)"
     Log "Running full real-device verification candidate=$tag target=$Target"
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'real-device-verify-v3.ps1') -Candidate $tag -Commit ([string]$State.source_sha) -Target $Target | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device verification failed; route to batched Codex repair.'
+        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device verification failed; existing Codex repair controller will process evidence while the Production Agent stays on this checkpoint.'
         Invoke-RepairController $State
         throw 'REAL_DEVICE_VERIFY_FAILED_REPAIR_STARTED'
     }
@@ -210,19 +261,12 @@ function Invoke-RealDeviceVerify($State,[string]$Target) {
     if (-not (Test-Path $report)) { throw 'Real-device verifier produced no JSON report.' }
     $result = Get-Content -Raw $report | ConvertFrom-Json
     if ([string]$result.result -ne 'PASS') {
-        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device report result != PASS.'
+        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device report result != PASS; existing Codex repair controller will process evidence while the Production Agent stays on this checkpoint.'
         Invoke-RepairController $State
         throw 'REAL_DEVICE_VERIFY_FAILED_REPAIR_STARTED'
     }
+    $State.repair_controller_started = $false
     Save-State $State 'RELEASE_GATE' 'VERIFIED'
-}
-
-function Invoke-RepairController($State) {
-    $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
-    if (-not (Test-Path $controller)) { throw 'Existing ci-controller-v3.ps1 repair controller is missing.' }
-    Log 'Routing deterministic build/verification failure to existing Codex auto-repair controller.'
-    $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Resume') -WorkingDirectory $Root -WindowStyle Hidden -PassThru
-    Log "AUTO_REMEDIATION_CONTROLLER_STARTED pid=$($proc.Id)"
 }
 
 function Complete-Release($State) {
@@ -239,16 +283,50 @@ function Complete-Release($State) {
 function Run-ProductionOnce {
     $state = Load-State
     if ([string]$state.stage -eq 'PRODUCTION_RELEASED') { Write-Host 'PRODUCTION_RELEASED=YES'; return }
+
     Assert-GitHubAuth $state
-    Ensure-Artifact $state
-    $rollback = Ensure-Rollback $state
-    $target = Get-DeviceTarget $state
-    $remote = Upload-Candidate $state $target
-    Invoke-SafetyGate $state $target $rollback $remote
-    Invoke-VerifiedSysupgrade $state $target $remote
-    $target = Wait-Device $state
-    Invoke-RealDeviceVerify $state $target
-    Complete-Release $state
+
+    if (-not (At-Or-After $state 'CANDIDATE_VERIFIED')) {
+        Ensure-Artifact $state
+        $state = Load-State
+    }
+
+    if (-not (At-Or-After $state 'AUTO_FLASH_SAFETY_GATE')) {
+        $rollback = Ensure-Rollback $state
+        $target = Get-DeviceTarget $state
+        $remote = Upload-Candidate $state $target
+        Invoke-SafetyGate $state $target $rollback $remote
+        $state = Load-State
+    }
+
+    if ([string]$state.stage -eq 'AUTO_FLASH_SAFETY_GATE') {
+        $target = if ([string]$state.target) { [string]$state.target } else { Get-DeviceTarget $state }
+        $remote = if ([string]$state.remote_candidate) { [string]$state.remote_candidate } else { Upload-Candidate $state $target }
+        Invoke-VerifiedSysupgrade $state $target $remote
+        $state = Load-State
+    }
+
+    if ([string]$state.stage -eq 'FLASH_STARTED') {
+        # A crash/restart after FLASH_STARTED must never blindly execute sysupgrade again.
+        # Reconcile the real device by entering WAIT_DEVICE instead.
+        Save-State $state 'WAIT_DEVICE' 'LIVE' 'Recovered after FLASH_STARTED; reconciling device state without a second write.'
+        $state = Load-State
+    }
+
+    if ([string]$state.stage -eq 'WAIT_DEVICE') {
+        Wait-Device $state | Out-Null
+        $state = Load-State
+    }
+
+    if ([string]$state.stage -eq 'REAL_DEVICE_VERIFY') {
+        $target = if ([string]$state.target) { [string]$state.target } else { "root@$($Config.expected_lan)" }
+        Invoke-RealDeviceVerify $state $target
+        $state = Load-State
+    }
+
+    if ([string]$state.stage -eq 'RELEASE_GATE') {
+        Complete-Release $state
+    }
 }
 
 if ($Mode -eq 'Status') {
@@ -277,7 +355,10 @@ try {
             Log "AGENT_ITERATION_ERROR $message"
             $state = Load-State
             if ([string]$state.human_gate -in @($Config.human_stop_classes)) {
-                Log "HUMAN_GATE=$($state.human_gate); persistent agent remains installed and will resume after the gate is cleared."
+                Log "HUMAN_GATE=$($state.human_gate); only a frozen flash-safety condition may pause the write path."
+            } else {
+                Save-State $state ([string]$state.stage) 'RETRYING' $message
+                Log 'RECOVERABLE_AGENT_ERROR; persistent loop will execute next_action automatically.'
             }
         }
         Start-Sleep -Seconds $PollSeconds
