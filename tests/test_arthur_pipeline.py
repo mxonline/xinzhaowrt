@@ -19,6 +19,31 @@ class ArthurPipelineTests(unittest.TestCase):
         self.assertEqual("BUILD", pipeline.next_phase("BUILD", "RECOVERABLE"))
         self.assertEqual("ARTIFACT", pipeline.next_phase("BUILD", "SAFE_AUTO"))
 
+    def test_theme_lane_is_recoverable_and_never_flashable(self):
+        pipeline = ArthurPipeline()
+
+        route = pipeline.classify_candidate_route(
+            ".github/workflows/arthur-theme-candidate.yml",
+            ["SHA256SUMS.local"],
+        )
+
+        self.assertEqual("RECOVERABLE_ROUTE_MISMATCH", route["route"])
+        self.assertFalse(route["flash_allowed"])
+        self.assertFalse(route["release_allowed"])
+        self.assertIn("plugin-verification.txt", route["missing_evidence"])
+
+    def test_production_lane_requires_complete_evidence(self):
+        pipeline = ArthurPipeline()
+
+        route = pipeline.classify_candidate_route(
+            ".github/workflows/arthur-update-v3.yml",
+            pipeline.production_candidate_evidence,
+        )
+
+        self.assertEqual("PRODUCTION_CANDIDATE", route["route"])
+        self.assertTrue(route["flash_allowed"])
+        self.assertTrue(route["release_allowed"])
+
 
 if __name__ == "__main__":
     unittest.main()

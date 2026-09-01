@@ -194,7 +194,17 @@ def runtime_status_payload(state):
     active = observations.get("active_process") or {"pid": None, "alive": False, "console_visible": False}
     last_decision = state.last_decision or {}
     candidate = state.candidate or {}
-    candidate_id = candidate.get("id") or candidate.get("candidate_id") or candidate.get("sha256") or candidate.get("filename")
+    candidate_id = (
+        candidate.get("id")
+        or candidate.get("candidate_id")
+        or candidate.get("github_run_id")
+        or candidate.get("run_id")
+        or candidate.get("sha256")
+        or candidate.get("filename")
+    )
+    current_stage = observations.get("current_stage") or observations.get("stage") or state.phase
+    github_run_id = observations.get("github_run_id") or candidate.get("github_run_id") or candidate.get("run_id")
+    next_action = observations.get("next_action") or state.next_codex_prompt or last_decision.get("next_codex_prompt")
     daemon_pid = observations.get("pid")
     started_at = observations.get("started_at")
     last_progress_at = observations.get("last_progress_at")
@@ -210,8 +220,10 @@ def runtime_status_payload(state):
         "daemon_pid": daemon_pid,
         "daemon_uptime": age_seconds(started_at),
         "stage": state.phase,
+        "current_stage": current_stage,
         "action": observations.get("action"),
         "candidate_id": candidate_id,
+        "github_run_id": github_run_id,
         "codex_child_pid": active.get("pid"),
         "codex_thread_id": state.executor_thread_id,
         "controller_state": last_decision.get("action") or "IDLE",
@@ -222,7 +234,7 @@ def runtime_status_payload(state):
         "retry_count": observations.get("retry_count", 0),
         "human_input_required": bool(state.pending_human_gate),
         "human_gate": state.pending_human_gate,
-        "next_action": state.next_codex_prompt or last_decision.get("next_codex_prompt"),
+        "next_action": next_action,
         "terminal_state": state.terminal_state,
         "updated_at": utc_now(),
     }
@@ -238,7 +250,10 @@ def publish_runtime_status(state, status_path, handoff_path):
             "device": state.device,
             "phase": state.phase,
             "runtime": payload["runtime"],
+            "current_stage": payload["current_stage"],
             "next_action": payload["next_action"],
+            "github_run_id": payload["github_run_id"],
+            "candidate_id": payload["candidate_id"],
             "executor_thread_id": state.executor_thread_id,
             "controller_thread_id": state.controller_thread_id,
             "pending_human_gate": state.pending_human_gate,

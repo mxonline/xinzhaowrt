@@ -22,6 +22,23 @@
     "auth_gate": "AUTH_REQUIRED:GITHUB",
     "auth_reason": "CLOUD_BUILD_AND_RELEASE_AUTH"
   },
+  "candidate_acceptance": {
+    "production_workflow": ".github/workflows/arthur-update-v3.yml",
+    "non_production_workflows": [
+      ".github/workflows/arthur-theme-candidate.yml",
+      ".github/workflows/arthur-fast-candidate.yml"
+    ],
+    "required_evidence": [
+      "plugin-verification.txt",
+      "update-metadata.json",
+      "arthur-known-good.lock",
+      "build-info.txt",
+      "SHA256SUMS.local"
+    ],
+    "route_mismatch": "RECOVERABLE_ROUTE_MISMATCH",
+    "non_production_flash": false,
+    "non_production_release": false
+  },
   "standard_sysupgrade": {
     "automation": "REQUIRED",
     "manual_flash": false,
