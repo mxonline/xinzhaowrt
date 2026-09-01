@@ -4,9 +4,9 @@ name: Build XinZhaoWrt Arthur
   workflow_dispatch:
     inputs:
       source_ref:
-        description: VIKINGYFY/immortalwrt branch or tag
+        description: Verified immortalwrt commit, branch or tag
         required: true
-        default: main
+        default: 27e26e324bee0b0c2a4eb58e2e9121fea5d43194
         type: string
       publish_candidate:
         description: Publish successful build as Candidate GitHub Release
@@ -54,7 +54,7 @@ jobs:
 
       - name: Feed Check
         env:
-          IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+          IMMORTAL_SOURCE_REPO: https://github.com/immortalwrt/immortalwrt.git
           IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
         run: |
           set -Eeuo pipefail
@@ -96,7 +96,7 @@ jobs:
           REF="$IMMORTAL_SOURCE_REF"
           SRC="$GITHUB_WORKSPACE/work/feed-check/immortalwrt"
           rm -rf "$SRC"
-          git clone --depth=1 --branch "$REF" "$IMMORTAL_SOURCE_REPO" "$SRC"
+          bash "$GITHUB_WORKSPACE/scripts/fetch-immortalwrt-source.sh" "$SRC" "$IMMORTAL_SOURCE_REPO" "$REF" "$GITHUB_WORKSPACE/output"
           cd "$SRC"
 
           ./scripts/feeds update -a
@@ -118,7 +118,7 @@ jobs:
           REF='${{ github.event.inputs.source_ref }}'
           if [ -z "$REF" ]; then REF=main; fi
           mkdir -p output/logs
-          export IMMORTAL_SOURCE_REPO='https://github.com/VIKINGYFY/immortalwrt.git'
+          export IMMORTAL_SOURCE_REPO='https://github.com/immortalwrt/immortalwrt.git'
           export IMMORTAL_SOURCE_REF="$REF"
           ./scripts/build.sh "$REF"
 
@@ -126,7 +126,7 @@ jobs:
         if: failure()
         continue-on-error: true
         env:
-          IMMORTAL_SOURCE_REPO: https://github.com/VIKINGYFY/immortalwrt.git
+          IMMORTAL_SOURCE_REPO: https://github.com/immortalwrt/immortalwrt.git
           IMMORTAL_SOURCE_REF: ${{ github.event.inputs.source_ref || 'main' }}
         run: |
           if [ -s output/logs/feed-error.txt ]; then
