@@ -49,8 +49,47 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Bootstrap uv
-        uses: astral-sh/setup-uv@v6
+      - name: Quiesce standalone GPT Codex Bridge phase machine
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $stateDir = Join-Path $runtime 'output\headless-production'
+          $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
+          New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+          Set-Content -Path (Join-Path $stateDir 'STOP') -Value 'dispatch-only' -Encoding ASCII -Force
+
+          if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+          }
+
+          $pidCandidates = New-Object System.Collections.Generic.HashSet[int]
+          foreach ($jsonName in @('supervisor-state.json','runtime-status.json')) {
+            $path = Join-Path $stateDir $jsonName
+            if (-not (Test-Path $path)) { continue }
+            try {
+              $data = Get-Content -Raw $path | ConvertFrom-Json
+              foreach ($field in @('child_pid','daemon_pid','supervisor_pid')) {
+                if ($data.PSObject.Properties.Name -contains $field -and $data.$field) {
+                  [void]$pidCandidates.Add([int]$data.$field)
+                }
+              }
+            } catch {}
+          }
+          foreach ($processId in $pidCandidates) {
+            try {
+              $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction Stop
+              $cmd = [string]$proc.CommandLine
+              if ($cmd -match '(?i)ai_orchestrator|run-supervisor\.py' -and $cmd -match '(?i)headless-production') {
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+                Write-Host "GPT_CODEX_BRIDGE_STANDALONE_STOPPED pid=$processId"
+              }
+            } catch {}
+          }
+          Write-Host 'GPT_CODEX_BRIDGE_DISPATCH_ONLY=PASS'
+          exit 0
 
       - name: Validate deployment source
         shell: powershell
@@ -61,7 +100,7 @@ jobs:
             & ./tests/verified-baseline-inheritance.tests.ps1
           }
 
-      - name: Bootstrap persistent Python 3.12 and GPT Codex dependencies
+      - name: Reuse or bootstrap persistent Python 3.12 and GPT Codex dependencies
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -69,26 +108,55 @@ jobs:
           $managedPython = Join-Path $pythonHome 'python'
           $uvCache = Join-Path $pythonHome 'cache'
           $venv = Join-Path $pythonHome '.venv'
+          $pythonExe = Join-Path $venv 'Scripts\python.exe'
           New-Item -ItemType Directory -Force -Path $pythonHome | Out-Null
 
-          $env:UV_PYTHON_INSTALL_DIR = $managedPython
-          $env:UV_CACHE_DIR = $uvCache
-          uv python install 3.12
-          if ($LASTEXITCODE -ne 0) { throw 'uv managed Python 3.12 install failed.' }
-
-          uv venv $venv --python 3.12 --clear
-          if ($LASTEXITCODE -ne 0) { throw 'uv persistent venv creation failed.' }
-
-          $pythonExe = Join-Path $venv 'Scripts\python.exe'
-          if (-not (Test-Path $pythonExe)) {
-            throw "Persistent Python executable was not created: $pythonExe"
+          $reuse = $false
+          if (Test-Path $pythonExe) {
+            & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+            if ($LASTEXITCODE -eq 0) {
+              $reuse = $true
+              Write-Host "GPT_CODEX_BRIDGE_RUNTIME=REUSE interpreter=$pythonExe"
+            }
           }
 
-          uv pip install --python $pythonExe -r requirements-headless.txt
-          if ($LASTEXITCODE -ne 0) { throw 'GPT-Codex Bridge dependency installation failed.' }
+          if (-not $reuse) {
+            $tools = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\Tools'
+            $uvExe = Join-Path $tools 'uv.exe'
+            New-Item -ItemType Directory -Force -Path $tools | Out-Null
 
-          & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-          if ($LASTEXITCODE -ne 0) { throw 'Persistent Python/Codex SDK verification failed.' }
+            if (-not (Test-Path $uvExe)) {
+              $cachedUv = Get-ChildItem 'C:\actions-runner\_work\_tool\uv' -Recurse -Filter uv.exe -File -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1
+              if ($cachedUv) {
+                Copy-Item -Force $cachedUv.FullName $uvExe
+              }
+            }
+
+            if (-not (Test-Path $uvExe)) {
+              $zip = Join-Path $env:TEMP 'xinzhaowrt-uv-0.12.9.zip'
+              $extract = Join-Path $env:TEMP 'xinzhaowrt-uv-0.12.9'
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $extract
+              Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/astral-sh/uv/releases/download/0.12.9/uv-x86_64-pc-windows-msvc.zip' -OutFile $zip
+              Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+              $downloadedUv = Get-ChildItem $extract -Recurse -Filter uv.exe -File | Select-Object -First 1
+              if (-not $downloadedUv) { throw 'Pinned uv bootstrap archive did not contain uv.exe.' }
+              Copy-Item -Force $downloadedUv.FullName $uvExe
+            }
+
+            $env:UV_PYTHON_INSTALL_DIR = $managedPython
+            $env:UV_CACHE_DIR = $uvCache
+            & $uvExe python install 3.12
+            if ($LASTEXITCODE -ne 0) { throw 'uv managed Python 3.12 install failed.' }
+            & $uvExe venv $venv --python 3.12 --clear
+            if ($LASTEXITCODE -ne 0) { throw 'uv persistent venv creation failed.' }
+            if (-not (Test-Path $pythonExe)) { throw "Persistent Python executable was not created: $pythonExe" }
+            & $uvExe pip install --python $pythonExe -r requirements-headless.txt
+            if ($LASTEXITCODE -ne 0) { throw 'GPT-Codex Bridge dependency installation failed.' }
+            & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+            if ($LASTEXITCODE -ne 0) { throw 'Persistent Python/Codex SDK verification failed.' }
+            Write-Host "GPT_CODEX_BRIDGE_RUNTIME=BOOTSTRAPPED interpreter=$pythonExe"
+          }
 
           "HEADLESS_PYTHON_EXE=$pythonExe" >> $env:GITHUB_ENV
           Write-Host "GPT_CODEX_BRIDGE_PYTHON=PASS interpreter=$pythonExe"
@@ -139,15 +207,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize Production Agent runtime to the checked-out source SHA.' }
 
           $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
-          if ($runtimeSha -ne $sourceSha) {
-            throw "Production Agent runtime SHA mismatch: source=$sourceSha runtime=$runtimeSha"
-          }
-          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\runtime.py'))) {
-            throw 'Existing GPT-Codex Bridge runtime was not synchronized into the persistent runtime.'
-          }
-          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\adapters.py'))) {
-            throw 'Existing GPT-Codex Bridge adapters were not synchronized into the persistent runtime.'
-          }
+          if ($runtimeSha -ne $sourceSha) { throw "Production Agent runtime SHA mismatch: source=$sourceSha runtime=$runtimeSha" }
+          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\adapters.py'))) { throw 'Existing GPT-Codex Bridge adapters were not synchronized into the persistent runtime.' }
           Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
           Write-Host "PRODUCTION_AGENT_RUNTIME_SHA=$runtimeSha"
           Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC=PASS'
@@ -159,11 +220,8 @@ jobs:
           $ErrorActionPreference = 'Continue'
           Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
           $probe = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
-          if ($LASTEXITCODE -eq 0 -and (($probe -join "`n") -match 'mxonline/xinzhaowrt')) {
-            Write-Host 'PERSISTENT_GITHUB_AUTH=PASS'
-          } else {
-            Write-Warning "PERSISTENT_GITHUB_AUTH=RETRYING $($probe -join ' ')"
-          }
+          if ($LASTEXITCODE -eq 0 -and (($probe -join "`n") -match 'mxonline/xinzhaowrt')) { Write-Host 'PERSISTENT_GITHUB_AUTH=PASS' }
+          else { Write-Warning "PERSISTENT_GITHUB_AUTH=RETRYING $($probe -join ' ')" }
           exit 0
 
       - name: Install and start persistent Production Agent
@@ -179,56 +237,20 @@ jobs:
           Write-Host "PRODUCTION_AGENT_TASK=$($task.State)"
           if (Test-Path (Join-Path $runtime 'output\production-agent\state.json')) {
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\production-agent-status.ps1')
-          } else {
-            Write-Host 'PRODUCTION_AGENT_STATE=STARTING'
-          }
+          } else { Write-Host 'PRODUCTION_AGENT_STATE=STARTING' }
           Write-Host 'PRODUCTION_AGENT_DEPLOY=PASS'
 
-      - name: Keep GPT Codex Bridge dispatch-only
+      - name: Confirm GPT Codex Bridge dispatch-only mode
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          $stateDir = Join-Path $runtime 'output\headless-production'
           $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
-
-          # The restored historical supervisor owns an obsolete internal Arthur phase
-          # machine. The frozen v3 Controller/Production Agent remains the only release
-          # owner; keep ai_orchestrator available only as the GPT<->Codex decision layer.
-          New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-          Set-Content -Path (Join-Path $stateDir 'STOP') -Value 'dispatch-only' -Encoding ASCII -Force
-
-          if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if ($task) {
+            Write-Warning "Standalone Bridge supervisor still registered; removing it now. state=$($task.State)"
             Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
             Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
           }
-
-          $pidCandidates = New-Object System.Collections.Generic.HashSet[int]
-          foreach ($jsonName in @('supervisor-state.json','runtime-status.json')) {
-            $path = Join-Path $stateDir $jsonName
-            if (-not (Test-Path $path)) { continue }
-            try {
-              $data = Get-Content -Raw $path | ConvertFrom-Json
-              foreach ($field in @('child_pid','daemon_pid','supervisor_pid')) {
-                if ($data.PSObject.Properties.Name -contains $field -and $data.$field) {
-                  [void]$pidCandidates.Add([int]$data.$field)
-                }
-              }
-            } catch {}
-          }
-
-          foreach ($processId in $pidCandidates) {
-            try {
-              $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction Stop
-              $cmd = [string]$proc.CommandLine
-              if ($cmd -match '(?i)ai_orchestrator|run-supervisor\.py' -and $cmd -match '(?i)headless-production') {
-                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-                Write-Host "GPT_CODEX_BRIDGE_STANDALONE_STOPPED pid=$processId"
-              }
-            } catch {}
-          }
-
           Write-Host 'GPT_CODEX_BRIDGE_DISPATCH_ONLY=PASS'
           exit 0
 
@@ -242,11 +264,8 @@ jobs:
           if (-not (Test-Path $controller)) { throw "Controller missing from stable runtime: $controller" }
 
           $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-          if ($pwsh) {
-            $pwshPath = $pwsh.Source
-          } else {
-            $pwshPath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
-          }
+          if ($pwsh) { $pwshPath = $pwsh.Source }
+          else { $pwshPath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe' }
           if (-not (Test-Path $pwshPath)) { throw "PowerShell 7 unavailable for controller: $pwshPath" }
 
           $taskName = 'XinZhaoWrt-Arthur-v3-Controller'
