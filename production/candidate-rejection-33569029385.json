@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "candidate_run_id": "33569029385",
+  "status": "REJECTED_FOR_RELEASE",
+  "flash_allowed": false,
+  "release_allowed": false,
+  "reflashing_allowed": false,
+  "reason": "This formal run was requested before the restored authenticated AdGuard Home management path and actual iStore QuickStart homepage functional acceptance were part of the production source. It failed before Build and produced no releasable Candidate. It must never be flashed or promoted.",
+  "replacement_policy": "After the functional AdGuard/iStore fix is verified and merged, generate exactly one replacement Arthur Known-Good Update v3 Candidate from the frozen verified Known-Good baseline and continue the existing release chain."
+}
