@@ -26,7 +26,9 @@ $requiredFiles = @(
     'scripts/production-agent-status.ps1',
     'production/production-agent.json',
     'production/arthur-flash-profile.json',
-    '.github/workflows/production-agent-deploy.yml'
+    '.github/workflows/production-agent-deploy.yml',
+    '.github/workflows/production-agent-ci.yml',
+    '.github/CODEOWNERS'
 )
 
 foreach ($relative in $requiredFiles) {
@@ -39,6 +41,8 @@ $gatePath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
+$contractCiPath = Join-Path $Root '.github/workflows/production-agent-ci.yml'
+$codeownersPath = Join-Path $Root '.github/CODEOWNERS'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
 
@@ -48,6 +52,8 @@ $gate = Get-Content -Raw $gatePath
 $controller = Get-Content -Raw $controllerPath
 $install = Get-Content -Raw $installPath
 $deploy = Get-Content -Raw $deployPath
+$contractCi = Get-Content -Raw $contractCiPath
+$codeowners = Get-Content -Raw $codeownersPath
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
 $flashProfile = Get-Content -Raw $flashProfilePath | ConvertFrom-Json
 
@@ -148,12 +154,21 @@ $expectedProtectedFiles = @(
     'scripts/production-agent.ps1',
     'scripts/auto-flash-safety-gate.ps1',
     '.github/workflows/production-agent-deploy.yml',
+    '.github/workflows/production-agent-ci.yml',
+    '.github/CODEOWNERS',
     'tests/production-agent.tests.ps1'
 )
 Assert-True (@($config.automation_contract.protected_control_files).Count -eq $expectedProtectedFiles.Count) 'protected control-file set changed'
 foreach ($relative in $expectedProtectedFiles) {
     Assert-True (@($config.automation_contract.protected_control_files) -contains $relative) "critical control file is not protected by contract: $relative"
     Assert-True (Test-Path (Join-Path $Root $relative)) "contract-protected control file missing: $relative"
+}
+
+# CI must validate the frozen contract on PRs and on direct main pushes. CODEOWNERS makes the critical control surface explicit.
+Assert-Contains $contractCi "push:`n    branches:`n      - main" 'production-agent contract CI must run on direct main pushes'
+Assert-Contains $contractCi "pull_request:`n    branches:`n      - main" 'production-agent contract CI must run on PRs targeting main'
+foreach ($relative in $expectedProtectedFiles) {
+    Assert-Contains $codeowners "/$relative @mxonline" "CODEOWNERS must require the repository owner for $relative"
 }
 
 Assert-True ([string]$flashProfile.device -eq 'jdcloud_re-ss-01') 'flash profile must bind Arthur device'
