@@ -86,7 +86,7 @@ Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verific
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
 Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
 Assert-True ($controller -notmatch 'Next hard gate is manual flash plus real-device verification') 'controller must not stop at Candidate publication waiting for manual flash'
-Assert-True ($controller -notmatch "throw \"BLOCKED: Codex repair timed out") 'Codex timeout must not become a terminal BLOCKED state'
+Assert-True ($controller -notmatch 'throw "BLOCKED: Codex repair timed out') 'Codex timeout must not become a terminal BLOCKED state'
 
 Assert-Contains $gate 'jdcloud_re-ss-01' 'safety gate must bind Arthur profile'
 Assert-Contains $gate '192.168.6.1' 'safety gate must bind expected Arthur LAN'
