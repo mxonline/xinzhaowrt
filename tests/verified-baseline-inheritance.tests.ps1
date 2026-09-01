@@ -20,6 +20,7 @@ $defaults = Get-Content -Raw (Join-Path $Root 'files/etc/uci-defaults/99-xinzhao
 $arthurConfig = Get-Content -Raw (Join-Path $Root 'config/arthur.config')
 $deploy = Get-Content -Raw (Join-Path $Root '.github/workflows/production-agent-deploy.yml')
 $themeLock = Get-Content -Raw (Join-Path $Root 'config/arthur-theme.lock')
+$requirementsPath = Join-Path $Root 'requirements-headless.txt'
 
 Assert-Contains $buildEnv 'DEFAULT_WIFI_SSID="xinzhaowrt"' 'formal product baseline must preserve approved Wi-Fi SSID'
 Assert-Contains $buildEnv 'DEFAULT_WIFI_PASSWORD="12345678"' 'formal product baseline must preserve approved Wi-Fi credential'
@@ -46,6 +47,12 @@ foreach ($relative in @(
 
 Assert-Contains $deploy 'ai_orchestrator' 'deployment must include the existing GPT-Codex Bridge runtime'
 Assert-Contains $deploy 'supervisor' 'deployment must start or resume the existing Bridge supervisor'
+Assert-Contains $deploy 'actions/setup-python@v5' 'deployment must bootstrap a supported Python instead of using the host Python 3.8'
+Assert-Contains $deploy "python-version: '3.12'" 'deployment must pin the unattended Bridge Python version'
+Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path into the supervisor step'
+Assert-True (Test-Path $requirementsPath) 'deployment must retain the existing headless runtime dependency input'
+$requirements = Get-Content -Raw $requirementsPath
+Assert-Contains $requirements 'openai-codex' 'headless runtime must install the existing Codex SDK dependency'
 
 foreach ($asset in @(
     'files/www/luci-static/xinzhao/favicon.ico',
