@@ -10,13 +10,24 @@ foreach ($tool in @('gh.exe','ssh.exe','scp.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Required command missing: $tool" }
 }
 
-# Do not trust `gh auth status` as a machine-auth gate. Exercise the repository API
-# with the credential actually available to this Windows account/runner.
-$auth = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
-if ($LASTEXITCODE -ne 0 -or (($auth -join "`n") -notmatch 'mxonline/xinzhaowrt')) {
-    throw "RECOVERABLE_GITHUB_AUTH: repository API probe failed; persistent automation may retry after machine/App credential recovery.`n$($auth -join "`n")"
+# Installation must not stop the unattended chain merely because the GitHub
+# Actions host process cannot see the persistent machine/App credential. Probe
+# it for evidence, then let the persistent agent retry/recover credentials in
+# its own long-lived user context.
+$previousPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    $auth = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
+    $authExit = $LASTEXITCODE
 }
-Write-Host 'PERSISTENT_GITHUB_API_AUTH=PASS'
+finally {
+    $ErrorActionPreference = $previousPreference
+}
+if ($authExit -eq 0 -and (($auth -join "`n") -match 'mxonline/xinzhaowrt')) {
+    Write-Host 'PERSISTENT_GITHUB_API_AUTH=PASS'
+} else {
+    Write-Warning "PERSISTENT_GITHUB_API_AUTH=DEFERRED; persistent agent will retry automatically. $($auth -join ' ')"
+}
 
 function Resolve-AgentPowerShell {
     $systemPwsh = Get-Command 'pwsh.exe' -ErrorAction SilentlyContinue
