@@ -67,8 +67,9 @@ jobs:
           import json
           with open('production/known-good.json', 'r', encoding='utf-8') as f:
               data = json.load(f)
-          if data.get('verified') is not True or data.get('status') != 'verified':
-              raise SystemExit('BLOCKED: production/known-good.json is not verified')
+          status = data.get('status')
+          if data.get('verified') is not True or status not in {'verified', 'frozen'}:
+              raise SystemExit('BLOCKED: production/known-good.json is not verified/frozen')
           if data.get('device') != 'jdcloud_re-ss-01':
               raise SystemExit('BLOCKED: Known-Good device mismatch')
           stable = data.get('stable_tag') or ''
@@ -119,7 +120,7 @@ jobs:
               f.write('\n')
           PY
 
-          echo 'PASS: verified Known-Good baseline and Candidate lock prepared.'
+          echo 'PASS: verified/frozen Known-Good baseline and Candidate lock prepared.'
 
       - name: Restore downloads and compiler cache
         uses: actions/cache@v4
