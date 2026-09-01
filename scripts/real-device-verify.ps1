@@ -1,8 +1,14 @@
+param(
+    [string]$DeviceIp = '192.168.6.1',
+    [string]$Candidate = $env:ARTHUR_CANDIDATE_ID,
+    [string]$Commit = $env:ARTHUR_CANDIDATE_SHA
+)
+
 $ErrorActionPreference = 'Continue'
 
-$Target = 'root@192.168.1.1'
-$Candidate = 'arthur-known-good-32853100232'
-$Commit = '236abeaaea06442aa0f8f34efd0b4464b35c5061'
+$Target = "root@$DeviceIp"
+$Candidate = if ($Candidate) { $Candidate } else { 'candidate-not-supplied' }
+$Commit = if ($Commit) { $Commit } else { 'commit-not-supplied' }
 $TestFile = '/etc/xinzhao-real-device-test'
 $OutDir = Join-Path $PSScriptRoot '..\output\real-device'
 $JsonPath = Join-Path $OutDir 'real-device-verification.json'
@@ -33,31 +39,34 @@ function Test-Remote([string]$Name, [string]$Command, [scriptblock]$Predicate, [
 }
 
 function Test-Luci {
-    $command = 'curl -k -sS -o /dev/null -w HTTP:%{http_code} https://192.168.1.1/cgi-bin/luci/'
+    $command = "curl -sS -o /dev/null -w HTTP:%{{http_code}} http://$DeviceIp/"
     try {
-        $out = @(& curl.exe -k -sS --max-time 15 -o NUL -w 'HTTP:%{http_code}' 'https://192.168.1.1/cgi-bin/luci/' 2>&1)
+        $out = @(& curl.exe -sS --max-time 15 -o NUL -w 'HTTP:%{http_code}' "http://$DeviceIp/" 2>&1)
         $code = $LASTEXITCODE
         $text = ($out -join "`n").Trim()
         $r = [pscustomobject]@{ ExitCode = $code; Output = $text }
-        Add-Check 'luci' ($code -eq 0 -and $text -match 'HTTP:(200|301|302|401|403)$') $command $r 'LuCI must respond over HTTPS; self-signed certificate is explicitly allowed.' | Out-Null
+        Add-Check 'luci' ($code -eq 0 -and $text -match 'HTTP:(200|301|302|401|403)$') $command $r 'LuCI must respond over HTTP port 80.' | Out-Null
     } catch {
         $r = [pscustomobject]@{ ExitCode = 1; Output = $_.Exception.Message }
-        Add-Check 'luci' $false $command $r 'LuCI must be reachable over HTTPS (self-signed certificate accepted).' | Out-Null
+        Add-Check 'luci' $false $command $r 'LuCI must be reachable over HTTP port 80.' | Out-Null
     }
 }
 
 function Run-Phase([string]$Prefix) {
     $board = Test-Remote "$Prefix.boot.board" 'ubus call system board' { param($o) $o -match 'jdcloud,re-ss-01|RE-SS-01' } 'Board identity must be JDCloud RE-SS-01 / jdcloud,re-ss-01.'
     Test-Remote "$Prefix.boot.system" 'cat /etc/openwrt_release; uname -a; uptime' { param($o) $o -match 'OpenWrt|ImmortalWrt' -and $o -match 'Linux' } 'ImmortalWrt/OpenWrt must be running normally.' | Out-Null
+    Test-Remote "$Prefix.target_profile" 'cat /etc/openwrt_release; ubus call system board' { param($o) $o -match 'qualcommax/ipq60xx' -and $o -match 'jdcloud,re-ss-01|RE-SS-01' } 'Target/profile must remain qualcommax/ipq60xx and jdcloud_re-ss-01.' | Out-Null
     Test-Remote "$Prefix.ssh" 'echo CODEX_SSH_OK' { param($o) $o -eq 'CODEX_SSH_OK' } | Out-Null
     Test-Remote "$Prefix.storage" 'uname -a; free -h; df -h; mount; command -v mmc || true; lsblk 2>/dev/null || true; dmesg | tail -n 80' { param($o) $o -match 'Linux' -and $o -match 'overlay' -and $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|firmware crashed)' } 'Kernel, memory, overlay, eMMC, filesystem and mounts must be healthy.' | Out-Null
-    Test-Remote "$Prefix.lan" 'ubus call network.interface.lan status; ip -4 addr; ip route' { param($o) $o -match '"up":\s*true' -and $o -match '192\.168\.' } 'LAN must be up with an IPv4 address.' | Out-Null
+    Test-Remote "$Prefix.lan" 'ubus call network.interface.lan status; ip -4 addr; ip route' { param($o) $o -match '"up":\s*true' -and $o -match '192\.168\.6\.1' } 'LAN must be up at 192.168.6.1.' | Out-Null
     Test-Remote "$Prefix.wan" 'ubus call network.interface.wan status; ip route show default' { param($o) $o -match '"up":\s*true' -and $o -match '(?m)^default\s' } 'WAN must be up and have a default route.' | Out-Null
     Test-Remote "$Prefix.internet" 'ping -c 2 -W 3 1.1.1.1; uclient-fetch -qO- --timeout=10 https://api.ipify.org 2>/dev/null || true' { param($o) $o -match '(?m)0% packet loss' -and $o -match '\d+\.\d+\.\d+\.\d+' } 'Public IP connectivity must work.' | Out-Null
     Test-Remote "$Prefix.dns" 'nslookup openwrt.org 2>&1 || busybox nslookup openwrt.org 2>&1' { param($o) $o -match 'Address|address' -and $o -match '\d+\.\d+\.\d+\.\d+' } 'DNS resolution must work.' | Out-Null
     $wifi = Test-Remote "$Prefix.wifi" 'ubus call wireless status 2>/dev/null || true; iwinfo 2>/dev/null' { param($o) $o -match '(?i)(ESSID|phy0|phy1)' } 'Both Wi-Fi radios/interfaces must be present and operational.'
     Add-Check "$Prefix.wifi_2g" ($wifi.Output -match '2\.4\d+ GHz') 'ubus call wireless status 2>/dev/null || true; iwinfo' $wifi '2.4 GHz radio must be present.' | Out-Null
     Add-Check "$Prefix.wifi_5g" ($wifi.Output -match '5\.\d+ GHz') 'ubus call wireless status 2>/dev/null || true; iwinfo' $wifi '5 GHz radio must be present.' | Out-Null
+    Test-Remote "$Prefix.wifi_ssids" 'uci -q show wireless; iwinfo 2>/dev/null' { param($o) $o -match 'XinZhaoWrt-2\.4G' -and $o -match 'XinZhaoWrt-5G' } 'Both required XinZhaoWrt SSIDs must be configured and visible.' | Out-Null
+    Test-Remote "$Prefix.wifi_password" 'uci -q show wireless' { param($o) $o -match '12356789' } 'The verified Wi-Fi default password must be configured.' | Out-Null
     Test-Remote "$Prefix.logread" 'logread -l 300' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in logread are a failure; ordinary warnings are allowed.' | Out-Null
     Test-Remote "$Prefix.dmesg" 'dmesg' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in dmesg are a failure; ordinary warnings are allowed.' | Out-Null
     $pm = Test-Remote "$Prefix.package_manager" 'if command -v apk >/dev/null 2>&1; then echo apk; elif command -v opkg >/dev/null 2>&1; then echo opkg; else echo none; exit 1; fi' { param($o) $o -match '^(apk|opkg)$' } 'The installed package manager must be apk or opkg.'
@@ -72,6 +81,14 @@ function Run-Phase([string]$Prefix) {
     }
     $script:Checks["$Prefix.required_plugins"] = [ordered]@{ passed = (($pluginResults | Where-Object passed).Count -eq $Required.Count); total = $Required.Count; passed_count = ($pluginResults | Where-Object passed).Count; package_manager = $manager; items = $pluginResults }
     Test-Remote "$Prefix.luci_components" 'find /usr/share/luci/menu.d /usr/share/luci/rpcd /usr/libexec/rpcd /etc/init.d -maxdepth 2 -type f 2>/dev/null | sort' { param($o) $o -match 'luci|rpcd|init.d' } 'LuCI menus, RPC/controller area and init.d service files must exist.' | Out-Null
+    Test-Remote "$Prefix.luci_locale_theme" "uci -q get luci.main.lang; uci -q get luci.main.mediaurlbase; test -d /www/luci-static/argon; test -d /www/luci-static/kucat" { param($o) $o -match 'zh_cn' -and $o -match '/luci-static/argon' } 'zh_cn and Argon/KuCat theme resources must be present.' | Out-Null
+    Test-Remote "$Prefix.kucat_theme" "test -d /www/luci-static/kucat; grep -R -F '/luci-static/kucat' /etc/config /etc/uci-defaults 2>/dev/null" { param($o) $o -match '/luci-static/kucat' } 'KuCat must remain selectable and its resources must be present.' | Out-Null
+    Test-Remote "$Prefix.branding" 'test -s /www/luci-static/xinzhao/logo.png && test -s /www/luci-static/xinzhao/favicon.ico && test -s /www/luci-static/xinzhao/branding.js && grep -R -F XinZhaoWrt /etc/xinzhao-build-info /www/luci-static/xinzhao/build-info.json 2>/dev/null' { param($o) $o -match 'XinZhaoWrt' } 'XinZhaoWrt branding, icon/logo and author/build information must be present.' | Out-Null
+    Test-Remote "$Prefix.adguard_manager" 'test -s /www/luci-static/resources/view/adguardhome/config.js && test -s /etc/config/adguardhome && test -x /etc/init.d/adguardhome' { param($o) $true } 'Complete AdGuard Home manager, config and service must be present.' | Out-Null
+    Test-Remote "$Prefix.adguard_default_off" "! pidof AdGuardHome >/dev/null 2>&1; ! ls /etc/rc.d/S*adguardhome >/dev/null 2>&1" { param($o) $true } 'AdGuard Home must be disabled by default.' | Out-Null
+    Test-Remote "$Prefix.adguard_dns_53" "! pidof AdGuardHome >/dev/null 2>&1; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true)" { param($o) $o -notmatch '(?i)AdGuardHome.*:53' } 'AdGuard Home must not claim DNS port 53 on first boot.' | Out-Null
+    Test-Remote "$Prefix.quickstart_page" 'test -d /www/luci-static/resources/view/quickstart || test -d /usr/share/luci/menu.d; find /usr/share/luci -iname "*quickstart*" -o -iname "*quick-start*" 2>/dev/null' { param($o) $o -match '(?i)quickstart|quick-start' } 'QuickStart LuCI page must be present.' | Out-Null
+    Test-Remote "$Prefix.quickstart_backend" 'command -v quickstart && quickstart --help 2>&1; test -x /etc/init.d/quickstart' { param($o) $o -match '(?i)quickstart|usage|help' } 'QuickStart backend/service and real management command must be present.' | Out-Null
     Test-Luci
 }
 
@@ -87,13 +104,13 @@ Start-Sleep -Seconds 10
 $recovered = $false
 $waitLog = [System.Collections.Generic.List[string]]::new()
 for ($i = 1; $i -le 60; $i++) {
-    $ping = Test-Connection -ComputerName 192.168.1.1 -Count 1 -Quiet -ErrorAction SilentlyContinue
+    $ping = Test-Connection -ComputerName $DeviceIp -Count 1 -Quiet -ErrorAction SilentlyContinue
     $ssh = if ($ping) { Invoke-Remote 'echo CODEX_SSH_OK' } else { $null }
     $waitLog.Add("minute=$([math]::Round($i*5/60,2)); ping=$ping; ssh=$($ssh.ExitCode -eq 0)")
     if ($ping -and $ssh.ExitCode -eq 0 -and $ssh.Output -eq 'CODEX_SSH_OK') { $recovered = $true; break }
     Start-Sleep -Seconds 5
 }
-$script:Checks['reboot.recovery'] = [ordered]@{ passed = $recovered; command = 'ping 192.168.1.1; ssh -o BatchMode=yes root@192.168.1.1 echo CODEX_SSH_OK'; exit_code = if ($recovered) { 0 } else { 1 }; output = ($waitLog -join "`n") }
+$script:Checks['reboot.recovery'] = [ordered]@{ passed = $recovered; command = "ping $DeviceIp; ssh -o BatchMode=yes $Target echo CODEX_SSH_OK"; exit_code = if ($recovered) { 0 } else { 1 }; output = ($waitLog -join "`n") }
 if (-not $recovered) { $script:Failures.Add([pscustomobject]@{ name = 'reboot.recovery'; command = 'ping/ssh recovery loop'; output = ($waitLog -join "`n"); reason = 'Device did not recover within 5 minutes.' }) }
 
 if ($recovered) {
@@ -112,7 +129,7 @@ $beforePlugins = @($script:Checks['before_reboot.required_plugins'].items)
 $afterPlugins = @($script:Checks['after_reboot.required_plugins'].items)
 $result = if ($script:Failures.Count -eq 0 -and $beforePlugins.Count -eq $Required.Count -and $afterPlugins.Count -eq $Required.Count -and (@($beforePlugins | Where-Object passed).Count -eq 22) -and (@($afterPlugins | Where-Object passed).Count -eq 22)) { 'PASS' } else { 'FAIL' }
 $report = [ordered]@{
-    device = [ordered]@{ model = 'JDCloud RE-SS-01'; target = 'jdcloud_re-ss-01'; address = '192.168.1.1' }
+    device = [ordered]@{ model = 'JDCloud RE-SS-01'; target = 'jdcloud_re-ss-01'; address = $DeviceIp; lan = '192.168.6.1'; luci = 'http://192.168.6.1/' }
     candidate = $Candidate
     commit = $Commit
     ssh = $script:Checks.ssh
