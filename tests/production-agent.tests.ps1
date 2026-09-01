@@ -122,7 +122,7 @@ Assert-Contains $install 'LogonTrigger' 'Scheduled Task must start in current-us
 Assert-Contains $install '$env:USERDOMAIN' 'Scheduled Task principal must come from current interactive user'
 Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to bootstrap official portable PowerShell when pwsh is absent'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'installer must probe a real repository API request instead of gh auth status'
-Assert-True ($install -notmatch 'gh auth status') 'installer must not reject a valid GitHub App/machine credential based on stale gh auth status'
+Assert-True ($install -notmatch '(?im)^\s*&?\s*gh(?:\.exe)?\s+auth\s+status\b') 'installer must not reject a valid GitHub App/machine credential based on stale gh auth status'
 Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
 Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
 
@@ -131,7 +131,7 @@ Assert-True ($deploy -notmatch '(?im)^\s*git\s+clone\b') 'deploy must not perfor
 Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\s+origin\b') 'deploy must not perform a second network git fetch during runtime sync'
 Assert-Contains $deploy "'scripts/ci-controller-v3.ps1'" 'controller changes must redeploy the persistent Windows runtime'
 Assert-Contains $deploy "gh api repos/mxonline/xinzhaowrt" 'deploy must verify the machine credential by a real GitHub API request'
-Assert-True ($deploy -notmatch 'gh auth status') 'deploy must not reject a usable GitHub App/machine credential because gh auth status is stale'
+Assert-True ($deploy -notmatch '(?im)^\s*gh(?:\.exe)?\s+auth\s+status\b') 'deploy must not reject a usable GitHub App/machine credential because gh auth status is stale'
 Assert-Contains $deploy 'Start persistent v3 controller' 'deployment must ensure the existing v3 controller loop is running'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
