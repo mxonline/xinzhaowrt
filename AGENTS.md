@@ -51,6 +51,10 @@ This section is a frozen project-level development rule. Do not rename, replace,
 
 - The only primary workflow is `RELEASE-FIRST AUTOMATION MODE`.
 - The only successful terminal state is `PRODUCTION_RELEASED`.
+- The frozen production order is: recover current release state → determine minimum change scope → `CHANGE_IMPACT_GATE` → `BASELINE_INHERITANCE_GATE` → `EXPECTED_DIFF_GATE` → choose the fastest reliable build path (`ImageBuilder` / `SDK` / `Full Build`) → Build → artifact/SHA256/flash-manifest/config/plugin/theme checks → `AUTO_FLASH_SAFETY_GATE` → Windows PowerShell → OpenSSH `ssh.exe` upload → remote SHA256 → previously verified Arthur `/sbin/sysupgrade` → `WAIT_DEVICE` → `REAL_DEVICE_VERIFY` → Release Gate → GitHub Release → `PRODUCTION_RELEASED`.
+- Do not invent, insert, rename, reorder or promote a new Gate, Agent, Controller, Runtime stage or workflow stage inside that frozen production order unless the user explicitly changes the development standard. Ideas for future improvement must remain non-blocking suggestions and must not alter an active release.
+- Before proposing or executing a next action, reconcile three things: the live current stage, the next stage permitted by this frozen order, and the proposed action. If they do not match, do not execute the action.
+- If repository documents or defaults conflict with current machine-readable/product targets, do not guess. Reconcile the conflicting source of truth before starting a new Candidate build; live verified device/build evidence and explicit current product requirements override stale text.
 - The automation control plane must keep one Arthur release task as a single, continuous and recoverable execution chain. It must not spend extended time recovering or optimizing Codex, Bridge, Runtime, Supervisor or Skill while the real firmware release is stalled.
 - GPT, Codex, Bridge, Runtime, Supervisor and Skill are supporting components only. None of them may become the release workflow owner.
 - Skill may provide local auxiliary capabilities only; it must not take over firmware pipeline orchestration.
@@ -81,7 +85,7 @@ Never fix a build by silently deleting, disabling, renaming or commenting out a 
 
 - LAN IP: 192.168.6.1
 - administrator: root
-- initial password: passwort
+- initial password: password
 
 These defaults are implemented in `files/etc/uci-defaults/99-xinzhao-defaults` and checked by `scripts/check-defaults.sh`.
 Do not change them unless the user explicitly requests a change.
