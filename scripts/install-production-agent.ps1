@@ -10,10 +10,13 @@ foreach ($tool in @('gh.exe','ssh.exe','scp.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Required command missing: $tool" }
 }
 
-$auth=& gh auth status --hostname github.com 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "NEW_CREDENTIAL_PROVISIONING: GitHub CLI auth is required once before installation.`n$($auth -join "`n")"
+# Do not trust `gh auth status` as a machine-auth gate. Exercise the repository API
+# with the credential actually available to this Windows account/runner.
+$auth = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
+if ($LASTEXITCODE -ne 0 -or (($auth -join "`n") -notmatch 'mxonline/xinzhaowrt')) {
+    throw "RECOVERABLE_GITHUB_AUTH: repository API probe failed; persistent automation may retry after machine/App credential recovery.`n$($auth -join "`n")"
 }
+Write-Host 'PERSISTENT_GITHUB_API_AUTH=PASS'
 
 function Resolve-AgentPowerShell {
     $systemPwsh = Get-Command 'pwsh.exe' -ErrorAction SilentlyContinue
@@ -22,9 +25,6 @@ function Resolve-AgentPowerShell {
         return $systemPwsh.Source
     }
 
-    # The self-hosted Windows runner may only contain Windows PowerShell 5.1.
-    # Bootstrap a private portable PowerShell 7 under LOCALAPPDATA; no admin
-    # installation or user interaction is required.
     $psRoot = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell'
     $current = Join-Path $psRoot 'current'
     $portable = Join-Path $current 'pwsh.exe'
