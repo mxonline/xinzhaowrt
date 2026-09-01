@@ -15,7 +15,7 @@ Status: READY FOR FIRST FULL BUILD
 
 - LAN IP: 192.168.6.1
 - User: root
-- Initial password: passwort
+- Initial password: password
 - A persistent UCI initialization marker prevents these defaults from being re-applied on later config-preserving upgrades.
 
 ## Required applications
