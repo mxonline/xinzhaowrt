@@ -7,6 +7,7 @@ on:
     paths:
       - 'production/production-agent.json'
       - 'production/arthur-flash-profile.json'
+      - 'requirements-headless.txt'
       - 'scripts/production-agent.ps1'
       - 'scripts/fetch-production-artifact.ps1'
       - 'scripts/auto-flash-safety-gate.ps1'
@@ -48,6 +49,13 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Bootstrap Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements-headless.txt
+
       - name: Validate deployment source
         shell: powershell
         run: |
@@ -56,6 +64,22 @@ jobs:
           if (Test-Path ./tests/verified-baseline-inheritance.tests.ps1) {
             & ./tests/verified-baseline-inheritance.tests.ps1
           }
+
+      - name: Install GPT Codex Bridge runtime dependencies
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pythonExe = (Get-Command python.exe -ErrorAction Stop).Source
+          & $pythonExe -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw "Python 3.10+ bootstrap failed: $pythonExe" }
+          & $pythonExe -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip bootstrap failed.' }
+          & $pythonExe -m pip install -r requirements-headless.txt
+          if ($LASTEXITCODE -ne 0) { throw 'GPT-Codex Bridge dependency installation failed.' }
+          & $pythonExe -c "import openai_codex; print('GPT_CODEX_SDK_IMPORT=PASS')"
+          if ($LASTEXITCODE -ne 0) { throw 'openai_codex import verification failed.' }
+          "HEADLESS_PYTHON_EXE=$pythonExe" >> $env:GITHUB_ENV
+          Write-Host "GPT_CODEX_BRIDGE_PYTHON=PASS interpreter=$pythonExe"
 
       - name: Inspect existing GPT Codex Bridge runtime
         shell: powershell
@@ -155,12 +179,12 @@ jobs:
           $launcher = Join-Path $runtime 'scripts\run-supervisor.py'
           if (-not (Test-Path $launcher)) { throw "Existing Bridge supervisor launcher missing: $launcher" }
 
-          $python = Get-Command python.exe -ErrorAction SilentlyContinue
-          if (-not $python) { $python = Get-Command python3.exe -ErrorAction SilentlyContinue }
-          if (-not $python) { throw 'Python 3 is required to resume the existing GPT-Codex Bridge supervisor.' }
-          $pythonPath = $python.Source
-          $versionOk = & $pythonPath -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-          if ($LASTEXITCODE -ne 0) { throw "Bridge supervisor requires Python >=3.10: $pythonPath" }
+          $pythonPath = $env:HEADLESS_PYTHON_EXE
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path $pythonPath)) {
+            throw "Pinned Bridge Python interpreter is unavailable: $pythonPath"
+          }
+          & $pythonPath -c "import sys, openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw "Bridge supervisor Python/SDK validation failed: $pythonPath" }
 
           $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
           $currentUser = "$env:USERDOMAIN\$env:USERNAME"

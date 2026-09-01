@@ -1,0 +1,2 @@
+# Official Codex Python SDK. Python 3.10+ is required by the SDK.
+openai-codex>=0.147.0
