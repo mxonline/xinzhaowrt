@@ -1,9 +1,9 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-restored-verified-baseline-release-20260901-2300z",
+  "request_id": "arthur-adh-istore-final-release-20260901-2325z",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-known-good-v1",
   "device": "jdcloud_re-ss-01",
-  "reason": "Build one formal production Candidate from the restored verified product baseline on current main. Preserve the frozen Known-Good source lock and rollback target. The Candidate must inherit the approved Wi-Fi defaults, Argon and Kucat themes, XinZhaoWrt branding, zh_cn, required 22 LuCI plugins, AdGuard Home acceptance behavior, and iStore QuickStart acceptance behavior. Continue only through the existing RELEASE-FIRST v3 pipeline; no new gates, no alternate theme/fast candidate workflow, and no release before AUTO_FLASH_SAFETY_GATE plus REAL_DEVICE_VERIFY pass.",
-  "requested_at": "2026-09-01T23:00:28Z"
+  "reason": "Build exactly one replacement formal production Candidate from the frozen verified Known-Good source lock after restoring the authenticated AdGuard Home LuCI management path and the actual iStore QuickStart default homepage. Previously real-device-verified XinZhaoWrt author/branding, Argon, Kucat and Wi-Fi xinzhaowrt/12345678 are inherited baseline capabilities and are not redesigned. The new Candidate must prove AdGuard Home remains disabled by default while its authenticated status/lifecycle/YAML read-write-validate-save/backup-restore/log/Web management functions work, and must prove the authenticated LuCI default homepage actually renders the official iStore QuickStart application. Preserve all 22 required LuCI plugins, LAN 192.168.6.1, root password password, rollback target and existing RELEASE-FIRST order. Do not use alternate theme/fast lanes and do not release before AUTO_FLASH_SAFETY_GATE and REAL_DEVICE_VERIFY pass.",
+  "requested_at": "2026-09-01T23:25:00Z"
 }
