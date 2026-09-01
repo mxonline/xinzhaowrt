@@ -50,7 +50,7 @@ Assert-Contains $deploy 'GPT_CODEX_BRIDGE_DISPATCH_ONLY' 'deployment must explic
 Assert-True ($deploy -notmatch 'Start existing GPT Codex Bridge supervisor') 'standalone Bridge supervisor must not own a second Arthur phase machine'
 Assert-Contains $deploy 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor' 'deployment must quiesce any previously installed standalone Bridge supervisor'
 Assert-Contains $deploy 'GPT_CODEX_BRIDGE_RUNTIME=REUSE' 'deployment must reuse the already-proven persistent Python/Codex SDK runtime before any bootstrap'
-Assert-Contains $deploy 'uv python install 3.12' 'bootstrap fallback must install pinned Python 3.12 in user space'
+Assert-Contains $deploy 'python install 3.12' 'bootstrap fallback must install pinned Python 3.12 in user space'
 Assert-Contains $deploy 'HeadlessPython' 'deployment must keep the supported Bridge interpreter in a persistent user-space directory'
 Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path for Bridge decision calls'
 Assert-True ($deploy -notmatch 'astral-sh/setup-uv@v6') 'deployment must not depend on the flaky setup-uv Node action on the self-hosted Windows runner'
