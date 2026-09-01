@@ -24,7 +24,7 @@ esac
 root_hash="$(awk -F: '$1 == "root" { print $2; exit }' /etc/shadow 2>/dev/null || true)"
 case "$root_hash" in
     ''|'!'|'*')
-        password_hash='$6$XZArthur01$1dyEnJigbC4dTZIO2sFYbcFnYiIh/FDhGUlok.m7NTR.07..EIUUdX6ePtXm6AtPFy2MndBJgHamEFx.w8.Wf0'
+        password_hash='$6$XZArthur01$J118u82kqxg2KTAkWFIkljGVy6KMbi0P1xDZvlVK5H2e4JdDSpR6M7ogHUnxnwUi.FDFJddvThW/fmHmusMcW1'
         awk -F: -v OFS=: -v hash="$password_hash" '
             $1 == "root" { $2 = hash }
             { print }
