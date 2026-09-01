@@ -19,6 +19,7 @@ $requiredFiles = @(
     'scripts/production-agent.ps1',
     'scripts/fetch-production-artifact.ps1',
     'scripts/auto-flash-safety-gate.ps1',
+    'scripts/ci-controller-v3.ps1',
     'scripts/install-production-agent.ps1',
     'scripts/uninstall-production-agent.ps1',
     'scripts/start-production-agent.ps1',
@@ -35,6 +36,7 @@ foreach ($relative in $requiredFiles) {
 $agentPath = Join-Path $Root 'scripts/production-agent.ps1'
 $fetchPath = Join-Path $Root 'scripts/fetch-production-artifact.ps1'
 $gatePath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
+$controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $configPath = Join-Path $Root 'production/production-agent.json'
@@ -43,6 +45,7 @@ $flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
 $agent = Get-Content -Raw $agentPath
 $fetch = Get-Content -Raw $fetchPath
 $gate = Get-Content -Raw $gatePath
+$controller = Get-Content -Raw $controllerPath
 $install = Get-Content -Raw $installPath
 $deploy = Get-Content -Raw $deployPath
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
@@ -64,16 +67,25 @@ foreach ($stage in @(
     Assert-Contains $agent $stage "production agent missing durable stage $stage"
 }
 
-Assert-Contains $fetch 'NEW_CREDENTIAL_PROVISIONING' 'artifact fetch must classify invalid GitHub credentials explicitly'
-Assert-Contains $fetch 'gh auth status' 'artifact fetch must use authenticated GitHub CLI credential store'
+Assert-Contains $fetch 'NEW_CREDENTIAL_PROVISIONING' 'artifact fetch must classify genuinely unavailable GitHub credentials explicitly'
 Assert-Contains $fetch 'gh run download' 'artifact fetch must use immutable GitHub Actions artifact download path'
 Assert-Contains $fetch 'Get-FileHash' 'artifact fetch must calculate local SHA256'
 Assert-Contains $fetch 'ARTIFACT_BYTES_VERIFIED' 'artifact fetch must persist verified byte state'
+Assert-Contains $fetch 'Arthur-v3-Candidate-' 'artifact fetch must discover the production Candidate artifact from the live run instead of a stale bootstrap artifact'
+Assert-Contains $fetch 'headSha' 'artifact fetch must derive source SHA from the live GitHub run'
 
 Assert-Contains $agent 'ci-controller-v3.ps1' 'failed builds must reuse the existing Codex repair controller'
 Assert-Contains $agent 'AUTO_FLASH_SAFETY_GATE=PASS' 'agent must require safety gate before flash'
 Assert-Contains $agent 'real-device-verify' 'agent must reuse existing real-device verification'
 Assert-Contains $agent 'PRODUCTION_RELEASED=YES' 'agent must expose the sole production terminal state'
+Assert-Contains $agent "@('api',\"repos/$([string]$Config.repository)\")" 'production agent must verify the credential by making a real GitHub API request, not by trusting gh auth status alone'
+Assert-True ($agent -notmatch "(?m)gh'\s*,?\s*@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
+
+Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
+Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
+Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
+Assert-True ($controller -notmatch 'Next hard gate is manual flash plus real-device verification') 'controller must not stop at Candidate publication waiting for manual flash'
+Assert-True ($controller -notmatch "Codex repair timed out after .*BLOCKED") 'Codex timeout must not become a terminal BLOCKED state'
 
 Assert-Contains $gate 'jdcloud_re-ss-01' 'safety gate must bind Arthur profile'
 Assert-Contains $gate '192.168.6.1' 'safety gate must bind expected Arthur LAN'
@@ -89,6 +101,7 @@ Assert-True ([string]$config.default_theme -eq 'argon') 'Argon must remain defau
 Assert-True ([string]$config.secondary_theme -eq 'kucat') 'Kucat must remain second theme'
 Assert-True ([int]$config.required_plugin_count -eq 22) 'required plugin count must remain 22'
 Assert-True ($config.adguardhome_default_enabled -eq $false) 'AdGuardHome must remain disabled by default'
+Assert-True (@($config.human_stop_classes) -notcontains 'NEW_CREDENTIAL_PROVISIONING') 'credential renewal/recovery must remain automatic rather than a human stop class'
 
 Assert-True ([string]$flashProfile.device -eq 'jdcloud_re-ss-01') 'flash profile must bind Arthur device'
 Assert-True ([string]$flashProfile.transport -eq 'windows-openssh') 'flash transport must be Windows OpenSSH'
@@ -122,3 +135,4 @@ Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_RESUME_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC_CONTRACT=PASS'
+Write-Host 'UNATTENDED_CODEX_CONTINUATION_CONTRACT=PASS'
