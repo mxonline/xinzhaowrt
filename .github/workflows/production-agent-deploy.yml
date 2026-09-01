@@ -15,6 +15,7 @@ on:
       - 'scripts/uninstall-production-agent.ps1'
       - 'scripts/start-production-agent.ps1'
       - 'scripts/production-agent-status.ps1'
+      - 'scripts/bridge-runtime-status.ps1'
       - 'tests/production-agent.tests.ps1'
       - '.github/workflows/production-agent-deploy.yml'
   workflow_dispatch:
@@ -48,6 +49,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & ./tests/production-agent.tests.ps1
+
+      - name: Inspect existing GPT Codex Bridge runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & ./scripts/bridge-runtime-status.ps1
+          exit 0
 
       - name: Sync stable Production Agent runtime
         shell: powershell
