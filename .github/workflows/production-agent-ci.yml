@@ -3,6 +3,7 @@ name: Arthur Production Agent CI
 on:
   push:
     branches:
+      - main
       - codex/arthur-production-agent-clean
   pull_request:
     branches:
