@@ -17,7 +17,7 @@ Codex Cloud tasks run in isolated environments tied to the connected GitHub repo
 Use this as the normal Codex task:
 
 ```text
-Read AGENTS.md and build.env. Run scripts/verify-project.sh, then perform a full JDCloud Arthur firmware build with scripts/codex-cloud-build.sh. All 22 plugins in config/required-plugins.txt are mandatory. Do not remove plugins to make the build pass. If the build fails, inspect only the concise diagnostics and the relevant section of output/logs/build.log, fix the first real package/compiler error, rerun validation, and continue until the firmware succeeds or there is a concrete upstream incompatibility that cannot safely be patched. Do not execute any router flashing operation.
+Read AGENTS.md and build.env. Run scripts/verify-project.sh, then perform a full JDCloud Arthur firmware build with scripts/codex-cloud-build.sh. All 22 plugins in config/required-plugins.txt are mandatory. Do not remove plugins to make the build pass. If the build fails, inspect only the concise diagnostics and the relevant section of output/logs/build.log, fix the first real package/compiler error, rerun validation, and continue until the firmware succeeds or there is a concrete upstream incompatibility that cannot safely be patched. Do not execute any router flashing operation from this Cloud build task; production flashing is handled later by the frozen RELEASE-FIRST pipeline after AUTO_FLASH_SAFETY_GATE.
 ```
 
 ## Outputs
@@ -35,10 +35,9 @@ Successful builds produce:
 
 - Router IP: `192.168.6.1`
 - User: `root`
-- Initial password: `passwort`
+- Initial password: `password`
 
 Change the password immediately after first login.
-
 
 ## External package source validation
 
