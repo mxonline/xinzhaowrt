@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "candidate_run_id": "33462873812",
+  "candidate_tag": "arthur-known-good-33462873812",
+  "status": "REJECTED_FOR_RELEASE",
+  "verification_status": "REAL_DEVICE_VERIFY_INVALIDATED",
+  "stable_upload_allowed": false,
+  "release_allowed": false,
+  "reflashing_allowed": false,
+  "failure_evidence": [
+    "output/headless-production/release-gate-33462873812.json",
+    "output/real-device/real-device-verification.json",
+    "output/headless-production/plugin-verification-33462873812.txt"
+  ],
+  "invalidated_acceptance_checks": [
+    "AdGuard Home manager checked file/process existence instead of authenticated ACL/RPC function",
+    "Wi-Fi acceptance asserted obsolete band-specific SSIDs and password",
+    "QuickStart acceptance checked package/files instead of the authenticated rendered homepage"
+  ],
+  "reason": "Manual real-device review found false-positive acceptance criteria. This candidate is failure evidence only and must never be uploaded to Stable, released, or reflashed.",
+  "replacement_policy": "Generate exactly one replacement candidate after the functional acceptance fixes, then BUILD, AUTO_FLASH, sysupgrade, full real-device verification, and Release."
+}

@@ -161,6 +161,8 @@ done
   echo "Target: $DEVICE_TARGET/$DEVICE_SUBTARGET"
   echo "Profile: $DEVICE_PROFILE"
   echo "Default LAN IP: $DEFAULT_LAN_IP"
+  echo "Default Wi-Fi SSID: $DEFAULT_WIFI_SSID"
+  echo "Default Wi-Fi password: $DEFAULT_WIFI_PASSWORD"
   echo "Default admin user: $DEFAULT_ROOT_USER"
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
