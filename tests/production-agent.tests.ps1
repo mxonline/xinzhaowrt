@@ -26,9 +26,9 @@ $requiredFiles = @(
     'scripts/production-agent-status.ps1',
     'production/production-agent.json',
     'production/arthur-flash-profile.json',
+    'production/release-control-protection.json',
     '.github/workflows/production-agent-deploy.yml',
-    '.github/workflows/production-agent-ci.yml',
-    '.github/CODEOWNERS'
+    '.github/workflows/production-agent-ci.yml'
 )
 
 foreach ($relative in $requiredFiles) {
@@ -42,8 +42,8 @@ $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $contractCiPath = Join-Path $Root '.github/workflows/production-agent-ci.yml'
-$codeownersPath = Join-Path $Root '.github/CODEOWNERS'
 $configPath = Join-Path $Root 'production/production-agent.json'
+$protectionPath = Join-Path $Root 'production/release-control-protection.json'
 $flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
 
 $agent = Get-Content -Raw $agentPath
@@ -53,8 +53,8 @@ $controller = Get-Content -Raw $controllerPath
 $install = Get-Content -Raw $installPath
 $deploy = Get-Content -Raw $deployPath
 $contractCi = Get-Content -Raw $contractCiPath
-$codeowners = Get-Content -Raw $codeownersPath
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
+$protection = Get-Content -Raw $protectionPath | ConvertFrom-Json
 $flashProfile = Get-Content -Raw $flashProfilePath | ConvertFrom-Json
 
 foreach ($mode in @('Resume','Status','RunOnce')) {
@@ -150,12 +150,12 @@ $expectedProtectedFiles = @(
     'AGENTS.md',
     'production/release-policy.md',
     'production/production-agent.json',
+    'production/release-control-protection.json',
     'scripts/ci-controller-v3.ps1',
     'scripts/production-agent.ps1',
     'scripts/auto-flash-safety-gate.ps1',
     '.github/workflows/production-agent-deploy.yml',
     '.github/workflows/production-agent-ci.yml',
-    '.github/CODEOWNERS',
     'tests/production-agent.tests.ps1'
 )
 Assert-True (@($config.automation_contract.protected_control_files).Count -eq $expectedProtectedFiles.Count) 'protected control-file set changed'
@@ -164,11 +164,17 @@ foreach ($relative in $expectedProtectedFiles) {
     Assert-True (Test-Path (Join-Path $Root $relative)) "contract-protected control file missing: $relative"
 }
 
-# CI must validate the frozen contract on PRs and on direct main pushes. CODEOWNERS makes the critical control surface explicit.
+# CI validates the frozen contract on PRs and on direct main pushes. Repository ruleset requirements are persisted as data and must be applied externally.
 Assert-Contains $contractCi "push:`n    branches:`n      - main" 'production-agent contract CI must run on direct main pushes'
 Assert-Contains $contractCi "pull_request:`n    branches:`n      - main" 'production-agent contract CI must run on PRs targeting main'
+Assert-True ([string]$protection.branch -eq 'main') 'release-control protection must target main'
+Assert-True ($protection.require_pull_request -eq $true) 'release-control protection must require pull requests'
+Assert-True ($protection.require_status_checks -eq $true) 'release-control protection must require status checks'
+Assert-True ([int]$protection.required_approvals -ge 1) 'release-control protection must require at least one approval'
+Assert-True (@($protection.required_status_checks) -contains 'Arthur Production Agent CI / production-agent-contract') 'production-agent contract CI must be a required status check'
+Assert-True (@($protection.protected_control_files).Count -eq $expectedProtectedFiles.Count) 'protection manifest critical file set changed'
 foreach ($relative in $expectedProtectedFiles) {
-    Assert-Contains $codeowners "/$relative @mxonline" "CODEOWNERS must require the repository owner for $relative"
+    Assert-True (@($protection.protected_control_files) -contains $relative) "protection manifest missing critical control file: $relative"
 }
 
 Assert-True ([string]$flashProfile.device -eq 'jdcloud_re-ss-01') 'flash profile must bind Arthur device'
