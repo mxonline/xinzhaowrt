@@ -1,49 +1,130 @@
 #!/bin/sh
 # First-install defaults for 新肇网络Wrt-京东云亚瑟固件.
-# Once initialized, a persistent /etc/config/xinzhaowrt marker prevents these
-# defaults from being re-applied on later sysupgrades that preserve config.
+# A successful transaction persists xinzhaowrt.system.initialized so later
+# sysupgrades that retain configuration do not reapply these defaults.
 
 set -eu
+
+shadow_file="${XINZHAO_SHADOW_FILE:-/etc/shadow}"
+config_dir="${XINZHAO_CONFIG_DIR:-/etc/config}"
+marker_file="$config_dir/xinzhaowrt"
+log_file="${XINZHAO_FIRSTBOOT_LOG:-/tmp/xinzhaowrt-firstboot.log}"
+
+fail() {
+    message="FIRSTBOOT_FAIL stage=$1"
+    printf '%s\n' "$message" >> "$log_file" 2>/dev/null || true
+    logger -t xinzhaowrt "$message" 2>/dev/null || true
+    printf '%s\n' "$message" >&2
+    exit 1
+}
 
 if [ "$(uci -q get xinzhaowrt.system.initialized 2>/dev/null || true)" = "1" ]; then
     exit 0
 fi
 
+if [ ! -e "$log_file" ]; then
+    log_tmp="$log_file.tmp.$$"
+    ( umask 077; : > "$log_tmp" ) || {
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_prepare' >&2
+        exit 1
+    }
+    chmod 600 "$log_tmp" || {
+        rm -f "$log_tmp"
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_mode' >&2
+        exit 1
+    }
+    mv -f "$log_tmp" "$log_file" || {
+        printf '%s\n' 'FIRSTBOOT_FAIL stage=log_file_create' >&2
+        exit 1
+    }
+fi
+chmod 600 "$log_file" || fail log_file_mode
+
+log() {
+    printf '%s\n' "$*" >> "$log_file" || return 1
+    logger -t xinzhaowrt "$*" 2>/dev/null || true
+}
+
+log 'FIRSTBOOT_START' || fail log_write_start
+
 current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
 case "$current_ip" in
-    ''|'192.168.1.1')
-        uci -q set network.lan.ipaddr='192.168.6.1'
-        uci -q commit network
-        logger -t xinzhaowrt 'Initial LAN IP set to 192.168.6.1'
+    ''|'192.168.1.1'|'192.168.1.1/24')
+        uci set network.lan.ipaddr='192.168.6.1' || fail lan_set
+        uci commit network || fail lan_commit
+        [ "$(uci get network.lan.ipaddr)" = '192.168.6.1' ] || fail lan_verify
         ;;
     *)
-        logger -t xinzhaowrt "Existing LAN IP preserved: $current_ip"
+        log "Existing LAN IP preserved: $current_ip" || fail log_write_lan_existing
         ;;
 esac
+log 'LAN_CONFIG_PASS' || fail log_write_lan
 
-root_hash="$(awk -F: '$1 == "root" { print $2; exit }' /etc/shadow 2>/dev/null || true)"
+wifi_default_ssid='xinzhaowrt'
+wifi_default_password='12345678'
+wifi_changed=0
+
+reload_wireless() {
+    # Keep a running hostapd instance synchronized with committed defaults.
+    # If firstboot precedes networking this is a harmless no-op.
+    if command -v wifi >/dev/null 2>&1; then
+        wifi reload >/dev/null 2>&1 || true
+    elif command -v ubus >/dev/null 2>&1 && ubus -q list network.wireless >/dev/null 2>&1; then
+        ubus call network reload >/dev/null 2>&1 || true
+    fi
+}
+
+wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+for wifi_section in $wifi_sections; do
+    wifi_device="$(uci -q get "wireless.$wifi_section.device" 2>/dev/null || true)"
+    wifi_band="$(uci -q get "wireless.$wifi_device.band" 2>/dev/null || true)"
+    case "$wifi_band" in
+        2g|5g)
+            uci set "wireless.$wifi_section.ssid=$wifi_default_ssid" || fail wifi_ssid_set
+            uci set "wireless.$wifi_section.key=$wifi_default_password" || fail wifi_set
+            wifi_changed=1
+            ;;
+    esac
+done
+if [ "$wifi_changed" -eq 1 ]; then
+    uci commit wireless || fail wifi_commit
+    reload_wireless
+fi
+log 'WIFI_DEFAULTS_PASS' || fail log_write_wifi
+
+root_hash="$(awk -F: '$1 == "root" { print $2; exit }' "$shadow_file" 2>/dev/null || true)"
 case "$root_hash" in
     ''|'!'|'*')
         password_hash='$6$XZArthur01$J118u82kqxg2KTAkWFIkljGVy6KMbi0P1xDZvlVK5H2e4JdDSpR6M7ogHUnxnwUi.FDFJddvThW/fmHmusMcW1'
+        shadow_tmp="/tmp/shadow.xinzhaowrt.$$"
         awk -F: -v OFS=: -v hash="$password_hash" '
             $1 == "root" { $2 = hash }
             { print }
-        ' /etc/shadow > /tmp/shadow.xinzhaowrt
-        cat /tmp/shadow.xinzhaowrt > /etc/shadow
-        rm -f /tmp/shadow.xinzhaowrt
-        chmod 600 /etc/shadow
-        logger -t xinzhaowrt 'Initial root password applied'
+        ' "$shadow_file" > "$shadow_tmp" || fail root_password_render
+        cat "$shadow_tmp" > "$shadow_file" || fail root_password_write
+        rm -f "$shadow_tmp" || fail root_password_cleanup
+        chmod 600 "$shadow_file" || fail root_password_mode
         ;;
     *)
-        logger -t xinzhaowrt 'Existing root password preserved'
+        log 'Existing root password preserved' || fail log_write_root_existing
         ;;
 esac
+log 'ROOT_CREDENTIAL_PASS' || fail log_write_root
 
-uci -q batch <<'UCI'
-set xinzhaowrt.system=system
-set xinzhaowrt.system.initialized='1'
-set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur'
-UCI
-uci -q commit xinzhaowrt
+if [ ! -e "$marker_file" ]; then
+    marker_tmp="$marker_file.tmp.$$"
+    ( umask 077; : > "$marker_tmp" ) || fail marker_package_prepare
+    chmod 600 "$marker_tmp" || fail marker_package_mode
+    mv -f "$marker_tmp" "$marker_file" || fail marker_package_create
+fi
 
+uci set xinzhaowrt.system=system || fail marker_set_section
+uci set xinzhaowrt.system.initialized='1' || fail marker_set_initialized
+uci set xinzhaowrt.system.firmware='XinZhaoWrt-Arthur' || fail marker_set_firmware
+uci commit xinzhaowrt || fail marker_commit
+[ "$(uci get xinzhaowrt.system.initialized)" = '1' ] || fail marker_verify_initialized
+[ "$(uci get xinzhaowrt.system.firmware)" = 'XinZhaoWrt-Arthur' ] || fail marker_verify_firmware
+
+log 'MARKER_CONFIG_PASS' || fail log_write_marker
+log 'FIRSTBOOT_COMPLETE' || fail log_write_complete
 exit 0
