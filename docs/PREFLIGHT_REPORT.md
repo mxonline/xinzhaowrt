@@ -15,7 +15,7 @@ Status: READY FOR FIRST FULL BUILD
 
 - LAN IP: 192.168.6.1
 - User: root
-- Initial password: passwort
+- Initial password: password
 - A persistent UCI initialization marker prevents these defaults from being re-applied on later config-preserving upgrades.
 
 ## Required applications
@@ -63,8 +63,8 @@ These require the first real compile to validate against the current upstream ke
 - luci-app-easytier
 - iStoreX ecosystem
 
-No project should claim v0.1.0 is build-successful until the full ImmortalWrt compile completes and output artifacts are verified.
+No project should claim v0.1.0 is build-successful until the full ImmortalWrt compile completes and output artifacts are verified. Candidate build success still does not replace REAL_DEVICE_VERIFY; Stable/Release must follow the frozen RELEASE-FIRST policy.
 
-## Remaining external step
+## Repository status
 
-The intended GitHub repository is `mxonline/xinzhaowrt`. It does not currently exist. The connected GitHub interface can edit existing repositories but cannot create a new repository. Run `scripts/publish-github.sh` locally after authenticating GitHub CLI, or create an empty `mxonline/xinzhaowrt` repository in GitHub and then the connected workflow can continue writing to it.
+The project repository is `mxonline/xinzhaowrt`. Current production behavior is governed by `AGENTS.md`, `production/release-policy.md`, the current HANDOFF/state, live GitHub state and real-device evidence. Historical setup notes must not override those current authorities.
