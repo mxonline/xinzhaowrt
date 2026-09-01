@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Validate deployment source
         shell: powershell
@@ -73,6 +73,7 @@ jobs:
           }
 
           # Reuse the already checked-out workspace. No second remote clone/fetch boundary.
+          # Full-depth checkout above avoids shallow-root rejection when importing this local ref.
           git -C $runtime fetch --force $workspace 'refs/heads/main:refs/remotes/deploy/main'
           if ($LASTEXITCODE -ne 0) { throw 'Failed to import main from the local checked-out workspace.' }
           git -C $runtime checkout -B main refs/remotes/deploy/main
