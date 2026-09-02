@@ -118,11 +118,19 @@ function Assert-GitHubAuth($State) {
 
 function Ensure-Rollback($State) {
     $Known = Get-Content -Raw (Join-Path $Root 'production\known-good.json') | ConvertFrom-Json
-    $rollback = Join-Path $RollbackDir ([string]$Known.firmware_file)
+    $rollbackTag = [string]$Known.rollback.target
+    $rollbackFile = [string]$Known.rollback.firmware
+    $rollbackSha256 = [string]$Known.rollback.sha256
+    if (-not $rollbackTag -or -not $rollbackFile -or -not $rollbackSha256) {
+        $State.human_gate = 'NO_SAFE_ROLLBACK'
+        Save-State $State ([string]$State.stage) 'BLOCKED' 'Explicit verified rollback target, firmware, or SHA256 is missing from production/known-good.json.'
+        throw 'NO_SAFE_ROLLBACK'
+    }
+    $rollback = Join-Path $RollbackDir $rollbackFile
     if (-not (Test-Path $rollback)) {
         Assert-GitHubAuth $State
-        Log "Downloading verified rollback from release $($Known.stable_tag)"
-        $dl = Invoke-Process 'gh' @('release','download',[string]$Known.stable_tag,'--repo',[string]$Config.repository,'--dir',$RollbackDir,'--clobber','--pattern',[string]$Known.firmware_file) -AllowFailure
+        Log "Downloading verified rollback from release $rollbackTag"
+        $dl = Invoke-Process 'gh' @('release','download',$rollbackTag,'--repo',[string]$Config.repository,'--dir',$RollbackDir,'--clobber','--pattern',$rollbackFile) -AllowFailure
         if ($dl.ExitCode -ne 0) {
             if ([string]$dl.Output -match '(?i)authentication|bad credentials|HTTP 401|rate limit|HTTP 403|HTTP 5\d\d|timeout|timed out|EOF|connection reset|connection refused') {
                 Save-State $State ([string]$State.stage) 'RETRYING' "ROLLBACK_FETCH_RECOVERABLE: $($dl.Output)"
@@ -139,7 +147,7 @@ function Ensure-Rollback($State) {
         throw 'NO_SAFE_ROLLBACK'
     }
     $hash = (Get-FileHash -Algorithm SHA256 $rollback).Hash.ToLowerInvariant()
-    if ($hash -ne ([string]$Known.sha256).ToLowerInvariant()) {
+    if ($hash -ne $rollbackSha256.ToLowerInvariant()) {
         $State.human_gate = 'NO_SAFE_ROLLBACK'
         Save-State $State ([string]$State.stage) 'BLOCKED' "Rollback SHA256 mismatch: $hash"
         throw 'NO_SAFE_ROLLBACK'
