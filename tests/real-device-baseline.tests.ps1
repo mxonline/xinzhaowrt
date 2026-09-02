@@ -36,9 +36,11 @@ Assert-True ([string]$baseline.device.profile -eq 'jdcloud_re-ss-01') 'baseline 
 Assert-True ([string]$baseline.device.target -eq 'qualcommax/ipq60xx') 'baseline target must be qualcommax/ipq60xx'
 Assert-True ([string]$baseline.device.model -match 'RE-SS-01') 'baseline model must be JDCloud RE-SS-01'
 Assert-True ([string]$baseline.firmware.version -eq '0.1.3') 'physical development baseline version must be 0.1.3'
-Assert-True ([string]$baseline.firmware.build_id -eq '33368080615') 'physical baseline must preserve observed Build ID 33368080615'
-Assert-True ([string]$baseline.firmware.source_sha -eq '7ee9eecf4104320c970cd4dc76025793ac21931f') 'baseline must bind the full Git commit behind the physical UI short commit'
-Assert-True ([string]$baseline.firmware.sha256 -eq 'cfa18373634c18450b2a0b32371991378914de78cf8426f68b4291ea2dd71bcf') 'baseline must bind the reconciled GitHub artifact firmware SHA256'
+Assert-True ([string]$baseline.firmware.build_id -eq '33462873812') 'physical baseline must preserve live-observed Build ID 33462873812'
+Assert-True ([string]$baseline.firmware.source_sha -eq 'e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9') 'baseline must bind the full Git commit behind the live physical UI short commit'
+Assert-True ([string]$baseline.firmware.sha256 -eq 'bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a') 'baseline must bind the reconciled GitHub artifact firmware SHA256'
+Assert-True ([string]$baseline.firmware.displayed_git_commit -eq 'e27bafa') 'baseline must preserve the live physical displayed Git commit'
+Assert-True ([string]$baseline.firmware.artifact_id -eq '9784138318') 'baseline must bind the exact GitHub artifact behind the physical build'
 Assert-True ($baseline.machine_verified -eq $false) 'committed bootstrap record must not falsely claim a live SSH snapshot already occurred'
 
 Assert-True ((Compare-ArthurVersion '0.1.2' '0.1.3') -lt 0) 'semantic version comparison must order 0.1.2 below 0.1.3'
@@ -53,7 +55,7 @@ Assert-True ([string](Classify-ArthurSshProbe -ExitCode 255 -Output 'WARNING: RE
 Assert-True ([string](Classify-ArthurSshProbe -ExitCode 0 -Output '{"model":"Other Router","board_name":"other,router"}') -eq 'DEVICE_IDENTITY_MISMATCH') 'wrong authenticated board must be DEVICE_IDENTITY_MISMATCH'
 Assert-True ([string](Classify-ArthurSshProbe -ExitCode 0 -Output '{"model":"JDCloud RE-SS-01","board_name":"jdcloud,re-ss-01"}') -eq 'DEVICE_VERIFIED') 'Arthur board must be DEVICE_VERIFIED'
 
-$matchingBuild = [pscustomobject]@{ Version='0.1.3'; 'Build ID'='33368080615'; 'Git Commit'='7ee9eec' }
+$matchingBuild = [pscustomobject]@{ Version='0.1.3'; 'Build ID'='33462873812'; 'Git Commit'='e27bafa' }
 $wrongBuild = [pscustomobject]@{ Version='0.1.2'; 'Build ID'='33570985102'; 'Git Commit'='7375e24' }
 Assert-True (Test-ArthurBuildInfoMatchesBaseline -BuildInfo $matchingBuild -Baseline $baseline) 'live build-info matching physical 0.1.3 must verify'
 Assert-True (-not (Test-ArthurBuildInfoMatchesBaseline -BuildInfo $wrongBuild -Baseline $baseline)) 'different build/version must not impersonate the physical baseline'
