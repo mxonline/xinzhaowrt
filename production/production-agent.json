@@ -13,13 +13,13 @@
   "required_plugin_count": 22,
   "adguardhome_default_enabled": false,
   "bootstrap": {
-    "run_id": 33541575157,
-    "artifact_id": 0,
-    "artifact_name": "",
-    "source_sha": "71003e146987aaf41d869a84972d2f4d99908baa",
-    "candidate_filename": "",
-    "candidate_size": 0,
-    "candidate_sha256": ""
+    "run_id": 33570985102,
+    "artifact_id": 9828650124,
+    "artifact_name": "Arthur-v3-Candidate-33570985102",
+    "source_sha": "7375e246060ab0197cc407ed8a6f22f3edf16688",
+    "candidate_filename": "XinZhaoWrt-Arthur-v0.1.2-20260901-sysupgrade.bin",
+    "candidate_size": 98672915,
+    "candidate_sha256": "5494d776114dad6e3c89c45df4eb02c31a2c3e5b4f0a7577901ca8171f0e51f9"
   },
   "poll_seconds": 30,
   "artifact_retry_seconds": [15, 30, 60, 120, 300],
