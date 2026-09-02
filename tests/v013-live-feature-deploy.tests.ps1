@@ -26,6 +26,14 @@ Assert-True ($text -match '\$Command\s*=\s*\$Command\.Replace\("`r`n",\s*"`n"\)\
 Assert-True ($text -cmatch '&\s+scp\.exe\s+-O\s+-o\s+BatchMode') 'Arthur Dropbear copies must force uppercase -O legacy SCP before SSH options'
 Assert-True ($text -notmatch '(?i)sysupgrade|\bmtd\b|\buboot\b|\bu-boot\b|/dev/mmcblk|\bdd\s+if=') 'live validation must never contain firmware/raw-write commands'
 
+$catch = [regex]::Match($text, '(?s)catch\s*\{\s*\$message\s*=\s*\$_\.Exception\.Message(?<body>.*?)\n\}')
+Assert-True $catch.Success 'live validation catch block is missing'
+$catchBody = $catch.Groups['body'].Value
+$restoreIndex = $catchBody.IndexOf('Restore-RuntimeBackup')
+$writeErrorIndex = $catchBody.IndexOf('Write-Error')
+Assert-True ($restoreIndex -ge 0) 'failure path must call Restore-RuntimeBackup'
+Assert-True ($writeErrorIndex -lt 0 -or $restoreIndex -lt $writeErrorIndex) 'rollback must execute before any terminating Write-Error'
+
 Assert-True (Test-Path $workflow) 'one-shot live validation workflow is missing'
 $workflowText = Get-Content -Raw $workflow
 Assert-True ($workflowText -match '(?m)^\s*shell:\s*powershell\s*$') 'self-hosted live workflow must use built-in Windows PowerShell'
