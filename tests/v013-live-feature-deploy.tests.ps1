@@ -35,6 +35,23 @@ Assert-True ($text -match '\$ErrorActionPreference\s*=\s*\$previousErrorActionPr
 Assert-True ($text -match "pgrep\s+-f\s+'\[A\]dGuardHome'") 'AdGuard process checks must not match their own pgrep command'
 Assert-True ($text -notmatch '(?i)sysupgrade|\bmtd\b|\buboot\b|\bu-boot\b|/dev/mmcblk|\bdd\s+if=') 'live validation must never contain firmware/raw-write commands'
 
+Assert-True ($text -match 'ARTHUR_PREBUILD_GATE_PATH') 'live validation must support the shared prebuild gate path override'
+Assert-True ($text -match 'ProgramData') 'Windows live validation must default the durable gate to shared ProgramData'
+Assert-True ($text -match 'v013-prebuild-real-device-features\.json') 'live validation must use the canonical prebuild gate filename'
+Assert-True ($text -match 'Remove-Item\s+-Force.*\$GatePath') 'a fresh live attempt must invalidate any stale PASS gate before validation'
+Assert-True ($text -match '\$gatePayload') 'live validation must construct a durable gate payload'
+Assert-True ($text -match 'ConvertTo-Json') 'durable prebuild gate must be machine-readable JSON'
+Assert-True ($text -match "gate\s*=\s*'V013_PREBUILD_REAL_DEVICE_FEATURES'") 'durable gate must identify V013_PREBUILD_REAL_DEVICE_FEATURES'
+Assert-True ($text -match "status\s*=\s*'PASS'") 'durable gate must record PASS only after live validation succeeds'
+Assert-True ($text -match 'ADGUARD_LIVE=PASS final_state=stopped_disabled') 'durable-gate source must contain the AdGuard PASS marker'
+Assert-True ($text -match 'QUICKSTART_LIVE=PASS homepage=admin/quickstart') 'durable-gate source must contain the QuickStart PASS marker'
+Assert-True ($text -match 'WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED') 'durable-gate source must contain the Wi-Fi PASS marker'
+$finalInvariantIndex = $text.IndexOf('ADGUARD_FINAL_STATE_REGRESSION')
+$passMarkerIndex = $text.LastIndexOf("Write-Host 'V013_PREBUILD_REAL_DEVICE_FEATURES=PASS'")
+$gateCommitIndex = $text.IndexOf('Move-Item -Force $GateTempPath $GatePath')
+Assert-True ($finalInvariantIndex -ge 0 -and $passMarkerIndex -gt $finalInvariantIndex) 'overall PASS marker must be emitted only after final invariants'
+Assert-True ($gateCommitIndex -gt $passMarkerIndex) 'durable PASS gate must be committed only after the overall PASS marker'
+
 $catch = [regex]::Match($text, '(?s)catch\s*\{\s*\$message\s*=\s*\$_\.Exception\.Message(?<body>.*?)\n\}')
 Assert-True $catch.Success 'live validation catch block is missing'
 $catchBody = $catch.Groups['body'].Value
