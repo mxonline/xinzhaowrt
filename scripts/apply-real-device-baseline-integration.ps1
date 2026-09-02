@@ -13,8 +13,12 @@ $Out = Join-Path $Root 'output\production-agent'
 '@
 $replacement = @'
 $Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
-$RealDeviceBaselinePath = Join-Path $Root ([string]$Config.real_device_baseline)
-$ExpectedDiffPath = Join-Path $Root ([string]$Config.expected_diff)
+$RealDeviceBaselineDefault = 'production\real-device-baseline.json'
+$ExpectedDiffDefault = 'production\expected-diff.json'
+$RealDeviceBaselineRelative = if ([string]$Config.real_device_baseline) { [string]$Config.real_device_baseline } else { $RealDeviceBaselineDefault }
+$ExpectedDiffRelative = if ([string]$Config.expected_diff) { [string]$Config.expected_diff } else { $ExpectedDiffDefault }
+$RealDeviceBaselinePath = Join-Path $Root $RealDeviceBaselineRelative
+$ExpectedDiffPath = Join-Path $Root $ExpectedDiffRelative
 $SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
 . (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
 $Out = Join-Path $Root 'output\production-agent'
@@ -199,7 +203,7 @@ Set-Content -Path $agentPath -Value $agent -Encoding UTF8
 
 $controllerPath = 'scripts/ci-controller-v3.ps1'
 $controller = Get-Content -Raw $controllerPath
-$controllerAnchor = "$ProductionStateFile = Join-Path `$RepoRoot 'output\production-agent\state.json'"
+$controllerAnchor = '$ProductionStateFile = Join-Path $RepoRoot ''output\production-agent\state.json'''
 $controllerReplacement = @'
 $ProductionStateFile = Join-Path $RepoRoot 'output\production-agent\state.json'
 $ProductionConfigFile = Join-Path $RepoRoot 'production\production-agent.json'
@@ -222,9 +226,13 @@ foreach ($file in @($agentPath,$controllerPath)) {
 }
 
 & ./tests/real-device-baseline.tests.ps1
-if ($LASTEXITCODE -ne 0) { throw "real-device baseline contract failed: $LASTEXITCODE" }
 & ./tests/production-agent.tests.ps1
-if ($LASTEXITCODE -ne 0) { throw "production-agent contract failed: $LASTEXITCODE" }
 
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+foreach ($normalizePath in @($agentPath,$controllerPath,$MyInvocation.MyCommand.Path)) {
+    $normalized = (Get-Content -Raw $normalizePath).TrimEnd("`r","`n") + "`n"
+    [System.IO.File]::WriteAllText((Resolve-Path $normalizePath),$normalized,$utf8NoBom)
+}
 git diff --check
+if ($LASTEXITCODE -ne 0) { throw "git diff --check failed: $LASTEXITCODE" }
 Write-Host 'REAL_DEVICE_BASELINE_RUNTIME_INTEGRATION=PASS'

@@ -28,6 +28,8 @@ $KnownGoodFile = Join-Path $RepoRoot 'production\known-good.json'
 $KnownGoodLock = Join-Path $RepoRoot 'config\arthur-known-good.lock'
 $ProductionAgent = Join-Path $RepoRoot 'scripts\production-agent.ps1'
 $ProductionStateFile = Join-Path $RepoRoot 'output\production-agent\state.json'
+$ProductionConfigFile = Join-Path $RepoRoot 'production\production-agent.json'
+$ProductionConfig = Get-Content -Raw $ProductionConfigFile | ConvertFrom-Json
 
 $HardFiles = @(
     'config/required-plugins.txt',
@@ -751,7 +753,7 @@ function Invoke-ProductionContinuation {
             return $true
         }
 
-        if ($humanGate -in @('UNKNOWN_DEVICE_IDENTITY','NO_SAFE_ROLLBACK','UNRECOVERABLE_IRREVERSIBLE_OPERATION')) {
+        if ($humanGate -and $humanGate -in @($ProductionConfig.human_stop_classes)) {
             Set-ControllerState -Status 'blocked' -Stage $stage -Conclusion 'safety-blocked' `
                 -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
                 -Message "Frozen flash-safety boundary requires human resolution: $humanGate"
