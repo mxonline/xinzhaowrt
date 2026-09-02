@@ -1,6 +1,6 @@
 name: Apply Real Device Baseline Runtime
 
-# Integration contract rerun after PowerShell test harness fix.
+# Final integration contract rerun after generated file normalization.
 on:
   push:
     branches:
