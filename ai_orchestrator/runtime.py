@@ -209,8 +209,8 @@ class ProductionRuntime:
         decision = outcome.decision
         if outcome.route == PolicyRoute.SAFE_AUTO:
             previous_phase = state.phase
-            state.phase = decision.metadata.get("next_phase") or self.pipeline.next_phase(state.phase, decision.action)
-            state.next_codex_prompt = decision.next_codex_prompt
+            state.phase = self.pipeline.next_phase(state.phase, decision.action)
+            state.next_codex_prompt = self.pipeline.prompt_for(state.phase)
             state.pending_human_gate = None
             if state.phase != previous_phase:
                 self.store.append_event(
