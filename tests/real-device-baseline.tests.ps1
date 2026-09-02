@@ -93,6 +93,8 @@ Assert-True ([string]$config.real_device_baseline -eq 'production/real-device-ba
 Assert-True ([string]$config.expected_diff -eq 'production/expected-diff.json') 'Production Agent config must name expected-diff policy'
 Assert-True (@($config.human_stop_classes) -contains 'DEVICE_IDENTITY_MISMATCH') 'true device identity mismatch must remain a human safety stop'
 Assert-True (@($config.human_stop_classes) -contains 'SSH_HOST_IDENTITY_MISMATCH') 'host-key anomaly must remain a human safety stop'
+Assert-True (@($config.human_stop_classes) -contains 'REAL_DEVICE_BASELINE_BUILD_MISMATCH') 'live build identity mismatch must freeze the write path'
+Assert-True (@($config.human_stop_classes) -contains 'REAL_DEVICE_BASELINE_GATE_FAILED') 'unexpected baseline policy failure must freeze the write path'
 Assert-True (@($config.human_stop_classes) -notcontains 'DEVICE_UNREACHABLE') 'device unreachable must be recoverable'
 Assert-True (@($config.human_stop_classes) -notcontains 'SSH_AUTH_FAILED') 'SSH auth failure must be recoverable'
 
