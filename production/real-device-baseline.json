@@ -15,19 +15,19 @@
   "firmware": {
     "distribution": "XinZhaoWrt",
     "version": "0.1.3",
-    "build_id": "33368080615",
-    "build_date": "2026-08-31",
-    "displayed_git_commit": "7ee9eec",
-    "source_sha": "7ee9eecf4104320c970cd4dc76025793ac21931f",
-    "github_run_id": 33368080615,
+    "build_id": "33462873812",
+    "build_date": "2026-09-01",
+    "displayed_git_commit": "e27bafa",
+    "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
+    "github_run_id": 33462873812,
     "github_run_conclusion": "success",
-    "artifact_id": 9749467342,
-    "artifact_name": "arthur-theme-candidate-33368080615",
-    "artifact_archive_digest": "sha256:5df0a1499f29211f974d9844a19a90d7f88bc2a5306a5372ec70ae483e2d6153",
-    "firmware_filename": "XinZhaoWrt-Arthur-theme-33368080615-sysupgrade.bin",
+    "artifact_id": 9784138318,
+    "artifact_name": "arthur-theme-candidate-33462873812",
+    "artifact_archive_digest": "sha256:1662782c035aa3de76ccf3fd8b0dad7f81a0d8a41f92e24416fdbf0433d611e0",
+    "firmware_filename": "XinZhaoWrt-Arthur-theme-33462873812-sysupgrade.bin",
     "firmware_size": 99000595,
-    "sha256": "cfa18373634c18450b2a0b32371991378914de78cf8426f68b4291ea2dd71bcf",
-    "provenance_status": "GITHUB_ARTIFACT_RECONCILED_BY_BUILD_ID_AND_COMMIT"
+    "sha256": "bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a",
+    "provenance_status": "LIVE_HTTP_BUILD_INFO_AND_GITHUB_ARTIFACT_RECONCILED"
   },
   "protected_product_state": {
     "lan_ipv4": "192.168.6.1",
@@ -51,11 +51,13 @@
     "historical_rollback_preserved": "v0.1.0"
   },
   "evidence": {
-    "bootstrap_source": "operator-observed LuCI status on designated physical Arthur",
-    "observed_at": "2026-09-02T15:40:38+08:00",
+    "bootstrap_source": "self-hosted runner read-only HTTP build-info from designated 192.168.6.1 plus GitHub Actions artifact provenance",
+    "observed_at": "2026-09-02",
     "operator_reported_uptime": ">24h on XinZhaoWrt 0.1.3",
-    "github_workflow_evidence": "Run 33368080615 succeeded from 7ee9eecf4104320c970cd4dc76025793ac21931f; artifact 9749467342 remains available; artifact firmware SHA256 and SHA256SUMS.local both equal cfa18373634c18450b2a0b32371991378914de78cf8426f68b4291ea2dd71bcf.",
+    "http_identity_evidence": "http://192.168.6.1/luci-static/xinzhao/build-info.json reported Version 0.1.3, Build ID 33462873812, Git Commit e27bafa.",
+    "github_workflow_evidence": "Run 33462873812 completed successfully from e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9; artifact 9784138318 remains available; firmware SHA256 and SHA256SUMS.local both equal bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a.",
+    "superseded_bootstrap_assumption": "The earlier 33368080615 / 7ee9eec mapping was disproved by live read-only HTTP evidence and must not be used for machine verification.",
     "machine_snapshot": null,
-    "notes": "This selects the current physical 0.1.3 router as the development reference. GitHub build provenance is reconciled, but machine_verified remains false until the read-only SSH snapshot confirms the live board and /www/luci-static/xinzhao/build-info.json metadata."
+    "notes": "This selects the currently running physical 0.1.3 router as the forward-development reference. Build provenance is reconciled, but machine_verified deliberately remains false until SSH host identity is safely reconciled and the strict read-only SSH snapshot confirms the board and build-info metadata."
   }
 }
