@@ -35,6 +35,7 @@ jobs:
             'scripts/real-device-baseline-lib.ps1',
             'scripts/real-device-snapshot.ps1',
             'scripts/real-device-baseline-gate.ps1',
+            'scripts/bootstrap-arthur-host-key.ps1',
             'scripts/ci-controller-v3.ps1',
             'scripts/install-production-agent.ps1',
             'scripts/uninstall-production-agent.ps1',
