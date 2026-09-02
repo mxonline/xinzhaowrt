@@ -40,9 +40,10 @@ jobs:
           $commit = [string]$build.'Git Commit'
           Write-Host "FORENSICS_HTTP_BUILD version=$version build_id=$buildId commit=$commit"
           if ($version -ne '0.1.3') { throw "FORENSICS_BUILD_VERSION_MISMATCH expected=0.1.3 actual=$version" }
-          if ($buildId -ne '33368080615') { throw "FORENSICS_BUILD_ID_MISMATCH expected=33368080615 actual=$buildId" }
-          if (-not $commit.ToLowerInvariant().StartsWith('7ee9eec')) { throw "FORENSICS_BUILD_COMMIT_MISMATCH expected_prefix=7ee9eec actual=$commit" }
+          if ($buildId -ne '33462873812') { throw "FORENSICS_BUILD_ID_MISMATCH expected=33462873812 actual=$buildId" }
+          if (-not $commit.ToLowerInvariant().StartsWith('e27bafa')) { throw "FORENSICS_BUILD_COMMIT_MISMATCH expected_prefix=e27bafa actual=$commit" }
           Write-Host 'FORENSICS_HTTP_IDENTITY=PASS'
+          Write-Host 'FORENSICS_GITHUB_PROVENANCE=PASS run=33462873812 source=e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9 firmware_sha256=bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a'
 
           $knownHosts = Join-Path $HOME '.ssh\known_hosts'
           Write-Host "FORENSICS_KNOWN_HOSTS=$knownHosts"
