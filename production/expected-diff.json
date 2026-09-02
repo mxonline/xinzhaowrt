@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "baseline": "production/real-device-baseline.json",
+  "operation": "forward",
+  "status": "READY",
+  "request_source": "production/v3-request.json",
+  "allowed_changes": [
+    "adguardhome_management",
+    "istore_quickstart_homepage",
+    "wifi_validation",
+    "version_metadata_alignment"
+  ],
+  "protected_domains": [
+    "device_identity",
+    "target_profile",
+    "storage_layout",
+    "lan",
+    "root_credential_policy",
+    "required_plugins",
+    "themes",
+    "web_stack",
+    "all_other_undeclared_product_state"
+  ],
+  "reason": "Continue the existing ADH/iStore/Wi-Fi acceptance work from the running physical 0.1.3 Arthur. The old v0.1.2 Candidate is a legacy quarantined artifact and cannot be the next normal flash target."
+}
