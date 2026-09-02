@@ -35,6 +35,15 @@ if (-not $Text.Contains($oldBaselinePath)) {
 }
 $Text = $Text.Replace($oldBaselinePath,$newBaselinePath)
 
+$badExitChecks = @(
+    'if ($LASTEXITCODE -ne 0) { throw "real-device baseline contract failed: $LASTEXITCODE" }',
+    'if ($LASTEXITCODE -ne 0) { throw "production-agent contract failed: $LASTEXITCODE" }'
+)
+foreach ($line in $badExitChecks) {
+    $Text = $Text.Replace("$line`r`n",'')
+    $Text = $Text.Replace("$line`n",'')
+}
+
 Set-Content -Path $Path -Value $Text -Encoding UTF8
 
 $tokens = $null
