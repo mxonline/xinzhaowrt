@@ -27,6 +27,7 @@ jobs:
             'tests/production-agent.tests.ps1',
             'tests/verified-baseline-inheritance.tests.ps1',
             'tests/real-device-baseline.tests.ps1',
+            'tests/runner-self-heal.tests.ps1',
             'scripts/production-agent.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
@@ -37,7 +38,8 @@ jobs:
             'scripts/install-production-agent.ps1',
             'scripts/uninstall-production-agent.ps1',
             'scripts/start-production-agent.ps1',
-            'scripts/production-agent-status.ps1'
+            'scripts/production-agent-status.ps1',
+            'scripts/repair-github-runner.ps1'
           )) {
             $tokens = $null
             $errors = $null
@@ -49,3 +51,4 @@ jobs:
           & ./tests/production-agent.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
           & ./tests/real-device-baseline.tests.ps1
+          & ./tests/runner-self-heal.tests.ps1
