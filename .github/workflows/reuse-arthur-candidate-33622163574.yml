@@ -1,0 +1,101 @@
+name: Reuse Arthur Candidate 33622163574
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/reuse-arthur-candidate-33622163574.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: arthur-existing-candidate-production
+  cancel-in-progress: false
+
+jobs:
+  reuse-existing-candidate:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      CANDIDATE_RUN_ID: '33622163574'
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Reconcile runtime to existing Candidate without rebuilding
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $workspace = $env:GITHUB_WORKSPACE
+
+          foreach ($taskName in @('XinZhaoWrt-Arthur-Production-Agent','XinZhaoWrt-Arthur-v3-Controller')) {
+            $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($task -and [string]$task.State -eq 'Running') {
+              Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+              Write-Host "REUSE_CANDIDATE_TASK_STOPPED task=$taskName"
+            }
+          }
+
+          $stopped = 0
+          foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+            $cmd = [string]$proc.CommandLine
+            if (-not $cmd) { continue }
+            if ($cmd -match '(?i)XinZhaoWrt\\ProductionAgent' -and ($cmd -match '(?i)production-agent\.ps1' -or $cmd -match '(?i)ci-controller-v3\.ps1')) {
+              Stop-Process -Id ([int]$proc.ProcessId) -Force -ErrorAction SilentlyContinue
+              $stopped++
+              Write-Host "REUSE_CANDIDATE_PROCESS_STOPPED pid=$($proc.ProcessId)"
+            }
+          }
+          Write-Host "REUSE_CANDIDATE_OLD_WRITERS_QUIESCED=PASS stopped=$stopped"
+
+          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+          if (-not (Test-Path (Join-Path $runtime '.git'))) {
+            git -C $runtime init
+            git -C $runtime remote add origin https://github.com/mxonline/xinzhaowrt.git
+          }
+          git -C $runtime fetch --force $workspace 'refs/heads/main:refs/remotes/reuse/main'
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to import current main into stable Production Agent runtime.' }
+          git -C $runtime checkout -B main refs/remotes/reuse/main
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize stable Production Agent runtime.' }
+          $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
+          Write-Host "REUSE_CANDIDATE_CONTROL_SHA=$runtimeSha"
+
+          $candidate = gh api "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID" | ConvertFrom-Json
+          if ([string]$candidate.status -ne 'completed' -or [string]$candidate.conclusion -ne 'success') {
+            throw "Existing Candidate Run $env:CANDIDATE_RUN_ID is not completed/success."
+          }
+          if ([string]$candidate.head_sha -ne '0104d323c5cc1a3a838882b98c901d6f33e21e43') {
+            throw "Existing Candidate source SHA changed unexpectedly: $($candidate.head_sha)"
+          }
+          Write-Host "REUSE_CANDIDATE_RUN_VERIFIED=PASS run=$env:CANDIDATE_RUN_ID source=$($candidate.head_sha)"
+
+          $pwsh = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
+          if (-not (Test-Path $pwsh)) {
+            $resolved = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+            if (-not $resolved) { throw 'PowerShell 7 unavailable on self-hosted runner.' }
+            $pwsh = $resolved.Source
+          }
+
+          $agent = Join-Path $runtime 'scripts\production-agent.ps1'
+          if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
+          Write-Host "REUSE_CANDIDATE_PRODUCTION_START run=$env:CANDIDATE_RUN_ID"
+          & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId ([long]$env:CANDIDATE_RUN_ID)
+          if ($LASTEXITCODE -ne 0) { throw "Existing Candidate production continuation failed exit=$LASTEXITCODE" }
+
+          & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode Status -RunId ([long]$env:CANDIDATE_RUN_ID)
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read final Production Agent state.' }
+          Write-Host "REUSE_CANDIDATE_EXECUTION_FINISHED=PASS run=$env:CANDIDATE_RUN_ID"
