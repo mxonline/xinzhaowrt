@@ -24,50 +24,86 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $ip = '192.168.6.1'
-          Write-Host "FORENSICS_TARGET=$ip"
+          $report = Join-Path $env:RUNNER_TEMP 'arthur-host-identity-forensics.txt'
+          $lines = New-Object System.Collections.Generic.List[string]
+          function Add-Report([string]$text) {
+            $lines.Add($text)
+            Write-Host $text
+          }
+          function Save-Report { $lines | Set-Content -Encoding UTF8 $report }
 
-          $tcp22 = Test-NetConnection -ComputerName $ip -Port 22 -InformationLevel Quiet -WarningAction SilentlyContinue
-          $tcp80 = Test-NetConnection -ComputerName $ip -Port 80 -InformationLevel Quiet -WarningAction SilentlyContinue
-          Write-Host "FORENSICS_TCP22=$tcp22"
-          Write-Host "FORENSICS_TCP80=$tcp80"
-          if (-not $tcp22 -or -not $tcp80) { throw 'FORENSICS_TARGET_UNREACHABLE' }
+          try {
+            Add-Report "FORENSICS_TARGET=$ip"
+            $tcp22 = Test-NetConnection -ComputerName $ip -Port 22 -InformationLevel Quiet -WarningAction SilentlyContinue
+            $tcp80 = Test-NetConnection -ComputerName $ip -Port 80 -InformationLevel Quiet -WarningAction SilentlyContinue
+            Add-Report "FORENSICS_TCP22=$tcp22"
+            Add-Report "FORENSICS_TCP80=$tcp80"
+            if (-not $tcp22 -or -not $tcp80) { throw 'FORENSICS_TARGET_UNREACHABLE' }
 
-          $uri = "http://$ip/luci-static/xinzhao/build-info.json"
-          $response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10
-          $build = $response.Content | ConvertFrom-Json
-          $version = [string]$build.Version
-          $buildId = [string]$build.'Build ID'
-          $commit = [string]$build.'Git Commit'
-          Write-Host "FORENSICS_HTTP_BUILD version=$version build_id=$buildId commit=$commit"
-          if ($version -ne '0.1.3') { throw "FORENSICS_BUILD_VERSION_MISMATCH expected=0.1.3 actual=$version" }
-          if ($buildId -ne '33462873812') { throw "FORENSICS_BUILD_ID_MISMATCH expected=33462873812 actual=$buildId" }
-          if (-not $commit.ToLowerInvariant().StartsWith('e27bafa')) { throw "FORENSICS_BUILD_COMMIT_MISMATCH expected_prefix=e27bafa actual=$commit" }
-          Write-Host 'FORENSICS_HTTP_IDENTITY=PASS'
-          Write-Host 'FORENSICS_GITHUB_PROVENANCE=PASS run=33462873812 source=e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9 firmware_sha256=bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a'
+            $uri = "http://$ip/luci-static/xinzhao/build-info.json"
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10
+            $build = $response.Content | ConvertFrom-Json
+            $version = [string]$build.Version
+            $buildId = [string]$build.'Build ID'
+            $commit = [string]$build.'Git Commit'
+            $buildDate = [string]$build.'Build Date'
+            Add-Report "FORENSICS_HTTP_BUILD version=$version build_id=$buildId commit=$commit build_date=$buildDate"
+            if ($version -ne '0.1.3') { throw "FORENSICS_BUILD_VERSION_MISMATCH expected=0.1.3 actual=$version" }
+            if ($buildId -ne '33462873812') { throw "FORENSICS_BUILD_ID_MISMATCH expected=33462873812 actual=$buildId" }
+            if (-not $commit.ToLowerInvariant().StartsWith('e27bafa')) { throw "FORENSICS_BUILD_COMMIT_MISMATCH expected_prefix=e27bafa actual=$commit" }
+            Add-Report 'FORENSICS_HTTP_IDENTITY=PASS'
+            Add-Report 'FORENSICS_GITHUB_PROVENANCE=PASS run=33462873812 source=e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9 artifact=9784138318 archive_digest=sha256:1662782c035aa3de76ccf3fd8b0dad7f81a0d8a41f92e24416fdbf0433d611e0 firmware_sha256=bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a'
 
-          $knownHosts = Join-Path $HOME '.ssh\known_hosts'
-          Write-Host "FORENSICS_KNOWN_HOSTS=$knownHosts"
-          if (Test-Path $knownHosts) {
-            $oldLines = @(& ssh-keygen.exe -F $ip -f $knownHosts 2>$null | Where-Object { $_ -and $_ -notmatch '^#' })
-            $oldFile = Join-Path $env:TEMP 'arthur-known-host-old.txt'
-            $oldLines | Set-Content -Encoding ASCII $oldFile
-            if ($oldLines.Count -gt 0) {
-              Write-Host 'FORENSICS_OLD_HOST_KEYS=FOUND'
-              & ssh-keygen.exe -lf $oldFile
+            $knownHosts = Join-Path $HOME '.ssh\known_hosts'
+            Add-Report "FORENSICS_KNOWN_HOSTS=$knownHosts"
+            $oldFile = Join-Path $env:RUNNER_TEMP 'arthur-known-host-old.txt'
+            Remove-Item -Force -ErrorAction SilentlyContinue $oldFile
+            if (Test-Path $knownHosts) {
+              $oldLines = @(& ssh-keygen.exe -F $ip -f $knownHosts 2>$null | Where-Object { $_ -and $_ -notmatch '^#' })
+              if ($oldLines.Count -gt 0) {
+                $oldLines | Set-Content -Encoding ASCII $oldFile
+                Add-Report 'FORENSICS_OLD_HOST_KEYS=FOUND'
+                $oldFp = @(& ssh-keygen.exe -lf $oldFile 2>&1)
+                foreach ($line in $oldFp) { Add-Report "FORENSICS_OLD_FINGERPRINT=$line" }
+              } else {
+                Add-Report 'FORENSICS_OLD_HOST_KEYS=NONE'
+              }
             } else {
-              Write-Host 'FORENSICS_OLD_HOST_KEYS=NONE'
+              Add-Report 'FORENSICS_OLD_HOST_KEYS_FILE_MISSING'
             }
-          } else {
-            Write-Host 'FORENSICS_OLD_HOST_KEYS_FILE_MISSING'
+
+            $tempKnownHosts = Join-Path $env:RUNNER_TEMP 'arthur-current-host-key.txt'
+            Remove-Item -Force -ErrorAction SilentlyContinue $tempKnownHosts
+            $probeOutput = @(& ssh.exe -o "UserKnownHostsFile=$tempKnownHosts" -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=8 "root@$ip" exit 2>&1)
+            $probeExit = $LASTEXITCODE
+            Add-Report "FORENSICS_TEMP_SSH_EXIT=$probeExit"
+            foreach ($line in $probeOutput) { Add-Report "FORENSICS_TEMP_SSH=$line" }
+            if (-not (Test-Path $tempKnownHosts)) { throw 'FORENSICS_CURRENT_HOST_KEY_CAPTURE_FAILED' }
+            $currentLines = @(& ssh-keygen.exe -F $ip -f $tempKnownHosts 2>$null | Where-Object { $_ -and $_ -notmatch '^#' })
+            if ($currentLines.Count -eq 0) { throw 'FORENSICS_CURRENT_HOST_KEY_CAPTURE_EMPTY' }
+            $currentFile = Join-Path $env:RUNNER_TEMP 'arthur-current-host-lines.txt'
+            $currentLines | Set-Content -Encoding ASCII $currentFile
+            Add-Report 'FORENSICS_CURRENT_HOST_KEYS=FOUND'
+            $currentFp = @(& ssh-keygen.exe -lf $currentFile 2>&1)
+            foreach ($line in $currentFp) { Add-Report "FORENSICS_CURRENT_FINGERPRINT=$line" }
+
+            $arp = @(& arp.exe -a $ip 2>&1)
+            foreach ($line in $arp) { Add-Report "FORENSICS_ARP=$line" }
+            Add-Report 'ARTHUR_SSH_HOST_IDENTITY_FORENSICS=PASS'
+          }
+          catch {
+            Add-Report "FORENSICS_ERROR=$($_.Exception.Message)"
+            Save-Report
+            throw
+          }
+          finally {
+            Save-Report
           }
 
-          $scanFile = Join-Path $env:TEMP 'arthur-hostkey-current.txt'
-          $scan = @(& ssh-keyscan.exe -T 5 $ip 2>$null)
-          if ($LASTEXITCODE -ne 0 -or $scan.Count -eq 0) { throw 'FORENSICS_SSH_KEYSCAN_FAILED' }
-          $scan | Set-Content -Encoding ASCII $scanFile
-          Write-Host 'FORENSICS_CURRENT_HOST_KEYS=FOUND'
-          & ssh-keygen.exe -lf $scanFile
-
-          $arp = @(& arp.exe -a $ip 2>&1)
-          Write-Host "FORENSICS_ARP=$($arp -join ' | ')"
-          Write-Host 'ARTHUR_SSH_HOST_IDENTITY_FORENSICS=PASS'
+      - name: Upload forensic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arthur-host-identity-forensics
+          path: ${{ runner.temp }}\arthur-host-identity-forensics.txt
+          if-no-files-found: error
