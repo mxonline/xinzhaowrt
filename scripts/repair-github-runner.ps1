@@ -64,11 +64,11 @@ Set-Service -Name $serviceName -StartupType Automatic
 
 $scFailure = @(& sc.exe failure $serviceName 'reset=' '86400' 'actions=' 'restart/60000/restart/60000/restart/300000' 2>&1)
 if ($LASTEXITCODE -ne 0) {
-    Fail 'RUNNER_SERVICE_RECOVERY_CONFIG_FAILED' "sc.exe failure failed for $serviceName: $($scFailure -join ' ')"
+    Fail 'RUNNER_SERVICE_RECOVERY_CONFIG_FAILED' "sc.exe failure failed for ${serviceName}: $($scFailure -join ' ')"
 }
 $scFailureFlag = @(& sc.exe failureflag $serviceName '1' 2>&1)
 if ($LASTEXITCODE -ne 0) {
-    Fail 'RUNNER_SERVICE_RECOVERY_CONFIG_FAILED' "sc.exe failureflag failed for $serviceName: $($scFailureFlag -join ' ')"
+    Fail 'RUNNER_SERVICE_RECOVERY_CONFIG_FAILED' "sc.exe failureflag failed for ${serviceName}: $($scFailureFlag -join ' ')"
 }
 Write-Host 'RUNNER_SERVICE_RECOVERY_POLICY=PASS first=60s second=60s third=300s reset=86400s'
 
