@@ -96,7 +96,7 @@ Assert-Contains $agent '$Known.rollback.sha256' 'rollback integrity check must u
 Assert-Contains $agent 'DEVICE_IDENTITY_RETRYABLE' 'temporary SSH/device unreachability must re-enter the unattended loop'
 Assert-Contains $agent 'DEVICE_PROBE_RETRY' 'device probe failures must preserve diagnostic evidence for automatic retries'
 Assert-Contains $agent 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'host-key identity anomalies must remain a hard safety stop'
-Assert-True ($agent -notmatch "Save-State\s+\$State\s+\(\[string\]\$State.stage\)\s+'BLOCKED'\s+'No verified Arthur device found at expected/recovery addresses\.'") 'mere device unreachability must not be promoted directly to BLOCKED'
+Assert-True ($agent -notmatch 'Save-State\s+\$State\s+\(\[string\]\$State\.stage\)\s+''BLOCKED''\s+''No verified Arthur device found at expected/recovery addresses\.''') 'mere device unreachability must not be promoted directly to BLOCKED'
 
 Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
