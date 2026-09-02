@@ -226,12 +226,9 @@ function Request-CurrentSourceRebuild($State,[string]$Reason) {
         $State | Add-Member -NotePropertyName replacement_build_requested -NotePropertyValue $false
     }
     if ($State.replacement_build_requested -ne $true) {
-        $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
-        if (-not (Test-Path $controller)) { throw 'ci-controller-v3.ps1 is missing; cannot rebuild the current source safely.' }
-        $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Rebuild') -WorkingDirectory $Root -WindowStyle Hidden -PassThru
         $State.replacement_build_requested = $true
         Save-State $State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED' $Reason
-        Log "CURRENT_SOURCE_REBUILD_REQUESTED pid=$($proc.Id) old_run=$($State.run_id) reason=$Reason"
+        Log "CURRENT_SOURCE_REBUILD_REQUESTED old_run=$($State.run_id) reason=$Reason dispatcher=authenticated-deploy"
     } else {
         Save-State $State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED' $Reason
         Log "CURRENT_SOURCE_REBUILD_ALREADY_REQUESTED old_run=$($State.run_id)"
@@ -459,7 +456,7 @@ try {
             Run-ProductionOnce
             $loopState = Load-State
             if ([string]$loopState.status -eq 'REBUILD_REQUESTED') {
-                Log 'Replacement current-source build is now owned by ci-controller-v3; exiting this stale-run agent so the new run can acquire the production lock.'
+                Log 'Replacement current-source build is now owned by authenticated deploy; exiting this stale-run agent so the replacement run can acquire the production lock.'
                 exit 0
             }
             if ([string]$loopState.stage -eq 'PRODUCTION_RELEASED') { exit 0 }
