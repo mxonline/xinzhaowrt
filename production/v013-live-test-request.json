@@ -6,8 +6,9 @@
   "feature_branch": "feature/arthur-v013-next",
   "feature_contract_sha": "7ea6baa1f82c3f78d80e3a8847d586ade1727592",
   "live_runner_fix_sha": "c9a7a8d6bf2abd12eb60de43a87989643775de51",
-  "retry": 2,
-  "retry_reason": "use_windows_powershell_on_self_hosted_runner",
+  "remote_lf_fix_sha": "17a615f5e4cbbf92099ea5d9aa0c43db834db0cf",
+  "retry": 3,
+  "retry_reason": "normalize_windows_crlf_before_busybox_ash",
   "features": [
     "adguardhome_full_luci_manager",
     "istore_quickstart_homepage",
