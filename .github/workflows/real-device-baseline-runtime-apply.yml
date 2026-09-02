@@ -1,6 +1,6 @@
 name: Apply Real Device Baseline Runtime
 
-# Integration contract rerun after rollback SHA safety fix.
+# Integration contract rerun after PowerShell test harness fix.
 on:
   push:
     branches:
