@@ -1,6 +1,11 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from ai_orchestrator.arthur import ArthurPipeline
 from ai_orchestrator.models import ActionKind, CodexResult, GPTDecision, PipelineState
