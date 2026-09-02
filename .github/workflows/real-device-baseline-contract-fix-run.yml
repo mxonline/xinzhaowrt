@@ -1,0 +1,77 @@
+name: Fix Real Device Baseline Runtime Contract
+
+on:
+  push:
+    branches:
+      - feat/real-device-baseline-v2
+    paths:
+      - '.github/workflows/real-device-baseline-contract-fix-run.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/real-device-baseline-v2
+          fetch-depth: 0
+
+      - name: Repair deterministic integration helper and run contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'scripts/apply-real-device-baseline-integration.ps1'
+          $text = Get-Content -Raw $path
+
+          $badAnchor = @'
+$controllerAnchor = "$ProductionStateFile = Join-Path `$RepoRoot 'output\production-agent\state.json'"
+'@
+          $goodAnchor = @'
+$controllerAnchor = '$ProductionStateFile = Join-Path $RepoRoot ''output\production-agent\state.json'''
+'@
+          if ($text.Contains($badAnchor)) {
+            $text = $text.Replace($badAnchor,$goodAnchor)
+          } elseif (-not $text.Contains($goodAnchor)) {
+            throw 'controllerAnchor repair target missing'
+          }
+
+          $oldReplacement = @'
+$Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$RealDeviceBaselinePath = Join-Path $Root ([string]$Config.real_device_baseline)
+$ExpectedDiffPath = Join-Path $Root ([string]$Config.expected_diff)
+$SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
+. (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
+$Out = Join-Path $Root 'output\production-agent'
+'@
+          $newReplacement = @'
+$Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$RealDeviceBaselineDefault = 'production\real-device-baseline.json'
+$ExpectedDiffDefault = 'production\expected-diff.json'
+$RealDeviceBaselineRelative = if ([string]$Config.real_device_baseline) { [string]$Config.real_device_baseline } else { $RealDeviceBaselineDefault }
+$ExpectedDiffRelative = if ([string]$Config.expected_diff) { [string]$Config.expected_diff } else { $ExpectedDiffDefault }
+$RealDeviceBaselinePath = Join-Path $Root $RealDeviceBaselineRelative
+$ExpectedDiffPath = Join-Path $Root $ExpectedDiffRelative
+$SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
+. (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
+$Out = Join-Path $Root 'output\production-agent'
+'@
+          if (-not $text.Contains($oldReplacement)) { throw 'baseline replacement block missing' }
+          $text = $text.Replace($oldReplacement,$newReplacement)
+          Set-Content -Path $path -Value $text -Encoding UTF8
+
+          ./scripts/apply-real-device-baseline-integration.ps1
+
+      - name: Commit tested runtime integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git diff --check
+          if (-not (git status --porcelain)) { throw 'Integration produced no changes.' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/apply-real-device-baseline-integration.ps1 scripts/production-agent.ps1 scripts/ci-controller-v3.ps1
+          git commit -m 'chore: integrate real-device baseline runtime gates'
+          git push origin HEAD:feat/real-device-baseline-v2
