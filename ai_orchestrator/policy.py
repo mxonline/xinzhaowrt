@@ -48,6 +48,7 @@ def validate_decision(raw):
     try:
         decision = raw if isinstance(raw, GPTDecision) else GPTDecision.from_dict(raw)
         _validate_contract(decision)
+        _enforce_pipeline_owned_phase_selection(decision)
         return decision
     except (TypeError, ValueError) as exc:
         raise DecisionValidationError(str(exc))
@@ -64,6 +65,14 @@ def policy_gate(decision):
     if decision.action == ActionKind.TERMINAL:
         return PolicyOutcome(PolicyRoute.TERMINAL, decision)
     raise DecisionValidationError("unsupported policy action")
+
+
+def _enforce_pipeline_owned_phase_selection(decision):
+    """The controller may recommend work, but only the pipeline may choose the next phase."""
+    requested = decision.metadata.pop("next_phase", None)
+    if requested is not None:
+        decision.metadata["controller_requested_next_phase"] = requested
+        decision.metadata["phase_selection"] = "PIPELINE_OWNED"
 
 
 def _validate_contract(decision):
