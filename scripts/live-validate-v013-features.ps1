@@ -26,6 +26,7 @@ function Invoke-Remote {
         [Parameter(Mandatory=$true)][string]$Command,
         [switch]$AllowFailure
     )
+    $Command = $Command.Replace("`r`n", "`n").Replace("`r", "`n")
     $raw = @(& ssh.exe -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Target $Command 2>&1)
     $exit = $LASTEXITCODE
     $text = ($raw -join "`n").Trim()
