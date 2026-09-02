@@ -25,6 +25,7 @@ jobs:
           foreach ($file in @(
             'tests/production-agent.tests.ps1',
             'tests/verified-baseline-inheritance.tests.ps1',
+            'tests/real-device-baseline.tests.ps1',
             'scripts/production-agent.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
@@ -42,3 +43,4 @@ jobs:
           }
           & ./tests/production-agent.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
+          & ./tests/real-device-baseline.tests.ps1
