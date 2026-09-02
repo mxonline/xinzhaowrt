@@ -9,8 +9,8 @@
   "remote_lf_fix_sha": "17a615f5e4cbbf92099ea5d9aa0c43db834db0cf",
   "legacy_scp_fix_sha": "0eaf19f49604efc1fdf241df5138b79d73521059",
   "rollback_fix_sha": "0c7dba3fe8efcf74571c450b9664c15046a9bf2d",
-  "retry": 4,
-  "retry_reason": "use_legacy_scp_and_restore_before_rethrow",
+  "retry": 5,
+  "retry_reason": "resume_physical_hot_deploy_validation",
   "features": [
     "adguardhome_full_luci_manager",
     "istore_quickstart_homepage",
