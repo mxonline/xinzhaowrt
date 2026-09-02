@@ -4,10 +4,13 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $agentPath = Join-Path $Root 'scripts/production-agent.ps1'
+$installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 if (-not (Test-Path $deployPath)) { throw 'TEST_FAIL: production-agent deploy workflow is missing' }
 if (-not (Test-Path $agentPath)) { throw 'TEST_FAIL: production-agent script is missing' }
+if (-not (Test-Path $installPath)) { throw 'TEST_FAIL: production-agent installer is missing' }
 $deploy = Get-Content -Raw $deployPath
 $agent = Get-Content -Raw $agentPath
+$install = Get-Content -Raw $installPath
 
 function Assert-Contains {
     param([string]$Text,[string]$Needle,[string]$Message)
@@ -53,5 +56,20 @@ Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Production Agent must 
 $modeRebuildNeedle = "'-Mode','Rebuild'"
 Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
 
+# Runtime migration must remove legacy Rebuild-mode controller processes that were started before the single-dispatcher fix. The existing installer runs before Watch mode, so cleanup belongs there and must be precise.
+$installInvokeIndex = $deploy.IndexOf('install-production-agent.ps1',[System.StringComparison]::OrdinalIgnoreCase)
+$watchIndex = $deploy.IndexOf('- name: Start persistent v3 controller',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($installInvokeIndex -ge 0) 'deploy must invoke the Production Agent installer'
+Assert-True ($watchIndex -gt $installInvokeIndex) 'Production Agent installer must run before the persistent Watch controller starts'
+Assert-Contains $install 'Get-CimInstance Win32_Process' 'installer must inspect process command lines to find legacy Rebuild controllers'
+$controllerRegexNeedle = "ci-controller-v3\.ps1"
+$rebuildRegexNeedle = "-Mode\s+Rebuild"
+Assert-Contains $install $controllerRegexNeedle 'legacy cleanup must match only the Arthur v3 controller command line'
+Assert-Contains $install $rebuildRegexNeedle 'legacy cleanup must match only Rebuild mode'
+Assert-Contains $install 'Stop-Process -Id' 'legacy Rebuild controller processes must be terminated by verified PID'
+Assert-Contains $install 'LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS' 'installer must expose evidence that legacy Rebuild writers were drained'
+Assert-True ($install -notmatch '(?i)Stop-Process\s+-Name\s+(pwsh|powershell)') 'legacy cleanup must never blanket-stop PowerShell processes'
+
 Write-Host 'REBUILD_DISPATCH_ACK_CONTRACT=PASS'
 Write-Host 'SINGLE_REBUILD_DISPATCHER_CONTRACT=PASS'
+Write-Host 'LEGACY_REBUILD_CONTROLLER_QUIESCE_CONTRACT=PASS'

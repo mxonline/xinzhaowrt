@@ -29,6 +29,48 @@ if ($authExit -eq 0 -and (($auth -join "`n") -match 'mxonline/xinzhaowrt')) {
     Write-Warning "PERSISTENT_GITHUB_API_AUTH=DEFERRED; persistent agent will retry automatically. $($auth -join ' ')"
 }
 
+function Stop-LegacyArthurRebuildControllers {
+    $controllerPattern = '(?i)ci-controller-v3\.ps1'
+    $rebuildPattern = '(?i)-Mode\s+Rebuild(?:\s|$)'
+
+    $legacy = @(
+        Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object {
+                [int]$_.ProcessId -ne [int]$PID -and
+                [string]$_.CommandLine -match $controllerPattern -and
+                [string]$_.CommandLine -match $rebuildPattern
+            }
+    )
+
+    foreach ($entry in $legacy) {
+        $processId = [int]$entry.ProcessId
+        if ($processId -le 0) { continue }
+        Write-Host "LEGACY_REBUILD_CONTROLLER_STOPPING pid=$processId"
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+    }
+
+    if ($legacy.Count -gt 0) { Start-Sleep -Seconds 1 }
+
+    $remaining = @(
+        Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object {
+                [int]$_.ProcessId -ne [int]$PID -and
+                [string]$_.CommandLine -match $controllerPattern -and
+                [string]$_.CommandLine -match $rebuildPattern
+            }
+    )
+    if ($remaining.Count -gt 0) {
+        $remainingIds = ($remaining | ForEach-Object { [string]$_.ProcessId }) -join ','
+        throw "Legacy Arthur Rebuild controller cleanup failed; remaining process ids: $remainingIds"
+    }
+
+    Write-Host "LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS stopped=$($legacy.Count)"
+}
+
+# PR #45 prevents new Rebuild-mode children. Drain only the legacy writers
+# created before that fix, before the deploy later starts the persistent Watch controller.
+Stop-LegacyArthurRebuildControllers
+
 function Resolve-AgentPowerShell {
     $systemPwsh = Get-Command 'pwsh.exe' -ErrorAction SilentlyContinue
     if ($systemPwsh) {
