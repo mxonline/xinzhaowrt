@@ -352,6 +352,7 @@ jobs:
 
               Write-Host "REBUILD_DISPATCHING source=$sourceSha old_run=$runId"
               $replacementRun = $null
+              $discoverySucceeded = $false
               $listArgs = @('run','list','--repo',[string]$config.repository,'--workflow','arthur-update-v3.yml','--branch','main','--event','workflow_dispatch','--limit','20','--json','databaseId,createdAt,status,conclusion,headSha')
               $previousPreference = $ErrorActionPreference
               try {
@@ -372,10 +373,22 @@ jobs:
                     } |
                     Sort-Object { [DateTime]$_.createdAt } -Descending |
                     Select-Object -First 1
+                  $discoverySucceeded = $true
                 }
                 catch {
-                  Write-Warning "CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=run-list-parse detail=$($_.Exception.Message)"
+                  Write-Warning "CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list-parse detail=$($_.Exception.Message)"
                 }
+              }
+              elseif ($listExit -ne 0) {
+                Write-Warning "CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list exit=$listExit detail=$listText"
+              }
+              else {
+                Write-Warning 'CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list-empty'
+              }
+
+              if (-not $discoverySucceeded) {
+                Start-Sleep -Seconds 30
+                continue
               }
 
               if (-not $replacementRun) {
