@@ -29,7 +29,7 @@ on:
 
 permissions:
   contents: write
-  actions: read
+  actions: write
 
 concurrency:
   group: arthur-production-agent-deploy
@@ -300,6 +300,22 @@ jobs:
           if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
           $config = Get-Content -Raw $configPath | ConvertFrom-Json
           $runId = [long]$config.bootstrap.run_id
+          if (Test-Path $statePath) {
+            try {
+              $persistedState = Get-Content -Raw $statePath | ConvertFrom-Json
+              if ($persistedState.PSObject.Properties.Name -contains 'replacement_run_id' -and [long]$persistedState.replacement_run_id -gt 0) {
+                $runId = [long]$persistedState.replacement_run_id
+                Write-Host "PRODUCTION_AGENT_RESUME_REPLACEMENT_RUN=$runId"
+              }
+              elseif ([long]$persistedState.run_id -gt 0 -and [long]$persistedState.run_id -ne [long]$config.bootstrap.run_id -and [string]$persistedState.status -ne 'PRODUCTION_RELEASED') {
+                $runId = [long]$persistedState.run_id
+                Write-Host "PRODUCTION_AGENT_RESUME_PERSISTED_RUN=$runId"
+              }
+            }
+            catch {
+              Write-Warning "PERSISTED_RUN_STATE_READ_RETRY: $($_.Exception.Message)"
+            }
+          }
           if ($runId -le 0) { throw 'Current Arthur production run_id is not configured.' }
           $pwsh = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
           if (-not (Test-Path $pwsh)) {
@@ -324,6 +340,113 @@ jobs:
             $state = $null
             if (Test-Path $statePath) {
               try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
+            }
+
+            if ($state -and [string]$state.status -eq 'REBUILD_REQUESTED') {
+              $sourceSha = (git -C $runtime rev-parse HEAD).Trim()
+              if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
+                Write-Warning 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=source-sha-unavailable'
+                Start-Sleep -Seconds 30
+                continue
+              }
+
+              Write-Host "REBUILD_DISPATCHING source=$sourceSha old_run=$runId"
+              $replacementRun = $null
+              $listArgs = @('run','list','--repo',[string]$config.repository,'--workflow','arthur-update-v3.yml','--branch','main','--event','workflow_dispatch','--limit','20','--json','databaseId,createdAt,status,conclusion,headSha')
+              $previousPreference = $ErrorActionPreference
+              try {
+                $ErrorActionPreference = 'Continue'
+                $listText = (& gh @listArgs 2>&1 | Out-String).Trim()
+                $listExit = $LASTEXITCODE
+              }
+              finally {
+                $ErrorActionPreference = $previousPreference
+              }
+              if ($listExit -eq 0 -and $listText) {
+                try {
+                  $runs = @($listText | ConvertFrom-Json)
+                  $replacementRun = $runs |
+                    Where-Object {
+                      [string]$_.headSha -eq $sourceSha -and
+                      ([string]$_.status -in @('queued','in_progress','waiting','requested','pending') -or [string]$_.conclusion -eq 'success')
+                    } |
+                    Sort-Object { [DateTime]$_.createdAt } -Descending |
+                    Select-Object -First 1
+                }
+                catch {
+                  Write-Warning "CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=run-list-parse detail=$($_.Exception.Message)"
+                }
+              }
+
+              if (-not $replacementRun) {
+                $started = [DateTime]::UtcNow
+                $dispatchArgs = @('workflow','run','arthur-update-v3.yml','--repo',[string]$config.repository,'--ref','main','-f','mode=rebuild_known_good')
+                $previousPreference = $ErrorActionPreference
+                try {
+                  $ErrorActionPreference = 'Continue'
+                  $dispatchText = (& gh @dispatchArgs 2>&1 | Out-String).Trim()
+                  $dispatchExit = $LASTEXITCODE
+                }
+                finally {
+                  $ErrorActionPreference = $previousPreference
+                }
+                if ($dispatchExit -ne 0) {
+                  Write-Warning "CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=workflow-dispatch exit=$dispatchExit detail=$dispatchText"
+                  Start-Sleep -Seconds 30
+                  continue
+                }
+
+                $confirmDeadline = (Get-Date).AddSeconds(60)
+                while ((Get-Date) -lt $confirmDeadline -and -not $replacementRun) {
+                  Start-Sleep -Seconds 5
+                  $previousPreference = $ErrorActionPreference
+                  try {
+                    $ErrorActionPreference = 'Continue'
+                    $confirmText = (& gh @listArgs 2>&1 | Out-String).Trim()
+                    $confirmExit = $LASTEXITCODE
+                  }
+                  finally {
+                    $ErrorActionPreference = $previousPreference
+                  }
+                  if ($confirmExit -ne 0 -or -not $confirmText) { continue }
+                  try {
+                    $runs = @($confirmText | ConvertFrom-Json)
+                    $replacementRun = $runs |
+                      Where-Object {
+                        [string]$_.headSha -eq $sourceSha -and
+                        ([DateTime]$_.createdAt).ToUniversalTime() -ge $started.AddSeconds(-3)
+                      } |
+                      Sort-Object { [DateTime]$_.createdAt } -Descending |
+                      Select-Object -First 1
+                  }
+                  catch {}
+                }
+              }
+
+              if (-not $replacementRun -or [long]$replacementRun.databaseId -le 0) {
+                Write-Warning 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=run-id-not-confirmed'
+                Start-Sleep -Seconds 30
+                continue
+              }
+
+              $replacementRunId = [long]$replacementRun.databaseId
+              if (-not ($state.PSObject.Properties.Name -contains 'replacement_run_id')) {
+                $state | Add-Member -NotePropertyName replacement_run_id -NotePropertyValue $replacementRunId
+              } else { $state.replacement_run_id = $replacementRunId }
+              if (-not ($state.PSObject.Properties.Name -contains 'replacement_source_sha')) {
+                $state | Add-Member -NotePropertyName replacement_source_sha -NotePropertyValue $sourceSha
+              } else { $state.replacement_source_sha = $sourceSha }
+              if (-not ($state.PSObject.Properties.Name -contains 'replacement_build_requested')) {
+                $state | Add-Member -NotePropertyName replacement_build_requested -NotePropertyValue $true
+              } else { $state.replacement_build_requested = $true }
+              $state.status = 'REBUILD_DISPATCHED'
+              $state.last_error = ''
+              $state.updated_at = (Get-Date).ToString('o')
+              $state | ConvertTo-Json -Depth 10 | Set-Content -Path $statePath -Encoding UTF8
+              Write-Host "REBUILD_DISPATCHED run=$replacementRunId source=$sourceSha"
+              Write-Host "CURRENT_SOURCE_REBUILD_DISPATCHED=YES run=$replacementRunId source=$sourceSha"
+              $runId = $replacementRunId
+              continue
             }
 
             if ($state -and [string]$state.stage -eq 'PRODUCTION_RELEASED') {
