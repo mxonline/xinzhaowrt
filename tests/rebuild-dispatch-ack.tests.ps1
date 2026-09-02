@@ -50,7 +50,8 @@ $rebuildFunction = $rebuildMatch.Value
 Assert-Contains $rebuildFunction "Save-State `$State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED'" 'Production Agent must durably persist the rebuild request'
 Assert-Contains $rebuildFunction 'CURRENT_SOURCE_REBUILD_REQUESTED=YES' 'Production Agent must expose the rebuild request marker'
 Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Production Agent must not launch an independent Rebuild controller; authenticated deploy is the sole replacement-build dispatcher'
-Assert-True ($rebuildFunction -notmatch "-Mode['\"]?\s*,?['\"]?Rebuild") 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
+$modeRebuildNeedle = "'-Mode','Rebuild'"
+Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
 
 Write-Host 'REBUILD_DISPATCH_ACK_CONTRACT=PASS'
 Write-Host 'SINGLE_REBUILD_DISPATCHER_CONTRACT=PASS'
