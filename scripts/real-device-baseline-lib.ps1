@@ -53,8 +53,14 @@ function Classify-ArthurSshProbe {
         [Parameter(Mandatory=$true)][int]$ExitCode,
         [string]$Output = ''
     )
-    if ($Output -match '(?i)REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed|Offending .* key') {
+    # Explicit changed/offending-key evidence is a hard identity mismatch.
+    if ($Output -match '(?i)REMOTE HOST IDENTIFICATION HAS CHANGED|Offending .* key|WARNING:.*HOST IDENTIFICATION HAS CHANGED') {
         return 'SSH_HOST_IDENTITY_MISMATCH'
+    }
+    # OpenSSH also emits the generic text below when a first-use key has not yet
+    # been accepted. Treat that as untrusted/unenrolled, not as proof of change.
+    if ($Output -match '(?i)Host key verification failed|No .* host key is known|The authenticity of host .* can.t be established') {
+        return 'SSH_HOST_KEY_UNTRUSTED'
     }
     if ($ExitCode -eq 0) {
         if (Test-ArthurBoardIdentity -BoardOutput $Output) { return 'DEVICE_VERIFIED' }
