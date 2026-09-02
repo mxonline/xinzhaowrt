@@ -62,8 +62,10 @@ $watchIndex = $deploy.IndexOf('- name: Start persistent v3 controller',[System.S
 Assert-True ($installInvokeIndex -ge 0) 'deploy must invoke the Production Agent installer'
 Assert-True ($watchIndex -gt $installInvokeIndex) 'Production Agent installer must run before the persistent Watch controller starts'
 Assert-Contains $install 'Get-CimInstance Win32_Process' 'installer must inspect process command lines to find legacy Rebuild controllers'
-Assert-Contains $install 'ci-controller-v3\.ps1' 'legacy cleanup must match only the Arthur v3 controller command line'
-Assert-Contains $install '-Mode\s+Rebuild' 'legacy cleanup must match only Rebuild mode'
+$controllerRegexNeedle = "ci-controller-v3\.ps1"
+$rebuildRegexNeedle = "-Mode\s+Rebuild"
+Assert-Contains $install $controllerRegexNeedle 'legacy cleanup must match only the Arthur v3 controller command line'
+Assert-Contains $install $rebuildRegexNeedle 'legacy cleanup must match only Rebuild mode'
 Assert-Contains $install 'Stop-Process -Id' 'legacy Rebuild controller processes must be terminated by verified PID'
 Assert-Contains $install 'LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS' 'installer must expose evidence that legacy Rebuild writers were drained'
 Assert-True ($install -notmatch '(?i)Stop-Process\s+-Name\s+(pwsh|powershell)') 'legacy cleanup must never blanket-stop PowerShell processes'
