@@ -99,10 +99,10 @@ function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Messag
 function Stage-Index([string]$Stage) { return [array]::IndexOf($Stages,$Stage) }
 function At-Or-After($State,[string]$Stage) { return (Stage-Index ([string]$State.stage)) -ge (Stage-Index $Stage) }
 
-function Invoke-Process([string]$File,[string[]]$Args,[switch]$AllowFailure) {
-    $text = (& $File @Args 2>&1 | Out-String).Trim()
+function Invoke-Process([string]$File,[string[]]$ProcessArgs,[switch]$AllowFailure) {
+    $text = (& $File @ProcessArgs 2>&1 | Out-String).Trim()
     $code = $LASTEXITCODE
-    if (-not $AllowFailure -and $code -ne 0) { throw "$File $($Args -join ' ') failed ($code): $text" }
+    if (-not $AllowFailure -and $code -ne 0) { throw "$File $($ProcessArgs -join ' ') failed ($code): $text" }
     [pscustomobject]@{ ExitCode=$code; Output=$text }
 }
 
