@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 1
 
       - name: Validate feature delta on physical Arthur 0.1.3
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           .\scripts\live-validate-v013-features.ps1 -Target 'root@192.168.6.1' -ExpectedVersion '0.1.3' -ExpectedBuildId '33462873812'
