@@ -1,0 +1,35 @@
+name: Cancel stale Arthur rebuilds
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/cancel-stale-arthur-builds.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel-stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel obsolete Arthur builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for run_id in 33632309340 33646877105; do
+            status="$(gh api "repos/${REPO}/actions/runs/${run_id}" --jq .status 2>/dev/null || true)"
+            case "$status" in
+              queued|in_progress|waiting|pending|requested)
+                echo "CANCEL_STALE_ARTHUR_RUN run=${run_id} status=${status}"
+                gh api --method POST "repos/${REPO}/actions/runs/${run_id}/cancel"
+                ;;
+              *)
+                echo "CANCEL_STALE_ARTHUR_RUN_SKIP run=${run_id} status=${status:-unknown}"
+                ;;
+            esac
+          done
