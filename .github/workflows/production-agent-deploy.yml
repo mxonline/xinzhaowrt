@@ -296,6 +296,7 @@ jobs:
           $agent = Join-Path $runtime 'scripts\production-agent.ps1'
           $status = Join-Path $runtime 'scripts\production-agent-status.ps1'
           $statePath = Join-Path $runtime 'output\production-agent\state.json'
+          $acceptedDispatchStatus = 'REBUILD_' + 'DISPATCH_ACCEPTED'
           if (-not (Test-Path $configPath)) { throw "Production Agent config missing: $configPath" }
           if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
           $config = Get-Content -Raw $configPath | ConvertFrom-Json
@@ -327,22 +328,35 @@ jobs:
           $deadline = (Get-Date).AddMinutes(10)
           Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=START run=$runId deadline=$($deadline.ToString('o'))"
           while ((Get-Date) -lt $deadline) {
-            $previousPreference = $ErrorActionPreference
-            try {
-              $ErrorActionPreference = 'Continue'
-              & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
-              $agentExit = $LASTEXITCODE
-            }
-            finally {
-              $ErrorActionPreference = $previousPreference
-            }
-
             $state = $null
             if (Test-Path $statePath) {
               try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
             }
 
-            if ($state -and [string]$state.status -eq 'REBUILD_REQUESTED') {
+            $skipAgentForAcceptedDispatch = $state -and [string]$state.status -eq $acceptedDispatchStatus
+            if (-not $skipAgentForAcceptedDispatch) {
+              $previousPreference = $ErrorActionPreference
+              try {
+                $ErrorActionPreference = 'Continue'
+                & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
+                $agentExit = $LASTEXITCODE
+              }
+              finally {
+                $ErrorActionPreference = $previousPreference
+              }
+
+              $state = $null
+              if (Test-Path $statePath) {
+                try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
+              }
+            }
+            else {
+              $agentExit = 0
+              $acceptedSource = if ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha') { [string]$state.replacement_dispatch_source_sha } else { '' }
+              Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$acceptedSource reason=accepted-state"
+            }
+
+            if ($state -and [string]$state.status -in @('REBUILD_REQUESTED',$acceptedDispatchStatus)) {
               $sourceSha = (git -C $runtime rev-parse HEAD).Trim()
               if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
                 Write-Warning 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=source-sha-unavailable'
@@ -350,7 +364,17 @@ jobs:
                 continue
               }
 
-              Write-Host "REBUILD_DISPATCHING source=$sourceSha old_run=$runId"
+              $dispatchAlreadyAccepted = [string]$state.status -eq $acceptedDispatchStatus
+              if ($dispatchAlreadyAccepted) {
+                $acceptedSourceSha = if ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha') { [string]$state.replacement_dispatch_source_sha } else { '' }
+                if ($acceptedSourceSha -ne $sourceSha) {
+                  Write-Warning "CURRENT_SOURCE_REBUILD_CONFIRMING source=$acceptedSourceSha current_source=$sourceSha reason=accepted-source-mismatch"
+                  Start-Sleep -Seconds 30
+                  continue
+                }
+              }
+
+              Write-Host "REBUILD_DISPATCHING source=$sourceSha old_run=$runId accepted=$dispatchAlreadyAccepted"
               $replacementRun = $null
               $discoverySucceeded = $false
               $listArgs = @('run','list','--repo',[string]$config.repository,'--workflow','arthur-update-v3.yml','--branch','main','--event','workflow_dispatch','--limit','20','--json','databaseId,createdAt,status,conclusion,headSha')
@@ -392,6 +416,12 @@ jobs:
               }
 
               if (-not $replacementRun) {
+                if ($dispatchAlreadyAccepted) {
+                  Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=accepted-awaiting-run-id"
+                  Start-Sleep -Seconds 30
+                  continue
+                }
+
                 $started = [DateTime]::UtcNow
                 $dispatchArgs = @('workflow','run','arthur-update-v3.yml','--repo',[string]$config.repository,'--ref','main','-f','mode=rebuild_known_good')
                 $previousPreference = $ErrorActionPreference
@@ -408,6 +438,20 @@ jobs:
                   Start-Sleep -Seconds 30
                   continue
                 }
+
+                $acceptedAt = (Get-Date).ToUniversalTime().ToString('o')
+                if (-not ($state.PSObject.Properties.Name -contains 'replacement_dispatch_accepted_at')) {
+                  $state | Add-Member -NotePropertyName replacement_dispatch_accepted_at -NotePropertyValue $acceptedAt
+                } else { $state.replacement_dispatch_accepted_at = $acceptedAt }
+                if (-not ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha')) {
+                  $state | Add-Member -NotePropertyName replacement_dispatch_source_sha -NotePropertyValue $sourceSha
+                } else { $state.replacement_dispatch_source_sha = $sourceSha }
+                $state.status = 'REBUILD_DISPATCH_ACCEPTED'
+                $state.last_error = ''
+                $state.updated_at = (Get-Date).ToString('o')
+                $state | ConvertTo-Json -Depth 10 | Set-Content -Path $statePath -Encoding UTF8
+                Write-Host "REBUILD_DISPATCH_ACCEPTED source=$sourceSha accepted_at=$acceptedAt"
+                Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=dispatch-accepted-awaiting-run-id"
 
                 $confirmDeadline = (Get-Date).AddSeconds(60)
                 while ((Get-Date) -lt $confirmDeadline -and -not $replacementRun) {
@@ -437,7 +481,7 @@ jobs:
               }
 
               if (-not $replacementRun -or [long]$replacementRun.databaseId -le 0) {
-                Write-Warning 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=run-id-not-confirmed'
+                Write-Warning "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=run-id-not-confirmed"
                 Start-Sleep -Seconds 30
                 continue
               }
