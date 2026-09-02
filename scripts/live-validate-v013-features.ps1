@@ -38,7 +38,7 @@ function Invoke-Remote {
 
 function Copy-ToRemote {
     param([Parameter(Mandatory=$true)][string]$Local,[Parameter(Mandatory=$true)][string]$Remote)
-    $raw = @(& scp.exe -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Local "${Target}:$Remote" 2>&1)
+    $raw = @(& scp.exe -O -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Local "${Target}:$Remote" 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "REMOTE_COPY_FAILED local=$Local remote=$Remote output=$(($raw -join "`n").Trim())" }
 }
 
