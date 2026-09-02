@@ -92,6 +92,12 @@ Assert-Contains $agent '$Known.rollback.target' 'rollback download must use prod
 Assert-Contains $agent '$Known.rollback.firmware' 'rollback download must use production/known-good.json rollback.firmware'
 Assert-Contains $agent '$Known.rollback.sha256' 'rollback integrity check must use production/known-good.json rollback.sha256'
 
+# Device reachability is recoverable unless there is positive evidence of a wrong/unsafe identity.
+Assert-Contains $agent 'DEVICE_IDENTITY_RETRYABLE' 'temporary SSH/device unreachability must re-enter the unattended loop'
+Assert-Contains $agent 'DEVICE_PROBE_RETRY' 'device probe failures must preserve diagnostic evidence for automatic retries'
+Assert-Contains $agent 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'host-key identity anomalies must remain a hard safety stop'
+Assert-True ($agent -notmatch 'Save-State\s+\$State\s+\(\[string\]\$State\.stage\)\s+''BLOCKED''\s+''No verified Arthur device found at expected/recovery addresses\.''') 'mere device unreachability must not be promoted directly to BLOCKED'
+
 Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
 Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
@@ -143,6 +149,12 @@ Assert-Contains $deploy "'scripts/ci-controller-v3.ps1'" 'controller changes mus
 Assert-Contains $deploy "gh api repos/mxonline/xinzhaowrt" 'deploy must verify the machine credential by a real GitHub API request'
 Assert-True ($deploy -notmatch '(?im)^\s*gh(?:\.exe)?\s+auth\s+status\b') 'deploy must not reject a usable GitHub App/machine credential because gh auth status is stale'
 Assert-Contains $deploy 'Start persistent v3 controller' 'deployment must ensure the existing v3 controller loop is running'
+
+# GitHub Actions is the authenticated recovery driver; it must keep re-entering the same durable release after failures.
+Assert-Contains $deploy "cron: '*/15 * * * *'" 'existing Production Agent deploy workflow must self-resume unfinished releases every 15 minutes'
+Assert-Contains $deploy 'PRODUCTION_AGENT_AUTHENTICATED_RETRY' 'authenticated continuation must retry the same release checkpoint after recoverable failures'
+Assert-Contains $deploy 'PRODUCTION_AGENT_AUTHENTICATED_RETRY_WINDOW_EXPIRED' 'a scheduled run may yield to the next scheduled recovery without converting a recoverable state into a permanent failure'
+Assert-True ($deploy -notmatch 'if \(\$LASTEXITCODE -ne 0\) \{ throw "Authenticated Production Agent continuation failed') 'one failed RunOnce must not terminate the entire unattended release chain'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'

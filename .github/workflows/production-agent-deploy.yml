@@ -23,6 +23,8 @@ on:
       - 'tests/production-agent.tests.ps1'
       - 'tests/verified-baseline-inheritance.tests.ps1'
       - '.github/workflows/production-agent-deploy.yml'
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -293,6 +295,7 @@ jobs:
           $configPath = Join-Path $runtime 'production\production-agent.json'
           $agent = Join-Path $runtime 'scripts\production-agent.ps1'
           $status = Join-Path $runtime 'scripts\production-agent-status.ps1'
+          $statePath = Join-Path $runtime 'output\production-agent\state.json'
           if (-not (Test-Path $configPath)) { throw "Production Agent config missing: $configPath" }
           if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
           $config = Get-Content -Raw $configPath | ConvertFrom-Json
@@ -304,8 +307,42 @@ jobs:
             if (-not $resolved) { throw 'PowerShell 7 unavailable for authenticated Production Agent continuation.' }
             $pwsh = $resolved.Source
           }
-          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=START run=$runId"
-          & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
-          if ($LASTEXITCODE -ne 0) { throw "Authenticated Production Agent continuation failed: $LASTEXITCODE" }
+
+          $deadline = (Get-Date).AddMinutes(10)
+          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=START run=$runId deadline=$($deadline.ToString('o'))"
+          while ((Get-Date) -lt $deadline) {
+            $previousPreference = $ErrorActionPreference
+            try {
+              $ErrorActionPreference = 'Continue'
+              & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
+              $agentExit = $LASTEXITCODE
+            }
+            finally {
+              $ErrorActionPreference = $previousPreference
+            }
+
+            $state = $null
+            if (Test-Path $statePath) {
+              try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
+            }
+
+            if ($state -and [string]$state.stage -eq 'PRODUCTION_RELEASED') {
+              if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
+              Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=PASS run=$runId"
+              exit 0
+            }
+
+            if ($state -and [string]$state.human_gate -in @($config.human_stop_classes)) {
+              if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
+              throw "Arthur release stopped at frozen flash-safety boundary: $($state.human_gate)"
+            }
+
+            $stage = if ($state) { [string]$state.stage } else { 'UNKNOWN' }
+            $stateStatus = if ($state) { [string]$state.status } else { 'UNKNOWN' }
+            Write-Host "PRODUCTION_AGENT_AUTHENTICATED_RETRY run=$runId exit=$agentExit stage=$stage status=$stateStatus"
+            Start-Sleep -Seconds 30
+          }
+
           if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
-          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=PASS run=$runId"
+          Write-Warning "PRODUCTION_AGENT_AUTHENTICATED_RETRY_WINDOW_EXPIRED run=$runId; scheduled recovery will re-enter the same durable checkpoint."
+          exit 0
