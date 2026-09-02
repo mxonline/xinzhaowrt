@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Config = Get-Content -Raw (Join-Path $Root 'production\production-agent.json') | ConvertFrom-Json
 $Known = Get-Content -Raw (Join-Path $Root 'production\known-good.json') | ConvertFrom-Json
+$Baseline = Get-Content -Raw (Join-Path $Root ([string]$Config.real_device_baseline)) | ConvertFrom-Json
 $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
 $Candidate = Get-Content -Raw $CandidateManifest | ConvertFrom-Json
 
@@ -35,8 +36,8 @@ if (Test-Path $rejectionPath) {
     }
 }
 
-if ([string]$Config.device -ne 'jdcloud_re-ss-01' -or [string]$Candidate.profile -ne 'jdcloud_re-ss-01') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Arthur profile mismatch.' }
-if ([string]$Candidate.target -ne 'qualcommax/ipq60xx') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Arthur target mismatch.' }
+if ([string]$Config.device -ne 'jdcloud_re-ss-01' -or [string]$Candidate.profile -ne [string]$Baseline.device.profile) { Fail 'DEVICE_IDENTITY_MISMATCH' 'Arthur profile mismatch.' }
+if ([string]$Candidate.target -ne [string]$Baseline.device.target) { Fail 'DEVICE_IDENTITY_MISMATCH' 'Arthur target mismatch.' }
 if (-not $Profile.verified -or [string]$Profile.remote_upgrade_binary -ne '/sbin/sysupgrade') { Fail 'UNRECOVERABLE_IRREVERSIBLE_OPERATION' 'No historically verified standard sysupgrade profile.' }
 if (-not $Profile.forbid_raw_writes) { Fail 'UNRECOVERABLE_IRREVERSIBLE_OPERATION' 'Raw-write prohibition is not active.' }
 
@@ -47,12 +48,13 @@ if ($localSha -ne ([string]$Candidate.candidate_sha256).ToLowerInvariant()) { Fa
 
 if (-not (Test-Path $RollbackPath)) { Fail 'NO_SAFE_ROLLBACK' "Rollback artifact missing: $RollbackPath" }
 $rollbackSha = (Get-FileHash -Algorithm SHA256 $RollbackPath).Hash.ToLowerInvariant()
-if ($rollbackSha -ne ([string]$Known.sha256).ToLowerInvariant()) { Fail 'NO_SAFE_ROLLBACK' "Rollback SHA256 mismatch expected=$($Known.sha256) actual=$rollbackSha" }
+$expectedRollbackSha = ([string]$Known.rollback.sha256).ToLowerInvariant()
+if ($rollbackSha -ne $expectedRollbackSha) { Fail 'NO_SAFE_ROLLBACK' "Rollback SHA256 mismatch expected=$expectedRollbackSha actual=$rollbackSha" }
 
 $board = Remote 'ubus call system board'
-if ($board.ExitCode -ne 0 -or $board.Output -notmatch 'jdcloud,re-ss-01|RE-SS-01') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Remote board identity is not JDCloud RE-SS-01.' }
+if ($board.ExitCode -ne 0 -or $board.Output -notmatch '(?i)jdcloud,re-ss-01|JDCloud\s+RE-SS-01|RE-SS-01') { Fail 'DEVICE_IDENTITY_MISMATCH' 'Remote board identity is not JDCloud RE-SS-01.' }
 $storage = Remote 'cat /proc/mtd 2>/dev/null; lsblk 2>/dev/null; mount; df -h'
-if ($storage.ExitCode -ne 0 -or $storage.Output -notmatch '(?i)(mmc|overlay|rootfs)') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Storage layout evidence is unavailable.' }
+if ($storage.ExitCode -ne 0 -or $storage.Output -notmatch '(?i)(mmc|overlay|rootfs)') { Fail 'DEVICE_IDENTITY_MISMATCH' 'Storage layout evidence is unavailable.' }
 
 $remoteHashResult = Remote "sha256sum '$RemoteCandidate'"
 if ($remoteHashResult.ExitCode -ne 0 -or $remoteHashResult.Output -notmatch '^([0-9a-fA-F]{64})') { Fail 'REMOTE_HASH_UNAVAILABLE' 'Remote candidate SHA256 unavailable.' }
@@ -63,8 +65,8 @@ $test = Remote "/sbin/sysupgrade -T '$RemoteCandidate'"
 if ($test.ExitCode -ne 0) { Fail 'CANDIDATE_SYSUPGRADE_TEST_FAILED' $test.Output }
 
 Write-Host 'DEVICE_IDENTITY=PASS device=jdcloud_re-ss-01'
-Write-Host 'TARGET_PROFILE=PASS target=qualcommax/ipq60xx profile=jdcloud_re-ss-01'
-Write-Host "EXPECTED_LAN=PASS lan=192.168.6.1"
+Write-Host "TARGET_PROFILE=PASS target=$($Baseline.device.target) profile=$($Baseline.device.profile)"
+Write-Host "EXPECTED_LAN=PASS lan=$($Baseline.protected_product_state.lan_ipv4)"
 Write-Host "ROLLBACK_SHA256=PASS sha256=$rollbackSha"
 Write-Host "LOCAL_SHA256=PASS sha256=$localSha"
 Write-Host "remote_sha256=$remote_sha256"
