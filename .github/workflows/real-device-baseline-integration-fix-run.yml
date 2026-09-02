@@ -1,0 +1,48 @@
+name: Fix and Run Real Device Baseline Integration
+
+on:
+  push:
+    branches:
+      - feat/real-device-baseline-v2
+    paths:
+      - '.github/workflows/real-device-baseline-integration-fix-run.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/real-device-baseline-v2
+          fetch-depth: 0
+      - name: Fix quoting and apply integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'scripts/apply-real-device-baseline-integration.ps1'
+          $lines = @(Get-Content $path)
+          $changed = $false
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\$controllerAnchor\s*=') {
+              $lines[$i] = "`$controllerAnchor = '`$ProductionStateFile = Join-Path `$RepoRoot ''output\production-agent\state.json'''"
+              $changed = $true
+              break
+            }
+          }
+          if (-not $changed) { throw 'controllerAnchor line not found' }
+          Set-Content -Path $path -Value $lines -Encoding UTF8
+          ./scripts/apply-real-device-baseline-integration.ps1
+      - name: Commit tested integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git diff --check
+          if (-not (git status --porcelain)) { throw 'Integration produced no changes.' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/apply-real-device-baseline-integration.ps1 scripts/production-agent.ps1 scripts/ci-controller-v3.ps1
+          git commit -m 'chore: integrate real-device baseline runtime gates'
+          git push origin HEAD:feat/real-device-baseline-v2
