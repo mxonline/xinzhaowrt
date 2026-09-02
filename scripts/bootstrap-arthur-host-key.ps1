@@ -60,7 +60,7 @@ function Get-RemoteBuildInfo {
     $probe = Invoke-SshCapture -KnownHostsFile $KnownHostsFile -StrictMode $StrictMode -Command 'cat /www/luci-static/xinzhao/build-info.json'
     if ($probe.ExitCode -ne 0) {
         $class = Classify-ArthurSshProbe -ExitCode $probe.ExitCode -Output $probe.Output
-        if ($class -eq 'SSH_AUTH_FAILED') { Fail 'SSH_AUTH_FAILED' "SSH authentication failed before host-key enrollment: $($probe.Output)" }
+        if ($class -eq 'SSH_AUTH_FAILED') { Fail 'SSH_AUTH_FAILED' "SSH authentication failed; host key was not changed: $($probe.Output)" }
         if ($class -eq 'SSH_HOST_IDENTITY_MISMATCH') { Fail 'SSH_HOST_IDENTITY_MISMATCH' $probe.Output }
         Fail 'DEVICE_UNREACHABLE' "Unable to read build-info over SSH: $($probe.Output)"
     }
@@ -93,8 +93,23 @@ $sshDir = Join-Path $userProfile '.ssh'
 $knownHosts = Join-Path $sshDir 'known_hosts'
 $existing = @(Get-KnownHostLines -Path $knownHosts)
 if ($existing.Count -gt 0) {
-    # This bootstrap is only for first-use trust. Never replace an existing key automatically.
-    Fail 'SSH_HOST_IDENTITY_MISMATCH' "An existing known_hosts entry already exists for $TargetIp; automatic replacement is forbidden."
+    # Existing trust is never replaced automatically. It must verify strictly as-is.
+    $existingBoard = Invoke-SshCapture -KnownHostsFile $knownHosts -StrictMode 'yes' -Command 'ubus call system board'
+    if ($existingBoard.ExitCode -ne 0) {
+        $existingClass = Classify-ArthurSshProbe -ExitCode $existingBoard.ExitCode -Output $existingBoard.Output
+        if ($existingClass -eq 'SSH_AUTH_FAILED') { Fail 'SSH_AUTH_FAILED' "Existing host key verified but SSH authentication failed: $($existingBoard.Output)" }
+        Fail 'SSH_HOST_IDENTITY_MISMATCH' "Existing known_hosts entry did not verify strictly and will not be replaced: $($existingBoard.Output)"
+    }
+    if (-not (Test-ArthurBoardIdentity -BoardOutput $existingBoard.Output)) {
+        Fail 'DEVICE_IDENTITY_MISMATCH' "Existing trusted SSH endpoint is not JDCloud RE-SS-01: $($existingBoard.Output)"
+    }
+    $existingBuild = Get-RemoteBuildInfo -KnownHostsFile $knownHosts -StrictMode 'yes'
+    if (-not (Test-ArthurBuildInfoMatchesBaseline -BuildInfo $existingBuild -Baseline $Baseline)) {
+        Fail 'REAL_DEVICE_BASELINE_BUILD_MISMATCH' 'Existing trusted SSH endpoint does not match the physical firmware baseline.'
+    }
+    Write-Host "SSH_HOST_KEY_ALREADY_TRUSTED=PASS target=$TargetIp"
+    Write-Host "SSH_HOST_KEY_BOOTSTRAP=PASS target=$TargetIp mode=already-trusted"
+    exit 0
 }
 
 $tempKnownHosts = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-hostkey-{0}.known_hosts" -f $PID)
@@ -171,4 +186,4 @@ catch {
     Fail 'SSH_HOST_IDENTITY_MISMATCH' "Host-key enrollment was rolled back because strict verification failed: $($_.Exception.Message)"
 }
 
-Write-Host "SSH_HOST_KEY_BOOTSTRAP=PASS target=$TargetIp known_hosts=$knownHosts"
+Write-Host "SSH_HOST_KEY_BOOTSTRAP=PASS target=$TargetIp mode=enrolled-first-use"
