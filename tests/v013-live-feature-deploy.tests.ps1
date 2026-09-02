@@ -24,6 +24,9 @@ Assert-True ($text -match 'adguardhome.*disable') 'script must leave AdGuard Hom
 Assert-True ($text -match 'Get-NetRoute|InterfaceAlias') 'script must verify the runner path before Wi-Fi reload'
 Assert-True ($text -match '\$Command\s*=\s*\$Command\.Replace\("`r`n",\s*"`n"\)\.Replace\("`r",\s*"`n"\)') 'remote multiline commands must normalize Windows CRLF to LF before BusyBox ash'
 Assert-True ($text -cmatch '&\s+scp\.exe\s+-O\s+-o\s+BatchMode') 'Arthur Dropbear copies must force uppercase -O legacy SCP before SSH options'
+Assert-True ($text -match "\$previousErrorActionPreference\s*=\s*\$ErrorActionPreference") 'native SSH/SCP calls must preserve the caller error preference'
+Assert-True ($text -match "\$ErrorActionPreference\s*=\s*'Continue'") 'native SSH/SCP stderr must not terminate Windows PowerShell validation'
+Assert-True ($text -match '\$ErrorActionPreference\s*=\s*\$previousErrorActionPreference') 'native SSH/SCP calls must restore the caller error preference'
 Assert-True ($text -notmatch '(?i)sysupgrade|\bmtd\b|\buboot\b|\bu-boot\b|/dev/mmcblk|\bdd\s+if=') 'live validation must never contain firmware/raw-write commands'
 
 $catch = [regex]::Match($text, '(?s)catch\s*\{\s*\$message\s*=\s*\$_\.Exception\.Message(?<body>.*?)\n\}')
