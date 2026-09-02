@@ -86,6 +86,8 @@ Assert-True ($agent -notmatch "(?m)Invoke-Process\s+'gh'\s+@\('auth','status'") 
 Assert-Contains $agent '$Known.rollback.target' 'rollback download must use production/known-good.json rollback.target'
 Assert-Contains $agent '$Known.rollback.firmware' 'rollback download must use production/known-good.json rollback.firmware'
 Assert-Contains $agent '$Known.rollback.sha256' 'rollback integrity check must use production/known-good.json rollback.sha256'
+Assert-Contains $agent 'Invoke-WebRequest' 'rollback retrieval must have a binary-safe direct GitHub Release download path when gh release download fails'
+Assert-Contains $agent '/releases/download/' 'direct rollback retrieval must use the exact GitHub Release asset path'
 
 Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
