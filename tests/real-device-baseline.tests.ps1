@@ -24,8 +24,9 @@ $agentPath = Join-Path $Root 'scripts/production-agent.ps1'
 $safetyPath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
+$deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 
-foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath)) {
+foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath)) {
     Assert-True (Test-Path $required) "real-device baseline implementation file missing: $required"
 }
 
@@ -84,7 +85,13 @@ Assert-Contains $agent 'DEVICE_UNREACHABLE' 'unreachable device must be separate
 Assert-Contains $agent 'SSH_AUTH_FAILED' 'SSH auth failure must be separately classified'
 Assert-Contains $agent 'DEVICE_IDENTITY_MISMATCH' 'wrong device must have a hard safety class'
 Assert-Contains $agent 'SSH_HOST_IDENTITY_MISMATCH' 'host-key anomaly must have a hard safety class'
-Assert-Contains $agent "'-Mode','Rebuild'" 'legacy candidate rejection must trigger a new current-source build rather than resume the same successful old run'
+Assert-Contains $agent 'Request-CurrentSourceRebuild' 'legacy candidate rejection must explicitly request a current-source replacement build'
+Assert-Contains $agent 'REBUILD_REQUESTED' 'legacy candidate rejection must persist a durable rebuild request rather than resume the same successful old run'
+
+$deploy = Get-Content -Raw $deployPath
+Assert-Contains $deploy "'workflow','run'" 'authenticated deploy must own the actual replacement workflow dispatch'
+Assert-Contains $deploy 'arthur-update-v3.yml' 'replacement dispatch must target the Arthur v3 workflow'
+Assert-Contains $deploy 'CURRENT_SOURCE_REBUILD_DISPATCHED=YES' 'replacement dispatch must persist confirmed current-source run evidence'
 
 $safety = Get-Content -Raw $safetyPath
 Assert-Contains $safety '$Known.rollback.sha256' 'Safety Gate must verify the downloaded rollback against rollback.sha256'
