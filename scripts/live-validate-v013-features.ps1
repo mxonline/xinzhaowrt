@@ -222,7 +222,7 @@ echo WIFI_RUNTIME_OK
 }
 catch {
     $message = $_.Exception.Message
-    Write-Error "V013_PREBUILD_REAL_DEVICE_FEATURES=FAIL $message"
+    Write-Host "V013_PREBUILD_REAL_DEVICE_FEATURES=FAIL $message"
     Restore-RuntimeBackup
     throw
 }
