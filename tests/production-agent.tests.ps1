@@ -82,6 +82,11 @@ Assert-Contains $agent "Invoke-Process 'gh' @('api'" 'production agent must veri
 Assert-Contains $agent 'repos/$([string]$Config.repository)' 'production agent GitHub API probe must target the configured repository'
 Assert-True ($agent -notmatch "(?m)Invoke-Process\s+'gh'\s+@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
 
+# Rollback safety must follow the explicit rollback object, not assume the current frozen stable tag is a GitHub Release.
+Assert-Contains $agent '$Known.rollback.target' 'rollback download must use production/known-good.json rollback.target'
+Assert-Contains $agent '$Known.rollback.firmware' 'rollback download must use production/known-good.json rollback.firmware'
+Assert-Contains $agent '$Known.rollback.sha256' 'rollback integrity check must use production/known-good.json rollback.sha256'
+
 Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
 Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
