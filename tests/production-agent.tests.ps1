@@ -82,6 +82,11 @@ Assert-Contains $agent "Invoke-Process 'gh' @('api'" 'production agent must veri
 Assert-Contains $agent 'repos/$([string]$Config.repository)' 'production agent GitHub API probe must target the configured repository'
 Assert-True ($agent -notmatch "(?m)Invoke-Process\s+'gh'\s+@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
 
+# Native command argument forwarding must not use PowerShell's automatic $args variable as a named parameter.
+Assert-True ($agent -notmatch 'function\s+Invoke-Process\(\[string\]\$File,\[string\[\]\]\$Args') 'Invoke-Process must not bind native arguments through automatic variable $args'
+Assert-Contains $agent '[string[]]$ProcessArgs' 'Invoke-Process must use an explicit non-automatic argument parameter'
+Assert-Contains $agent '@ProcessArgs' 'Invoke-Process must splat the explicit process argument array'
+
 # Rollback safety must follow the explicit rollback object, not assume the current frozen stable tag is a GitHub Release.
 Assert-Contains $agent '$Known.rollback.target' 'rollback download must use production/known-good.json rollback.target'
 Assert-Contains $agent '$Known.rollback.firmware' 'rollback download must use production/known-good.json rollback.firmware'
