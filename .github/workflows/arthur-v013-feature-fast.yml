@@ -19,3 +19,6 @@ jobs:
         run: |
           chmod +x tests/test-v013-feature-delta.sh
           ./tests/test-v013-feature-delta.sh
+      - name: Enforce prebuild real-device policy gate
+        run: |
+          python3 tests/test-prebuild-policy-gate.py
