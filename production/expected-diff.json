@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "baseline": "production/real-device-baseline.json",
+  "operation": "migration_lock",
+  "status": "MIGRATION_LOCKED",
+  "allowed_changes": [],
+  "protected_domains": [
+    "device_identity",
+    "target_profile",
+    "storage_layout",
+    "lan",
+    "wifi",
+    "root_credential_policy",
+    "required_plugins",
+    "themes",
+    "istore_quickstart",
+    "adguardhome_default_state",
+    "web_stack"
+  ],
+  "reason": "The old v0.1.2 Candidate is not allowed to overwrite the physical 0.1.3 reference. A future firmware task must replace this migration lock with an explicit expected-diff declaration derived from the real-device baseline."
+}
