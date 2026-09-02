@@ -17,6 +17,21 @@ $LocalView = Join-Path $Root 'files\www\luci-static\resources\view\adguardhome\c
 $LocalAcl = Join-Path $Root 'files\usr\share\rpcd\acl.d\luci-app-adguardhome.json'
 $TempView = '/tmp/xinzhao-adguard-config.js'
 $TempAcl = '/tmp/xinzhao-adguard-acl.json'
+$GateFileName = 'v013-prebuild-real-device-features.json'
+$GatePath = if (-not [string]::IsNullOrWhiteSpace($env:ARTHUR_PREBUILD_GATE_PATH)) {
+    $env:ARTHUR_PREBUILD_GATE_PATH
+} elseif (-not [string]::IsNullOrWhiteSpace($env:ProgramData)) {
+    Join-Path (Join-Path $env:ProgramData 'XinZhaoWrt') $GateFileName
+} else {
+    Join-Path (Join-Path $Root 'output\real-device') $GateFileName
+}
+$GateTempPath = "$GatePath.tmp"
+$GateDirectory = Split-Path -Parent $GatePath
+if (-not [string]::IsNullOrWhiteSpace($GateDirectory)) {
+    New-Item -ItemType Directory -Force -Path $GateDirectory | Out-Null
+}
+Remove-Item -Force -ErrorAction SilentlyContinue $GatePath
+Remove-Item -Force -ErrorAction SilentlyContinue $GateTempPath
 $MutationStarted = $false
 $OriginalAdguardConfigExists = $false
 $OriginalViewExists = $false
@@ -233,11 +248,34 @@ echo WIFI_RUNTIME_OK
     $stillStopped = Invoke-Remote "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED"
     if ($stillStopped.Output -notmatch 'ADGUARD_STOPPED') { throw 'ADGUARD_FINAL_STATE_REGRESSION' }
 
+    $gateMarkers = @(
+        "V013_LIVE_BASELINE=PASS version=$liveVersion build_id=$liveBuildId",
+        'ADGUARD_LIVE=PASS final_state=stopped_disabled',
+        'QUICKSTART_LIVE=PASS homepage=admin/quickstart',
+        'WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED',
+        'V013_PREBUILD_REAL_DEVICE_FEATURES=PASS'
+    )
     Write-Host 'V013_PREBUILD_REAL_DEVICE_FEATURES=PASS'
+    $gatePayload = [ordered]@{
+        schema_version = '1.0'
+        gate = 'V013_PREBUILD_REAL_DEVICE_FEATURES'
+        status = 'PASS'
+        baseline_version = $liveVersion
+        baseline_build_id = $liveBuildId
+        markers = $gateMarkers
+        source = 'scripts/live-validate-v013-features.ps1'
+        validated_at = [DateTime]::UtcNow.ToString('o')
+    }
+    $gateJson = $gatePayload | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($GateTempPath, $gateJson + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+    Move-Item -Force $GateTempPath $GatePath
+    Write-Host "V013_PREBUILD_GATE_DURABLE=PASS path=$GatePath"
 }
 catch {
     $message = $_.Exception.Message
     Write-Host "V013_PREBUILD_REAL_DEVICE_FEATURES=FAIL $message"
+    Remove-Item -Force -ErrorAction SilentlyContinue $GatePath
+    Remove-Item -Force -ErrorAction SilentlyContinue $GateTempPath
     Restore-RuntimeBackup
     throw
 }
