@@ -112,6 +112,12 @@ jobs:
 
           echo 'PASS: verified Known-Good baseline and Candidate lock prepared.'
 
+      - name: Enforce source implementation gates
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/check-implementation-gates.sh
+          ./scripts/check-implementation-gates.sh
+
       - name: Restore downloads and compiler cache
         uses: actions/cache@v4
         with:
@@ -212,6 +218,7 @@ jobs:
             output/update-lock.diff
             output/update-metadata.json
             output/candidate-lock.txt
+            output/implementation-gate.json
           if-no-files-found: warn
           retention-days: 30
 
@@ -230,6 +237,7 @@ jobs:
             output/required-plugins.txt
             output/update-lock.diff
             output/update-metadata.json
+            output/implementation-gate.json
           if-no-files-found: error
           retention-days: 30
 
