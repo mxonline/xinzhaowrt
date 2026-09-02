@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -40,7 +40,7 @@ jobs:
       - windows
       - x64
       - xinzhaowrt-controller
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - name: Checkout deployment source
@@ -281,3 +281,31 @@ jobs:
           $registered = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
           Write-Host "V3_CONTROLLER_TASK=$($registered.State)"
           Write-Host 'UNATTENDED_CODEX_CONTINUATION=STARTED'
+
+      - name: Continue current Arthur release on authenticated runner
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
+          $configPath = Join-Path $runtime 'production\production-agent.json'
+          $agent = Join-Path $runtime 'scripts\production-agent.ps1'
+          $status = Join-Path $runtime 'scripts\production-agent-status.ps1'
+          if (-not (Test-Path $configPath)) { throw "Production Agent config missing: $configPath" }
+          if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
+          $config = Get-Content -Raw $configPath | ConvertFrom-Json
+          $runId = [long]$config.bootstrap.run_id
+          if ($runId -le 0) { throw 'Current Arthur production run_id is not configured.' }
+          $pwsh = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
+          if (-not (Test-Path $pwsh)) {
+            $resolved = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+            if (-not $resolved) { throw 'PowerShell 7 unavailable for authenticated Production Agent continuation.' }
+            $pwsh = $resolved.Source
+          }
+          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=START run=$runId"
+          & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
+          if ($LASTEXITCODE -ne 0) { throw "Authenticated Production Agent continuation failed: $LASTEXITCODE" }
+          if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
+          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=PASS run=$runId"
