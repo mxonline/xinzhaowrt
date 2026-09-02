@@ -4,6 +4,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .arthur import ArthurPipeline
 from .models import PipelineState
 
 
@@ -22,6 +23,10 @@ class StateStore:
         with self.snapshot_path.open("r", encoding="utf-8") as handle:
             state = PipelineState.from_dict(json.load(handle))
         self._migrate_standard_flash_approval(state)
+        gate_event = ArthurPipeline().enforce_pre_execution_gate(state)
+        if gate_event:
+            self.append_event("prebuild_policy_gate_enforced", gate_event)
+            self.save(state)
         return state
 
     @staticmethod
