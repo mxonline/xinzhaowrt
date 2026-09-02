@@ -23,6 +23,7 @@ Assert-True ($text -match 'adguardhome.*stop') 'script must leave AdGuard Home s
 Assert-True ($text -match 'adguardhome.*disable') 'script must leave AdGuard Home disabled'
 Assert-True ($text -match 'Get-NetRoute|InterfaceAlias') 'script must verify the runner path before Wi-Fi reload'
 Assert-True ($text -match '\$Command\s*=\s*\$Command\.Replace\("`r`n",\s*"`n"\)\.Replace\("`r",\s*"`n"\)') 'remote multiline commands must normalize Windows CRLF to LF before BusyBox ash'
+Assert-True ($text -match '&\s+scp\.exe\s+-O\s+') 'Arthur Dropbear copies must force legacy SCP instead of SFTP'
 Assert-True ($text -notmatch '(?i)sysupgrade|\bmtd\b|\buboot\b|\bu-boot\b|/dev/mmcblk|\bdd\s+if=') 'live validation must never contain firmware/raw-write commands'
 
 Assert-True (Test-Path $workflow) 'one-shot live validation workflow is missing'
