@@ -11,6 +11,14 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ConfigPath = Join-Path $Root 'production\production-agent.json'
 $Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$RealDeviceBaselineDefault = 'production\real-device-baseline.json'
+$ExpectedDiffDefault = 'production\expected-diff.json'
+$RealDeviceBaselineRelative = if ([string]$Config.real_device_baseline) { [string]$Config.real_device_baseline } else { $RealDeviceBaselineDefault }
+$ExpectedDiffRelative = if ([string]$Config.expected_diff) { [string]$Config.expected_diff } else { $ExpectedDiffDefault }
+$RealDeviceBaselinePath = Join-Path $Root $RealDeviceBaselineRelative
+$ExpectedDiffPath = Join-Path $Root $ExpectedDiffRelative
+$SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
+. (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
 $Out = Join-Path $Root 'output\production-agent'
 $StatePath = Join-Path $Out 'state.json'
 $HandoffPath = Join-Path $Out 'handoff.json'
@@ -30,6 +38,7 @@ $Stages = @(
     'ARTIFACT_METADATA_VERIFIED',
     'ARTIFACT_BYTES_VERIFIED',
     'CANDIDATE_VERIFIED',
+    'REAL_DEVICE_BASELINE_GATE',
     'AUTO_FLASH_SAFETY_GATE',
     'FLASH_STARTED',
     'WAIT_DEVICE',
@@ -48,7 +57,7 @@ function New-State([long]$RequestedRunId) {
     return [pscustomobject]@{
         schema_version='1.1'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
         artifact_id=[long]0; artifact_name=''; source_sha=''; candidate_sha256=''; candidate_path='';
-        remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false;
+        remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false; replacement_build_requested=$false;
         updated_at=(Get-Date).ToString('o')
     }
 }
@@ -157,40 +166,41 @@ function Ensure-Rollback($State) {
 
 function Get-DeviceTarget($State) {
     $diagnostics = New-Object System.Collections.Generic.List[string]
+    $sawAuthFailure = $false
     foreach ($ip in @($Config.recovery_addresses)) {
         $target = "root@$ip"
         $probe = Invoke-Process 'ssh.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=5',$target,'ubus call system board') -AllowFailure
         $probeText = [string]$probe.Output
-        if ($probe.ExitCode -eq 0) {
-            if ($probeText -match 'jdcloud,re-ss-01|RE-SS-01') {
-                $State.human_gate = $null
-                $State.target = $target
-                Save-State $State ([string]$State.stage) 'LIVE'
-                return $target
-            }
-            $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
-            Save-State $State ([string]$State.stage) 'BLOCKED' "Connected to $ip, but board identity is not JDCloud RE-SS-01. Probe: $probeText"
-            throw 'UNKNOWN_DEVICE_IDENTITY'
+        $class = Classify-ArthurSshProbe -ExitCode $probe.ExitCode -Output $probeText
+
+        if ($class -eq 'DEVICE_VERIFIED') {
+            $State.human_gate = $null
+            $State.target = $target
+            Save-State $State ([string]$State.stage) 'LIVE'
+            return $target
         }
 
-        if ($probeText -match '(?i)REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed|Offending .* key') {
-            $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
-            Save-State $State ([string]$State.stage) 'BLOCKED' "SSH host identity safety check failed for $ip. Probe: $probeText"
-            throw 'UNKNOWN_DEVICE_IDENTITY'
+        if ($class -in @('DEVICE_IDENTITY_MISMATCH','SSH_HOST_IDENTITY_MISMATCH')) {
+            $State.human_gate = $class
+            Save-State $State ([string]$State.stage) 'BLOCKED' "$class for $ip. Probe: $probeText"
+            throw $class
         }
 
+        if ($class -eq 'SSH_AUTH_FAILED') { $sawAuthFailure = $true }
         $compact = ($probeText -replace '\s+',' ').Trim()
         if ($compact.Length -gt 300) { $compact = $compact.Substring(0,300) }
-        $diagnostics.Add("$ip exit=$($probe.ExitCode) $compact")
-        Log "DEVICE_PROBE_RETRY ip=$ip exit=$($probe.ExitCode) detail=$compact"
+        $diagnostics.Add("$ip class=$class exit=$($probe.ExitCode) $compact")
+        Log "DEVICE_PROBE_RETRY ip=$ip class=$class exit=$($probe.ExitCode) detail=$compact"
     }
 
     $State.human_gate = $null
     $summary = ($diagnostics -join ' | ')
-    Save-State $State ([string]$State.stage) 'RETRYING' "DEVICE_IDENTITY_RETRYABLE: Arthur did not answer at the expected/recovery addresses yet. $summary"
-    throw 'DEVICE_IDENTITY_RETRYABLE'
+    $classification = if ($sawAuthFailure) { 'SSH_AUTH_FAILED' } else { 'DEVICE_UNREACHABLE' }
+    Save-State $State ([string]$State.stage) 'RETRYING' "${classification}: Arthur is not safely reachable yet. $summary"
+    Log "DEVICE_IDENTITY_RETRYABLE class=$classification; unattended recovery will retry without entering the write path."
+    # Classify-ArthurSshProbe treats REMOTE HOST IDENTIFICATION HAS CHANGED as SSH_HOST_IDENTITY_MISMATCH.
+    throw $classification
 }
-
 function Ensure-Artifact($State) {
     if ((At-Or-After $State 'CANDIDATE_VERIFIED') -and (Test-Path ([string]$State.candidate_path))) { return }
     Assert-GitHubAuth $State
@@ -211,6 +221,68 @@ function Ensure-Artifact($State) {
     Save-State $State 'CANDIDATE_VERIFIED' 'VERIFIED'
 }
 
+function Request-CurrentSourceRebuild($State,[string]$Reason) {
+    if (-not ($State.PSObject.Properties.Name -contains 'replacement_build_requested')) {
+        $State | Add-Member -NotePropertyName replacement_build_requested -NotePropertyValue $false
+    }
+    if ($State.replacement_build_requested -ne $true) {
+        $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
+        if (-not (Test-Path $controller)) { throw 'ci-controller-v3.ps1 is missing; cannot rebuild the current source safely.' }
+        $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Rebuild') -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+        $State.replacement_build_requested = $true
+        Save-State $State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED' $Reason
+        Log "CURRENT_SOURCE_REBUILD_REQUESTED pid=$($proc.Id) old_run=$($State.run_id) reason=$Reason"
+    } else {
+        Save-State $State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED' $Reason
+        Log "CURRENT_SOURCE_REBUILD_ALREADY_REQUESTED old_run=$($State.run_id)"
+    }
+    Write-Host 'CURRENT_SOURCE_REBUILD_REQUESTED=YES'
+}
+
+function Invoke-RealDeviceBaselineGate($State,[string]$Target) {
+    Log "Collecting read-only real-device snapshot from $Target before any candidate upload."
+    $snapshot = Invoke-Process 'pwsh' @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'real-device-snapshot.ps1'),
+        '-Target',$Target,'-OutputPath',$SnapshotPath
+    ) -AllowFailure
+    if ($snapshot.ExitCode -ne 0) {
+        $snapshotText = [string]$snapshot.Output
+        $class = if ($snapshotText -match 'SSH_HOST_IDENTITY_MISMATCH') { 'SSH_HOST_IDENTITY_MISMATCH' }
+            elseif ($snapshotText -match 'DEVICE_IDENTITY_MISMATCH') { 'DEVICE_IDENTITY_MISMATCH' }
+            elseif ($snapshotText -match 'SSH_AUTH_FAILED') { 'SSH_AUTH_FAILED' }
+            else { 'DEVICE_UNREACHABLE' }
+        if ($class -in @('DEVICE_IDENTITY_MISMATCH','SSH_HOST_IDENTITY_MISMATCH')) {
+            $State.human_gate = $class
+            Save-State $State ([string]$State.stage) 'BLOCKED' "Read-only real-device snapshot failed hard safety classification: $class. $snapshotText"
+        } else {
+            $State.human_gate = $null
+            Save-State $State ([string]$State.stage) 'RETRYING' "Read-only real-device snapshot not available yet: $class. $snapshotText"
+        }
+        throw $class
+    }
+
+    $gate = Invoke-Process 'pwsh' @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'real-device-baseline-gate.ps1'),
+        '-CandidateManifest',$ManifestPath,'-SnapshotPath',$SnapshotPath,'-Operation','forward',
+        '-BaselinePath',$RealDeviceBaselinePath,'-ExpectedDiffPath',$ExpectedDiffPath
+    ) -AllowFailure
+    if ($gate.ExitCode -ne 0) {
+        $gateText = [string]$gate.Output
+        if ($gateText -match 'CANDIDATE_VERSION_OLDER_THAN_REAL_DEVICE_BASELINE') {
+            Request-CurrentSourceRebuild $State 'LEGACY_CANDIDATE_REJECTED: Candidate is older than the machine-verified physical 0.1.3 baseline; build current source instead of flashing or resuming the stale run.'
+            return $false
+        }
+
+        $hardClass = if ($gateText -match 'REAL_DEVICE_BASELINE_BUILD_MISMATCH') { 'REAL_DEVICE_BASELINE_BUILD_MISMATCH' } else { 'REAL_DEVICE_BASELINE_GATE_FAILED' }
+        $State.human_gate = $hardClass
+        Save-State $State ([string]$State.stage) 'BLOCKED' "${hardClass}: $gateText"
+        throw $hardClass
+    }
+
+    Write-Host $gate.Output
+    Save-State $State 'REAL_DEVICE_BASELINE_GATE' 'VERIFIED'
+    return $true
+}
 function Upload-Candidate($State,[string]$Target) {
     $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
     $remote = [string]$Profile.remote_candidate
@@ -320,9 +392,17 @@ function Run-ProductionOnce {
         $state = Load-State
     }
 
-    if (-not (At-Or-After $state 'AUTO_FLASH_SAFETY_GATE')) {
+    if (-not (At-Or-After $state 'REAL_DEVICE_BASELINE_GATE')) {
         $rollback = Ensure-Rollback $state
         $target = Get-DeviceTarget $state
+        $baselinePassed = Invoke-RealDeviceBaselineGate $state $target
+        if (-not $baselinePassed) { return }
+        $state = Load-State
+    }
+
+    if (-not (At-Or-After $state 'AUTO_FLASH_SAFETY_GATE')) {
+        $rollback = Ensure-Rollback $state
+        $target = if ([string]$state.target) { [string]$state.target } else { Get-DeviceTarget $state }
         $remote = Upload-Candidate $state $target
         Invoke-SafetyGate $state $target $rollback $remote
         $state = Load-State
@@ -377,7 +457,12 @@ try {
     while ($true) {
         try {
             Run-ProductionOnce
-            if ((Load-State).stage -eq 'PRODUCTION_RELEASED') { exit 0 }
+            $loopState = Load-State
+            if ([string]$loopState.status -eq 'REBUILD_REQUESTED') {
+                Log 'Replacement current-source build is now owned by ci-controller-v3; exiting this stale-run agent so the new run can acquire the production lock.'
+                exit 0
+            }
+            if ([string]$loopState.stage -eq 'PRODUCTION_RELEASED') { exit 0 }
         }
         catch {
             $message = $_.Exception.Message

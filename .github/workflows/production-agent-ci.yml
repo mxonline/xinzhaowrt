@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/arthur-production-agent-clean
+      - feat/real-device-baseline-v2
   pull_request:
     branches:
       - main
@@ -25,9 +26,14 @@ jobs:
           foreach ($file in @(
             'tests/production-agent.tests.ps1',
             'tests/verified-baseline-inheritance.tests.ps1',
+            'tests/real-device-baseline.tests.ps1',
             'scripts/production-agent.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
+            'scripts/real-device-baseline-lib.ps1',
+            'scripts/real-device-snapshot.ps1',
+            'scripts/real-device-baseline-gate.ps1',
+            'scripts/ci-controller-v3.ps1',
             'scripts/install-production-agent.ps1',
             'scripts/uninstall-production-agent.ps1',
             'scripts/start-production-agent.ps1',
@@ -42,3 +48,4 @@ jobs:
           }
           & ./tests/production-agent.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
+          & ./tests/real-device-baseline.tests.ps1
