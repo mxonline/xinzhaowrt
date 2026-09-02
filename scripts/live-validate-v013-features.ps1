@@ -27,8 +27,15 @@ function Invoke-Remote {
         [switch]$AllowFailure
     )
     $Command = $Command.Replace("`r`n", "`n").Replace("`r", "`n")
-    $raw = @(& ssh.exe -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Target $Command 2>&1)
-    $exit = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& ssh.exe -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Target $Command 2>&1)
+        $exit = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     $text = ($raw -join "`n").Trim()
     if (-not $AllowFailure -and $exit -ne 0) {
         throw "REMOTE_COMMAND_FAILED exit=$exit command=$Command output=$text"
@@ -38,8 +45,16 @@ function Invoke-Remote {
 
 function Copy-ToRemote {
     param([Parameter(Mandatory=$true)][string]$Local,[Parameter(Mandatory=$true)][string]$Remote)
-    $raw = @(& scp.exe -O -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Local "${Target}:$Remote" 2>&1)
-    if ($LASTEXITCODE -ne 0) { throw "REMOTE_COPY_FAILED local=$Local remote=$Remote output=$(($raw -join "`n").Trim())" }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& scp.exe -O -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Local "${Target}:$Remote" 2>&1)
+        $exit = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exit -ne 0) { throw "REMOTE_COPY_FAILED local=$Local remote=$Remote output=$(($raw -join "`n").Trim())" }
 }
 
 function Assert-RemoteOutput {
@@ -84,7 +99,6 @@ wifi reload >/dev/null 2>&1 || true
     Write-Host 'V013_LIVE_ROLLBACK_DONE'
 }
 
-# Phase 1: prove we are touching the exact physical 0.1.3 baseline before any write.
 Assert-RemoteOutput 'echo XINZHAO_SSH_OK' '^XINZHAO_SSH_OK$' 'SSH_AUTH_FAILED' | Out-Null
 $board = Assert-RemoteOutput 'ubus call system board' '(?i)jdcloud,re-ss-01|RE-SS-01' 'DEVICE_IDENTITY_MISMATCH'
 $buildInfoRaw = Invoke-Remote 'cat /www/luci-static/xinzhao/build-info.json'
@@ -96,7 +110,6 @@ if ($liveVersion -ne $ExpectedVersion) { throw "REAL_DEVICE_VERSION_MISMATCH exp
 if ($liveBuildId -ne $ExpectedBuildId) { throw "REAL_DEVICE_BUILD_MISMATCH expected=$ExpectedBuildId actual=$liveBuildId" }
 Write-Host "V013_LIVE_BASELINE=PASS version=$liveVersion build_id=$liveBuildId"
 
-# Phase 2: verify that the Runner reaches Arthur over a non-wireless control path.
 $route = Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.DestinationPrefix -eq "$HostPart/32" -or $_.DestinationPrefix -eq '192.168.6.0/24' } |
     Sort-Object RouteMetric |
@@ -116,7 +129,6 @@ if (-not (Test-Path $LocalView)) { throw "LOCAL_FEATURE_FILE_MISSING $LocalView"
 if (-not (Test-Path $LocalAcl)) { throw "LOCAL_FEATURE_FILE_MISSING $LocalAcl" }
 
 try {
-    # Phase 3: back up every runtime object that this validation can change.
     $OriginalViewExists = (Invoke-Remote "test -f '$RemoteView'" -AllowFailure).ExitCode -eq 0
     $OriginalAclExists = (Invoke-Remote "test -f '$RemoteAcl'" -AllowFailure).ExitCode -eq 0
     $backup = @"
@@ -131,7 +143,6 @@ if [ -f '$RemoteAcl' ]; then cp '$RemoteAcl' '$BackupDir/adguard-acl.json'; fi
     $MutationStarted = $true
     Write-Host "V013_LIVE_BACKUP=PASS path=$BackupDir"
 
-    # Phase 4: deploy only the LuCI/ACL feature files; package binaries are inherited from 0.1.3.
     Copy-ToRemote $LocalView $TempView
     Copy-ToRemote $LocalAcl $TempAcl
     $install = @"
@@ -146,7 +157,6 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
 "@
     Invoke-Remote $install | Out-Null
 
-    # Validate AdGuard Home manager prerequisites and lifecycle while leaving the service off.
     Assert-RemoteOutput 'command -v AdGuardHome || command -v /usr/bin/AdGuardHome' 'AdGuardHome' 'ADGUARD_CORE_MISSING' | Out-Null
     Assert-RemoteOutput "test -f '$RemoteView' && test -f '$RemoteAcl' && echo ADGUARD_UI_FILES_OK" '^ADGUARD_UI_FILES_OK$' 'ADGUARD_UI_DEPLOY_FAILED' | Out-Null
     $cfg = Invoke-Remote 'test -f /etc/adguardhome/adguardhome.yaml && echo ADGUARD_CONFIG_PRESENT || true'
@@ -163,13 +173,11 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
     if ($stopped.Output -notmatch 'ADGUARD_STOPPED') { throw 'ADGUARD_STOP_VERIFY_FAILED' }
     Write-Host 'ADGUARD_LIVE=PASS final_state=stopped_disabled'
 
-    # Phase 5: use the already-installed iStore QuickStart as the LuCI landing page.
     Assert-RemoteOutput "(command -v quickstart >/dev/null 2>&1 || test -d /www/luci-static/quickstart || ubus -q list | grep -Eiq 'quickstart|istore|store') && echo QUICKSTART_PRESENT" '^QUICKSTART_PRESENT$' 'QUICKSTART_RUNTIME_MISSING' | Out-Null
     Invoke-Remote "uci set luci.main.homepage='admin/quickstart'; uci commit luci" | Out-Null
     Assert-RemoteOutput "test \"\$(uci -q get luci.main.homepage)\" = 'admin/quickstart' && echo QUICKSTART_HOME_OK" '^QUICKSTART_HOME_OK$' 'QUICKSTART_HOME_VERIFY_FAILED' | Out-Null
     Write-Host 'QUICKSTART_LIVE=PASS homepage=admin/quickstart'
 
-    # Phase 6: Wi-Fi is deliberately applied last. Exact desired tokens: ssid=xinzhaowrt key=12345678.
     $wifiApply = @'
 set -e
 count=0
@@ -211,7 +219,6 @@ echo WIFI_RUNTIME_OK
     Assert-RemoteOutput $wifiVerify '^WIFI_RUNTIME_OK$' 'WIFI_RUNTIME_VERIFY_FAILED' | Out-Null
     Write-Host 'WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED'
 
-    # Phase 7: final invariants.
     Assert-RemoteOutput "uci -q get network.lan.ipaddr" '^192\.168\.6\.1(/24)?$' 'LAN_REGRESSION' | Out-Null
     Assert-RemoteOutput "test \"\$(uci -q get luci.main.homepage)\" = 'admin/quickstart' && echo HOME_OK" '^HOME_OK$' 'QUICKSTART_FINAL_REGRESSION' | Out-Null
     Assert-RemoteOutput '/etc/init.d/adguardhome enabled >/dev/null 2>&1 && echo ADGUARD_ENABLED || echo ADGUARD_DISABLED' '^ADGUARD_DISABLED$' 'ADGUARD_DEFAULT_STATE_REGRESSION' | Out-Null
