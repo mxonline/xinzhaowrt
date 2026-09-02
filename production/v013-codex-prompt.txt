@@ -4,36 +4,41 @@ TASK SCOPE: Arthur 0.1.3 PREBUILD REAL-DEVICE FEATURE VALIDATION ONLY.
 Repository: mxonline/xinzhaowrt
 Branch: feature/arthur-v013-next
 Physical baseline: version 0.1.3, Build ID 33462873812, root@192.168.6.1.
-Current goal: make the existing hot-deploy validation reliably validate AdGuard Home management, iStore QuickStart homepage, and Wi-Fi on the already-running physical Arthur. The three real-device checks must eventually emit V013_PREBUILD_REAL_DEVICE_FEATURES=PASS before any firmware build is allowed.
+Goal: on the already-running physical Arthur, hot-deploy and validate all three feature deltas: AdGuard Home full LuCI management, iStore QuickStart homepage, and Wi-Fi SSID xinzhaowrt / password 12345678. Keep AdGuard Home stopped and disabled at the end. Do not start any firmware build.
 
-BOUNDARIES:
+HARD BOUNDARIES:
 - DO NOT build firmware.
-- DO NOT run sysupgrade, mtd, dd, U-Boot, raw eMMC/NAND/SPI writes, or any firmware flashing action.
+- DO NOT run sysupgrade, mtd, dd, U-Boot, fw_setenv, block erase/write, raw eMMC/NAND/SPI writes, partition changes, or any firmware flashing action.
 - DO NOT change product requirements, plugin list, target, VERSION, build.env, Known-Good, release policy, or production baseline.
-- DO NOT access or mutate the router in this Codex turn. This turn is diagnosis + minimal source repair only; GPT will review your result before the next real-device run.
 - DO NOT trigger GitHub Actions or create Releases.
 - You may modify ONLY scripts/live-validate-v013-features.ps1 and tests/v013-live-feature-deploy.tests.ps1.
-- Preserve automatic runtime backup/rollback behavior.
-- Keep the fix minimal and deterministic.
+- You MAY SSH/SCP to root@192.168.6.1 and run the existing guarded hot-deploy validation. Runtime backup and rollback are mandatory before mutations.
+- Preserve LAN 192.168.6.1 and the Ethernet control path.
+- If a validation attempt fails after mutation, verify rollback completed before any next attempt.
 
-Read AGENTS.md and inspect the current branch before editing.
-Use the supplied failure evidence and, if useful, read-only gh run view for the referenced run/job.
-Identify the FIRST concrete root cause. The latest real-device attempt reached AdGuard Home v0.107.79 startup, then Windows PowerShell 5.1 converted normal SSH stderr into NativeCommandError even though the remote command itself had not been shown to fail. The runtime rollback did execute successfully.
+Read AGENTS.md and inspect the current branch first. The known previous failure was Windows PowerShell 5.1 treating normal ssh.exe stderr from AdGuard Home startup as NativeCommandError. The current branch may already contain a proposed fix; verify it rather than assuming it works.
 
-Required method:
-1. Reproduce/confirm the root cause from code + evidence.
-2. If a source fix is justified, add or strengthen a regression assertion FIRST so it fails for the current behavior.
-3. Apply the smallest fix.
-4. Run only the focused safe test: tests/v013-live-feature-deploy.tests.ps1.
-5. Inspect git diff and git diff --check.
-6. Do not run the real-device workflow yourself.
+Execute this loop yourself:
+1. Run the focused contract test tests/v013-live-feature-deploy.tests.ps1.
+2. Run scripts/live-validate-v013-features.ps1 against root@192.168.6.1 with ExpectedVersion 0.1.3 and ExpectedBuildId 33462873812.
+3. If it fails, identify the FIRST concrete failure from real output. If source repair is justified, add/strengthen a regression assertion first, make the smallest allowed fix, rerun the focused contract, then rerun the physical validation.
+4. Continue within this Codex turn until either all three real-device checks PASS or a concrete safety/tool blocker prevents further safe progress.
+5. Success requires real output containing all of:
+   - ADGUARD_LIVE=PASS final_state=stopped_disabled
+   - QUICKSTART_LIVE=PASS homepage=admin/quickstart
+   - WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED
+   - V013_PREBUILD_REAL_DEVICE_FEATURES=PASS
+6. On success, do not compile. Stop and return the result to GPT.
+7. Before returning, inspect git diff and git diff --check. Keep edits minimal.
 
 Return JSON only in this exact shape:
 {
-  "decision": "repaired|retry|blocked",
-  "first_error": "first concrete root cause",
-  "summary": "what you changed or why no source change is justified",
+  "decision": "passed|repaired_retry_needed|blocked",
+  "first_error": "first concrete failure or NONE",
+  "summary": "what actually happened on the physical router",
   "changed_files": ["path1", "path2"],
-  "test_result": "PASS|FAIL|NOT_RUN",
+  "contract_test": "PASS|FAIL|NOT_RUN",
+  "real_device_result": "PASS|FAIL|BLOCKED",
+  "evidence": ["exact key output lines"],
   "next_action": "what GPT should do next"
 }
