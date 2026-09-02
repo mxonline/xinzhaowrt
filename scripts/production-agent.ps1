@@ -11,6 +11,9 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ConfigPath = Join-Path $Root 'production\production-agent.json'
 $Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$BaselinePath = Join-Path $Root ([string]$Config.real_device_baseline)
+$ExpectedDiffPath = Join-Path $Root ([string]$Config.expected_diff)
+. (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
 $Out = Join-Path $Root 'output\production-agent'
 $StatePath = Join-Path $Out 'state.json'
 $HandoffPath = Join-Path $Out 'handoff.json'
@@ -19,6 +22,7 @@ $ManifestPath = Join-Path $Out 'candidate-manifest.json'
 $MetadataPath = Join-Path $Out 'artifact-metadata.json'
 $ArtifactDir = Join-Path $Out 'artifact'
 $RollbackDir = Join-Path $Out 'rollback'
+$SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
 $LockPath = Join-Path $Out 'production-agent.lock'
 New-Item -ItemType Directory -Force -Path $Out,$RollbackDir | Out-Null
 if ($PollSeconds -le 0) { $PollSeconds = [int]$Config.poll_seconds }
@@ -46,7 +50,7 @@ function Log([string]$Message) {
 
 function New-State([long]$RequestedRunId) {
     return [pscustomobject]@{
-        schema_version='1.1'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
+        schema_version='1.2'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
         artifact_id=[long]0; artifact_name=''; source_sha=''; candidate_sha256=''; candidate_path='';
         remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false;
         updated_at=(Get-Date).ToString('o')
@@ -90,7 +94,7 @@ function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Messag
         candidate_sha256 = $State.candidate_sha256
         target = $State.target
         human_gate = $State.human_gate
-        next_action = if ($Stage -eq 'PRODUCTION_RELEASED') { 'NONE' } elseif ($Status -eq 'BLOCKED') { 'WAIT_FOR_SAFETY_GATE_CLEARANCE' } else { 'AUTO_RESUME_FIRST_INCOMPLETE_GATE' }
+        next_action = if ($Stage -eq 'PRODUCTION_RELEASED') { 'NONE' } elseif ($Status -eq 'BLOCKED') { 'WAIT_FOR_SAFETY_GATE_CLEARANCE' } elseif ($Status -eq 'REPAIRING') { 'AUTO_REPAIR_FROM_REAL_DEVICE_BASELINE' } else { 'AUTO_RESUME_FIRST_INCOMPLETE_GATE' }
         last_updated = $State.updated_at
     } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $HandoffPath
     Log "STATE stage=$Stage status=$Status run=$($State.run_id)"
@@ -156,18 +160,33 @@ function Ensure-Rollback($State) {
 }
 
 function Get-DeviceTarget($State) {
+    $authFailure = $null
+    $unreachableFailure = $null
     foreach ($ip in @($Config.recovery_addresses)) {
         $target = "root@$ip"
         $probe = Invoke-Process 'ssh.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=5',$target,'ubus call system board') -AllowFailure
-        if ($probe.ExitCode -eq 0 -and $probe.Output -match 'jdcloud,re-ss-01|RE-SS-01') {
+        $class = Classify-ArthurSshProbe -ExitCode $probe.ExitCode -Output $probe.Output
+        if ($class -eq 'DEVICE_VERIFIED') {
             $State.target = $target
+            $State.human_gate = $null
             Save-State $State ([string]$State.stage) 'LIVE'
             return $target
         }
+        if ($class -eq 'DEVICE_IDENTITY_MISMATCH') {
+            $State.human_gate = 'DEVICE_IDENTITY_MISMATCH'
+            Save-State $State ([string]$State.stage) 'BLOCKED' "Authenticated device at $ip is not the designated JDCloud RE-SS-01. $($probe.Output)"
+            throw 'DEVICE_IDENTITY_MISMATCH'
+        }
+        if ($class -eq 'SSH_AUTH_FAILED') { $authFailure = "SSH auth failed at $ip. $($probe.Output)"; continue }
+        $unreachableFailure = "Device unreachable at $ip. $($probe.Output)"
     }
-    $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
-    Save-State $State ([string]$State.stage) 'BLOCKED' 'No verified Arthur device found at expected/recovery addresses.'
-    throw 'UNKNOWN_DEVICE_IDENTITY'
+    $State.human_gate = $null
+    if ($authFailure) {
+        Save-State $State ([string]$State.stage) 'RETRYING' "SSH_AUTH_FAILED: $authFailure"
+        throw 'SSH_AUTH_FAILED'
+    }
+    Save-State $State ([string]$State.stage) 'RETRYING' "DEVICE_UNREACHABLE: $unreachableFailure"
+    throw 'DEVICE_UNREACHABLE'
 }
 
 function Ensure-Artifact($State) {
@@ -188,6 +207,53 @@ function Ensure-Artifact($State) {
     $State.candidate_path = [string]$manifest.candidate_path
     $State.source_sha = [string]$manifest.source_sha
     Save-State $State 'CANDIDATE_VERIFIED' 'VERIFIED'
+}
+
+function Invoke-RepairController($State) {
+    if ($State.PSObject.Properties.Name -contains 'repair_controller_started' -and $State.repair_controller_started -eq $true) {
+        Log 'AUTO_REMEDIATION_CONTROLLER already started for this run; not launching a duplicate.'
+        return
+    }
+    $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
+    if (-not (Test-Path $controller)) { throw 'Existing ci-controller-v3.ps1 repair controller is missing.' }
+    Log 'Routing deterministic build/verification failure to existing Codex auto-repair controller.'
+    $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Resume','-RunId',[string]$State.run_id) -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+    $State.repair_controller_started = $true
+    Save-State $State ([string]$State.stage) ([string]$State.status)
+    Log "AUTO_REMEDIATION_CONTROLLER_STARTED pid=$($proc.Id) run=$($State.run_id)"
+}
+
+function Invoke-RealDeviceBaselinePreflight($State,[string]$Target) {
+    Log "Collecting read-only real-device snapshot from $Target"
+    $snapshot = Invoke-Process 'pwsh' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'real-device-snapshot.ps1'),'-Target',$Target,'-OutputPath',$SnapshotPath) -AllowFailure
+    if ($snapshot.ExitCode -ne 0) {
+        if ($snapshot.Output -match 'DEVICE_IDENTITY_MISMATCH') {
+            $State.human_gate = 'DEVICE_IDENTITY_MISMATCH'
+            Save-State $State ([string]$State.stage) 'BLOCKED' "DEVICE_IDENTITY_MISMATCH: $($snapshot.Output)"
+            throw 'DEVICE_IDENTITY_MISMATCH'
+        }
+        $State.human_gate = $null
+        $code = if ($snapshot.Output -match 'SSH_AUTH_FAILED') { 'SSH_AUTH_FAILED' } else { 'DEVICE_UNREACHABLE' }
+        Save-State $State ([string]$State.stage) 'RETRYING' "${code}: real-device snapshot failed. $($snapshot.Output)"
+        throw $code
+    }
+
+    Log 'Running real-device baseline inheritance / expected-diff / version gate before candidate upload.'
+    $gate = Invoke-Process 'pwsh' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'real-device-baseline-gate.ps1'),'-CandidateManifest',$ManifestPath,'-SnapshotPath',$SnapshotPath,'-Operation','forward','-BaselinePath',$BaselinePath,'-ExpectedDiffPath',$ExpectedDiffPath) -AllowFailure
+    if ($gate.ExitCode -ne 0) {
+        if ($gate.Output -match 'DEVICE_IDENTITY_MISMATCH') {
+            $State.human_gate = 'DEVICE_IDENTITY_MISMATCH'
+            Save-State $State ([string]$State.stage) 'BLOCKED' $gate.Output
+            throw 'DEVICE_IDENTITY_MISMATCH'
+        }
+        $State.human_gate = $null
+        Save-State $State 'CANDIDATE_VERIFIED' 'REPAIRING' "REAL_DEVICE_BASELINE_GATE_FAILED: $($gate.Output)"
+        Invoke-RepairController $State
+        Log 'REAL_DEVICE_BASELINE_GATE=REPAIR_SCHEDULED; candidate remains quarantined and has not been uploaded.'
+        return $false
+    }
+    Log $gate.Output
+    return $true
 }
 
 function Upload-Candidate($State,[string]$Target) {
@@ -242,20 +308,6 @@ function Wait-Device($State) {
     throw "WAIT_DEVICE timeout: Arthur did not recover at $($Config.expected_lan)"
 }
 
-function Invoke-RepairController($State) {
-    if ($State.PSObject.Properties.Name -contains 'repair_controller_started' -and $State.repair_controller_started -eq $true) {
-        Log 'AUTO_REMEDIATION_CONTROLLER already started for this run; not launching a duplicate.'
-        return
-    }
-    $controller = Join-Path $PSScriptRoot 'ci-controller-v3.ps1'
-    if (-not (Test-Path $controller)) { throw 'Existing ci-controller-v3.ps1 repair controller is missing.' }
-    Log 'Routing deterministic build/verification failure to existing Codex auto-repair controller.'
-    $proc = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',$controller,'-Mode','Resume','-RunId',[string]$State.run_id) -WorkingDirectory $Root -WindowStyle Hidden -PassThru
-    $State.repair_controller_started = $true
-    Save-State $State ([string]$State.stage) ([string]$State.status)
-    Log "AUTO_REMEDIATION_CONTROLLER_STARTED pid=$($proc.Id) run=$($State.run_id)"
-}
-
 function Invoke-RealDeviceVerify($State,[string]$Target) {
     $tag = "arthur-update-$($State.run_id)"
     Log "Running full real-device verification candidate=$tag target=$Target"
@@ -302,6 +354,8 @@ function Run-ProductionOnce {
     if (-not (At-Or-After $state 'AUTO_FLASH_SAFETY_GATE')) {
         $rollback = Ensure-Rollback $state
         $target = Get-DeviceTarget $state
+        $baselineReady = Invoke-RealDeviceBaselinePreflight $state $target
+        if (-not $baselineReady) { return }
         $remote = Upload-Candidate $state $target
         Invoke-SafetyGate $state $target $rollback $remote
         $state = Load-State
@@ -315,8 +369,6 @@ function Run-ProductionOnce {
     }
 
     if ([string]$state.stage -eq 'FLASH_STARTED') {
-        # A crash/restart after FLASH_STARTED must never blindly execute sysupgrade again.
-        # Reconcile the real device by entering WAIT_DEVICE instead.
         Save-State $state 'WAIT_DEVICE' 'LIVE' 'Recovered after FLASH_STARTED; reconciling device state without a second write.'
         $state = Load-State
     }
