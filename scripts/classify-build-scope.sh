@@ -42,7 +42,20 @@ while IFS= read -r path; do
     README.md|README.*|docs/*|knowledge/*)
       ;;
 
-    .github/*|tests/*|scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|production/v3-request.json|production/request.json|production/known-good-request.json|production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json)
+    .github/*|tests/*|requirements-headless.txt|ai_orchestrator/*|\
+    scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|\
+    scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|\
+    scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
+    scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
+    scripts/bridge-runtime-status.ps1|scripts/recover-existing-bridge-context.ps1|scripts/run-supervisor.py|\
+    scripts/repair-github-runner.ps1|scripts/bootstrap-arthur-host-key.ps1|\
+    scripts/fetch-production-artifact.ps1|scripts/auto-flash-safety-gate.ps1|\
+    scripts/real-device-baseline-lib.ps1|scripts/real-device-snapshot.ps1|scripts/real-device-baseline-gate.ps1|\
+    scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|\
+    production/v3-request.json|production/request.json|production/known-good-request.json|\
+    production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json|\
+    production/production-agent.json|production/arthur-flash-profile.json|\
+    production/real-device-baseline.json|production/expected-diff.json)
       promote_scope FAST_GATE
       ;;
 
