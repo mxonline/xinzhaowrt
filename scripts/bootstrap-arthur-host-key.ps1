@@ -81,7 +81,7 @@ try {
     $HttpBuild = $httpResponse.Content | ConvertFrom-Json
 }
 catch {
-    Fail 'DEVICE_UNREACHABLE' "Unable to obtain read-only HTTP build identity from $httpUri: $($_.Exception.Message)"
+    Fail 'DEVICE_UNREACHABLE' "Unable to obtain read-only HTTP build identity from ${httpUri}: $($_.Exception.Message)"
 }
 if (-not (Test-ArthurBuildInfoMatchesBaseline -BuildInfo $HttpBuild -Baseline $Baseline)) {
     Fail 'REAL_DEVICE_BASELINE_BUILD_MISMATCH' "HTTP build identity does not match baseline $($Baseline.firmware.version)/$($Baseline.firmware.build_id)/$($Baseline.firmware.displayed_git_commit)."
