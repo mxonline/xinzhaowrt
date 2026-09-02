@@ -28,10 +28,10 @@ function Log([string]$Message) {
     Write-Host $line
 }
 
-function Invoke-Gh([string[]]$Args,[switch]$AllowFailure) {
-    $text = (& gh @Args 2>&1 | Out-String).Trim()
+function Invoke-Gh([string[]]$GhArgs,[switch]$AllowFailure) {
+    $text = (& gh @GhArgs 2>&1 | Out-String).Trim()
     $code = $LASTEXITCODE
-    if (-not $AllowFailure -and $code -ne 0) { throw "gh $($Args -join ' ') failed ($code): $text" }
+    if (-not $AllowFailure -and $code -ne 0) { throw "gh $($GhArgs -join ' ') failed ($code): $text" }
     return [pscustomobject]@{ ExitCode = $code; Output = $text }
 }
 
