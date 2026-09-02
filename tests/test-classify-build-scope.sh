@@ -35,6 +35,19 @@ run_case FAST_GATE \
   production/arthur-known-good-v1.json \
   scripts/baseline-integrity-gate.sh
 
+# Production-agent and runtime orchestration scripts are control-plane only.
+# They must never trigger a multi-hour firmware build by falling through the unknown-path rule.
+run_case FAST_GATE \
+  scripts/production-agent.ps1 \
+  scripts/install-production-agent.ps1 \
+  scripts/start-production-agent.ps1 \
+  scripts/production-agent-status.ps1 \
+  scripts/ci-controller-v3.ps1 \
+  scripts/bridge-runtime-status.ps1 \
+  scripts/recover-existing-bridge-context.ps1 \
+  scripts/run-supervisor.py \
+  ai_orchestrator/adapters.py
+
 # v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
 run_case IMAGEBUILDER \
   production/v4/imagebuilder-request.json \
