@@ -1,21 +1,25 @@
 {
   "schema_version": "1.0",
   "baseline": "production/real-device-baseline.json",
-  "operation": "migration_lock",
-  "status": "MIGRATION_LOCKED",
-  "allowed_changes": [],
+  "operation": "forward",
+  "status": "READY",
+  "request_source": "production/v3-request.json",
+  "allowed_changes": [
+    "adguardhome_management",
+    "istore_quickstart_homepage",
+    "wifi_validation",
+    "version_metadata_alignment"
+  ],
   "protected_domains": [
     "device_identity",
     "target_profile",
     "storage_layout",
     "lan",
-    "wifi",
     "root_credential_policy",
     "required_plugins",
     "themes",
-    "istore_quickstart",
-    "adguardhome_default_state",
-    "web_stack"
+    "web_stack",
+    "all_other_undeclared_product_state"
   ],
-  "reason": "The old v0.1.2 Candidate is not allowed to overwrite the physical 0.1.3 reference. A future firmware task must replace this migration lock with an explicit expected-diff declaration derived from the real-device baseline."
+  "reason": "Continue the already-declared Arthur ADH/iStore/Wi-Fi acceptance work, but derive it from the running 0.1.3 physical baseline. The old v0.1.2 Candidate remains invalid by version ordering and must not be flashed."
 }
