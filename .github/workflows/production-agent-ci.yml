@@ -30,6 +30,7 @@ jobs:
             'tests/runner-self-heal.tests.ps1',
             'tests/arthur-host-key-bootstrap.tests.ps1',
             'tests/rebuild-dispatch-ack.tests.ps1',
+            'tests/rebuild-dispatch-at-most-once.tests.ps1',
             'scripts/production-agent.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
@@ -57,3 +58,4 @@ jobs:
           & ./tests/runner-self-heal.tests.ps1
           & ./tests/arthur-host-key-bootstrap.tests.ps1
           & ./tests/rebuild-dispatch-ack.tests.ps1
+          & ./tests/rebuild-dispatch-at-most-once.tests.ps1
