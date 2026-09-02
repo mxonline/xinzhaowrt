@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: feature/arthur-v013-next
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Execute one Codex repair turn
         shell: powershell
