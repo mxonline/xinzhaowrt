@@ -38,7 +38,8 @@ jobs:
             'scripts/install-production-agent.ps1',
             'scripts/uninstall-production-agent.ps1',
             'scripts/start-production-agent.ps1',
-            'scripts/production-agent-status.ps1'
+            'scripts/production-agent-status.ps1',
+            'scripts/repair-github-runner.ps1'
           )) {
             $tokens = $null
             $errors = $null
