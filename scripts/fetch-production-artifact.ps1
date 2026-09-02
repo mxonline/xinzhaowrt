@@ -35,6 +35,23 @@ function Invoke-Gh([string[]]$Args,[switch]$AllowFailure) {
     return [pscustomobject]@{ ExitCode = $code; Output = $text }
 }
 
+function Convert-GhJson([string]$Text,[string]$Context) {
+    # gh can emit warnings on stderr even when the command succeeds. Invoke-Gh
+    # intentionally captures stderr for diagnostics, so isolate the JSON object
+    # before parsing instead of assuming the whole mixed stream is JSON.
+    $start = $Text.IndexOf('{')
+    $end = $Text.LastIndexOf('}')
+    if ($start -lt 0 -or $end -lt $start) {
+        throw "GitHub CLI returned no JSON object for $Context. Output: $Text"
+    }
+    $json = $Text.Substring($start, ($end - $start + 1))
+    try {
+        return ($json | ConvertFrom-Json)
+    } catch {
+        throw "GitHub CLI JSON parse failed for $Context. $($_.Exception.Message) Output: $Text"
+    }
+}
+
 # Validate the credential by exercising the API. This supports persistent gh credentials
 # and machine/App tokens even when `gh auth status` is not a reliable signal.
 $auth = Invoke-Gh @('api',"repos/$Repository",'--jq','.full_name') -AllowFailure
@@ -45,7 +62,7 @@ if ($auth.ExitCode -ne 0) {
 }
 
 $runView = Invoke-Gh @('run','view',[string]$RunId,'--repo',$Repository,'--json','headSha,status,conclusion')
-$run = $runView.Output | ConvertFrom-Json
+$run = Convert-GhJson -Text ([string]$runView.Output) -Context "run $RunId metadata"
 if ([string]$run.status -ne 'completed' -or [string]$run.conclusion -ne 'success') {
     throw "Run $RunId is not a successful completed production Candidate run: status=$($run.status) conclusion=$($run.conclusion)"
 }
@@ -53,7 +70,7 @@ $SourceSha = [string]$run.headSha
 if ($SourceSha -notmatch '^[0-9a-f]{40}$') { throw "Run $RunId returned invalid headSha: $SourceSha" }
 
 $api = Invoke-Gh @('api',"repos/$Repository/actions/runs/$RunId/artifacts")
-$payload = $api.Output | ConvertFrom-Json
+$payload = Convert-GhJson -Text ([string]$api.Output) -Context "run $RunId artifacts"
 $artifacts = @($payload.artifacts)
 
 if ($ArtifactId -gt 0 -and $ArtifactName) {
