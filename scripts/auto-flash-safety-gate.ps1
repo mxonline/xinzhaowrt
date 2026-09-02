@@ -47,7 +47,9 @@ if ($localSha -ne ([string]$Candidate.candidate_sha256).ToLowerInvariant()) { Fa
 
 if (-not (Test-Path $RollbackPath)) { Fail 'NO_SAFE_ROLLBACK' "Rollback artifact missing: $RollbackPath" }
 $rollbackSha = (Get-FileHash -Algorithm SHA256 $RollbackPath).Hash.ToLowerInvariant()
-if ($rollbackSha -ne ([string]$Known.sha256).ToLowerInvariant()) { Fail 'NO_SAFE_ROLLBACK' "Rollback SHA256 mismatch expected=$($Known.sha256) actual=$rollbackSha" }
+$expectedRollbackSha = ([string]$Known.rollback.sha256).ToLowerInvariant()
+if (-not $expectedRollbackSha) { Fail 'NO_SAFE_ROLLBACK' 'production/known-good.json rollback.sha256 is missing.' }
+if ($rollbackSha -ne $expectedRollbackSha) { Fail 'NO_SAFE_ROLLBACK' "Rollback SHA256 mismatch expected=$($Known.rollback.sha256) actual=$rollbackSha" }
 
 $board = Remote 'ubus call system board'
 if ($board.ExitCode -ne 0 -or $board.Output -notmatch 'jdcloud,re-ss-01|RE-SS-01') { Fail 'UNKNOWN_DEVICE_IDENTITY' 'Remote board identity is not JDCloud RE-SS-01.' }
