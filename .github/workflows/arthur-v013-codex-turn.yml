@@ -22,7 +22,7 @@ jobs:
       - windows
       - x64
       - xinzhaowrt-controller
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout exact feature branch
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           ref: feature/arthur-v013-next
           fetch-depth: 1
 
-      - name: Execute one Codex repair turn
+      - name: Execute one Codex real-device validation turn
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,18 +45,22 @@ jobs:
           $codexCmd = Get-Command codex.cmd -ErrorAction SilentlyContinue
           if (-not $codexCmd) { $codexCmd = Get-Command codex -ErrorAction Stop }
           $codexExe = $codexCmd.Source
+          Write-Host "CODEX_EXECUTABLE=$codexExe"
+          & $codexExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Codex version probe failed.' }
 
           $resultPath = Join-Path $env:RUNNER_TEMP 'v013-codex-result.json'
           $previousPreference = $ErrorActionPreference
           try {
             $ErrorActionPreference = 'Continue'
-            $output = ($prompt | & $codexExe exec --sandbox workspace-write -c 'approval_policy="never"' -o $resultPath - 2>&1 | Out-String)
+            $output = ($prompt | & $codexExe exec --sandbox danger-full-access -c 'approval_policy="never"' -o $resultPath - 2>&1 | Out-String)
             $exitCode = $LASTEXITCODE
           }
           finally {
             $ErrorActionPreference = $previousPreference
           }
-          if ($exitCode -ne 0) { throw "Codex exited with code $exitCode`n$output" }
+          $output | Write-Host
+          if ($exitCode -ne 0) { throw "Codex exited with code $exitCode" }
           if (-not (Test-Path $resultPath)) { throw 'Codex produced no result file.' }
 
           $resultText = Get-Content -Raw $resultPath
