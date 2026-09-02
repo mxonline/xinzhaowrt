@@ -24,7 +24,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $ip = '192.168.6.1'
-          $report = Join-Path $env:RUNNER_TEMP 'arthur-host-identity-forensics.txt'
+          $report = Join-Path $env:GITHUB_WORKSPACE 'arthur-host-identity-forensics.txt'
+          '' | Set-Content -Encoding UTF8 $report
           $lines = New-Object System.Collections.Generic.List[string]
           function Add-Report([string]$text) {
             $lines.Add($text)
@@ -56,7 +57,7 @@ jobs:
 
             $knownHosts = Join-Path $HOME '.ssh\known_hosts'
             Add-Report "FORENSICS_KNOWN_HOSTS=$knownHosts"
-            $oldFile = Join-Path $env:RUNNER_TEMP 'arthur-known-host-old.txt'
+            $oldFile = Join-Path $env:GITHUB_WORKSPACE 'arthur-known-host-old.txt'
             Remove-Item -Force -ErrorAction SilentlyContinue $oldFile
             if (Test-Path $knownHosts) {
               $oldLines = @(& ssh-keygen.exe -F $ip -f $knownHosts 2>$null | Where-Object { $_ -and $_ -notmatch '^#' })
@@ -72,7 +73,7 @@ jobs:
               Add-Report 'FORENSICS_OLD_HOST_KEYS_FILE_MISSING'
             }
 
-            $tempKnownHosts = Join-Path $env:RUNNER_TEMP 'arthur-current-host-key.txt'
+            $tempKnownHosts = Join-Path $env:GITHUB_WORKSPACE 'arthur-current-host-key.txt'
             Remove-Item -Force -ErrorAction SilentlyContinue $tempKnownHosts
             $probeOutput = @(& ssh.exe -o "UserKnownHostsFile=$tempKnownHosts" -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=8 "root@$ip" exit 2>&1)
             $probeExit = $LASTEXITCODE
@@ -81,7 +82,7 @@ jobs:
             if (-not (Test-Path $tempKnownHosts)) { throw 'FORENSICS_CURRENT_HOST_KEY_CAPTURE_FAILED' }
             $currentLines = @(& ssh-keygen.exe -F $ip -f $tempKnownHosts 2>$null | Where-Object { $_ -and $_ -notmatch '^#' })
             if ($currentLines.Count -eq 0) { throw 'FORENSICS_CURRENT_HOST_KEY_CAPTURE_EMPTY' }
-            $currentFile = Join-Path $env:RUNNER_TEMP 'arthur-current-host-lines.txt'
+            $currentFile = Join-Path $env:GITHUB_WORKSPACE 'arthur-current-host-lines.txt'
             $currentLines | Set-Content -Encoding ASCII $currentFile
             Add-Report 'FORENSICS_CURRENT_HOST_KEYS=FOUND'
             $currentFp = @(& ssh-keygen.exe -lf $currentFile 2>&1)
@@ -105,5 +106,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arthur-host-identity-forensics
-          path: ${{ runner.temp }}\arthur-host-identity-forensics.txt
+          path: arthur-host-identity-forensics.txt
           if-no-files-found: error
