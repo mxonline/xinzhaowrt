@@ -1,0 +1,49 @@
+name: Arthur SSH Host Key Bootstrap
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'production/real-device-baseline.json'
+      - 'scripts/real-device-baseline-lib.ps1'
+      - 'scripts/bootstrap-arthur-host-key.ps1'
+      - '.github/workflows/arthur-host-key-bootstrap.yml'
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arthur-ssh-host-key-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted bootstrap source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate bootstrap contract
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/arthur-host-key-bootstrap.tests.ps1
+
+      - name: Verify or enroll current physical Arthur host key
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./scripts/bootstrap-arthur-host-key.ps1 -TargetIp '192.168.6.1' -BaselinePath './production/real-device-baseline.json'
+          if ($LASTEXITCODE -ne 0) { throw "Arthur host-key bootstrap failed: $LASTEXITCODE" }
