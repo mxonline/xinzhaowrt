@@ -1,0 +1,18 @@
+{
+  "request_id": "v013-live-verify-20260902-native-stderr",
+  "phase": "PREBUILD_REAL_DEVICE_VERIFY",
+  "baseline_version": "0.1.3",
+  "baseline_build_id": "33462873812",
+  "failed_run_id": 33654633240,
+  "failed_job_id": 100330684813,
+  "first_observed_failure": "Windows PowerShell 5.1 converted normal ssh.exe stderr from AdGuard Home startup into NativeCommandError under ErrorActionPreference=Stop before exit-code evaluation.",
+  "evidence": [
+    "V013_LIVE_BASELINE=PASS version=0.1.3 build_id=33462873812",
+    "V013_CONTROL_PATH interface=以太网",
+    "V013_LIVE_BACKUP=PASS",
+    "AdGuard Home version v0.107.79 startup log appeared on stderr",
+    "V013_LIVE_ROLLBACK_START",
+    "V013_LIVE_ROLLBACK_DONE"
+  ],
+  "goal": "Repair only the live-validation executor behavior so GPT can rerun physical Arthur validation. Do not build or flash firmware."
+}
