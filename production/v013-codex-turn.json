@@ -1,18 +1,17 @@
 {
-  "request_id": "v013-live-verify-20260902-native-stderr-r3",
+  "request_id": "v013-real-device-hot-verify-20260903-r1",
   "phase": "PREBUILD_REAL_DEVICE_VERIFY",
   "baseline_version": "0.1.3",
   "baseline_build_id": "33462873812",
-  "failed_run_id": 33654633240,
-  "failed_job_id": 100330684813,
-  "first_observed_failure": "Windows PowerShell 5.1 converted normal ssh.exe stderr from AdGuard Home startup into NativeCommandError under ErrorActionPreference=Stop before exit-code evaluation.",
-  "evidence": [
-    "V013_LIVE_BASELINE=PASS version=0.1.3 build_id=33462873812",
-    "V013_CONTROL_PATH interface=以太网",
-    "V013_LIVE_BACKUP=PASS",
-    "AdGuard Home version v0.107.79 startup log appeared on stderr",
-    "V013_LIVE_ROLLBACK_START",
-    "V013_LIVE_ROLLBACK_DONE"
+  "target": "root@192.168.6.1",
+  "goal": "Codex itself must hot-deploy and validate AdGuard Home, iStore QuickStart, and Wi-Fi on the current physical Arthur. Fix only concrete live-validation executor defects encountered, rerun until PASS or a concrete safety/tool blocker. Do not build firmware and do not flash firmware.",
+  "required_pass_lines": [
+    "ADGUARD_LIVE=PASS final_state=stopped_disabled",
+    "QUICKSTART_LIVE=PASS homepage=admin/quickstart",
+    "WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED",
+    "V013_PREBUILD_REAL_DEVICE_FEATURES=PASS"
   ],
-  "goal": "Repair only the live-validation executor behavior so GPT can rerun physical Arthur validation. Do not build or flash firmware."
+  "known_failure": "Windows PowerShell 5.1 previously treated normal ssh stderr from AdGuard Home startup as NativeCommandError; rollback completed successfully.",
+  "firmware_build_allowed": false,
+  "firmware_flash_allowed": false
 }
