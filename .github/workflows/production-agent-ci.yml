@@ -28,12 +28,14 @@ jobs:
             'tests/verified-baseline-inheritance.tests.ps1',
             'tests/real-device-baseline.tests.ps1',
             'tests/runner-self-heal.tests.ps1',
+            'tests/arthur-host-key-bootstrap.tests.ps1',
             'scripts/production-agent.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
             'scripts/real-device-baseline-lib.ps1',
             'scripts/real-device-snapshot.ps1',
             'scripts/real-device-baseline-gate.ps1',
+            'scripts/bootstrap-arthur-host-key.ps1',
             'scripts/ci-controller-v3.ps1',
             'scripts/install-production-agent.ps1',
             'scripts/uninstall-production-agent.ps1',
@@ -52,3 +54,4 @@ jobs:
           & ./tests/verified-baseline-inheritance.tests.ps1
           & ./tests/real-device-baseline.tests.ps1
           & ./tests/runner-self-heal.tests.ps1
+          & ./tests/arthur-host-key-bootstrap.tests.ps1
