@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $script = Join-Path $Root 'scripts\live-validate-v013-features.ps1'
+$workflow = Join-Path $Root '.github\workflows\arthur-v013-prebuild-live.yml'
 
 function Assert-True([bool]$Condition,[string]$Message) {
     if (-not $Condition) { throw "V013_LIVE_DEPLOY_CONTRACT: FAIL -- $Message" }
@@ -22,5 +23,11 @@ Assert-True ($text -match 'adguardhome.*stop') 'script must leave AdGuard Home s
 Assert-True ($text -match 'adguardhome.*disable') 'script must leave AdGuard Home disabled'
 Assert-True ($text -match 'Get-NetRoute|InterfaceAlias') 'script must verify the runner path before Wi-Fi reload'
 Assert-True ($text -notmatch '(?i)sysupgrade|\bmtd\b|\buboot\b|\bu-boot\b|/dev/mmcblk|\bdd\s+if=') 'live validation must never contain firmware/raw-write commands'
+
+Assert-True (Test-Path $workflow) 'one-shot live validation workflow is missing'
+$workflowText = Get-Content -Raw $workflow
+Assert-True ($workflowText -match '(?m)^\s*shell:\s*powershell\s*$') 'self-hosted live workflow must use built-in Windows PowerShell'
+Assert-True ($workflowText -notmatch '(?m)^\s*shell:\s*pwsh\s*$') 'self-hosted live workflow must not require unavailable pwsh'
+Assert-True ($workflowText -match 'live-validate-v013-features\.ps1') 'live workflow must execute the guarded validation script'
 
 Write-Host 'V013_LIVE_DEPLOY_CONTRACT=PASS'
