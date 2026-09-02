@@ -14,9 +14,13 @@ for test_script in \
   tests/test-adguard-defaults.sh \
   tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
+  tests/test-functional-acceptance.sh \
+  tests/test-prebuild-feature-gate.sh \
   tests/test-argon-default-theme.sh; do
   bash "$test_script"
 done
+pass CHANGE_IMPACT_GATE
+./scripts/acceptance-contract-gate.sh
 pass ADGUARDHOME_IMPLEMENTATION_READY
 pass ISTORE_QUICKSTART_REUSE_READY
 pass WIFI_IMPLEMENTATION_READY
@@ -54,10 +58,12 @@ pass EXPECTED_DIFF_GATE
 pass BASELINE_INHERITANCE_GATE
 
 mkdir -p output
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python3
-else
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python
+else
+  fail 'a working Python interpreter is required for changeset evidence'
 fi
 "$PYTHON_BIN" - <<'PY'
 import json

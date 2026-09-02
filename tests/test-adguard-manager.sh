@@ -2,11 +2,25 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-view="$root/files/www/luci-static/resources/view/adguardhome/config.js"
-[[ -f "$view" ]] || { echo 'FAIL: AdGuard Home full manager view is missing.' >&2; exit 1; }
-for label in '基础设置' '日志' '手动设置' '启动' '停止' '重启' '自动刷新' 'YAML' '备份' '恢复' '校验' '回滚'; do
-  grep -Fq "$label" "$view" || { echo "FAIL: missing AdGuard manager label: $label" >&2; exit 1; }
+view="$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome/htdocs/luci-static/resources/view/adguardhome/config.js"
+acl="$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
+overlay_view="$root/files/www/luci-static/resources/view/adguardhome/config.js"
+overlay_acl="$root/files/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
+
+[[ ! -e "$overlay_view" ]] || { echo 'FAIL: project overlay must not replace the mature AdGuard Home manager.' >&2; exit 1; }
+[[ ! -e "$overlay_acl" ]] || { echo 'FAIL: project overlay must not replace the upstream AdGuard Home ACL.' >&2; exit 1; }
+[[ -s "$view" ]] || { echo 'FAIL: mature AdGuard Home manager view is missing from the pinned feed.' >&2; exit 1; }
+[[ -s "$acl" ]] || { echo 'FAIL: mature AdGuard Home rpcd ACL is missing from the pinned feed.' >&2; exit 1; }
+
+for marker in "form.Map('adguardhome'" 'form.TypedSection' "object: 'service'" "method: 'list'" 'poll.add' 'fs.exec'; do
+  grep -Fq "$marker" "$view" || { echo "FAIL: mature AdGuard manager marker missing: $marker" >&2; exit 1; }
 done
-grep -Fq "luci-i18n" "$view" || { echo 'FAIL: AdGuard manager must be translation-aware.' >&2; exit 1; }
-grep -Fq "service.action" "$view" || { echo 'FAIL: service controls must use LuCI service RPC.' >&2; exit 1; }
-echo 'PASS: AdGuard Home full manager static contract.'
+! grep -Fq 'getInitList' "$view" || { echo 'FAIL: obsolete custom lifecycle RPC remains in the manager.' >&2; exit 1; }
+! grep -Fq 'setInitAction' "$view" || { echo 'FAIL: obsolete custom lifecycle RPC remains in the manager.' >&2; exit 1; }
+
+grep -Fq '"service"' "$acl" || { echo 'FAIL: upstream ACL must grant service.list.' >&2; exit 1; }
+grep -Fq '"uci"' "$acl" || { echo 'FAIL: upstream ACL must grant UCI access.' >&2; exit 1; }
+grep -Fq '"adguardhome"' "$acl" || { echo 'FAIL: upstream ACL must be scoped to adguardhome.' >&2; exit 1; }
+grep -Fq 'AdGuardHome --version' "$acl" || { echo 'FAIL: upstream ACL must grant version discovery.' >&2; exit 1; }
+
+echo 'PASS: AdGuard Home uses the pinned mature manager and upstream ACL.'
