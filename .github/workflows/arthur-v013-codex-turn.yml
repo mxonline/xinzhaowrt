@@ -1,0 +1,134 @@
+name: Arthur v0.1.3 Codex Live Validation Turn
+
+on:
+  push:
+    branches:
+      - feature/arthur-v013-next
+    paths:
+      - 'production/v013-codex-turn.json'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-v013-codex-turn
+  cancel-in-progress: false
+
+jobs:
+  codex-turn:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/arthur-v013-next
+          fetch-depth: 0
+
+      - name: Execute one Codex repair turn
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $requestPath = Join-Path $env:GITHUB_WORKSPACE 'production\v013-codex-turn.json'
+          $request = Get-Content -Raw $requestPath | ConvertFrom-Json
+
+          $codexCmd = Get-Command codex.cmd -ErrorAction SilentlyContinue
+          if (-not $codexCmd) { $codexCmd = Get-Command codex -ErrorAction Stop }
+          $codexExe = $codexCmd.Source
+
+          $prompt = @"
+You are the Codex executor in the existing XinZhaoWrt GPT -> Codex -> GPT closed loop.
+
+TASK SCOPE: Arthur 0.1.3 PREBUILD REAL-DEVICE FEATURE VALIDATION ONLY.
+Repository: mxonline/xinzhaowrt
+Branch: feature/arthur-v013-next
+Physical baseline: version 0.1.3, Build ID 33462873812, root@192.168.6.1.
+Current goal: make the existing hot-deploy validation reliably validate AdGuard Home management, iStore QuickStart homepage, and Wi-Fi on the already-running physical Arthur. The three real-device checks must eventually emit V013_PREBUILD_REAL_DEVICE_FEATURES=PASS before any firmware build is allowed.
+
+IMPORTANT BOUNDARIES:
+- DO NOT build firmware.
+- DO NOT run sysupgrade, mtd, dd, U-Boot, raw eMMC/NAND/SPI writes, or any firmware flashing action.
+- DO NOT change product requirements, plugin list, target, VERSION, build.env, Known-Good, release policy, or production baseline.
+- DO NOT access or mutate the router in this Codex turn. This turn is diagnosis + minimal source repair only; GPT will review your result before the next real-device run.
+- DO NOT trigger GitHub Actions or create Releases.
+- You may modify ONLY:
+  * scripts/live-validate-v013-features.ps1
+  * tests/v013-live-feature-deploy.tests.ps1
+- Preserve automatic runtime backup/rollback behavior.
+- Keep the fix minimal and deterministic.
+
+Read AGENTS.md and inspect the current branch before editing.
+Use the supplied failure evidence and, if useful, read-only `gh run view` for the referenced run/job.
+Identify the FIRST concrete root cause. The latest real-device attempt reached AdGuard Home v0.107.79 startup, then Windows PowerShell 5.1 converted normal SSH stderr into NativeCommandError even though the remote command itself had not been shown to fail. The runtime rollback did execute successfully.
+
+Request payload:
+$($request | ConvertTo-Json -Depth 8)
+
+Required method:
+1. Reproduce/confirm the root cause from code + evidence.
+2. If a source fix is justified, add or strengthen a regression assertion FIRST so it fails for the current behavior.
+3. Apply the smallest fix.
+4. Run only the focused safe test: tests/v013-live-feature-deploy.tests.ps1.
+5. Inspect git diff and git diff --check.
+6. Do not run the real-device workflow yourself.
+
+Return JSON only in this exact shape:
+{
+  "decision": "repaired|retry|blocked",
+  "first_error": "first concrete root cause",
+  "summary": "what you changed or why no source change is justified",
+  "changed_files": ["path1", "path2"],
+  "test_result": "PASS|FAIL|NOT_RUN",
+  "next_action": "what GPT should do next"
+}
+"@
+
+          $resultPath = Join-Path $env:RUNNER_TEMP 'v013-codex-result.json'
+          $execLog = Join-Path $env:RUNNER_TEMP 'v013-codex-exec.log'
+          $previousPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            $output = ($prompt | & $codexExe exec --sandbox workspace-write -c 'approval_policy="never"' -o $resultPath - 2>&1 | Out-String)
+            $exitCode = $LASTEXITCODE
+          }
+          finally {
+            $ErrorActionPreference = $previousPreference
+          }
+          $output | Set-Content -Path $execLog -Encoding UTF8
+          if ($exitCode -ne 0) { throw "Codex exited with code $exitCode`n$output" }
+          if (-not (Test-Path $resultPath)) { throw 'Codex produced no result file.' }
+
+          $resultText = Get-Content -Raw $resultPath
+          Write-Host "CODEX_RESULT_BEGIN"
+          Write-Host $resultText
+          Write-Host "CODEX_RESULT_END"
+
+          $changed = @(git status --porcelain | ForEach-Object { if ($_.Length -ge 4) { $_.Substring(3).Trim() } } | Where-Object { $_ })
+          $allowed = @('scripts/live-validate-v013-features.ps1','tests/v013-live-feature-deploy.tests.ps1')
+          $forbidden = @($changed | Where-Object { $_ -notin $allowed })
+          if ($forbidden.Count -gt 0) { throw "Codex changed forbidden paths: $($forbidden -join ', ')" }
+
+          if ($changed.Count -gt 0) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\v013-live-feature-deploy.tests.ps1
+            if ($LASTEXITCODE -ne 0) { throw 'Focused live-deploy contract failed after Codex edit.' }
+            git diff --check
+            if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed after Codex edit.' }
+            git config user.name 'XinZhaoWrt Codex Executor'
+            git config user.email 'codex-executor@users.noreply.github.com'
+            git add -- scripts/live-validate-v013-features.ps1 tests/v013-live-feature-deploy.tests.ps1
+            git commit -m 'fix: repair Arthur prebuild live validation runtime'
+            if ($LASTEXITCODE -ne 0) { throw 'Codex repair commit failed.' }
+            git push origin HEAD:feature/arthur-v013-next
+            if ($LASTEXITCODE -ne 0) { throw 'Codex repair push failed.' }
+            Write-Host "CODEX_REPAIR_PUSHED=$(git rev-parse HEAD)"
+          } else {
+            Write-Host 'CODEX_REPAIR_PUSHED=NO_CHANGES'
+          }
