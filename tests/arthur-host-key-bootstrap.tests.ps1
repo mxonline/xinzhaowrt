@@ -38,7 +38,8 @@ foreach ($needle in @(
     'Test-ArthurBuildInfoMatchesBaseline',
     'ssh-keygen.exe',
     'UserKnownHostsFile',
-    'StrictHostKeyChecking=accept-new',
+    'StrictHostKeyChecking=$StrictMode',
+    "-StrictMode 'accept-new'",
     'Test-ArthurBoardIdentity',
     'ubus call system board',
     'SSH_HOST_KEY_ALREADY_TRUSTED=PASS',
@@ -66,7 +67,7 @@ foreach ($needle in @(
     'id_ed25519',
     '/etc/dropbear/authorized_keys',
     'BatchMode=yes',
-    'StrictHostKeyChecking=yes',
+    "-StrictMode 'yes'",
     'SSH_AUTH_BOOTSTRAP=PASS'
 )) {
     Assert-Contains $bootstrap $needle "SSH auth bootstrap contract requires $needle"
