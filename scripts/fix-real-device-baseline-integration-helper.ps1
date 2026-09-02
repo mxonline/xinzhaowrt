@@ -44,7 +44,23 @@ foreach ($line in $badExitChecks) {
     $Text = $Text.Replace("$line`n",'')
 }
 
-Set-Content -Path $Path -Value $Text -Encoding UTF8
+$plainDiffCheck = 'git diff --check'
+$normalizedDiffCheck = @'
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+foreach ($normalizePath in @($agentPath,$controllerPath,$MyInvocation.MyCommand.Path)) {
+    $normalized = (Get-Content -Raw $normalizePath).TrimEnd("`r","`n") + "`n"
+    [System.IO.File]::WriteAllText((Resolve-Path $normalizePath),$normalized,$utf8NoBom)
+}
+git diff --check
+if ($LASTEXITCODE -ne 0) { throw "git diff --check failed: $LASTEXITCODE" }
+'@
+if ($Text.Contains($plainDiffCheck) -and -not $Text.Contains('foreach ($normalizePath in @($agentPath,$controllerPath,$MyInvocation.MyCommand.Path))')) {
+    $Text = $Text.Replace($plainDiffCheck,$normalizedDiffCheck)
+}
+
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$Text = $Text.TrimEnd("`r","`n") + "`n"
+[System.IO.File]::WriteAllText($Path,$Text,$utf8NoBom)
 
 $tokens = $null
 $errors = $null
