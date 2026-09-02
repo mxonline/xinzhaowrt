@@ -1,0 +1,36 @@
+name: Arthur v0.1.3 Prebuild Live Validation
+
+on:
+  push:
+    branches:
+      - feature/arthur-v013-next
+    paths:
+      - 'production/v013-live-test-request.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arthur-v013-prebuild-live
+  cancel-in-progress: false
+
+jobs:
+  live-validate:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/arthur-v013-next
+          fetch-depth: 1
+
+      - name: Validate feature delta on physical Arthur 0.1.3
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\scripts\live-validate-v013-features.ps1 -Target 'root@192.168.6.1' -ExpectedVersion '0.1.3' -ExpectedBuildId '33462873812'
