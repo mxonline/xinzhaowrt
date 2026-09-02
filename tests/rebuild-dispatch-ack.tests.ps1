@@ -53,5 +53,19 @@ Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Production Agent must 
 $modeRebuildNeedle = "'-Mode','Rebuild'"
 Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
 
+# Runtime migration must remove legacy Rebuild-mode controller processes that were started before the single-dispatcher fix. The cleanup must be precise and happen before Watch mode starts.
+$quiesceIndex = $deploy.IndexOf('- name: Quiesce legacy Arthur Rebuild controllers',[System.StringComparison]::OrdinalIgnoreCase)
+$watchIndex = $deploy.IndexOf('- name: Start persistent v3 controller',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($quiesceIndex -ge 0) 'deploy must contain a dedicated legacy Rebuild-controller quiescence step'
+Assert-True ($watchIndex -gt $quiesceIndex) 'legacy Rebuild controllers must be quiesced before the persistent Watch controller starts'
+$quiesceSection = $deploy.Substring($quiesceIndex, $watchIndex - $quiesceIndex)
+Assert-Contains $quiesceSection 'Get-CimInstance Win32_Process' 'legacy cleanup must inspect process command lines rather than stop PowerShell broadly'
+Assert-Contains $quiesceSection 'ci-controller-v3\.ps1' 'legacy cleanup must match only the Arthur v3 controller command line'
+Assert-Contains $quiesceSection '-Mode\s+Rebuild' 'legacy cleanup must match only Rebuild mode'
+Assert-Contains $quiesceSection 'Stop-Process -Id' 'legacy Rebuild controller processes must be terminated by verified PID'
+Assert-Contains $quiesceSection 'LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS' 'deploy must expose evidence that legacy Rebuild writers were drained'
+Assert-True ($quiesceSection -notmatch '(?i)Stop-Process\s+-Name\s+(pwsh|powershell)') 'legacy cleanup must never blanket-stop PowerShell processes'
+
 Write-Host 'REBUILD_DISPATCH_ACK_CONTRACT=PASS'
 Write-Host 'SINGLE_REBUILD_DISPATCHER_CONTRACT=PASS'
+Write-Host 'LEGACY_REBUILD_CONTROLLER_QUIESCE_CONTRACT=PASS'
