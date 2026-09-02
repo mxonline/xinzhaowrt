@@ -18,6 +18,7 @@ $LocalAcl = Join-Path $Root 'files\usr\share\rpcd\acl.d\luci-app-adguardhome.jso
 $TempView = '/tmp/xinzhao-adguard-config.js'
 $TempAcl = '/tmp/xinzhao-adguard-acl.json'
 $MutationStarted = $false
+$OriginalAdguardConfigExists = $false
 $OriginalViewExists = $false
 $OriginalAclExists = $false
 
@@ -75,6 +76,8 @@ function Restore-RuntimeBackup {
 
     $restore = @"
 set -e
+if [ -f '$BackupDir/adguardhome' ]; then cp '$BackupDir/adguardhome' /etc/config/adguardhome; fi
+if [ ! -f '$BackupDir/adguardhome' ] && [ '$OriginalAdguardConfigExists' = 'False' ]; then rm -f /etc/config/adguardhome; fi
 if [ -f '$BackupDir/luci' ]; then cp '$BackupDir/luci' /etc/config/luci; fi
 if [ -f '$BackupDir/wireless' ]; then cp '$BackupDir/wireless' /etc/config/wireless; fi
 if [ -f '$BackupDir/adguard-config.js' ]; then
@@ -129,11 +132,13 @@ if (-not (Test-Path $LocalView)) { throw "LOCAL_FEATURE_FILE_MISSING $LocalView"
 if (-not (Test-Path $LocalAcl)) { throw "LOCAL_FEATURE_FILE_MISSING $LocalAcl" }
 
 try {
+    $OriginalAdguardConfigExists = (Invoke-Remote "test -f '/etc/config/adguardhome'" -AllowFailure).ExitCode -eq 0
     $OriginalViewExists = (Invoke-Remote "test -f '$RemoteView'" -AllowFailure).ExitCode -eq 0
     $OriginalAclExists = (Invoke-Remote "test -f '$RemoteAcl'" -AllowFailure).ExitCode -eq 0
     $backup = @"
 set -e
 mkdir -p '$BackupDir'
+if [ -f /etc/config/adguardhome ]; then cp /etc/config/adguardhome '$BackupDir/adguardhome'; fi
 cp /etc/config/luci '$BackupDir/luci'
 cp /etc/config/wireless '$BackupDir/wireless'
 if [ -f '$RemoteView' ]; then cp '$RemoteView' '$BackupDir/adguard-config.js'; fi
@@ -163,19 +168,21 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
     if ($cfg.Output -match 'ADGUARD_CONFIG_PRESENT') {
         Invoke-Remote '/usr/bin/AdGuardHome --check-config --config /etc/adguardhome/adguardhome.yaml' | Out-Null
     }
+    Invoke-Remote 'uci set adguardhome.config.enabled=1; uci commit adguardhome' | Out-Null
     Invoke-Remote '/etc/init.d/adguardhome start' | Out-Null
     Start-Sleep -Seconds 2
-    $running = Invoke-Remote 'pgrep -f AdGuardHome >/dev/null && echo ADGUARD_RUNNING || true'
+    $running = Invoke-Remote "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_RUNNING || true"
     if ($running.Output -notmatch 'ADGUARD_RUNNING') { throw 'ADGUARD_START_VERIFY_FAILED' }
     Invoke-Remote '/etc/init.d/adguardhome stop' | Out-Null
+    Invoke-Remote 'uci set adguardhome.config.enabled=0; uci commit adguardhome' | Out-Null
     Invoke-Remote '/etc/init.d/adguardhome disable' | Out-Null
-    $stopped = Invoke-Remote 'pgrep -f AdGuardHome >/dev/null && echo ADGUARD_STILL_RUNNING || echo ADGUARD_STOPPED'
+    $stopped = Invoke-Remote "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_STILL_RUNNING || echo ADGUARD_STOPPED"
     if ($stopped.Output -notmatch 'ADGUARD_STOPPED') { throw 'ADGUARD_STOP_VERIFY_FAILED' }
     Write-Host 'ADGUARD_LIVE=PASS final_state=stopped_disabled'
 
     Assert-RemoteOutput "(command -v quickstart >/dev/null 2>&1 || test -d /www/luci-static/quickstart || ubus -q list | grep -Eiq 'quickstart|istore|store') && echo QUICKSTART_PRESENT" '^QUICKSTART_PRESENT$' 'QUICKSTART_RUNTIME_MISSING' | Out-Null
     Invoke-Remote "uci set luci.main.homepage='admin/quickstart'; uci commit luci" | Out-Null
-    Assert-RemoteOutput "test \"\$(uci -q get luci.main.homepage)\" = 'admin/quickstart' && echo QUICKSTART_HOME_OK" '^QUICKSTART_HOME_OK$' 'QUICKSTART_HOME_VERIFY_FAILED' | Out-Null
+    Assert-RemoteOutput 'test "$(uci -q get luci.main.homepage)" = ''admin/quickstart'' && echo QUICKSTART_HOME_OK' '^QUICKSTART_HOME_OK$' 'QUICKSTART_HOME_VERIFY_FAILED' | Out-Null
     Write-Host 'QUICKSTART_LIVE=PASS homepage=admin/quickstart'
 
     $wifiApply = @'
@@ -220,9 +227,10 @@ echo WIFI_RUNTIME_OK
     Write-Host 'WIFI_LIVE=PASS ssid=xinzhaowrt key=REDACTED'
 
     Assert-RemoteOutput "uci -q get network.lan.ipaddr" '^192\.168\.6\.1(/24)?$' 'LAN_REGRESSION' | Out-Null
-    Assert-RemoteOutput "test \"\$(uci -q get luci.main.homepage)\" = 'admin/quickstart' && echo HOME_OK" '^HOME_OK$' 'QUICKSTART_FINAL_REGRESSION' | Out-Null
+    Assert-RemoteOutput 'test "$(uci -q get luci.main.homepage)" = ''admin/quickstart'' && echo HOME_OK' '^HOME_OK$' 'QUICKSTART_FINAL_REGRESSION' | Out-Null
+    Assert-RemoteOutput 'test "$(uci -q get adguardhome.config.enabled)" = ''0'' && echo ADGUARD_UCI_DISABLED' '^ADGUARD_UCI_DISABLED$' 'ADGUARD_UCI_DEFAULT_STATE_REGRESSION' | Out-Null
     Assert-RemoteOutput '/etc/init.d/adguardhome enabled >/dev/null 2>&1 && echo ADGUARD_ENABLED || echo ADGUARD_DISABLED' '^ADGUARD_DISABLED$' 'ADGUARD_DEFAULT_STATE_REGRESSION' | Out-Null
-    $stillStopped = Invoke-Remote 'pgrep -f AdGuardHome >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED'
+    $stillStopped = Invoke-Remote "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED"
     if ($stillStopped.Output -notmatch 'ADGUARD_STOPPED') { throw 'ADGUARD_FINAL_STATE_REGRESSION' }
 
     Write-Host 'V013_PREBUILD_REAL_DEVICE_FEATURES=PASS'
