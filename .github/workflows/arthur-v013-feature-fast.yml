@@ -1,0 +1,21 @@
+name: Arthur v0.1.3 Feature Fast Gate
+
+on:
+  push:
+    branches:
+      - feature/arthur-v013-next
+
+permissions:
+  contents: read
+
+jobs:
+  feature-fast-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@v4
+      - name: Run v0.1.3 feature delta contract
+        run: |
+          chmod +x tests/test-v013-feature-delta.sh
+          ./tests/test-v013-feature-delta.sh
