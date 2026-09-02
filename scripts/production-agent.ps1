@@ -156,18 +156,39 @@ function Ensure-Rollback($State) {
 }
 
 function Get-DeviceTarget($State) {
+    $diagnostics = New-Object System.Collections.Generic.List[string]
     foreach ($ip in @($Config.recovery_addresses)) {
         $target = "root@$ip"
         $probe = Invoke-Process 'ssh.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=5',$target,'ubus call system board') -AllowFailure
-        if ($probe.ExitCode -eq 0 -and $probe.Output -match 'jdcloud,re-ss-01|RE-SS-01') {
-            $State.target = $target
-            Save-State $State ([string]$State.stage) 'LIVE'
-            return $target
+        $probeText = [string]$probe.Output
+        if ($probe.ExitCode -eq 0) {
+            if ($probeText -match 'jdcloud,re-ss-01|RE-SS-01') {
+                $State.human_gate = $null
+                $State.target = $target
+                Save-State $State ([string]$State.stage) 'LIVE'
+                return $target
+            }
+            $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
+            Save-State $State ([string]$State.stage) 'BLOCKED' "Connected to $ip, but board identity is not JDCloud RE-SS-01. Probe: $probeText"
+            throw 'UNKNOWN_DEVICE_IDENTITY'
         }
+
+        if ($probeText -match '(?i)REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed|Offending .* key') {
+            $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
+            Save-State $State ([string]$State.stage) 'BLOCKED' "SSH host identity safety check failed for $ip. Probe: $probeText"
+            throw 'UNKNOWN_DEVICE_IDENTITY'
+        }
+
+        $compact = ($probeText -replace '\s+',' ').Trim()
+        if ($compact.Length -gt 300) { $compact = $compact.Substring(0,300) }
+        $diagnostics.Add("$ip exit=$($probe.ExitCode) $compact")
+        Log "DEVICE_PROBE_RETRY ip=$ip exit=$($probe.ExitCode) detail=$compact"
     }
-    $State.human_gate = 'UNKNOWN_DEVICE_IDENTITY'
-    Save-State $State ([string]$State.stage) 'BLOCKED' 'No verified Arthur device found at expected/recovery addresses.'
-    throw 'UNKNOWN_DEVICE_IDENTITY'
+
+    $State.human_gate = $null
+    $summary = ($diagnostics -join ' | ')
+    Save-State $State ([string]$State.stage) 'RETRYING' "DEVICE_IDENTITY_RETRYABLE: Arthur did not answer at the expected/recovery addresses yet. $summary"
+    throw 'DEVICE_IDENTITY_RETRYABLE'
 }
 
 function Ensure-Artifact($State) {
