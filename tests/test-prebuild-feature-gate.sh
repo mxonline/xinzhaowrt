@@ -41,5 +41,8 @@ grep -Fq '4358685989bf9f0207fb6717dc63dd89a295f27e' "$wifi_baseline" || { echo '
 grep -Fq 'PREBUILD_REAL_DEVICE_GATE_FAILED' 'scripts/github-app-auth.ps1' || { echo 'FAIL: production dispatch must remain blocked by the prebuild gate.' >&2; exit 1; }
 grep -Fq 'prebuild_features' "$verify" || { echo 'FAIL: real-device verifier must emit prebuild feature evidence.' >&2; exit 1; }
 grep -Fq 'LuciCookieFile' 'scripts/real-device-verify-v3.ps1' || { echo 'FAIL: v3 verifier wrapper must preserve optional LuCI cookie compatibility.' >&2; exit 1; }
+grep -Fq '#HttpOnly_' "$verify" || { echo 'FAIL: verifier must parse curl Netscape cookie jars with HttpOnly session cookies.' >&2; exit 1; }
+grep -Fq 'provided-cookie' "$verify" || { echo 'FAIL: verifier must preserve a supplied authenticated LuCI cookie.' >&2; exit 1; }
+grep -Fq '/cgi-bin/luci/admin/services/AdGuardHome/overview' "$verify" || { echo 'FAIL: verifier must accept the deployed uppercase AdGuard Home CBI manager routes.' >&2; exit 1; }
 
 echo 'PASS: prebuild gate supports unattended Arthur access recovery and inherits the frozen Wi-Fi baseline.'

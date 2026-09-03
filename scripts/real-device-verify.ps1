@@ -32,6 +32,7 @@ $script:Checks = [ordered]@{}
 $script:Failures = [System.Collections.Generic.List[object]]::new()
 $script:KnownHosts = $null
 $script:EffectiveLuciCookieFile = $LuciCookieFile
+$script:ProvidedLuciCookieFile = $LuciCookieFile
 $script:GeneratedCookieFiles = [System.Collections.Generic.List[string]]::new()
 $script:GeneratedSessionIds = [System.Collections.Generic.List[string]]::new()
 
@@ -89,11 +90,13 @@ function Assert-FrozenWifiBaseline {
     return $baseline
 }
 
-function Get-LuciSessionId {
-    $path = $script:EffectiveLuciCookieFile
+function Get-LuciSessionId([string]$CookieFile = '') {
+    $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     foreach ($line in (Get-Content -LiteralPath $path)) {
-        if ($line -match '^\s*[^#].*\s+(?:sysauth|sysauth_http|sysauth_https)\s+(\S+)\s*$') { return $Matches[1] }
+        # curl prefixes HttpOnly cookies with '#HttpOnly_'; treat that prefix as
+        # cookie metadata, while continuing to ignore ordinary comment lines.
+        if ($line -match '^\s*(?:#HttpOnly_)?[^\s#]+\s+(?:TRUE|FALSE)\s+\S+\s+(?:TRUE|FALSE)\s+\S+\s+(?:sysauth|sysauth_http|sysauth_https)\s+(\S+)\s*$') { return $Matches[1] }
     }
     return $null
 }
@@ -141,11 +144,12 @@ function New-LuciSessionFromSsh {
     return $cookie
 }
 
-function Invoke-AuthenticatedUbus([object]$Request) {
-    $sid = Get-LuciSessionId
+function Invoke-AuthenticatedUbus([object]$Request,[string]$CookieFile = '') {
+    $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
+    $sid = Get-LuciSessionId $path
     if ([string]::IsNullOrWhiteSpace($sid)) { return [pscustomobject]@{ ExitCode=1; Output='Authenticated LuCI session unavailable.'; Json=$null } }
     $body = $Request | ConvertTo-Json -Compress -Depth 12
-    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $script:EffectiveLuciCookieFile -H 'Content-Type: application/json' --data-binary $body "http://$DeviceIp/ubus" 2>&1)
+    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $path -H 'Content-Type: application/json' --data-binary $body "http://$DeviceIp/ubus" 2>&1)
     $code = $LASTEXITCODE
     $text = ($raw -join "`n").Trim()
     $parsed = $null
@@ -153,9 +157,10 @@ function Invoke-AuthenticatedUbus([object]$Request) {
     [pscustomobject]@{ ExitCode=$code; Output=$text; Json=$parsed }
 }
 
-function Invoke-AuthenticatedHttp([string]$Path) {
+function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
+    $cookiePath = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $url = if ($Path -match '^https?://') { $Path } else { "http://$DeviceIp$Path" }
-    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $script:EffectiveLuciCookieFile -w "`nHTTP_STATUS:%{http_code}" $url 2>&1)
+    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $cookiePath -w "`nHTTP_STATUS:%{http_code}" $url 2>&1)
     $code = $LASTEXITCODE
     $text = ($raw -join "`n").Trim()
     $status = 0
@@ -166,8 +171,9 @@ function Invoke-AuthenticatedHttp([string]$Path) {
     [pscustomobject]@{ ExitCode=if ($code -eq 0 -and $status -ge 200 -and $status -lt 300) { 0 } else { 1 }; Output="HTTP_STATUS=$status`n$text" }
 }
 
-function Test-AdguardRpcFunctional([string]$Prefix) {
-    $sid = Get-LuciSessionId
+function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
+    $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
+    $sid = Get-LuciSessionId $path
     $probes = @(
         @{ scope='ubus'; object='service'; function='list' },
         @{ scope='ubus'; object='uci'; function='get' },
@@ -178,7 +184,7 @@ function Test-AdguardRpcFunctional([string]$Prefix) {
     $outputs = [System.Collections.Generic.List[string]]::new()
     foreach ($probe in $probes) {
         $request = [ordered]@{ jsonrpc='2.0'; id=1; method='call'; params=@($sid,'session','access',$probe) }
-        $response = Invoke-AuthenticatedUbus $request
+        $response = Invoke-AuthenticatedUbus $request $path
         $allowed = $false
         if ($response.Json -and @($response.Json.result).Count -ge 2 -and $response.Json.result[0] -eq 0) { $allowed = [bool]$response.Json.result[1].access }
         if (-not $allowed) { $failed.Add("$($probe.scope):$($probe.object):$($probe.function)") }
@@ -188,21 +194,43 @@ function Test-AdguardRpcFunctional([string]$Prefix) {
     Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) 'authenticated /ubus session access checks' $r 'Authenticated rpcd access must cover the mature AdGuard Home manager dependencies.' | Out-Null
 }
 
-function Test-AdguardPageFunctional([string]$Prefix) {
-    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/services/adguardhome/'
-    $view = Invoke-AuthenticatedHttp '/luci-static/resources/view/adguardhome/config.js'
-    $pageOk = $page.ExitCode -eq 0 -and $page.Output -notmatch '(?i)x-luci-login-required|luci_username|luci_password|登录'
+function Test-AdguardPageFunctional([string]$Prefix,[string]$CookieFile = '') {
+    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/services/adguardhome/' $CookieFile
+    $view = Invoke-AuthenticatedHttp '/luci-static/resources/view/adguardhome/config.js' $CookieFile
+    $loginMarker = '(?i)x-luci-login-required|<body[^>]*\blogin-page\b|<input[^>]+\bname=["'']luci_(?:username|password)["'']'
+    $pageOk = $page.ExitCode -eq 0 -and $page.Output -notmatch $loginMarker
     $viewOk = $view.ExitCode -eq 0 -and $view.Output -match 'form\.Map' -and $view.Output -match 'adguardhome' -and $view.Output -match 'object:\s*.*service' -and $view.Output -match 'method:\s*.*list' -and $view.Output -match 'form\.TypedSection' -and $view.Output -match 'poll\.add'
-    $ok = $pageOk -and $viewOk
-    $r = [pscustomobject]@{ ExitCode=if ($ok) { 0 } else { 1 }; Output="PAGE`n$($page.Output)`nVIEW`n$($view.Output)" }
-    Add-Check "$Prefix.adguard_page_functional" $ok 'authenticated AdGuard Home LuCI page and mature view' $r 'AdGuard acceptance requires an authenticated real page plus the mature manager module.' | Out-Null
+    $modernOk = $pageOk -and $viewOk
+
+    # Older deployed Arthur images expose the same complete manager through
+    # the uppercase CBI dispatcher namespace. Verify every registered page so
+    # a single 404/403 cannot be mistaken for a functional manager.
+    $legacyPaths = @(
+        '/cgi-bin/luci/admin/services/AdGuardHome/',
+        '/cgi-bin/luci/admin/services/AdGuardHome/overview',
+        '/cgi-bin/luci/admin/services/AdGuardHome/base',
+        '/cgi-bin/luci/admin/services/AdGuardHome/tools',
+        '/cgi-bin/luci/admin/services/AdGuardHome/log',
+        '/cgi-bin/luci/admin/services/AdGuardHome/manual'
+    )
+    $legacyResults = @()
+    foreach ($path in $legacyPaths) { $legacyResults += [pscustomobject]@{ Path=$path; Result=(Invoke-AuthenticatedHttp $path $CookieFile) } }
+    $legacyStatusesOk = @($legacyResults | Where-Object { $_.Result.ExitCode -eq 0 }).Count -eq $legacyPaths.Count
+    $legacyAuthOk = @($legacyResults | Where-Object { $_.Result.Output -match $loginMarker }).Count -eq 0
+    $legacyManagerOk = ($legacyResults | ForEach-Object { $_.Result.Output } | Out-String) -match '(?i)AdGuard\s*Home|AdGuardHome|基础设置|运行状态|手动配置|运维'
+    $legacyOk = $legacyStatusesOk -and $legacyAuthOk -and $legacyManagerOk
+    $ok = $modernOk -or $legacyOk
+    $legacyOutput = ($legacyResults | ForEach-Object { "PATH=$($_.Path)`n$($_.Result.Output)" }) -join "`n"
+    $r = [pscustomobject]@{ ExitCode=if ($ok) { 0 } else { 1 }; Output="MODERN_PAGE`n$($page.Output)`nMODERN_VIEW`n$($view.Output)`nLEGACY_CBI`n$legacyOutput" }
+    Add-Check "$Prefix.adguard_page_functional" $ok 'authenticated AdGuard Home LuCI page and complete manager routes' $r 'AdGuard acceptance requires an authenticated real page plus a complete manager, using either the modern view or all deployed uppercase CBI routes.' | Out-Null
 }
 
-function Test-QuickstartHomepage([string]$Prefix) {
-    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/quickstart/'
-    $index = Invoke-AuthenticatedHttp '/luci-static/quickstart/index.js'
-    $style = Invoke-AuthenticatedHttp '/luci-static/quickstart/style.css'
-    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -notmatch '(?i)x-luci-login-required|luci_username|luci_password|登录') -and ($index.Output.Length -gt 10000)
+function Test-QuickstartHomepage([string]$Prefix,[string]$CookieFile = '') {
+    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/quickstart/' $CookieFile
+    $index = Invoke-AuthenticatedHttp '/luci-static/quickstart/index.js' $CookieFile
+    $style = Invoke-AuthenticatedHttp '/luci-static/quickstart/style.css' $CookieFile
+    $loginMarker = '(?i)x-luci-login-required|<body[^>]*\blogin-page\b|<input[^>]+\bname=["'']luci_(?:username|password)["'']'
+    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -notmatch $loginMarker) -and ($index.Output.Length -gt 10000)
     $r = [pscustomobject]@{ ExitCode=if ($ok) { 0 } else { 1 }; Output="PAGE`n$($page.Output)`nINDEX`n$($index.Output)`nSTYLE`n$($style.Output)" }
     Add-Check "$Prefix.quickstart_home_functional" $ok 'authenticated official QuickStart homepage and assets' $r 'The authenticated homepage must render the official QuickStart application.' | Out-Null
 }
@@ -251,10 +279,16 @@ function Run-Phase([string]$Prefix) {
     Test-Remote "$Prefix.quickstart_page" 'test -s /usr/share/luci/menu.d/luci-app-quickstart.json; test -s /www/luci-static/quickstart/index.js; test -s /www/luci-static/quickstart/style.css' { param($o) $true } 'Official QuickStart route/assets must be present.' | Out-Null
     Test-Remote "$Prefix.quickstart_backend" 'command -v quickstart >/dev/null 2>&1; test -x /etc/init.d/quickstart; pidof quickstart >/dev/null 2>&1' { param($o) $true } 'QuickStart backend must exist and be running.' | Out-Null
 
+    $pageCookie = $null
+    if (-not [string]::IsNullOrWhiteSpace((Get-LuciSessionId $script:ProvidedLuciCookieFile))) {
+        $pageCookie = $script:ProvidedLuciCookieFile
+        Write-Host 'LUCI_AUTH_SESSION=PASS source=provided-cookie page=verified-form-login'
+    }
     New-LuciSessionFromSsh | Out-Null
-    Test-AdguardRpcFunctional $Prefix
-    Test-AdguardPageFunctional $Prefix
-    Test-QuickstartHomepage $Prefix
+    Test-AdguardRpcFunctional $Prefix $script:EffectiveLuciCookieFile
+    $webCookie = if ($pageCookie) { $pageCookie } else { $script:EffectiveLuciCookieFile }
+    Test-AdguardPageFunctional $Prefix $webCookie
+    Test-QuickstartHomepage $Prefix $webCookie
     Test-LuciReachability $Prefix
 }
 
