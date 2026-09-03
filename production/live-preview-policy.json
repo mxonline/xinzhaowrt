@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "device": {
+    "board_pattern": "jdcloud,re-ss-01|RE-SS-01",
+    "management_ip": "192.168.6.1"
+  },
+  "backup_root": "/root/xinzhaowrt-live-preview",
+  "source_mappings": [
+    {
+      "repo_prefix": "files/www/luci-static/",
+      "remote_prefix": "/www/luci-static/"
+    },
+    {
+      "repo_prefix": "files/usr/share/rpcd/acl.d/",
+      "remote_prefix": "/usr/share/rpcd/acl.d/"
+    },
+    {
+      "repo_prefix": "sources/kenzok8/quickstart/htdocs/luci-static/",
+      "remote_prefix": "/www/luci-static/"
+    },
+    {
+      "repo_prefix": "sources/kenzok8/quickstart/root/usr/share/rpcd/acl.d/",
+      "remote_prefix": "/usr/share/rpcd/acl.d/"
+    },
+    {
+      "repo_prefix": "sources/kenzok8/quickstart/root/usr/share/luci/menu.d/",
+      "remote_prefix": "/usr/share/luci/menu.d/"
+    }
+  ],
+  "allowed_remote_prefixes": [
+    "/www/luci-static/",
+    "/usr/share/rpcd/acl.d/",
+    "/usr/share/luci/menu.d/"
+  ],
+  "forbidden_repo_prefixes": [
+    "config/",
+    "files/etc/config/network",
+    "files/etc/config/wireless",
+    "files/etc/uci-defaults/",
+    "files/etc/init.d/",
+    "patches/",
+    "package/",
+    "packages/",
+    "feeds/",
+    "target/",
+    "VERSION",
+    "build.env"
+  ],
+  "forbidden_remote_prefixes": [
+    "/etc/config/wireless",
+    "/etc/config/network",
+    "/etc/config/firewall",
+    "/etc/init.d/",
+    "/lib/",
+    "/usr/bin/",
+    "/usr/sbin/",
+    "/sbin/",
+    "/boot/",
+    "/dev/",
+    "/sys/",
+    "/proc/"
+  ],
+  "luci_cache_paths": [
+    "/tmp/luci-indexcache",
+    "/tmp/luci-modulecache/*"
+  ],
+  "adguard_route": "admin/services/adguardhome",
+  "adguard_web_port": 3000,
+  "quickstart_route": "admin/quickstart/"
+}

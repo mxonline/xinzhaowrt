@@ -31,6 +31,20 @@ jobs:
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
 
+      - name: Test LIVE_PREVIEW safety contract
+        run: ./tests/test-live-preview-contract.sh
+
+      - name: Parse LIVE_PREVIEW PowerShell
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/live-preview.ps1', [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+
       - name: Test v4 toolchain bootstrap gate
         run: ./tests/test-v4-toolchain-bootstrap.sh
 
@@ -68,6 +82,7 @@ jobs:
             echo
             echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
             echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
+            echo '- LIVE_PREVIEW is a pre-Candidate development aid and never counts as formal REAL_DEVICE_VERIFY.'
             echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
             echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
             echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'

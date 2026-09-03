@@ -70,6 +70,22 @@ This section is a frozen project-level development rule. Do not rename, replace,
 - Every proposed action must pass one fixed test: does it move the current Arthur firmware more quickly and safely toward `PRODUCTION_RELEASED`? If not, do not perform it during the active release.
 - Live firmware progress has priority over platform cleanup. Automation-platform improvements are lower priority and must never block the current production release.
 
+## Approved LIVE_PREVIEW development lane
+
+The user has explicitly approved `LIVE_PREVIEW` as a permanent pre-Candidate development aid for Arthur and future OpenWrt devices that define their own device policy. This lane restores the useful 0.1.3-style fast real-router preview without changing the frozen production order after source freeze.
+
+- Read `knowledge/LIVE-PREVIEW.md` and `production/live-preview-policy.json` before using the lane.
+- Preferred loop for preview-safe changes: `edit -> static tests -> LIVE_PREVIEW -> authenticated live check -> fix -> LIVE_PREVIEW`.
+- `LIVE_PREVIEW` is not a Gate, Candidate, flash stage, formal real-device verification stage or release stage.
+- `LIVE_PREVIEW=PASS` must always coexist with `REAL_DEVICE_VERIFY=NOT_RUN` and `RELEASE_ALLOWED=false`.
+- Only allowlisted LuCI static resources, rpcd ACL files, LuCI menu files and explicitly approved QuickStart static mappings may be hot-deployed.
+- Unknown or unmapped paths fail closed. A firmware-affecting path keeps its normal `ImageBuilder` / `SDK` / `Full Build` classification for the eventual Candidate even when a safe runtime subset is previewed.
+- Current Arthur Wi-Fi is frozen as `WIFI=VERIFIED_FROZEN`. LIVE_PREVIEW must never mutate or reload wireless UCI, SSIDs, credentials, radios or Wi-Fi runtime.
+- LIVE_PREVIEW must never mutate LAN/WAN, DHCP, firewall core configuration, system binaries, package databases, kernel/modules/drivers, bootloader, partitions, raw storage, Known-Good, Stable or Latest pointers.
+- Before runtime mutation, back up every remote target to `/root/xinzhaowrt-live-preview/<timestamp>/`. Any failure after mutation begins must restore or remove the affected files, refresh LuCI/rpcd state as required, and emit `LIVE_PREVIEW=FAIL_ROLLED_BACK`.
+- AdGuard/QuickStart preview checks must use authenticated LuCI access. AdGuard preview must finish with AdGuard Home stopped and disabled. QuickStart preview must prove the complete official homepage markers, not only package/socket presence.
+- After preview acceptance, freeze source and return to the frozen RELEASE-FIRST production sequence. Only a newly built/flashed Candidate followed by formal `REAL_DEVICE_VERIFY=PASS` may enter Release Gate.
+
 ## Mandatory plugins
 
 `config/required-plugins.txt` is the authoritative list. It contains exactly 22 required LuCI applications. Every one must remain `=y` after `make defconfig`.
