@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "staging_root": "sources/live-preview-mature",
+  "sources": [
+    {
+      "name": "adguardhome",
+      "repository": "https://github.com/kenzok8/openwrt-packages.git",
+      "ref": "743bb3ad87a7b97fd440d8e334832e25d4f678e0",
+      "subdir": "luci-app-adguardhome",
+      "mappings": [
+        {"source": "htdocs/luci-static/", "remote": "/www/luci-static/"},
+        {"source": "luasrc/controller/AdGuardHome.lua", "remote": "/usr/lib/lua/luci/controller/AdGuardHome.lua"},
+        {"source": "luasrc/model/cbi/AdGuardHome/", "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/"},
+        {"source": "luasrc/view/AdGuardHome/", "remote": "/usr/lib/lua/luci/view/AdGuardHome/"},
+        {"source": "root/etc/AdGuardHome.yaml", "remote": "/etc/AdGuardHome.yaml"},
+        {"source": "root/etc/config/AdGuardHome", "remote": "/etc/config/AdGuardHome"},
+        {"source": "root/etc/init.d/AdGuardHome", "remote": "/etc/init.d/AdGuardHome"},
+        {"source": "root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo", "remote": "/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"},
+        {"source": "root/usr/share/AdGuardHome/", "remote": "/usr/share/AdGuardHome/"},
+        {"source": "root/usr/share/luci/menu.d/luci-app-adguardhome.json", "remote": "/usr/share/luci/menu.d/luci-app-adguardhome.json"},
+        {"source": "root/usr/share/rpcd/acl.d/luci-app-adguardhome.json", "remote": "/usr/share/rpcd/acl.d/luci-app-adguardhome.json"},
+        {"source": "root/www/luci-static/resources/codemirror/", "remote": "/www/luci-static/resources/codemirror/"}
+      ]
+    },
+    {
+      "name": "quickstart",
+      "repository": "https://github.com/linkease/nas-packages-luci.git",
+      "ref": "7e5083e2ca4cfa4d31f312026f46e5213c5b03f5",
+      "subdir": "luci/luci-app-quickstart",
+      "mappings": [
+        {"source": "htdocs/luci-static/quickstart/", "remote": "/www/luci-static/quickstart/"},
+        {"source": "luasrc/controller/quickstart.lua", "remote": "/usr/lib/lua/luci/controller/quickstart.lua"},
+        {"source": "luasrc/controller/istore_backend.lua", "remote": "/usr/lib/lua/luci/controller/istore_backend.lua"},
+        {"source": "luasrc/view/quickstart/", "remote": "/usr/lib/lua/luci/view/quickstart/"},
+        {"source": "root/usr/libexec/quickstart/", "remote": "/usr/libexec/quickstart/"},
+        {"source": "root/usr/share/luci/menu.d/luci-app-quickstart.json", "remote": "/usr/share/luci/menu.d/luci-app-quickstart.json"}
+      ]
+    }
+  ]
+}
