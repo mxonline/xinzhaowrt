@@ -4,8 +4,8 @@ set -euo pipefail
 # Reads repository-relative changed paths from stdin and prints exactly one scope:
 #   DOC_ONLY     - documentation/knowledge only; no firmware build required.
 #   FAST_GATE    - CI, verifier, test, or control-plane-only change; run static gates.
-#   IMAGEBUILDER - explicit v4 image assembly change using ABI-compatible prebuilt packages.
-#   SDK_BUILD    - explicit v4 user-space package rebuild using the Known-Good-matched SDK.
+#   IMAGEBUILDER - explicit image assembly / safe filesystem overlay change.
+#   SDK_BUILD    - explicit user-space package rebuild using the Known-Good-matched SDK.
 #   FULL_BUILD   - firmware/kernel/unknown change; require a full Candidate build.
 #
 # Safety rule: unknown paths are FULL_BUILD. The highest-risk scope always wins.
@@ -47,6 +47,7 @@ while IFS= read -r path; do
     scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|\
     scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
+    scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|scripts/feature-handoff-status.ps1|\
     scripts/bridge-runtime-status.ps1|scripts/recover-existing-bridge-context.ps1|scripts/run-supervisor.py|\
     scripts/repair-github-runner.ps1|scripts/bootstrap-arthur-host-key.ps1|\
     scripts/fetch-production-artifact.ps1|scripts/auto-flash-safety-gate.ps1|\
@@ -57,7 +58,7 @@ while IFS= read -r path; do
     production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json|\
     production/production-agent.json|production/arthur-flash-profile.json|\
     production/real-device-baseline.json|production/expected-diff.json|\
-    production/live-preview-policy.json|production/mature-ui-sources.json)
+    production/live-preview-policy.json|production/mature-ui-sources.json|production/accepted-preview/*)
       promote_scope FAST_GATE
       ;;
 
@@ -65,7 +66,9 @@ while IFS= read -r path; do
       promote_scope IMAGEBUILDER
       ;;
 
-    files/etc/uci-defaults/*|files/etc/init.d/*|files/etc/config/*)
+    files/etc/uci-defaults/*|files/etc/init.d/*|files/etc/config/*|\
+    files/usr/lib/lua/luci/*|files/usr/share/rpcd/acl.d/*|files/usr/share/AdGuardHome/*|\
+    files/www/luci-static/*)
       promote_scope IMAGEBUILDER
       ;;
 
@@ -83,7 +86,6 @@ while IFS= read -r path; do
       ;;
 
     *)
-      # Fail closed: an unclassified path must never bypass a real build.
       promote_scope FULL_BUILD
       break
       ;;
