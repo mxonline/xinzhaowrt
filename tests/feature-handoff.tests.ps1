@@ -87,8 +87,8 @@ try {
     [ordered]@{
         schema_version = 1
         entries = @(
-            [ordered]@{ local='staging/page.lua'; remote='/usr/lib/lua/luci/controller/Accepted.lua'; mode='0644' },
-            [ordered]@{ local='staging/init.sh'; remote='/etc/init.d/Accepted'; mode='0755' }
+            [ordered]@{ source='staging/page.lua'; remote='/usr/lib/lua/luci/controller/Accepted.lua'; mode='0644' },
+            [ordered]@{ source='staging/init.sh'; remote='/etc/init.d/Accepted'; mode='0755' }
         )
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
@@ -125,6 +125,7 @@ $handoffText = Get-Content -Raw (Join-Path $Root 'scripts/feature-handoff.ps1')
 $installerText = Get-Content -Raw (Join-Path $Root 'scripts/install-feature-handoff.ps1')
 $statusText = Get-Content -Raw (Join-Path $Root 'scripts/feature-handoff-status.ps1')
 $safePreviewText = Get-Content -Raw (Join-Path $Root 'scripts/live-preview-mature-safe.ps1')
+$productionInstallerText = Get-Content -Raw (Join-Path $Root 'scripts/install-production-agent.ps1')
 
 Assert-Contains $handoffText 'arthur-update-v3.yml' 'handoff must dispatch the existing v3 Candidate workflow'
 Assert-Contains $handoffText 'production-agent' 'handoff must attach to existing Production Agent state'
@@ -134,6 +135,8 @@ Assert-Contains $installerText 'XinZhaoWrt-Arthur-Feature-Handoff' 'installer mu
 Assert-Contains $installerText 'Register-ScheduledTask' 'installer must use Windows Scheduled Task recovery'
 Assert-True ($installerText -notmatch '(?i)NT AUTHORITY\\SYSTEM|LocalSystem|-UserId\s+["'']?SYSTEM') 'handoff task must not run as SYSTEM'
 Assert-Contains $statusText 'FEATURE_HANDOFF_STAGE=' 'status script must expose durable stage'
+Assert-Contains $productionInstallerText 'install-feature-handoff.ps1' 'Production Agent persistent install must also install Feature Handoff recovery'
+Assert-Contains $productionInstallerText 'FEATURE_HANDOFF_PERSISTENT_RUNTIME=PASS' 'persistent runtime must emit handoff installation evidence'
 
 Assert-Contains $safePreviewText 'FeatureId' 'safe preview must carry feature identity into handoff'
 Assert-Contains $safePreviewText 'PauseAfterLivePreview' 'pause after preview must be explicit'
