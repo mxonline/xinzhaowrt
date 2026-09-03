@@ -27,12 +27,12 @@ grep -Fq 'VERIFIED_FROZEN' "$verify" || { echo 'FAIL: verifier must inherit the 
 [[ -f "$policy" ]] || { echo 'FAIL: Arthur control-plane identity policy is missing.' >&2; exit 1; }
 [[ -f "$wifi_baseline" ]] || { echo 'FAIL: frozen Wi-Fi source baseline is missing.' >&2; exit 1; }
 grep -Fq 'dc:d8:7c:46:91:24' "$policy" || { echo 'FAIL: control-plane policy must pin the already verified Arthur management MAC.' >&2; exit 1; }
-grep -Fq 'StrictHostKeyChecking=accept-new' "$access" || { echo 'FAIL: host-key recovery must capture a candidate key in an isolated trust store.' >&2; exit 1; }
+grep -Fq -- "-StrictMode 'accept-new'" "$access" || { echo 'FAIL: host-key recovery must capture a candidate key in an isolated accept-new trust store.' >&2; exit 1; }
 grep -Fq 'Get-NetNeighbor' "$access" || { echo 'FAIL: host-key recovery must bind the endpoint to the verified Ethernet neighbor MAC.' >&2; exit 1; }
 grep -Fq 'ubus call system board' "$access" || { echo 'FAIL: host-key recovery must authenticate and verify the Arthur board before trust replacement.' >&2; exit 1; }
 grep -Fq 'build-info.json' "$access" || { echo 'FAIL: host-key recovery must authenticate and verify XinZhaoWrt build identity before trust replacement.' >&2; exit 1; }
 grep -Fq 'known_hosts' "$access" || { echo 'FAIL: host-key recovery must use a durable known_hosts trust store.' >&2; exit 1; }
-grep -Fq 'backup' "$access" || { echo 'FAIL: known_hosts mutation must be backed up before replacement.' >&2; exit 1; }
+grep -Fqi 'backup' "$access" || { echo 'FAIL: known_hosts mutation must be backed up before replacement.' >&2; exit 1; }
 ! grep -Fq 'StrictHostKeyChecking=no' "$access" || { echo 'FAIL: unattended recovery may never disable host-key verification.' >&2; exit 1; }
 ! grep -Eq 'ssh-keygen(\.exe)?[[:space:]]+-R[[:space:]]+[^#]*192\.168\.6\.1' "$access" || { echo 'FAIL: host-key recovery may not blindly delete trust for 192.168.6.1.' >&2; exit 1; }
 
