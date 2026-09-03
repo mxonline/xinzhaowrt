@@ -26,6 +26,7 @@ done < config/required-plugins.txt
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
 bash tests/test-functional-acceptance.sh
+bash tests/test-live-preview-contract.sh
 
 for f in scripts/*.sh; do
   bash -n "$f"
