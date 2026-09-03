@@ -68,11 +68,11 @@ function ConvertTo-ReleaseTaskStateV2 {
         $source = if ($copy.PSObject.Properties.Name -contains 'accepted_preview_source_sha') { [string]$copy.accepted_preview_source_sha } else { '' }
         if (-not $source) { $source = 'unknown' }
         $copy.schema_version = 2
-        Add-ReleaseStateDefault $copy 'release_task_id' "arthur:$feature:$source"
+        Add-ReleaseStateDefault $copy 'release_task_id' "arthur:${feature}:$source"
         Add-ReleaseStateDefault $copy 'device_id' $DeviceId
     }
 
-    Add-ReleaseStateDefault $copy 'release_task_id' "arthur:release:unknown"
+    Add-ReleaseStateDefault $copy 'release_task_id' 'arthur:release:unknown'
     Add-ReleaseStateDefault $copy 'device_id' $DeviceId
     Add-ReleaseStateDefault $copy 'last_verified_stage' ([string]$copy.current_stage)
     Add-ReleaseStateDefault $copy 'terminal_state' $(if ([string]$copy.current_stage -eq 'PRODUCTION_RELEASED') { 'PRODUCTION_RELEASED' } else { 'ACTIVE' })
