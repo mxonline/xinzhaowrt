@@ -1,9 +1,15 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-adh-istore-final-release-20260901-2325z",
+  "request_id": "handoff-arthur-adh-quickstart-c4cadd6e185d-6a8493619c08",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-known-good-v1",
   "device": "jdcloud_re-ss-01",
-  "reason": "Build exactly one replacement formal production Candidate from the frozen verified Known-Good source lock after restoring the authenticated AdGuard Home LuCI management path and the actual iStore QuickStart default homepage. Previously real-device-verified XinZhaoWrt author/branding, Argon, Kucat and Wi-Fi xinzhaowrt/12345678 are inherited baseline capabilities and are not redesigned. The new Candidate must prove AdGuard Home remains disabled by default while its authenticated status/lifecycle/YAML read-write-validate-save/backup-restore/log/Web management functions work, and must prove the authenticated LuCI default homepage actually renders the official iStore QuickStart application. Preserve all 22 required LuCI plugins, LAN 192.168.6.1, root password password, rollback target and existing RELEASE-FIRST order. Do not use alternate theme/fast lanes and do not release before AUTO_FLASH_SAFETY_GATE and REAL_DEVICE_VERIFY pass.",
-  "requested_at": "2026-09-01T23:25:00Z"
+  "source_ref": "handoff-source-arthur-adh-quickstart-c4cadd6e185d-6a8493619c08",
+  "source_sha": "c4cadd6e185d460f3541a5d7b95090b5d591d4c3",
+  "feature_id": "arthur-adh-quickstart",
+  "accepted_preview_source_sha": "f4190c7ce51984ae0ba99b59829323fef12b692a",
+  "accepted_diff_sha256": "6a8493619c088dd6adb0c5477412518a0f242116df3369654b11bccbd1e58feb",
+  "preview_manifest_sha256": "771bc19690c6ec8227ed4bd6490c77d161138ddc5d0ffae66078039d39b55757",
+  "reason": "Build the immutable accepted LIVE_PREVIEW source for arthur-adh-quickstart; WIFI=VERIFIED_FROZEN; deferred runtime acceptance remains for formal REAL_DEVICE_VERIFY.",
+  "requested_at": "09/03/2026 19:19:33"
 }
