@@ -21,8 +21,17 @@
 - SSH evidence: `ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.6.1` was rejected with `REMOTE HOST IDENTIFICATION HAS CHANGED` for `C:\Users\CodexSandboxOffline/.ssh/known_hosts:2`. Host-key verification was not bypassed and `known_hosts` was not modified.
 - LuCI evidence: `/cgi-bin/luci/admin/services/adguardhome/` and `/cgi-bin/luci/admin/quickstart/` returned HTTP 403 with `x-luci-login-required: yes`. No `ARTHUR_LUCI_COOKIE_FILE` environment variable or cookie file was available.
 - Prebuild evidence: `scripts/check-prebuild-real-device-gate.sh output/real-device/real-device-verification.json` failed closed because `ADGUARD_LIVE`, `QUICKSTART_LIVE`, `WIFI_LIVE`, and `FIRMWARE_BUILD_ALLOWED` were not valid PASS evidence; the existing report also lacks the new Wi-Fi snapshot audit. This report is historical and is not treated as fresh proof.
-- Safety state: `PRODUCTION_RELEASED=false`; no Build, Candidate dispatch, sysupgrade, raw write, or Release action is authorized from this blocked state.
+- Safety state: `PRODUCTION_RELEASED=false`; no production Build/Candidate dispatch, sysupgrade, raw write, or Release action is authorized from this blocked state. The separately authorized non-production Theme Candidate CI is recorded below.
 - Next action: an operator must verify the Arthur host key out-of-band and provide an existing authenticated LuCI cookie; then rerun the read-only real-device verifier, confirm Wi-Fi snapshots are comparable and unchanged, and rerun the prebuild gate. Only a gate PASS may authorize the production Candidate path.
+
+## Recovery Theme Candidate CI — PASS, NOT PRODUCTION RELEASE
+
+- PR: `https://github.com/mxonline/xinzhaowrt/pull/57`; branch `codex/arthur-build-20260901-0816-132409c`; no local merge of `main`.
+- Recovery commits pushed: `7f6107f` (`fix: harden Arthur recovery and prebuild gates`), `fa91575` (`fix: run clean candidate gates after source setup`), and `c554c50` (`fix: use ImmortalWrt AdGuard manager feed`).
+- GitHub Actions Run `33787865737` at head `c554c50525723ce52ba46efdee2ce69e3382773a`: `completed/success` on `2026-09-03T18:19:30Z`. The job output shows Theme static gate, SDK_BUILD frozen themes only, ImageBuilder candidate/rootfs Theme Gate, Candidate Verification, and artifact upload all PASS.
+- Artifact: `arthur-theme-candidate-33787865737`, artifact id `9906851806`, `98925407` bytes, digest `sha256:bdc0b8a2ee7e3deb19369f563a3541ff05252b94959af75770f9736513d07f4d`, not expired.
+- This is non-production Theme Candidate evidence only. It does not satisfy the real-device prebuild gate and does not authorize firmware download for production, sysupgrade, flash, or Release.
+- Closure state remains `PRODUCTION_RELEASED=false` / `BLOCKED`; next action is the host-key out-of-band verification plus authenticated LuCI cookie described in the preceding section, followed by a fresh read-only verifier and prebuild gate.
 
 ## ARTHUR FAST CANDIDATE ACCEPTED
 
