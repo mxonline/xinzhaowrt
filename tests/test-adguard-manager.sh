@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source_root="${ADGUARD_MANAGER_SOURCE_ROOT:-$root/work/immortalwrt}"
-view="$source_root/package/feeds/xinzhao/luci-app-adguardhome/htdocs/luci-static/resources/view/adguardhome/config.js"
-acl="$source_root/package/feeds/xinzhao/luci-app-adguardhome/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
+package_root="${ADGUARD_MANAGER_PACKAGE_ROOT:-$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome}"
+view="$package_root/htdocs/luci-static/resources/view/adguardhome/config.js"
+acl="$package_root/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 overlay_view="$root/files/www/luci-static/resources/view/adguardhome/config.js"
 overlay_acl="$root/files/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 

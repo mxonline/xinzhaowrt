@@ -93,6 +93,8 @@ jobs:
           test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
           (cd "$SDK_DIR" && ./scripts/feeds install luci-base)
           test -f "$SDK_DIR/package/feeds/luci/luci-base/Makefile" || { echo 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING'; exit 1; }
+          (cd "$SDK_DIR" && ./scripts/feeds install luci-app-adguardhome)
+          test -f "$SDK_DIR/package/feeds/luci/luci-app-adguardhome/Makefile" || { echo 'SDK_ADGUARD_MANAGER_FEED_PACKAGE_MISSING'; exit 1; }
           luci_feed_source="$(awk '$2 == "luci" { print $3; exit }' "$SDK_DIR/feeds.conf.default")"
           luci_feed_commit="$(git -C "$SDK_DIR/feeds/luci" rev-parse HEAD)"
           mkdir -p output/theme-provenance
@@ -176,9 +178,8 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns/luci-app-mosdns" "$SDK_DIR/package/feeds/xinzhao/luci-app-mosdns"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier/luci-app-easytier" "$SDK_DIR/package/feeds/xinzhao/luci-app-easytier"
           ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter/luci-app-oaf" "$SDK_DIR/package/feeds/xinzhao/luci-app-oaf"
-          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-adguardhome" "$SDK_DIR/package/feeds/xinzhao/luci-app-adguardhome"
-          ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./tests/test-adguard-manager.sh
-          ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./scripts/check-changeset-complete.sh
+          ADGUARD_MANAGER_PACKAGE_ROOT="$SDK_DIR/package/feeds/luci/luci-app-adguardhome" ./tests/test-adguard-manager.sh
+          ADGUARD_MANAGER_PACKAGE_ROOT="$SDK_DIR/package/feeds/luci/luci-app-adguardhome" ./scripts/check-changeset-complete.sh
           # kenzok8's pinned AdGuard Home source contains a real compiled
           # zh-cn LMO but does not expose a separate translation subpackage.
           # Wrap that exact upstream artifact in the canonical package name;
