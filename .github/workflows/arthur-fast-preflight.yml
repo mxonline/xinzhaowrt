@@ -34,14 +34,30 @@ jobs:
       - name: Test LIVE_PREVIEW safety contract
         run: ./tests/test-live-preview-contract.sh
 
-      - name: Parse LIVE_PREVIEW PowerShell
+      - name: Test feature handoff contract
+        shell: pwsh
+        run: ./tests/feature-handoff.tests.ps1
+
+      - name: Test durable v3 request auto trigger contract
+        shell: pwsh
+        run: ./tests/feature-handoff-auto-trigger.tests.ps1
+
+      - name: Parse LIVE_PREVIEW and handoff PowerShell
         shell: pwsh
         run: |
           foreach ($file in @(
             'scripts/live-preview.ps1',
             'scripts/live-preview-mature-safe.ps1',
-            'scripts/prepare-live-preview-sources.ps1'
+            'scripts/prepare-live-preview-sources.ps1',
+            'scripts/feature-handoff-lib.ps1',
+            'scripts/feature-handoff.ps1',
+            'scripts/install-feature-handoff.ps1',
+            'scripts/feature-handoff-status.ps1'
           )) {
+            if (-not (Test-Path $file)) {
+              Write-Error "Required PowerShell file missing: $file"
+              exit 1
+            }
             $tokens = $null
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
@@ -96,6 +112,7 @@ jobs:
             echo '- LIVE_PREVIEW is a pre-Candidate development aid and never counts as formal REAL_DEVICE_VERIFY.'
             echo '- Mature AdGuard Home and official QuickStart sources are pinned separately from Known-Good firmware refs.'
             echo '- Mature ADH LIVE_PREVIEW uses safe UI-only fallback; DNS/firewall/start-stop runtime mutation tests are deferred to formal REAL_DEVICE_VERIFY.'
+            echo '- Feature Handoff must continue accepted LIVE_PREVIEW through the durable v3 request auto trigger unless pause_after_live_preview is explicit.'
             echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
             echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
             echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'

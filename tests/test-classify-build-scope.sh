@@ -35,8 +35,6 @@ run_case FAST_GATE \
   production/arthur-known-good-v1.json \
   scripts/baseline-integrity-gate.sh
 
-# Production-agent and runtime orchestration scripts are control-plane only.
-# They must never trigger a multi-hour firmware build by falling through the unknown-path rule.
 run_case FAST_GATE \
   scripts/production-agent.ps1 \
   scripts/install-production-agent.ps1 \
@@ -48,7 +46,14 @@ run_case FAST_GATE \
   scripts/run-supervisor.py \
   ai_orchestrator/adapters.py
 
-# LIVE_PREVIEW source locks/preparation/executors and its durable agent rule are control-plane only.
+run_case FAST_GATE \
+  scripts/feature-handoff.ps1 \
+  scripts/feature-handoff-lib.ps1 \
+  scripts/install-feature-handoff.ps1 \
+  scripts/feature-handoff-status.ps1 \
+  tests/feature-handoff.tests.ps1 \
+  production/accepted-preview/arthur-adh-quickstart.json
+
 run_case FAST_GATE \
   .gitignore \
   AGENTS.md \
@@ -59,7 +64,6 @@ run_case FAST_GATE \
   production/mature-ui-sources.json \
   tests/test-live-preview-contract.sh
 
-# v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
 run_case IMAGEBUILDER \
   production/v4/imagebuilder-request.json \
   v4/imagebuilder/packages.txt \
@@ -71,7 +75,11 @@ run_case IMAGEBUILDER \
   files/etc/init.d/uhttpd \
   files/etc/config/xinzhao
 
-# v4 explicit SDK lane. User-space package builds outrank ImageBuilder assembly.
+run_case IMAGEBUILDER \
+  files/usr/lib/lua/luci/controller/AdGuardHome.lua \
+  files/usr/share/rpcd/acl.d/luci-app-adguardhome.json \
+  files/www/luci-static/quickstart/index.js
+
 run_case SDK_BUILD \
   production/v4/sdk-request.json \
   v4/sdk/packages/luci-app-example/Makefile \
@@ -98,7 +106,6 @@ run_case FULL_BUILD \
 run_case FULL_BUILD \
   some/new-unknown-path.txt
 
-# Highest-risk scope wins for mixed changes.
 run_case IMAGEBUILDER \
   README.md \
   .github/workflows/arthur-update-v3.yml \

@@ -14,11 +14,11 @@ For every non-trivial firmware task:
 4. Read this router and load the task-specific knowledge below.
 5. Read `knowledge/BUILD-ROUTING.md` before deciding whether a full OpenWrt build is required.
 6. For **any new feature development**, read `knowledge/V013-DEVELOPMENT-LOOP.md` first and default to the v0.1.3-style real-router development loop unless the change is inherently non-previewable.
-7. For preview-safe LuCI/static/ACL/service-integration work, also read `knowledge/LIVE-PREVIEW.md` before deciding to build or flash.
+7. For preview-safe LuCI/static/ACL/service-integration work, also read `knowledge/LIVE-PREVIEW.md`, `scripts/feature-handoff.ps1`, and `scripts/feature-handoff-lib.ps1` before deciding to build or flash.
 8. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
 9. Make the smallest change from the current verified baseline.
 10. During feature development, prefer fast real-router HOT/LIVE deployment and authenticated inspection over a Candidate build. Build only after the feature is accepted on the running router, unless the change inherently requires new firmware bytes.
-11. Route frozen source through `Arthur Fast Preflight` and the normal classifier-selected Candidate lane.
+11. After accepted preview, persist Feature Handoff state, freeze the exact accepted source, integrate it safely, then route it through `Arthur Fast Preflight` and the normal classifier-selected Candidate lane.
 12. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
 13. Record newly verified failure patterns or baseline changes back into the knowledge layer.
 
@@ -26,7 +26,7 @@ The Reuse Gate is prospective. It does not move the current source lock, invalid
 
 The Fast Preflight routing layer is also prospective. It must not cancel or restart an active Candidate. It decides the build lane; unknown paths fail closed to `FULL_BUILD`.
 
-The user-approved v0.1.3 development rule is the default **development** route. `LIVE_PREVIEW`/HOT deployment is not a production release stage. A preview PASS never replaces Candidate build/flash or post-flash `REAL_DEVICE_VERIFY`.
+The user-approved v0.1.3 development rule is the default **development** route. `LIVE_PREVIEW`/HOT deployment is not a production release stage. A preview PASS never replaces Candidate build/flash or post-flash `REAL_DEVICE_VERIFY`; it starts/resumes the durable Feature Handoff unless the user explicitly requested a pause.
 
 ## Routing table
 
@@ -34,13 +34,14 @@ The user-approved v0.1.3 development rule is the default **development** route. 
 Read first:
 - `knowledge/V013-DEVELOPMENT-LOOP.md`
 - `knowledge/BUILD-ROUTING.md`
+- `scripts/feature-handoff.ps1`
 - then the feature-specific documents below
 
 Default development order:
 
-`requirement -> reuse mature implementation when appropriate -> smallest implementation -> static sanity -> backup -> deploy directly to the running router -> inspect authenticated real behavior -> fix -> redeploy`
+`requirement -> mandatory Reuse Gate -> reuse mature implementation -> smallest adaptation -> static sanity -> backup -> deploy directly to the running router -> inspect authenticated real behavior -> fix -> redeploy -> LIVE_PREVIEW PASS -> durable Feature Handoff -> accepted-source freeze -> Git/CI -> Candidate -> formal production chain -> PRODUCTION_RELEASED`
 
-Do **not** start with a firmware Candidate/build/sysupgrade merely to see whether a new UI, plugin integration, theme, service-management page or configuration feature works. After the feature works on the running router, freeze source and enter the formal production sequence.
+Do **not** start with a firmware Candidate/build/sysupgrade merely to see whether a new UI, plugin integration, theme, service-management page or configuration feature works. After the feature works on the running router, Feature Handoff preserves the accepted bytes and enters the formal production sequence automatically.
 
 If one preview action is unsafe but the rest can continue safely, automatically defer only that action to formal `REAL_DEVICE_VERIFY`; do not stop for routine user approval. Only a genuine blocker with no safe continuation may stop the chain.
 
@@ -50,11 +51,17 @@ Read:
 - `knowledge/LIVE-PREVIEW.md`
 - `production/live-preview-policy.json`
 - `scripts/live-preview.ps1`
+- `scripts/live-preview-mature-safe.ps1`
+- `scripts/feature-handoff.ps1`
+- `scripts/feature-handoff-lib.ps1`
 - `tests/test-live-preview-contract.sh`
+- `tests/feature-handoff.tests.ps1`
 
 Use the loop `edit -> static test -> HOT/LIVE deploy -> authenticated live check -> fix -> HOT/LIVE deploy` when the changed runtime files fall inside the preview policy. The current Arthur Wi-Fi result stays `WIFI=VERIFIED_FROZEN`; the preview path must not modify or reload Wi-Fi, LAN/WAN, firewall core state, system binaries, packages or flash/storage state except for an explicitly approved, safely recoverable feature-specific mapping.
 
-After the intended behavior is confirmed, freeze source and return to the existing production release order. `LIVE_PREVIEW=PASS` must still report `REAL_DEVICE_VERIFY=NOT_RUN` and `RELEASE_ALLOWED=false`.
+After the intended behavior is objectively accepted, `live-preview-mature-safe.ps1` starts the independent Feature Handoff by default. Feature Handoff writes durable state under `%LOCALAPPDATA%\XinZhaoWrt\FeatureHandoff`, freezes accepted manifest bytes into the repository `files/` overlay, records source identity in `production/accepted-preview/<feature-id>.json`, safely integrates that source, then attaches to the existing v3 Controller/Production Agent chain. `LIVE_PREVIEW=PASS` must still report `REAL_DEVICE_VERIFY=NOT_RUN` and `RELEASE_ALLOWED=false`; these are continuation states, not completion states.
+
+Only an explicit `PauseAfterLivePreview` request may normally pause after preview.
 
 ### Decide whether a full build is required
 Read:
@@ -167,4 +174,4 @@ When information conflicts, use this order:
 
 ## Safety boundary
 
-Knowledge routing, Fast Preflight, HOT/LIVE development and Reuse Gate decisions never authorize bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes, U-Boot modification or raw storage writes. Formal automated standard sysupgrade remains governed only by the existing `AUTO_FLASH_SAFETY_GATE` production path.
+Knowledge routing, Fast Preflight, HOT/LIVE development, Feature Handoff and Reuse Gate decisions never authorize bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes, U-Boot modification or raw storage writes. Formal automated standard sysupgrade remains governed only by the existing `AUTO_FLASH_SAFETY_GATE` production path.

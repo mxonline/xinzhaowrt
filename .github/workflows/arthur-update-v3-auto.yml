@@ -29,8 +29,8 @@ jobs:
             exit 1
           }
 
-          MODE="$(python3 - <<'PY'
-          import json
+          mapfile -t REQUEST_VALUES < <(python3 - <<'PY'
+          import json, re
           with open('production/v3-request.json', 'r', encoding='utf-8') as f:
               data = json.load(f)
           mode = data.get('mode')
@@ -43,23 +43,107 @@ jobs:
           }
           if mode not in allowed:
               raise SystemExit(f'BLOCKED: unsupported v3 mode: {mode!r}')
-          request_id = data.get('request_id') or ''
-          if not request_id:
-              raise SystemExit('BLOCKED: request_id is required')
+          request_id = str(data.get('request_id') or '')
+          if not re.fullmatch(r'[A-Za-z0-9._-]{8,160}', request_id):
+              raise SystemExit('BLOCKED: request_id is missing or unsafe')
+          source_ref = str(data.get('source_ref') or 'main')
+          if not re.fullmatch(r'[A-Za-z0-9._/-]{1,180}', source_ref) or '..' in source_ref:
+              raise SystemExit('BLOCKED: source_ref is unsafe')
+          source_sha = str(data.get('source_sha') or '')
+          if source_sha and not re.fullmatch(r'[0-9a-f]{40}', source_sha):
+              raise SystemExit('BLOCKED: source_sha must be a full lowercase SHA-1')
           print(mode)
+          print(request_id)
+          print(source_ref)
+          print(source_sha)
           PY
-          )"
+          )
 
-          echo "Dispatching Arthur Known-Good Update v3 with mode=$MODE"
+          MODE="${REQUEST_VALUES[0]}"
+          REQUEST_ID="${REQUEST_VALUES[1]}"
+          SOURCE_REF="${REQUEST_VALUES[2]}"
+          SOURCE_SHA="${REQUEST_VALUES[3]}"
+
+          # Feature Handoff requests use an immutable lightweight tag. Resolve it
+          # before dispatch so a moving main ref can never change the Candidate bytes.
+          if [[ "$SOURCE_REF" != 'main' ]]; then
+            RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SOURCE_REF" --jq '.object.sha')"
+            [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "BLOCKED: source_ref did not resolve to a commit SHA: $SOURCE_REF"
+              exit 1
+            }
+            if [[ -n "$SOURCE_SHA" && "$RESOLVED_SHA" != "$SOURCE_SHA" ]]; then
+              echo "BLOCKED: source_ref SHA mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA"
+              exit 1
+            fi
+
+            # Receiver-side idempotency: a retry of this auto-trigger first finds
+            # the v3 run already bound to the same immutable tag and becomes a no-op.
+            RUNS_JSON="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow arthur-update-v3.yml \
+              --event workflow_dispatch \
+              --limit 100 \
+              --json databaseId,headBranch,headSha,status,conclusion)"
+            EXISTING_RUN="$(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
+          import json, os
+          runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
+          ref=os.environ['SOURCE_REF']
+          sha=os.environ['SOURCE_SHA']
+          matches=[r for r in runs if str(r.get('headBranch') or '') == ref and str(r.get('headSha') or '') == sha]
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0))
+          print(matches[0].get('databaseId') if matches else '')
+          PY
+            )"
+            if [[ -n "$EXISTING_RUN" ]]; then
+              echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
+              exit 0
+            fi
+          fi
+
+          echo "Dispatching Arthur Known-Good Update v3 mode=$MODE request_id=$REQUEST_ID source_ref=$SOURCE_REF"
           gh workflow run arthur-update-v3.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
+            --ref "$SOURCE_REF" \
             -f mode="$MODE"
+
+          # A successful API response is not the final acknowledgement. Confirm a
+          # concrete run exists before marking this durable request dispatched.
+          if [[ "$SOURCE_REF" != 'main' ]]; then
+            CONFIRMED_RUN=''
+            for _ in $(seq 1 24); do
+              RUNS_JSON="$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow arthur-update-v3.yml \
+                --event workflow_dispatch \
+                --limit 100 \
+                --json databaseId,headBranch,headSha,status,conclusion)"
+              CONFIRMED_RUN="$(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
+          import json, os
+          runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
+          ref=os.environ['SOURCE_REF']
+          sha=os.environ['SOURCE_SHA']
+          matches=[r for r in runs if str(r.get('headBranch') or '') == ref and str(r.get('headSha') or '') == sha]
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0))
+          print(matches[0].get('databaseId') if matches else '')
+          PY
+              )"
+              [[ -n "$CONFIRMED_RUN" ]] && break
+              sleep 5
+            done
+            [[ -n "$CONFIRMED_RUN" ]] || {
+              echo 'V3_AUTO_TRIGGER_DISPATCH_ACK_TIMEOUT'
+              exit 1
+            }
+            echo "V3_AUTO_TRIGGER_DISPATCHED=YES run_id=$CONFIRMED_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
+          fi
 
           {
             echo '## Arthur v3 auto trigger'
             echo
             echo "- Request commit: \`${GITHUB_SHA}\`"
+            echo "- Request ID: \`${REQUEST_ID}\`"
             echo "- Mode: \`${MODE}\`"
+            echo "- Source ref: \`${SOURCE_REF}\`"
             echo '- Dispatched workflow: `Arthur Known-Good Update v3`'
           } >> "$GITHUB_STEP_SUMMARY"
