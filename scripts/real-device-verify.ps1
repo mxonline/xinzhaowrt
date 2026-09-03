@@ -114,7 +114,7 @@ function Remove-GeneratedLuciSession {
 
 function New-LuciSessionFromSsh {
     Remove-GeneratedLuciSession
-    $create = Invoke-Remote 'ubus call session create ''{"timeout":600}'''
+    $create = Invoke-Remote 'ubus call session create'
     if ($create.ExitCode -ne 0) { throw "LUCI_SESSION_CREATE_FAILED output=$($create.Output)" }
     try { $created = $create.Output | ConvertFrom-Json } catch { throw 'LUCI_SESSION_CREATE_INVALID_JSON' }
     $sid = [string]$created.ubus_rpc_session
