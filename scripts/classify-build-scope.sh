@@ -42,7 +42,7 @@ while IFS= read -r path; do
     README.md|README.*|docs/*|knowledge/*)
       ;;
 
-    .github/*|tests/*|requirements-headless.txt|ai_orchestrator/*|\
+    AGENTS.md|.github/*|tests/*|requirements-headless.txt|ai_orchestrator/*|\
     scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|\
     scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|\
     scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
