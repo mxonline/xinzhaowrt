@@ -9,11 +9,15 @@ sources="$ROOT/production/mature-ui-sources.json"
 script="$ROOT/scripts/live-preview.ps1"
 safe="$ROOT/scripts/live-preview-mature-safe.ps1"
 prepare="$ROOT/scripts/prepare-live-preview-sources.ps1"
+handoff="$ROOT/scripts/feature-handoff.ps1"
+installer="$ROOT/scripts/install-feature-handoff.ps1"
 [[ -s "$policy" ]] || fail 'live preview policy missing'
 [[ -s "$sources" ]] || fail 'mature UI source lock missing'
 [[ -s "$script" ]] || fail 'live preview executor missing'
 [[ -s "$safe" ]] || fail 'safe mature preview wrapper missing'
 [[ -s "$prepare" ]] || fail 'mature source preparation script missing'
+[[ -s "$handoff" ]] || fail 'feature handoff executor missing'
+[[ -s "$installer" ]] || fail 'feature handoff installer missing'
 
 grep -Fq 'WIFI=VERIFIED_FROZEN' "$safe" || fail 'Wi-Fi frozen marker missing from safe wrapper'
 grep -Fq 'REAL_DEVICE_VERIFY=NOT_RUN' "$safe" || fail 'safe preview must not claim formal real-device verification'
@@ -26,6 +30,12 @@ grep -Fq 'QUICKSTART_PREVIEW=PASS' "$safe" || fail 'QuickStart preview marker mi
 grep -Fq 'Invoke-AuthenticatedLuciPage' "$safe" || fail 'authenticated LuCI check missing from safe wrapper'
 grep -Fq 'live-preview.ps1' "$safe" || fail 'safe wrapper must reuse the generic deploy executor'
 grep -Fq 'Generic' "$safe" || fail 'safe wrapper must use Generic deploy mode'
+grep -Fq 'FeatureId' "$safe" || fail 'safe preview must pass durable feature identity'
+grep -Fq 'PauseAfterLivePreview' "$safe" || fail 'post-preview pause must be explicit'
+grep -Fq 'FEATURE_HANDOFF_STARTED=' "$safe" || fail 'successful preview must start durable handoff by default'
+grep -Fq 'feature-handoff.ps1' "$safe" || fail 'safe preview must invoke feature handoff executor'
+grep -Fq 'PRODUCTION_RELEASED' "$handoff" || fail 'handoff must continue to sole production terminal state'
+grep -Fq 'arthur-update-v3.yml' "$handoff" || fail 'handoff must reuse existing v3 Candidate workflow'
 
 grep -Fq 'allowed_remote_exact' "$script" || fail 'exact-path safety exception support missing'
 grep -Fq 'Mode' "$script" || fail 'per-file mode support missing'
@@ -37,6 +47,7 @@ grep -Fq 'vendor.js' "$safe" || fail 'QuickStart vendor bundle completeness chec
 ! grep -Eq '/sbin/sysupgrade|(^|[^[:alnum:]_])mtd([^[:alnum:]_]|$)|dd[[:space:]].*of=/dev/' "$safe" || fail 'safe preview contains flash/raw-write operation'
 ! grep -Eq '/etc/init\.d/AdGuardHome[[:space:]]+(start|stop|restart|reload|enable|disable)' "$safe" || fail 'safe preview must not invoke mature AdGuard init mutations'
 ! grep -Eq 'uci[[:space:]].*(dhcp|firewall)|iptables|ip6tables|nft[[:space:]]' "$safe" || fail 'safe preview must not mutate DNS/firewall runtime'
+! grep -Eqi 'push[[:space:]]+--force|reset[[:space:]]+--hard|clean[[:space:]]+-fdx' "$handoff" || fail 'feature handoff contains destructive Git operation'
 
 python3 - "$policy" "$sources" <<'PY'
 import json, sys
@@ -77,4 +88,4 @@ assert by_name['quickstart']['ref'] == '7e5083e2ca4cfa4d31f312026f46e5213c5b03f5
 assert by_name['quickstart']['subdir'] == 'luci/luci-app-quickstart'
 PY
 
-echo 'PASS: LIVE_PREVIEW mature UI safe-fallback contract is present.'
+echo 'PASS: LIVE_PREVIEW mature UI safe-fallback and production handoff contract is present.'
