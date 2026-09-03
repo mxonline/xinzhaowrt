@@ -6,6 +6,7 @@ param(
     [switch]$GitLsRemote,
     [switch]$GhDispatch,
     [switch]$GhProductionDispatch,
+    [switch]$GhImplementationDispatch,
     [switch]$GhProductionRuns,
     [switch]$GhThemeDispatch,
     [switch]$GhThemeRuns,
@@ -177,6 +178,23 @@ if ($GhProductionDispatch) {
     Write-Output "PRODUCTION_DISPATCHED=arthur-update-v3.yml"
     Write-Output "PRODUCTION_DISPATCH_REF=$Ref"
     Write-Output "PRODUCTION_DISPATCH_MODE=$Mode"
+    exit 0
+}
+if ($GhImplementationDispatch) {
+    if ([string]::IsNullOrWhiteSpace($Ref)) { throw 'GH_IMPLEMENTATION_DISPATCH_REF_REQUIRED' }
+    $gatePath = Join-Path $PSScriptRoot '..\output\implementation-gate.json'
+    if (-not (Test-Path -LiteralPath $gatePath -PathType Leaf)) { throw 'IMPLEMENTATION_GATE_EVIDENCE_MISSING' }
+    $gate = Get-Content -Raw -LiteralPath $gatePath | ConvertFrom-Json
+    if ([string]$gate.status -ne 'PASS' -or [string]$gate.gate -ne 'V013_IMPLEMENTATION_GATES') { throw 'IMPLEMENTATION_GATE_NOT_PASS' }
+    if ([string]$gate.FIRMWARE_BUILD_ALLOWED -ne 'true') { throw 'IMPLEMENTATION_GATE_BUILD_NOT_ALLOWED' }
+    if ([string]$gate.RELEASE_ALLOWED -ne 'false') { throw 'IMPLEMENTATION_GATE_RELEASE_STATE_INVALID' }
+    if ([string]$gate.WIFI -ne 'VERIFIED_FROZEN') { throw 'IMPLEMENTATION_GATE_WIFI_STATE_INVALID' }
+    if ([string]$gate.ADGUARD_REAL_DEVICE -ne 'NOT_RUN' -or [string]$gate.QUICKSTART_REAL_DEVICE -ne 'NOT_RUN') { throw 'IMPLEMENTATION_GATE_REAL_DEVICE_STATE_INVALID' }
+    $body = @{ ref = $Ref; inputs = @{ mode = $Mode } } | ConvertTo-Json -Compress
+    Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$repository/actions/workflows/arthur-update-v3.yml/dispatches" -Headers ($headers + @{ Authorization = "token $token"; 'Content-Type' = 'application/json' }) -Body $body | Out-Null
+    Write-Output 'IMPLEMENTATION_DISPATCHED=arthur-update-v3.yml'
+    Write-Output "IMPLEMENTATION_DISPATCH_REF=$Ref"
+    Write-Output "IMPLEMENTATION_DISPATCH_MODE=$Mode"
     exit 0
 }
 if ($GhProductionRuns) {
