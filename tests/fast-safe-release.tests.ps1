@@ -53,7 +53,8 @@ Add-ReleaseInvalidation `
     -NewFingerprint ('b' * 64) `
     -MinimumRepeatStage 'PREVIEW_ACCEPTED' | Out-Null
 
-Assert-True (Test-CheckpointValid -State $state -Checkpoint 'SOURCE_FROZEN' -Fingerprint ('a' * 64) -eq $false) 'invalidated checkpoint must not remain valid'
+$checkpointValid = Test-CheckpointValid -State $state -Checkpoint 'SOURCE_FROZEN' -Fingerprint ('a' * 64)
+Assert-True (-not $checkpointValid) 'invalidated checkpoint must not remain valid'
 Assert-ReleaseStageTransition -State $state -NextStage 'PREVIEW_ACCEPTED' | Out-Null
 
 $v1 = [pscustomobject][ordered]@{
