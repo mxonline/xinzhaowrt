@@ -143,9 +143,65 @@ Assert-True ($handoffState.PSObject.Properties.Name -contains 'accepted_preview_
 Assert-True ($handoffState.PSObject.Properties.Name -contains 'build_fingerprint') 'Feature Handoff state must persist build fingerprint slot'
 Assert-True ($handoffState.PSObject.Properties.Name -contains 'executor_state') 'Feature Handoff state must separate executor state from release state'
 
+$buildIdentity = [pscustomobject][ordered]@{
+    target = 'qualcommax'
+    subtarget = 'ipq60xx'
+    profile = 'jdcloud_re-ss-01'
+    source_lock_sha256 = ('9' * 64)
+    toolchain_identity = 'arthur-sdk-known-good-v1'
+    config_sha256 = ('a' * 64)
+    required_plugins_sha256 = ('b' * 64)
+    files_identity = ('c' * 64)
+    build_scripts_identity = ('d' * 64)
+    package_inputs_identity = ('e' * 64)
+    theme_identity = ('f' * 64)
+}
+$buildIdentityWithControlNoise = (($buildIdentity | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+Add-Member -InputObject $buildIdentityWithControlNoise -NotePropertyName handoff_text -NotePropertyValue 'docs changed'
+Add-Member -InputObject $buildIdentityWithControlNoise -NotePropertyName controller_text -NotePropertyValue 'controller path fixed'
+$buildFp1 = Get-BuildFingerprint -InputIdentity $buildIdentity
+$buildFp2 = Get-BuildFingerprint -InputIdentity $buildIdentityWithControlNoise
+Assert-Equal $buildFp1 $buildFp2 'HANDOFF/controller-only noise must not alter build fingerprint'
+Assert-True ($buildFp1 -match '^[0-9a-f]{64}$') 'build fingerprint must be SHA256'
+
+$runningDecision = Get-BuildReuseDecision -BuildFingerprint $buildFp1 `
+    -Runs @([pscustomobject]@{ id=123; fingerprint=$buildFp1; status='in_progress'; conclusion='' }) `
+    -Artifacts @()
+Assert-Equal $runningDecision.action 'WATCH_EXISTING_RUN' 'matching active Candidate is watched instead of redispatched'
+Assert-Equal $runningDecision.run_id 123 'watch decision preserves existing run id'
+
+$artifactDecision = Get-BuildReuseDecision -BuildFingerprint $buildFp1 -Runs @() `
+    -Artifacts @([pscustomobject]@{ fingerprint=$buildFp1; sha256=('1' * 64); immutable=$true; acceptance='PASS'; identity='Arthur-v3-Candidate-123' })
+Assert-Equal $artifactDecision.action 'REUSE_ARTIFACT' 'matching successful immutable Candidate is reused'
+Assert-Equal $artifactDecision.artifact_sha256 ('1' * 64) 'artifact reuse preserves Candidate sha256'
+
+$revalidateDecision = Get-BuildReuseDecision -BuildFingerprint $buildFp1 -Runs @() `
+    -Artifacts @([pscustomobject]@{ fingerprint=$buildFp1; sha256=('2' * 64); immutable=$true; acceptance='CONTROL_ONLY_FAIL'; identity='Arthur-v3-Candidate-124' })
+Assert-Equal $revalidateDecision.action 'REVALIDATE_QUARANTINE_CANDIDATE' 'control-only acceptance failure reuses Candidate bytes'
+
+$changedIdentity = (($buildIdentity | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+$changedIdentity.files_identity = ('0' * 64)
+$changedFp = Get-BuildFingerprint -InputIdentity $changedIdentity
+Assert-True ($changedFp -ne $buildFp1) 'firmware byte input change must change build fingerprint'
+$newDecision = Get-BuildReuseDecision -BuildFingerprint $changedFp -Runs @() -Artifacts @()
+Assert-Equal $newDecision.action 'START_NEW_CANDIDATE' 'changed firmware fingerprint permits exactly one new Candidate'
+
+$tempQuarantine = Join-Path ([System.IO.Path]::GetTempPath()) "xinzhao-quarantine-$PID-$([Guid]::NewGuid().ToString('N')).json"
+try {
+    Write-CandidateQuarantineRecord -Path $tempQuarantine -Record ([pscustomobject]@{
+        build_fingerprint=$buildFp1; run_id=123; source_sha=('3' * 40); artifact_name='Arthur-v3-Candidate-123';
+        artifact_sha256=('4' * 64); target='qualcomax/ipq60xx'; profile='jdcloud_re-ss-01'; acceptance_class='PENDING'
+    }) | Out-Null
+    $quarantine = Get-CandidateQuarantineRecord -Path $tempQuarantine
+    Assert-Equal $quarantine.build_fingerprint $buildFp1 'quarantine retains build fingerprint'
+    Assert-Equal $quarantine.run_id 123 'quarantine retains run id'
+    Assert-Equal $quarantine.acceptance_class 'PENDING' 'quarantine exists before later acceptance result'
+} finally { Remove-Item -Force -ErrorAction SilentlyContinue $tempQuarantine }
+
 Write-Host 'FAST_SAFE_RELEASE_POLICY_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MONOTONIC_STATE_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_V1_MIGRATION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MINIMUM_INVALIDATION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_PREVIEW_REUSE_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_HANDOFF_V2_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_RELEASE_BUILD_REUSE_CONTRACT=PASS'
