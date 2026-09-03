@@ -48,11 +48,14 @@ run_case FAST_GATE \
   scripts/run-supervisor.py \
   ai_orchestrator/adapters.py
 
-# LIVE_PREVIEW and its durable agent rule are control-plane only.
+# LIVE_PREVIEW source locks/preparation/executor and its durable agent rule are control-plane only.
 run_case FAST_GATE \
+  .gitignore \
   AGENTS.md \
   scripts/live-preview.ps1 \
+  scripts/prepare-live-preview-sources.ps1 \
   production/live-preview-policy.json \
+  production/mature-ui-sources.json \
   tests/test-live-preview-contract.sh
 
 # v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
