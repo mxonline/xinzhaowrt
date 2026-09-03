@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "device": "jdcloud_re-ss-01",
+  "status": "VERIFIED_FROZEN",
+  "source_path": "files/etc/uci-defaults/98-xinzhao-wifi-defaults",
+  "source_git_blob_sha": "4358685989bf9f0207fb6717dc63dd89a295f27e",
+  "evidence": "Previously accepted Arthur real-device Wi-Fi verification; current feature work inherits this result.",
+  "policy": {
+    "runtime_revalidation_required_for_prebuild": false,
+    "runtime_mutation_forbidden": true,
+    "wifi_reload_forbidden": true,
+    "source_change_requires_explicit_user_authorization": true
+  }
+}
