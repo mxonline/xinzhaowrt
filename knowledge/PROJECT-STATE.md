@@ -2,23 +2,27 @@
 
 ## 2026-09-03 execution override — default new-feature development route
 
-For every new Arthur feature that can be safely exercised on the running router, the default development route is now the user-approved v0.1.3-style real-router loop documented in `knowledge/V013-DEVELOPMENT-LOOP.md`.
+For every new Arthur feature that can be safely exercised on the running router, the default development route is the user-approved v0.1.3-style real-router loop documented in `knowledge/V013-DEVELOPMENT-LOOP.md`.
 
 This is a mandatory routing rule, not an optional optimization:
 
-`requirement -> Reuse Gate when needed -> smallest implementation -> static sanity check -> back up affected runtime targets -> HOT/LIVE deploy to the running Arthur -> authenticated real-router check -> inspect/fix -> repeat HOT/LIVE deploy`
+`requirement -> mandatory Reuse Gate -> USE/REUSE/FORK/BUILD decision -> smallest integration/change -> static sanity check -> back up affected runtime targets -> HOT/LIVE deploy to the running Arthur -> authenticated real-router check -> inspect/fix -> repeat HOT/LIVE deploy`
 
-Do not make PR creation, a Candidate build, a full firmware build or sysupgrade the default first step for ordinary new-feature development. The goal is to make the requested feature appear and work on the currently running Arthur as quickly as safely possible, iterate there until accepted, and only then freeze the accepted source for the normal production path.
+Do not make PR creation, a Candidate build, a full firmware build or sysupgrade the default first step for ordinary new-feature development. The goal is to reuse a mature implementation when available, make the requested feature appear and work on the currently running Arthur as quickly as safely possible, and iterate there until the objective preview acceptance contract passes.
 
-After the feature is visibly and functionally accepted on Arthur, continue through the existing release sequence:
+`LIVE_PREVIEW=PASS` is a checkpoint, not a terminal state and not a reason to wait for routine human confirmation. Unless the user explicitly asks to inspect before continuation, successful automated preview acceptance must immediately continue through the normal production path:
 
 `freeze accepted source -> CHANGE_IMPACT_GATE -> BASELINE_INHERITANCE_GATE -> EXPECTED_DIFF_GATE -> fastest valid Candidate build lane -> artifact/hash checks -> AUTO_FLASH_SAFETY_GATE -> sysupgrade -> reboot -> REAL_DEVICE_VERIFY -> Release -> PRODUCTION_RELEASED`
 
-If one preview action has side effects that cannot be reliably rolled back, do not stop for routine human approval when a safer continuation exists. Automatically execute the safe preview subset, defer only the unsafe acceptance item to formal `REAL_DEVICE_VERIFY`, and continue unattended. Normal recoverable failures should trigger root-cause diagnosis, rollback/repair and retry.
+Do not stop merely because preview status correctly reports `REAL_DEVICE_VERIFY=NOT_RUN` or `RELEASE_ALLOWED=false`; those values mean later production stages remain to be executed.
+
+If one preview action has side effects that cannot be reliably rolled back, do not stop for routine human approval when a safer continuation exists. Automatically execute the safe preview subset, mark only the unsafe acceptance item `DEFERRED_TO_REAL_DEVICE_VERIFY`, continue to Candidate/flash/formal verification, and exercise the deferred item there. Normal recoverable failures must trigger root-cause diagnosis, rollback/repair and retry.
+
+Human visual confirmation is a pause condition only when the user explicitly requests it for the current task or when an acceptance criterion is inherently subjective and cannot be represented by reliable automated checks.
 
 Current Arthur Wi-Fi remains `WIFI=VERIFIED_FROZEN`; ordinary new-feature development must not change or reload it.
 
-Only inherently non-previewable changes such as kernel/modules/drivers, boot-critical components, unsafe ABI-dependent binaries, partition/storage layout or bootloader work bypass the HOT/LIVE loop and go directly to the shortest safe build lane.
+Only inherently non-previewable changes such as kernel/modules/drivers, boot-critical components, unsafe ABI-dependent binaries, partition/storage layout or bootloader work bypass the HOT/LIVE loop and go directly to the shortest safe build lane. The mandatory Reuse Gate still runs first.
 
 The sections below contain older project-state history and must not override this 2026-09-03 execution rule. Live GitHub/device evidence still overrides stale historical state.
 
