@@ -41,7 +41,8 @@ foreach ($fn in @(
     'New-FeatureHandoffState','Load-FeatureHandoffState','Save-FeatureHandoffState','Set-FeatureHandoffStage',
     'Get-FeatureHandoffKey','Test-ProductionWriteInProgress','Assert-FeatureChangedPathsSafe',
     'Get-WorktreeDiffSha256','Get-PreviewManifestIdentity','Freeze-PreviewManifestToOverlay',
-    'Write-AcceptedPreviewRecord','Select-HandoffBuildPlan','Reconcile-ProductionState'
+    'Write-AcceptedPreviewRecord','Select-HandoffBuildPlan','Reconcile-ProductionState',
+    'Assert-HandoffResumeIdentity','Get-HandoffDispatchAction'
 )) {
     Assert-True ([bool](Get-Command $fn -ErrorAction SilentlyContinue)) "feature handoff helper missing: $fn"
 }
@@ -61,14 +62,33 @@ try {
     Assert-Equal $state.current_stage 'PREVIEW_ACCEPTED' 'new state starts at PREVIEW_ACCEPTED'
     Assert-Equal $state.stage_status 'VERIFIED' 'accepted preview checkpoint must be verified'
     Assert-Equal $state.dispatch_key ("arthur-adh-quickstart:" + ('a' * 40)) 'dispatch key must bind feature and accepted source SHA'
+    Assert-Equal $state.dispatch_started_at '' 'new state has no dispatch attempt'
+    Assert-True ($state.dispatch_accepted -eq $false) 'new state has no accepted build dispatch'
     Save-FeatureHandoffState -State $state -StatePath $statePath
     $loaded = Load-FeatureHandoffState -StatePath $statePath
     Assert-Equal $loaded.dispatch_key $state.dispatch_key 'durable state must survive reload'
+
+    Assert-HandoffResumeIdentity -State $state -FeatureId 'arthur-adh-quickstart' -AcceptedPreviewSourceSha ('a' * 40) -AcceptedDiffSha256 ('b' * 64) -PreviewManifestSha256 ('c' * 64)
+    Assert-Throws {
+        Assert-HandoffResumeIdentity -State $state -FeatureId 'arthur-adh-quickstart' -AcceptedPreviewSourceSha ('a' * 40) -AcceptedDiffSha256 ('d' * 64) -PreviewManifestSha256 ('c' * 64)
+    } 'SOURCE_IDENTITY' 'same HEAD with different accepted diff must fail source identity reconciliation'
 
     Assert-True (Test-ProductionWriteInProgress -Stage 'FLASH_STARTED') 'FLASH_STARTED forbids redispatch'
     Assert-True (Test-ProductionWriteInProgress -Stage 'WAIT_DEVICE') 'WAIT_DEVICE forbids redispatch'
     Assert-True (Test-ProductionWriteInProgress -Stage 'REAL_DEVICE_VERIFY') 'REAL_DEVICE_VERIFY forbids redispatch'
     Assert-True (-not (Test-ProductionWriteInProgress -Stage 'CANDIDATE_VERIFIED')) 'Candidate verification alone is not a router write stage'
+
+    Assert-Equal (Get-HandoffDispatchAction -State $state -ProductionStage '') 'DISPATCH' 'new accepted source may dispatch exactly once'
+    $started = (($state | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+    $started.dispatch_started_at = (Get-Date).ToString('o')
+    Assert-Equal (Get-HandoffDispatchAction -State $started -ProductionStage '') 'DISCOVER' 'persisted dispatch start must discover before any redispatch'
+    $accepted = (($started | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+    $accepted.dispatch_accepted = $true
+    Assert-Equal (Get-HandoffDispatchAction -State $accepted -ProductionStage '') 'DISCOVER' 'accepted dispatch without run id must only discover the existing run'
+    $withRun = (($accepted | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+    $withRun.dispatched_run_id = 555
+    Assert-Equal (Get-HandoffDispatchAction -State $withRun -ProductionStage '') 'RECONCILE' 'known run id must attach/reconcile, never redispatch'
+    Assert-Equal (Get-HandoffDispatchAction -State $state -ProductionStage 'WAIT_DEVICE') 'RECONCILE' 'router write/reboot stage must reconcile existing production only'
 
     foreach ($protected in @(
         'config/required-plugins.txt','config/arthur.config','config/arthur-known-good.lock',
@@ -131,6 +151,8 @@ Assert-Contains $handoffText 'arthur-update-v3.yml' 'handoff must dispatch the e
 Assert-Contains $handoffText 'production-agent' 'handoff must attach to existing Production Agent state'
 Assert-Contains $handoffText 'PRODUCTION_RELEASED' 'handoff must recognize sole successful terminal state'
 Assert-Contains $handoffText 'dispatched_run_id' 'handoff must persist one-time dispatch identity'
+Assert-Contains $handoffText 'AcceptPreview' 'handoff must support durable preview acceptance before background continuation'
+Assert-Contains $handoffText 'FileShare]::None' 'handoff must hold an exclusive runtime lock'
 Assert-Contains $installerText 'XinZhaoWrt-Arthur-Feature-Handoff' 'installer must create the persistent recovery task'
 Assert-Contains $installerText 'Register-ScheduledTask' 'installer must use Windows Scheduled Task recovery'
 Assert-True ($installerText -notmatch '(?i)NT AUTHORITY\\SYSTEM|LocalSystem|-UserId\s+["'']?SYSTEM') 'handoff task must not run as SYSTEM'
@@ -141,6 +163,8 @@ Assert-Contains $productionInstallerText 'FEATURE_HANDOFF_PERSISTENT_RUNTIME=PAS
 Assert-Contains $safePreviewText 'FeatureId' 'safe preview must carry feature identity into handoff'
 Assert-Contains $safePreviewText 'PauseAfterLivePreview' 'pause after preview must be explicit'
 Assert-Contains $safePreviewText 'FEATURE_HANDOFF_STARTED=' 'successful preview must start the durable handoff by default'
+Assert-Contains $safePreviewText "'-Mode','AcceptPreview'" 'safe preview must persist accepted state before background continuation'
+Assert-Contains $safePreviewText 'Start-ScheduledTask' 'Task Scheduler must own immediate continuation after acceptance'
 
 foreach ($danger in @('push --force','push -f','reset --hard','clean -fdx')) {
     Assert-True ($handoffText.IndexOf($danger,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) "handoff must not use destructive git operation: $danger"
@@ -148,5 +172,6 @@ foreach ($danger in @('push --force','push -f','reset --hard','clean -fdx')) {
 
 Write-Host 'FEATURE_HANDOFF_STATE_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_SOURCE_IDENTITY_CONTRACT=PASS'
+Write-Host 'FEATURE_HANDOFF_EXACTLY_ONCE_DISPATCH_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_NO_DUPLICATE_FLASH_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_RECOVERY_CONTRACT=PASS'
