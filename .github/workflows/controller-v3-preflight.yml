@@ -46,6 +46,7 @@ jobs:
             'scripts/ci-controller-v3.ps1',
             'scripts/start-ci-controller-v3.ps1',
             'scripts/ci-v3-status.ps1',
+            'scripts/ensure-arthur-unattended-access.ps1',
             'scripts/real-device-verify.ps1',
             'scripts/real-device-verify-v3.ps1'
           )
