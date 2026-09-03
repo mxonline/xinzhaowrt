@@ -42,6 +42,13 @@ function Test-Prefix([string]$Value, [string[]]$Prefixes) {
     return $false
 }
 
+function Test-Exact([string]$Value, [object[]]$Values) {
+    foreach ($candidate in @($Values)) {
+        if ($Value.Equals([string]$candidate, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
 function Test-RepoPathAllowed([string]$RepoPath, $Policy) {
     $p = Normalize-RepoPath $RepoPath
     if (Test-Prefix $p @($Policy.forbidden_repo_prefixes)) { return $false }
@@ -52,6 +59,11 @@ function Test-RemotePathAllowed([string]$RemotePath, $Policy) {
     if (-not $RemotePath.StartsWith('/')) { return $false }
     if ($RemotePath -match '(?:^|/)\.\.(?:/|$)') { return $false }
     if ($RemotePath -notmatch '^/[A-Za-z0-9._/@+=,:-]+$') { return $false }
+
+    $exact = @()
+    if ($Policy.PSObject.Properties['allowed_remote_exact']) { $exact = @($Policy.allowed_remote_exact) }
+    if (Test-Exact $RemotePath $exact) { return $true }
+
     if (-not (Test-Prefix $RemotePath @($Policy.allowed_remote_prefixes))) { return $false }
     if (Test-Prefix $RemotePath @($Policy.forbidden_remote_prefixes)) { return $false }
     return $true
@@ -64,17 +76,20 @@ function Test-ControlOnlyRepoPath([string]$RepoPath) {
         $p.StartsWith('knowledge/') -or
         $p.StartsWith('tests/') -or
         $p.StartsWith('.github/') -or
+        $p -eq '.gitignore' -or
         $p -eq 'scripts/live-preview.ps1' -or
+        $p -eq 'scripts/prepare-live-preview-sources.ps1' -or
         $p -eq 'scripts/classify-build-scope.sh' -or
         $p -eq 'scripts/verify-project.sh' -or
         $p -eq 'production/live-preview-policy.json' -or
+        $p -eq 'production/mature-ui-sources.json' -or
         $p -eq 'AGENTS.md'
     )
 }
 
 function Get-Policy {
-    if (-not (Test-Path $PolicyPath)) { throw "LIVE_PREVIEW_POLICY_MISSING path=$PolicyPath" }
-    try { $policy = Get-Content -Raw $PolicyPath | ConvertFrom-Json -Depth 20 }
+    if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) { throw "LIVE_PREVIEW_POLICY_MISSING path=$PolicyPath" }
+    try { $policy = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json -Depth 20 }
     catch { throw "LIVE_PREVIEW_POLICY_INVALID $($_.Exception.Message)" }
     if ([int]$policy.schema_version -ne 1) { throw "LIVE_PREVIEW_POLICY_SCHEMA_UNSUPPORTED actual=$($policy.schema_version)" }
     $hostPart = Get-TargetHost
@@ -98,15 +113,15 @@ function Resolve-AutoMappedEntry([string]$RepoPath, $Policy) {
         if ($RepoPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             $suffix = $RepoPath.Substring($prefix.Length)
             $remote = ([string]$mapping.remote_prefix) + $suffix
-            return [pscustomobject]@{ Source = $RepoPath; Remote = $remote }
+            return [pscustomobject]@{ Source = $RepoPath; Remote = $remote; Mode = '0644' }
         }
     }
     return $null
 }
 
 function Read-ExplicitManifest([string]$Path, $Policy) {
-    $resolved = (Resolve-Path $Path).Path
-    try { $parsed = Get-Content -Raw $resolved | ConvertFrom-Json -Depth 20 }
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    try { $parsed = Get-Content -Raw -LiteralPath $resolved | ConvertFrom-Json -Depth 20 }
     catch { throw "LIVE_PREVIEW_MANIFEST_INVALID $($_.Exception.Message)" }
     $entriesProperty = $parsed.PSObject.Properties['entries']
     $rawEntries = if ($entriesProperty) { @($parsed.entries) } else { @($parsed) }
@@ -116,12 +131,16 @@ function Read-ExplicitManifest([string]$Path, $Policy) {
     foreach ($raw in $rawEntries) {
         $source = Normalize-RepoPath ([string]$raw.source)
         $remote = [string]$raw.remote
+        $mode = '0644'
+        if ($raw.PSObject.Properties['mode']) { $mode = [string]$raw.mode }
+        if ($mode -notin @('0644','0755')) { throw "LIVE_PREVIEW_MODE_FORBIDDEN source=$source mode=$mode" }
         if (-not (Test-RepoPathAllowed $source $Policy)) { throw "LIVE_PREVIEW_SOURCE_FORBIDDEN path=$source" }
         if (-not (Test-RemotePathAllowed $remote $Policy)) { throw "LIVE_PREVIEW_REMOTE_FORBIDDEN path=$remote" }
         $full = [System.IO.Path]::GetFullPath((Join-Path $Root ($source -replace '/','\')))
-        if (-not $full.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) { throw "LIVE_PREVIEW_SOURCE_OUTSIDE_REPO path=$source" }
+        $rootPrefix = $Root.TrimEnd('\') + '\'
+        if (-not $full.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) { throw "LIVE_PREVIEW_SOURCE_OUTSIDE_REPO path=$source" }
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "LIVE_PREVIEW_SOURCE_MISSING path=$source" }
-        $entries.Add([pscustomobject]@{ Source = $source; Remote = $remote })
+        $entries.Add([pscustomobject]@{ Source = $source; Remote = $remote; Mode = $mode })
     }
     return @($entries)
 }
@@ -246,8 +265,13 @@ function New-LivePreviewBackup([object[]]$Entries, $Policy) {
     Write-Host "LIVE_PREVIEW_BACKUP=PASS path=$($script:BackupDir)"
 }
 
+function Stop-AdGuardPreviewProcess {
+    Invoke-Remote '/etc/init.d/AdGuardHome stop >/dev/null 2>&1 || true; pkill -TERM AdGuardHome >/dev/null 2>&1 || true; sleep 1; pkill -KILL AdGuardHome >/dev/null 2>&1 || true' -AllowFailure | Out-Null
+}
+
 function Restore-LivePreviewBackup($Policy) {
     if (-not $script:MutationStarted) { return }
+    if ($Feature -in @('AdGuard','Both')) { Stop-AdGuardPreviewProcess }
     for ($i = $script:BackupRecords.Count - 1; $i -ge 0; $i--) {
         $record = $script:BackupRecords[$i]
         $remote = [string]$record.Remote
@@ -259,9 +283,6 @@ function Restore-LivePreviewBackup($Policy) {
     }
     if ($script:TouchedRpcd) { Invoke-Remote '/etc/init.d/rpcd restart' -AllowFailure | Out-Null }
     Clear-LuciCaches $Policy
-    if ($Feature -in @('AdGuard','Both')) {
-        Invoke-Remote '/etc/init.d/adguardhome stop >/dev/null 2>&1 || true; /etc/init.d/adguardhome disable >/dev/null 2>&1 || true' -AllowFailure | Out-Null
-    }
     Write-Host 'LIVE_PREVIEW=FAIL_ROLLED_BACK'
 }
 
@@ -274,15 +295,17 @@ function Install-PreviewEntries([object[]]$Entries, $Policy) {
             $index += 1
             $source = Join-Path $Root (([string]$entry.Source) -replace '/','\')
             $remote = [string]$entry.Remote
+            $mode = [string]$entry.Mode
+            if ($mode -notin @('0644','0755')) { throw "LIVE_PREVIEW_MODE_FORBIDDEN source=$($entry.Source) mode=$mode" }
             $temp = "$remoteTemp/$index"
             $localHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
             Copy-ToRemote $source $temp
             $script:MutationStarted = $true
-            Invoke-Remote "mkdir -p \"`$(dirname '$remote')\"; cp '$temp' '$remote'; chmod 0644 '$remote'" | Out-Null
+            Invoke-Remote "mkdir -p \"`$(dirname '$remote')\"; cp '$temp' '$remote'; chmod $mode '$remote'" | Out-Null
             $remoteHash = (Invoke-Remote "sha256sum '$remote' | cut -d' ' -f1").Output.Trim().ToLowerInvariant()
             if ($remoteHash -ne $localHash) { throw "LIVE_PREVIEW_HASH_MISMATCH source=$($entry.Source) remote=$remote" }
             if ($remote.StartsWith('/usr/share/rpcd/acl.d/')) { $script:TouchedRpcd = $true }
-            Write-Host "LIVE_PREVIEW_FILE=PASS source=$($entry.Source) remote=$remote sha256=$localHash"
+            Write-Host "LIVE_PREVIEW_FILE=PASS source=$($entry.Source) remote=$remote mode=$mode sha256=$localHash"
         }
         if ($script:TouchedRpcd) { Invoke-Remote '/etc/init.d/rpcd restart' | Out-Null }
         Clear-LuciCaches $Policy
@@ -319,72 +342,86 @@ function Invoke-AuthenticatedLuciPage([string]$Route, $Policy) {
     }
 }
 
-function Invoke-Ubus($Request, $Policy) {
-    $hostPart = [string]$Policy.device.management_ip
-    $body = $Request | ConvertTo-Json -Compress -Depth 12
-    $response = Invoke-Curl @('-sS','--max-time','15','-H','Content-Type: application/json','--data-binary',$body,"http://$hostPart/ubus")
-    $json = $null
-    if ($response.ExitCode -eq 0) {
-        try { $json = $response.Output | ConvertFrom-Json -Depth 20 } catch { }
+function Assert-LuciPage([string]$Route, [string]$Marker, [string]$Failure, $Policy) {
+    $body = Invoke-AuthenticatedLuciPage $Route $Policy
+    if ([string]::IsNullOrWhiteSpace($body) -or $body -match '(?i)x-luci-login-required|luci_username|登录') {
+        throw "$Failure reason=login-or-empty"
     }
-    return [pscustomobject]@{ ExitCode = $response.ExitCode; Output = $response.Output; Json = $json }
+    if ($Marker -and $body -notmatch $Marker) { throw "$Failure reason=marker-missing marker=$Marker" }
+    return $body
 }
 
-function Assert-AdGuardRpcAccess($Policy) {
-    if (-not $RootPassword) { throw 'LIVE_PREVIEW_AUTH_REQUIRED: ARTHUR_ROOT_PASSWORD is not set.' }
-    $loginRequest = [ordered]@{ jsonrpc = '2.0'; id = 1; method = 'call'; params = @('00000000000000000000000000000000','session','login',[ordered]@{ username='root'; password=$RootPassword; timeout=300 }) }
-    $login = Invoke-Ubus $loginRequest $Policy
-    $sid = $null
-    if ($login.Json -and @($login.Json.result).Count -ge 2 -and $login.Json.result[0] -eq 0) { $sid = [string]$login.Json.result[1].ubus_rpc_session }
-    if (-not $sid) { throw "ADGUARD_PREVIEW_RPC_LOGIN_FAILED output=$($login.Output)" }
+function Assert-HttpAsset([string]$Path, [int]$MinimumBytes, [string]$Failure, $Policy) {
+    $hostPart = [string]$Policy.device.management_ip
+    $temp = Join-Path ([System.IO.Path]::GetTempPath()) "xinzhao-live-preview-asset-$PID-$([Guid]::NewGuid().ToString('N'))"
     try {
-        $probes = @(
-            @{ scope='ubus'; object='luci'; function='getInitList' },
-            @{ scope='ubus'; object='luci'; function='setInitAction' },
-            @{ scope='file'; object='/etc/adguardhome/adguardhome.yaml'; function='read' },
-            @{ scope='file'; object='/etc/adguardhome/adguardhome.yaml'; function='write' },
-            @{ scope='file'; object='/usr/bin/AdGuardHome --version'; function='exec' }
-        )
-        foreach ($probe in $probes) {
-            $request = [ordered]@{ jsonrpc='2.0'; id=2; method='call'; params=@($sid,'session','access',$probe) }
-            $response = Invoke-Ubus $request $Policy
-            $allowed = $false
-            if ($response.Json -and @($response.Json.result).Count -ge 2 -and $response.Json.result[0] -eq 0) { $allowed = [bool]$response.Json.result[1].access }
-            if (-not $allowed) { throw "ADGUARD_PREVIEW_RPC_ACCESS_DENIED scope=$($probe.scope) object=$($probe.object) function=$($probe.function)" }
+        $response = Invoke-Curl @('-sS','--max-time','15','-o',$temp,'-w','HTTP:%{http_code}',"http://$hostPart$Path")
+        if ($response.ExitCode -ne 0 -or $response.Output -notmatch '^HTTP:200$') {
+            throw "$Failure output=$($response.Output)"
         }
+        $length = (Get-Item -LiteralPath $temp).Length
+        if ($length -lt $MinimumBytes) { throw "$Failure bytes=$length expected_at_least=$MinimumBytes" }
     } finally {
-        Invoke-Ubus ([ordered]@{ jsonrpc='2.0'; id=3; method='call'; params=@($sid,'session','destroy',[ordered]@{}) }) $Policy | Out-Null
+        Remove-Item -Force -ErrorAction SilentlyContinue $temp
     }
 }
 
 function Ensure-AdGuardDisabled {
-    Invoke-Remote '/etc/init.d/adguardhome stop >/dev/null 2>&1 || true; /etc/init.d/adguardhome disable >/dev/null 2>&1 || true' -AllowFailure | Out-Null
+    Invoke-Remote "uci -q set AdGuardHome.AdGuardHome.enabled='0'; uci -q commit AdGuardHome; /etc/init.d/AdGuardHome stop >/dev/null 2>&1 || true; /etc/init.d/AdGuardHome disable >/dev/null 2>&1 || true" -AllowFailure | Out-Null
 }
 
 function Test-AdGuardPreview($Policy) {
-    $body = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_route) $Policy
-    if ([string]::IsNullOrWhiteSpace($body) -or $body -notmatch '(?i)AdGuard' -or $body -match '(?i)x-luci-login-required|luci_username|登录') {
-        throw 'ADGUARD_PREVIEW_PAGE_INCOMPLETE'
-    }
+    Assert-RemoteOutput "test -x /etc/init.d/AdGuardHome && echo ADGUARD_INIT_OK" '^ADGUARD_INIT_OK$' 'ADGUARD_PREVIEW_INIT_MISSING' | Out-Null
+    Assert-RemoteOutput "test -r /etc/AdGuardHome.yaml && test -w /etc/AdGuardHome.yaml && echo ADGUARD_CONFIG_RW_OK" '^ADGUARD_CONFIG_RW_OK$' 'ADGUARD_PREVIEW_CONFIG_ACCESS_FAILED' | Out-Null
+    Assert-RemoteOutput "test -x /usr/share/AdGuardHome/update_core.sh && echo ADGUARD_UPDATE_TOOL_OK" '^ADGUARD_UPDATE_TOOL_OK$' 'ADGUARD_PREVIEW_UPDATE_TOOL_MISSING' | Out-Null
     Assert-RemoteOutput '/usr/bin/AdGuardHome --version 2>&1' '(?i)AdGuard Home|AdGuardHome' 'ADGUARD_PREVIEW_CORE_MISSING' | Out-Null
-    Assert-AdGuardRpcAccess $Policy
+
     Ensure-AdGuardDisabled
-    Invoke-Remote '/etc/init.d/adguardhome start' | Out-Null
-    Start-Sleep -Seconds 2
-    Assert-RemoteOutput "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_RUNNING" '^ADGUARD_RUNNING$' 'ADGUARD_PREVIEW_START_FAILED' | Out-Null
+    Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.enabled' '^0$' 'ADGUARD_PREVIEW_DEFAULT_ENABLE_STATE_FAILED' | Out-Null
+    Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.redirect' '^none$' 'ADGUARD_PREVIEW_REDIRECT_NOT_SAFE' | Out-Null
+    Assert-RemoteOutput "uci -q get dhcp.@dnsmasq[0].port >/dev/null && echo DNSMASQ_PORT_PRESENT" '^DNSMASQ_PORT_PRESENT$' 'ADGUARD_PREVIEW_DNSMASQ_GUARD_FAILED' | Out-Null
+
+    Assert-LuciPage ([string]$Policy.adguard_route) '(?i)AdGuard' 'ADGUARD_PREVIEW_OVERVIEW_INCOMPLETE' $Policy | Out-Null
+    Assert-LuciPage ([string]$Policy.adguard_base_route) '(?i)AdGuard|基础|设置' 'ADGUARD_PREVIEW_BASE_INCOMPLETE' $Policy | Out-Null
+    Assert-LuciPage ([string]$Policy.adguard_tools_route) '(?i)AdGuard|运维|更新' 'ADGUARD_PREVIEW_TOOLS_INCOMPLETE' $Policy | Out-Null
+    Assert-LuciPage ([string]$Policy.adguard_log_route) '(?i)AdGuard|日志|log' 'ADGUARD_PREVIEW_LOG_INCOMPLETE' $Policy | Out-Null
+    Assert-LuciPage ([string]$Policy.adguard_manual_route) '(?i)AdGuard|YAML|手动' 'ADGUARD_PREVIEW_MANUAL_INCOMPLETE' $Policy | Out-Null
+
+    $statusBefore = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy
+    if ($statusBefore -notmatch '"running"\s*:\s*false') { throw "ADGUARD_PREVIEW_STATUS_BEFORE_INVALID body=$statusBefore" }
+
+    Invoke-Remote '/etc/init.d/AdGuardHome start' | Out-Null
+    Start-Sleep -Seconds 3
+    Assert-RemoteOutput "pgrep -x AdGuardHome >/dev/null && echo ADGUARD_RUNNING" '^ADGUARD_RUNNING$' 'ADGUARD_PREVIEW_START_FAILED' | Out-Null
+    $statusRunning = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy
+    if ($statusRunning -notmatch '"running"\s*:\s*true') { throw "ADGUARD_PREVIEW_STATUS_RUNNING_INVALID body=$statusRunning" }
+
     $webPort = if ($Policy.PSObject.Properties['adguard_web_port']) { [int]$Policy.adguard_web_port } else { 3000 }
     Assert-RemoteOutput "curl -sS --max-time 5 -o /dev/null -w 'HTTP:%{http_code}' http://127.0.0.1:$webPort/" '^HTTP:(200|301|302|401|403)$' 'ADGUARD_PREVIEW_WEB_FAILED' | Out-Null
     Assert-RemoteOutput "logread -e AdGuardHome -l 20 >/dev/null 2>&1 || true; echo ADGUARD_LOG_READ_OK" '^ADGUARD_LOG_READ_OK$' 'ADGUARD_PREVIEW_LOG_READ_FAILED' | Out-Null
+
     Ensure-AdGuardDisabled
-    Assert-RemoteOutput "/etc/init.d/adguardhome enabled >/dev/null 2>&1 && echo ADGUARD_ENABLED || echo ADGUARD_DISABLED" '^ADGUARD_DISABLED$' 'ADGUARD_PREVIEW_FINAL_ENABLE_STATE_FAILED' | Out-Null
-    Assert-RemoteOutput "pgrep -f '[A]dGuardHome' >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED" '^ADGUARD_STOPPED$' 'ADGUARD_PREVIEW_FINAL_PROCESS_STATE_FAILED' | Out-Null
+    Assert-RemoteOutput "/etc/init.d/AdGuardHome enabled >/dev/null 2>&1 && echo ADGUARD_ENABLED || echo ADGUARD_DISABLED" '^ADGUARD_DISABLED$' 'ADGUARD_PREVIEW_FINAL_ENABLE_STATE_FAILED' | Out-Null
+    Assert-RemoteOutput "pgrep -x AdGuardHome >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED" '^ADGUARD_STOPPED$' 'ADGUARD_PREVIEW_FINAL_PROCESS_STATE_FAILED' | Out-Null
+    Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.enabled' '^0$' 'ADGUARD_PREVIEW_FINAL_UCI_STATE_FAILED' | Out-Null
+    $statusAfter = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy
+    if ($statusAfter -notmatch '"running"\s*:\s*false') { throw "ADGUARD_PREVIEW_STATUS_AFTER_INVALID body=$statusAfter" }
+
     Write-Host 'ADGUARD_PREVIEW=PASS'
 }
 
 function Test-QuickStartPreview($Policy) {
+    Assert-RemoteOutput "pgrep -x quickstart >/dev/null && echo QUICKSTART_BACKEND_RUNNING" '^QUICKSTART_BACKEND_RUNNING$' 'QUICKSTART_PREVIEW_BACKEND_NOT_RUNNING' | Out-Null
     $body = Invoke-AuthenticatedLuciPage ([string]$Policy.quickstart_route) $Policy
-    $ok = ($body -match '(?i)luci-static/quickstart/index\.js') -and ($body -match '(?i)<div[^>]+id=["'']app["'']') -and ($body -match '(?i)QuickStart') -and ($body -notmatch '(?i)x-luci-login-required|luci_username|登录')
+    $ok = ($body -match '(?i)luci-static/quickstart/index\.js') -and
+          ($body -match '(?i)luci-static/quickstart/style\.css') -and
+          ($body -match '(?i)<div[^>]+id=["'']app["'']') -and
+          ($body -notmatch '(?i)x-luci-login-required|luci_username|登录')
     if (-not $ok) { throw 'QUICKSTART_PREVIEW_PAGE_INCOMPLETE' }
+
+    Assert-HttpAsset '/luci-static/quickstart/index.js' 100000 'QUICKSTART_PREVIEW_INDEX_ASSET_FAILED' $Policy
+    Assert-HttpAsset '/luci-static/quickstart/style.css' 50000 'QUICKSTART_PREVIEW_STYLE_ASSET_FAILED' $Policy
+    Assert-HttpAsset '/luci-static/quickstart/vendor.js' 100000 'QUICKSTART_PREVIEW_VENDOR_ASSET_FAILED' $Policy
     Write-Host 'QUICKSTART_PREVIEW=PASS'
 }
 
