@@ -4,7 +4,9 @@ Set-StrictMode -Version Latest
 
 $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Launcher=Join-Path $PSScriptRoot 'start-production-agent.ps1'
+$FeatureHandoffInstaller=Join-Path $PSScriptRoot 'install-feature-handoff.ps1'
 if (-not (Test-Path $Launcher)) { throw "Launcher missing: $Launcher" }
+if (-not (Test-Path $FeatureHandoffInstaller)) { throw "Feature handoff installer missing: $FeatureHandoffInstaller" }
 
 foreach ($tool in @('gh.exe','ssh.exe','scp.exe')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Required command missing: $tool" }
@@ -118,4 +120,10 @@ Start-ScheduledTask -TaskName $TaskName
 Start-Sleep -Seconds 2
 $registered=Get-ScheduledTask -TaskName $TaskName
 Write-Host "PRODUCTION_AGENT_INSTALL=PASS task=$TaskName state=$($registered.State) user=$CurrentUser pwsh=$Pwsh"
+
+# The Feature Handoff task is installed from the same persistent runtime so a
+# successful LIVE_PREVIEW survives Codex/terminal exit and Windows restart.
+& $Pwsh -NoProfile -ExecutionPolicy Bypass -File $FeatureHandoffInstaller
+if ($LASTEXITCODE -ne 0) { throw "Feature Handoff installer failed: $LASTEXITCODE" }
+Write-Host 'FEATURE_HANDOFF_PERSISTENT_RUNTIME=PASS'
 Write-Host 'Routine firmware production no longer requires manual PowerShell continuation.'
