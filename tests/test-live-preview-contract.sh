@@ -7,28 +7,36 @@ fail() { echo "LIVE_PREVIEW_CONTRACT: FAIL -- $*" >&2; exit 1; }
 policy="$ROOT/production/live-preview-policy.json"
 sources="$ROOT/production/mature-ui-sources.json"
 script="$ROOT/scripts/live-preview.ps1"
+safe="$ROOT/scripts/live-preview-mature-safe.ps1"
 prepare="$ROOT/scripts/prepare-live-preview-sources.ps1"
 [[ -s "$policy" ]] || fail 'live preview policy missing'
 [[ -s "$sources" ]] || fail 'mature UI source lock missing'
 [[ -s "$script" ]] || fail 'live preview executor missing'
+[[ -s "$safe" ]] || fail 'safe mature preview wrapper missing'
 [[ -s "$prepare" ]] || fail 'mature source preparation script missing'
 
-grep -Fq 'WIFI=VERIFIED_FROZEN' "$script" || fail 'Wi-Fi frozen marker missing'
-grep -Fq 'REAL_DEVICE_VERIFY=NOT_RUN' "$script" || fail 'preview must not claim formal real-device verification'
-grep -Fq 'RELEASE_ALLOWED=false' "$script" || fail 'preview must never allow release'
-grep -Fq 'LIVE_PREVIEW=FAIL_ROLLED_BACK' "$script" || fail 'automatic rollback marker missing'
-grep -Fq 'xinzhaowrt-live-preview' "$script" || fail 'router-side backup root missing'
-grep -Fq 'Invoke-AuthenticatedLuciPage' "$script" || fail 'authenticated LuCI check missing'
-grep -Fq 'Test-AdGuardPreview' "$script" || fail 'AdGuard preview check missing'
-grep -Fq 'Test-QuickStartPreview' "$script" || fail 'QuickStart preview check missing'
+grep -Fq 'WIFI=VERIFIED_FROZEN' "$safe" || fail 'Wi-Fi frozen marker missing from safe wrapper'
+grep -Fq 'REAL_DEVICE_VERIFY=NOT_RUN' "$safe" || fail 'safe preview must not claim formal real-device verification'
+grep -Fq 'RELEASE_ALLOWED=false' "$safe" || fail 'safe preview must never allow release'
+grep -Fq 'LIVE_PREVIEW=FAIL_ROLLED_BACK' "$safe" || fail 'safe wrapper rollback marker missing'
+grep -Fq 'ADGUARD_UI_PREVIEW=PASS' "$safe" || fail 'AdGuard UI preview marker missing'
+grep -Fq 'ADGUARD_NETWORK_MUTATION_TEST=DEFERRED_TO_REAL_DEVICE_VERIFY' "$safe" || fail 'unsafe ADH runtime test must defer automatically'
+grep -Fq 'ADGUARD_WEB_RUNTIME_TEST=DEFERRED_TO_REAL_DEVICE_VERIFY' "$safe" || fail 'ADH runtime web test must defer automatically'
+grep -Fq 'QUICKSTART_PREVIEW=PASS' "$safe" || fail 'QuickStart preview marker missing'
+grep -Fq 'Invoke-AuthenticatedLuciPage' "$safe" || fail 'authenticated LuCI check missing from safe wrapper'
+grep -Fq 'live-preview.ps1' "$safe" || fail 'safe wrapper must reuse the generic deploy executor'
+grep -Fq 'Generic' "$safe" || fail 'safe wrapper must use Generic deploy mode'
+
 grep -Fq 'allowed_remote_exact' "$script" || fail 'exact-path safety exception support missing'
 grep -Fq 'Mode' "$script" || fail 'per-file mode support missing'
 grep -Fq '/etc/init.d/AdGuardHome' "$script" || fail 'mature AdGuard init path missing'
-grep -Fq 'style.css' "$script" || fail 'QuickStart stylesheet completeness check missing'
-grep -Fq 'vendor.js' "$script" || fail 'QuickStart vendor bundle completeness check missing'
+grep -Fq 'style.css' "$safe" || fail 'QuickStart stylesheet completeness check missing'
+grep -Fq 'vendor.js' "$safe" || fail 'QuickStart vendor bundle completeness check missing'
 
-! grep -Eq 'uci[[:space:]]+(set|delete|rename)[[:space:]]+wireless|wifi[[:space:]]+(reload|down|up)' "$script" || fail 'preview script contains Wi-Fi mutation'
-! grep -Eq '/sbin/sysupgrade|(^|[^[:alnum:]_])mtd([^[:alnum:]_]|$)|dd[[:space:]].*of=/dev/' "$script" || fail 'preview script contains flash/raw-write operation'
+! grep -Eq 'uci[[:space:]]+(set|delete|rename)[[:space:]]+wireless|wifi[[:space:]]+(reload|down|up)' "$safe" || fail 'safe preview contains Wi-Fi mutation'
+! grep -Eq '/sbin/sysupgrade|(^|[^[:alnum:]_])mtd([^[:alnum:]_]|$)|dd[[:space:]].*of=/dev/' "$safe" || fail 'safe preview contains flash/raw-write operation'
+! grep -Eq '/etc/init\.d/AdGuardHome[[:space:]]+(start|stop|restart|reload|enable|disable)' "$safe" || fail 'safe preview must not invoke mature AdGuard init mutations'
+! grep -Eq 'uci[[:space:]].*(dhcp|firewall)|iptables|ip6tables|nft[[:space:]]' "$safe" || fail 'safe preview must not mutate DNS/firewall runtime'
 
 python3 - "$policy" "$sources" <<'PY'
 import json, sys
@@ -69,4 +77,4 @@ assert by_name['quickstart']['ref'] == '7e5083e2ca4cfa4d31f312026f46e5213c5b03f5
 assert by_name['quickstart']['subdir'] == 'luci/luci-app-quickstart'
 PY
 
-echo 'PASS: LIVE_PREVIEW mature UI safety contract is present.'
+echo 'PASS: LIVE_PREVIEW mature UI safe-fallback contract is present.'
