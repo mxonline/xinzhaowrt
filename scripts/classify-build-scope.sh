@@ -51,7 +51,7 @@ while IFS= read -r path; do
     scripts/repair-github-runner.ps1|scripts/bootstrap-arthur-host-key.ps1|\
     scripts/fetch-production-artifact.ps1|scripts/auto-flash-safety-gate.ps1|\
     scripts/real-device-baseline-lib.ps1|scripts/real-device-snapshot.ps1|scripts/real-device-baseline-gate.ps1|\
-    scripts/live-preview.ps1|scripts/prepare-live-preview-sources.ps1|\
+    scripts/live-preview.ps1|scripts/live-preview-mature-safe.ps1|scripts/prepare-live-preview-sources.ps1|\
     scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|\
     production/v3-request.json|production/request.json|production/known-good-request.json|\
     production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json|\
