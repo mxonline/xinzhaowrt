@@ -21,10 +21,12 @@ $CurrentUser="$env:USERDOMAIN\$env:USERNAME"
 $Action=New-ScheduledTaskAction -Execute $Pwsh -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Handoff`" -Mode Resume" -WorkingDirectory $Root
 $LogonTrigger=New-ScheduledTaskTrigger -AtLogOn -User $CurrentUser
 $Settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 50 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-$Principal=New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interactive -RunLevel Highest
+# Feature Handoff only performs user-level Git/gh/PowerShell orchestration. Requiring
+# Highest makes registration fail for the normal non-admin Codex/LIVE_PREVIEW user.
+$Principal=New-ScheduledTaskPrincipal -UserId $CurrentUser -LogonType Interactive -RunLevel Limited
 $Task=New-ScheduledTask -Action $Action -Trigger $LogonTrigger -Settings $Settings -Principal $Principal -Description 'Resume accepted Arthur LIVE_PREVIEW handoff into the existing v3 production controller until PRODUCTION_RELEASED.'
 Register-ScheduledTask -TaskName $TaskName -InputObject $Task -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
 Start-Sleep -Milliseconds 500
 $registered=Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-Write-Host "FEATURE_HANDOFF_INSTALL=PASS task=$TaskName state=$($registered.State) user=$CurrentUser"
+Write-Host "FEATURE_HANDOFF_INSTALL=PASS task=$TaskName state=$($registered.State) user=$CurrentUser runlevel=Limited"
