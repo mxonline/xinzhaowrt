@@ -169,6 +169,102 @@ function Get-MinimumInvalidationForImpact {
     }
 }
 
+function Get-Sha256HexFromText {
+    param([Parameter(Mandatory)][string]$Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
+    } finally { $sha.Dispose() }
+}
+
+function Get-AcceptedPreviewFingerprint {
+    param(
+        [Parameter(Mandatory)]$AcceptedRecord,
+        [string]$PreviewPolicyIdentity = ''
+    )
+    $required = @('feature_id','accepted_preview_source_sha','accepted_diff_sha256','preview_manifest_sha256','frozen_files')
+    foreach ($name in $required) {
+        if ($AcceptedRecord.PSObject.Properties.Name -notcontains $name) { throw "FAST_SAFE_RELEASE_PREVIEW_RECORD_MISSING=$name" }
+    }
+    $source = [string]$AcceptedRecord.accepted_preview_source_sha
+    $diff = [string]$AcceptedRecord.accepted_diff_sha256
+    $manifest = [string]$AcceptedRecord.preview_manifest_sha256
+    if ($source -notmatch '^[0-9a-fA-F]{40}$') { throw 'FAST_SAFE_RELEASE_PREVIEW_SOURCE_SHA_INVALID' }
+    if ($diff -notmatch '^[0-9a-fA-F]{64}$') { throw 'FAST_SAFE_RELEASE_PREVIEW_DIFF_SHA_INVALID' }
+    if ($manifest -notmatch '^[0-9a-fA-F]{64}$') { throw 'FAST_SAFE_RELEASE_PREVIEW_MANIFEST_SHA_INVALID' }
+    if (-not $PreviewPolicyIdentity) {
+        $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+        $policyPath = Join-Path $root 'production/live-preview-policy.json'
+        if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) { throw 'FAST_SAFE_RELEASE_PREVIEW_POLICY_MISSING' }
+        $PreviewPolicyIdentity = (Get-FileHash -Algorithm SHA256 -LiteralPath $policyPath).Hash.ToLowerInvariant()
+    }
+    $files = @($AcceptedRecord.frozen_files)
+    if ($files.Count -eq 0) { throw 'FAST_SAFE_RELEASE_PREVIEW_RECORD_EMPTY' }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("feature=$([string]$AcceptedRecord.feature_id)")
+    $lines.Add("source=$($source.ToLowerInvariant())")
+    $lines.Add("diff=$($diff.ToLowerInvariant())")
+    $lines.Add("manifest=$($manifest.ToLowerInvariant())")
+    $lines.Add("policy=$PreviewPolicyIdentity")
+    foreach ($file in @($files | Sort-Object { [string]$_.remote })) {
+        $remote = [string]$file.remote
+        $hash = [string]$file.sha256
+        $mode = [string]$file.mode
+        if (-not $remote.StartsWith('/')) { throw "FAST_SAFE_RELEASE_PREVIEW_REMOTE_INVALID=$remote" }
+        if ($hash -notmatch '^[0-9a-fA-F]{64}$') { throw "FAST_SAFE_RELEASE_PREVIEW_FILE_SHA_INVALID=$remote" }
+        if (-not $mode) { throw "FAST_SAFE_RELEASE_PREVIEW_MODE_MISSING=$remote" }
+        $lines.Add("file=$remote|$($hash.ToLowerInvariant())|$mode")
+    }
+    return Get-Sha256HexFromText -Text (($lines.ToArray()) -join "`n")
+}
+
+function Get-PreviewReuseDecision {
+    param(
+        [Parameter(Mandatory)]$AcceptedRecord,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$DeviceHashes,
+        [string]$PreviewPolicyIdentity = ''
+    )
+    try {
+        $fingerprint = Get-AcceptedPreviewFingerprint -AcceptedRecord $AcceptedRecord -PreviewPolicyIdentity $PreviewPolicyIdentity
+    } catch {
+        return [pscustomobject][ordered]@{
+            action = 'INVALIDATE_PREVIEW'
+            reason = $_.Exception.Message
+            fingerprint = ''
+            paths = @()
+            source_discovery_allowed = $true
+            full_preview_deploy_allowed = $true
+        }
+    }
+    $drifted = New-Object System.Collections.Generic.List[string]
+    foreach ($file in @($AcceptedRecord.frozen_files | Sort-Object { [string]$_.remote })) {
+        $remote = [string]$file.remote
+        $expected = ([string]$file.sha256).ToLowerInvariant()
+        $has = $DeviceHashes.Contains($remote)
+        $actual = if ($has) { ([string]$DeviceHashes[$remote]).ToLowerInvariant() } else { '' }
+        if (-not $has -or $actual -ne $expected) { $drifted.Add($remote) }
+    }
+    if ($drifted.Count -eq 0) {
+        return [pscustomobject][ordered]@{
+            action = 'REUSE_PREVIEW_ACCEPTED'
+            reason = 'accepted fingerprint and all target hashes match'
+            fingerprint = $fingerprint
+            paths = @()
+            source_discovery_allowed = $false
+            full_preview_deploy_allowed = $false
+        }
+    }
+    return [pscustomobject][ordered]@{
+        action = 'RESTORE_DRIFTED_PREVIEW_FILES'
+        reason = 'accepted fingerprint is reusable; target file drift requires minimum restore'
+        fingerprint = $fingerprint
+        paths = @($drifted.ToArray())
+        source_discovery_allowed = $false
+        full_preview_deploy_allowed = $false
+    }
+}
+
 function Set-ReleaseProgress {
     param(
         [Parameter(Mandatory)]$State,
