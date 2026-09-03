@@ -16,6 +16,27 @@ run_case() {
   fi
 }
 
+run_contract_case() {
+  local expected_class="$1"
+  local expected_invalidation="$2"
+  local expected_build="$3"
+  shift 3
+  local actual
+  actual="$(printf '%s\n' "$@" | bash "$CLASSIFIER" --release-contract)"
+  grep -Fxq "RELEASE_IMPACT_CLASS=$expected_class" <<<"$actual" || {
+    printf 'FAIL: expected RELEASE_IMPACT_CLASS=%s, got:\n%s\n' "$expected_class" "$actual" >&2
+    exit 1
+  }
+  grep -Fxq "MINIMUM_INVALIDATION=$expected_invalidation" <<<"$actual" || {
+    printf 'FAIL: expected MINIMUM_INVALIDATION=%s, got:\n%s\n' "$expected_invalidation" "$actual" >&2
+    exit 1
+  }
+  grep -Fxq "FIRMWARE_BUILD_REQUIRED=$expected_build" <<<"$actual" || {
+    printf 'FAIL: expected FIRMWARE_BUILD_REQUIRED=%s, got:\n%s\n' "$expected_build" "$actual" >&2
+    exit 1
+  }
+}
+
 run_case DOC_ONLY \
   README.md \
   knowledge/PROJECT-STATE.md \
@@ -131,4 +152,11 @@ run_case FULL_BUILD \
   v4/sdk/packages/luci-app-example/Makefile \
   config/arthur.config
 
+run_contract_case DOC_ONLY NONE false HANDOFF.md knowledge/PROJECT-STATE.md
+run_contract_case CONTROL_PLANE_ONLY CONTROL_EVIDENCE_ONLY false scripts/feature-handoff-status.ps1 scripts/ci-controller-v3.ps1
+run_contract_case PREVIEW_BYTES PREVIEW_AND_DOWNSTREAM true production/accepted-preview/arthur-adh-quickstart.json
+run_contract_case FIRMWARE_INPUT BUILD_AND_DOWNSTREAM true files/etc/config/xinzhao config/arthur.config
+run_contract_case DEVICE_WRITE_POLICY PREFLASH_AND_DOWNSTREAM false production/known-good.json
+
 echo 'PASS: build scope classifier behavior is correct.'
+echo 'PASS: release impact classifier behavior is correct.'
