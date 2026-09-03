@@ -28,7 +28,7 @@ class FakeProcess:
 
 
 class SupervisorTests(unittest.TestCase):
-    def make_state(self, directory, phase="FORENSICS", pending=None, terminal=None):
+    def make_state(self, directory, phase="FORENSICS", pending=None, terminal=None, last_decision=None, last_result=None):
         state = PipelineState(
             request_id="arthur-production",
             device="arthur",
@@ -36,6 +36,8 @@ class SupervisorTests(unittest.TestCase):
             next_codex_prompt="continue",
             pending_human_gate=pending,
             terminal_state=terminal,
+            last_decision=last_decision,
+            last_result=last_result,
         )
         state.observability.update({
             "runtime": "STOPPED",
@@ -66,6 +68,61 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(1, len(processes))
             self.assertIn("resume", processes[0])
             self.assertIn("--state-dir", processes[0])
+
+    def test_stale_prebuild_access_safety_block_launches_resume_instead_of_staying_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.make_state(
+                directory,
+                phase="CHANGE_IMPACT",
+                pending="UNKNOWN_DEVICE_IDENTITY",
+                terminal="SAFETY_BLOCKED",
+                last_decision={
+                    "action": "TERMINAL",
+                    "reason_code": "PREBUILD_REAL_DEVICE_GATE_FAILED",
+                    "summary": "Fresh prebuild evidence is blocked by the current Arthur access state.",
+                },
+                last_result={
+                    "status": "blocked",
+                    "final_response": (
+                        "ssh root@192.168.6.1: REMOTE HOST IDENTIFICATION HAS CHANGED; "
+                        "LuCI 403 x-luci-login-required: yes; no ARTHUR_LUCI_COOKIE_FILE; "
+                        "PREBUILD_REAL_DEVICE_GATE: FAIL"
+                    ),
+                },
+            )
+            launched = []
+            supervisor = RuntimeSupervisor(directory, launcher=lambda command: launched.append(command) or FakeProcess())
+
+            result = supervisor.run_once()
+
+            self.assertEqual("RECOVERING", result["status"])
+            self.assertEqual(1, len(launched))
+            self.assertIn("resume", launched[0])
+            self.assertEqual("ARTHUR_PREBUILD_ACCESS_RECOVERY", result["automatic_terminal_recovery"])
+
+    def test_true_device_identity_mismatch_terminal_is_never_reopened(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.make_state(
+                directory,
+                phase="CHANGE_IMPACT",
+                pending="UNKNOWN_DEVICE_IDENTITY",
+                terminal="SAFETY_BLOCKED",
+                last_decision={
+                    "action": "TERMINAL",
+                    "reason_code": "PREBUILD_REAL_DEVICE_GATE_FAILED",
+                    "summary": "Arthur identity could not be proven.",
+                },
+                last_result={
+                    "status": "blocked",
+                    "final_response": "MANAGEMENT_MAC_MISMATCH expected=dc:d8:7c:46:91:24 actual=00:11:22:33:44:55",
+                },
+            )
+            supervisor = RuntimeSupervisor(directory, launcher=lambda command: self.fail("launched"))
+
+            result = supervisor.run_once()
+
+            self.assertEqual("TERMINAL", result["status"])
+            self.assertEqual("no_restart_terminal_state", result["action"])
 
     def test_human_gate_is_never_bypassed(self):
         with tempfile.TemporaryDirectory() as directory:
