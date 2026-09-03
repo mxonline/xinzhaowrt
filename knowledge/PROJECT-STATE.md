@@ -1,5 +1,27 @@
 # XinZhaoWrt Arthur Project State
 
+## 2026-09-03 execution override — default new-feature development route
+
+For every new Arthur feature that can be safely exercised on the running router, the default development route is now the user-approved v0.1.3-style real-router loop documented in `knowledge/V013-DEVELOPMENT-LOOP.md`.
+
+This is a mandatory routing rule, not an optional optimization:
+
+`requirement -> Reuse Gate when needed -> smallest implementation -> static sanity check -> back up affected runtime targets -> HOT/LIVE deploy to the running Arthur -> authenticated real-router check -> inspect/fix -> repeat HOT/LIVE deploy`
+
+Do not make PR creation, a Candidate build, a full firmware build or sysupgrade the default first step for ordinary new-feature development. The goal is to make the requested feature appear and work on the currently running Arthur as quickly as safely possible, iterate there until accepted, and only then freeze the accepted source for the normal production path.
+
+After the feature is visibly and functionally accepted on Arthur, continue through the existing release sequence:
+
+`freeze accepted source -> CHANGE_IMPACT_GATE -> BASELINE_INHERITANCE_GATE -> EXPECTED_DIFF_GATE -> fastest valid Candidate build lane -> artifact/hash checks -> AUTO_FLASH_SAFETY_GATE -> sysupgrade -> reboot -> REAL_DEVICE_VERIFY -> Release -> PRODUCTION_RELEASED`
+
+If one preview action has side effects that cannot be reliably rolled back, do not stop for routine human approval when a safer continuation exists. Automatically execute the safe preview subset, defer only the unsafe acceptance item to formal `REAL_DEVICE_VERIFY`, and continue unattended. Normal recoverable failures should trigger root-cause diagnosis, rollback/repair and retry.
+
+Current Arthur Wi-Fi remains `WIFI=VERIFIED_FROZEN`; ordinary new-feature development must not change or reload it.
+
+Only inherently non-previewable changes such as kernel/modules/drivers, boot-critical components, unsafe ABI-dependent binaries, partition/storage layout or bootloader work bypass the HOT/LIVE loop and go directly to the shortest safe build lane.
+
+The sections below contain older project-state history and must not override this 2026-09-03 execution rule. Live GitHub/device evidence still overrides stale historical state.
+
 Updated from live GitHub evidence on 2026-08-26.
 
 ## Project
