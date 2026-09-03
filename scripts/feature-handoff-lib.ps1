@@ -192,7 +192,8 @@ function Resolve-ManifestLocalPath([string]$RepoRoot,[string]$ManifestPath,[stri
         if (Test-Path -LiteralPath $candidate) { $resolved = [System.IO.Path]::GetFullPath($candidate) }
         else { $resolved = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $ManifestPath) $Local)) }
     }
-    $rootFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\','/') + [System.IO.Path]::DirectorySeparatorChar
+    $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar,[System.IO.Path]::AltDirectorySeparatorChar)
+    $rootFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd($trimChars) + [System.IO.Path]::DirectorySeparatorChar
     if (-not $resolved.StartsWith($rootFull,[System.StringComparison]::OrdinalIgnoreCase)) {
         throw "FEATURE_HANDOFF_MANIFEST_LOCAL_OUTSIDE_REPO=$Local"
     }
@@ -222,7 +223,7 @@ function Get-PreviewManifestIdentity {
     }
     [pscustomobject]@{
         manifest_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ManifestPath).Hash.ToLowerInvariant()
-        entries = @($normalized)
+        entries = [object[]]$normalized.ToArray()
     }
 }
 
@@ -246,7 +247,7 @@ function Freeze-PreviewManifestToOverlay {
         }
         $frozen.Add([pscustomobject]@{ remote=$entry.remote; overlay=$relative; sha256=$destHash; mode=$entry.mode })
     }
-    return @($frozen)
+    return [object[]]$frozen.ToArray()
 }
 
 function Write-AcceptedPreviewRecord {
