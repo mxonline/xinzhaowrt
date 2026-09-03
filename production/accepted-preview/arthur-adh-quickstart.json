@@ -226,7 +226,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
       "remote": "/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
       "overlay": "files/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
-      "sha256": "1f7abe9a79eb21b038f1a913a48e429af7ca61035e8d194158f357841148732e",
+      "sha256": "8e57ad7e141ea0658bed0fa2464453dbee8040b62786dcf9ef68f66478dc69aa",
       "mode": "0644"
     },
     {
