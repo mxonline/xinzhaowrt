@@ -1,6 +1,7 @@
 work/
 output/
 state/
+sources/live-preview-mature/
 *.log
 .DS_Store
 .env

@@ -30,7 +30,21 @@
   "allowed_remote_prefixes": [
     "/www/luci-static/",
     "/usr/share/rpcd/acl.d/",
-    "/usr/share/luci/menu.d/"
+    "/usr/share/luci/menu.d/",
+    "/usr/share/AdGuardHome/",
+    "/usr/lib/lua/luci/model/cbi/AdGuardHome/",
+    "/usr/lib/lua/luci/view/AdGuardHome/",
+    "/usr/lib/lua/luci/view/quickstart/",
+    "/usr/libexec/quickstart/"
+  ],
+  "allowed_remote_exact": [
+    "/etc/init.d/AdGuardHome",
+    "/etc/config/AdGuardHome",
+    "/etc/AdGuardHome.yaml",
+    "/usr/lib/lua/luci/controller/AdGuardHome.lua",
+    "/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo",
+    "/usr/lib/lua/luci/controller/quickstart.lua",
+    "/usr/lib/lua/luci/controller/istore_backend.lua"
   ],
   "forbidden_repo_prefixes": [
     "config/",
@@ -62,9 +76,15 @@
   ],
   "luci_cache_paths": [
     "/tmp/luci-indexcache",
+    "/tmp/luci-indexcache.*",
     "/tmp/luci-modulecache/*"
   ],
-  "adguard_route": "admin/services/adguardhome",
+  "adguard_route": "admin/services/AdGuardHome/overview",
+  "adguard_status_route": "admin/services/AdGuardHome/status",
+  "adguard_base_route": "admin/services/AdGuardHome/base",
+  "adguard_tools_route": "admin/services/AdGuardHome/tools",
+  "adguard_log_route": "admin/services/AdGuardHome/log",
+  "adguard_manual_route": "admin/services/AdGuardHome/manual",
   "adguard_web_port": 3000,
   "quickstart_route": "admin/quickstart/"
 }
