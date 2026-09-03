@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 report="${1:-$root/output/real-device/real-device-verification.json}"
+expected_commit="${2:-}"
 
 [[ -s "$report" ]] || { echo "PREBUILD_REAL_DEVICE_GATE: FAIL -- missing evidence: $report" >&2; exit 1; }
 
@@ -15,11 +16,12 @@ else
     exit 1
 fi
 
-"$python_bin" - "$report" <<'PY'
+"$python_bin" - "$report" "$expected_commit" <<'PY'
 import json
 import sys
 
 path = sys.argv[1]
+expected_commit = sys.argv[2] if len(sys.argv) > 2 else ""
 with open(path, encoding="utf-8-sig") as handle:
     data = json.load(handle)
 
@@ -34,6 +36,8 @@ def require(value, message):
 
 require(str(data.get("result", "")).upper() == "PASS", "real-device verification result is not PASS")
 require(str(data.get("mode", "")).upper() == "PREBUILD", "evidence is not from non-disruptive Prebuild mode")
+if expected_commit:
+    require(data.get("commit") == expected_commit, "prebuild evidence commit does not match current source HEAD")
 require(control.get("passed") is True, "unattended Arthur control-plane recovery is not PASS")
 require(features.get("ADGUARD_LIVE") == "PASS", "ADGUARD_LIVE is not PASS")
 require(features.get("QUICKSTART_LIVE") == "PASS", "QUICKSTART_LIVE is not PASS")
@@ -56,4 +60,6 @@ if errors:
 print("PREBUILD_REAL_DEVICE_GATE: PASS")
 print("WIFI_STATE=VERIFIED_FROZEN")
 print("PREBUILD_MODE=NON_DISRUPTIVE")
+if expected_commit:
+    print(f"PREBUILD_SOURCE_SHA={expected_commit}")
 PY
