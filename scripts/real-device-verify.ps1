@@ -24,6 +24,8 @@ $OutDir = Join-Path $Root 'output\real-device'
 $JsonPath = Join-Path $OutDir 'real-device-verification.json'
 $MdPath = Join-Path $OutDir 'real-device-verification.md'
 $Required = @(Get-Content (Join-Path $Root 'config\required-plugins.txt') | Where-Object { $_ -and $_ -notmatch '^\s*#' } | ForEach-Object { $_.Trim() })
+$RequiredPluginCount = 22
+if ($Required.Count -ne $RequiredPluginCount) { throw "Required plugin contract mismatch: expected $RequiredPluginCount, found $($Required.Count)" }
 $WifiBaselinePath = Join-Path $Root 'production\wifi-frozen-baseline.json'
 $TestFile = '/etc/xinzhao-real-device-test'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
