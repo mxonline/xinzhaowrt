@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "policy_id": "fast-safe-release",
+  "policy_version": "1.0.0",
+  "success_terminal_state": "PRODUCTION_RELEASED",
+  "recovery_law": "REUSE_RECONCILE_REPAIR_CONTINUE",
+  "production_stage_model": "RELEASE_FIRST_V3",
+  "allow_new_production_stages": false,
+  "release_checkpoint_order": [
+    "PREVIEW_ACCEPTED",
+    "LOCAL_CHANGES_CAPTURED",
+    "STATIC_VERIFIED",
+    "SOURCE_FROZEN",
+    "REMOTE_INTEGRATED",
+    "BUILD_DISPATCHED",
+    "CONTROLLER_ATTACHED",
+    "PRODUCTION_RUNNING",
+    "PRODUCTION_RELEASED"
+  ],
+  "production_stage_order": [
+    "RECOVER_CURRENT_RELEASE_STATE",
+    "DETERMINE_MINIMUM_CHANGE_SCOPE",
+    "CHANGE_IMPACT_GATE",
+    "BASELINE_INHERITANCE_GATE",
+    "EXPECTED_DIFF_GATE",
+    "CHOOSE_FASTEST_RELIABLE_BUILD_PATH",
+    "BUILD",
+    "ARTIFACT_INTEGRITY_CHECKS",
+    "AUTO_FLASH_SAFETY_GATE",
+    "WINDOWS_POWERSHELL",
+    "OPENSSH_UPLOAD",
+    "REMOTE_SHA256",
+    "SYSUPGRADE",
+    "WAIT_DEVICE",
+    "REAL_DEVICE_VERIFY",
+    "RELEASE_GATE",
+    "GITHUB_RELEASE",
+    "PRODUCTION_RELEASED"
+  ],
+  "impact_classes": [
+    "DOC_ONLY",
+    "CONTROL_PLANE_ONLY",
+    "PREVIEW_BYTES",
+    "FIRMWARE_INPUT",
+    "DEVICE_WRITE_POLICY"
+  ],
+  "circuit_breaker": {
+    "same_failure_without_progress_max_attempts": 2
+  }
+}
