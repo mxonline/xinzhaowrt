@@ -7,16 +7,16 @@
   "backup_root": "/root/xinzhaowrt-live-preview",
   "source_mappings": [
     {
-      "repo_prefix": "files/www/",
-      "remote_prefix": "/www/"
+      "repo_prefix": "files/www/luci-static/",
+      "remote_prefix": "/www/luci-static/"
     },
     {
       "repo_prefix": "files/usr/share/rpcd/acl.d/",
       "remote_prefix": "/usr/share/rpcd/acl.d/"
     },
     {
-      "repo_prefix": "sources/kenzok8/quickstart/htdocs/",
-      "remote_prefix": "/www/"
+      "repo_prefix": "sources/kenzok8/quickstart/htdocs/luci-static/",
+      "remote_prefix": "/www/luci-static/"
     },
     {
       "repo_prefix": "sources/kenzok8/quickstart/root/usr/share/rpcd/acl.d/",
@@ -28,7 +28,7 @@
     }
   ],
   "allowed_remote_prefixes": [
-    "/www/",
+    "/www/luci-static/",
     "/usr/share/rpcd/acl.d/",
     "/usr/share/luci/menu.d/"
   ],
@@ -65,5 +65,6 @@
     "/tmp/luci-modulecache/*"
   ],
   "adguard_route": "admin/services/adguardhome",
+  "adguard_web_port": 3000,
   "quickstart_route": "admin/quickstart/"
 }
