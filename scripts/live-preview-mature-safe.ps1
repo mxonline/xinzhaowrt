@@ -120,7 +120,7 @@ function Restore-PreviewFiles($Manifest, [string]$BackupPath) {
         $remote = [string]$entries[$i].remote
         $relative = $remote.TrimStart('/')
         $backup = "$BackupPath/files/$relative"
-        $command = "if [ -e '$backup' ]; then mkdir -p \"`$(dirname '$remote')\"; cp -p '$backup' '$remote'; else rm -f '$remote'; fi"
+        $command = 'if [ -e ''{0}'' ]; then mkdir -p "$(dirname ''{1}'')"; cp -p ''{0}'' ''{1}''; else rm -f ''{1}''; fi' -f $backup, $remote
         Invoke-Remote $command -AllowFailure | Out-Null
     }
     if (@($entries | Where-Object { ([string]$_.remote).StartsWith('/usr/share/rpcd/acl.d/') }).Count -gt 0) {
@@ -132,13 +132,13 @@ function Restore-PreviewFiles($Manifest, [string]$BackupPath) {
 
 function Invoke-GenericDeploy([string]$ResolvedManifest, [switch]$OnlyValidate) {
     $pwsh = Get-Tool @('pwsh.exe','pwsh')
-    $args = @('-NoProfile','-File',$DeployScript,'-Target',$Target,'-Feature','Generic','-ManifestPath',$ResolvedManifest)
-    if ($OnlyValidate) { $args += '-ValidateOnly' }
+    $invokeArgs = @('-NoProfile','-File',$DeployScript,'-Target',$Target,'-Feature','Generic','-ManifestPath',$ResolvedManifest)
+    if ($OnlyValidate) { $invokeArgs += '-ValidateOnly' }
 
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $pwsh @args 2>&1)
+        $raw = @(& $pwsh @invokeArgs 2>&1)
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
