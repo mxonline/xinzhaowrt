@@ -22,6 +22,7 @@ $LogPath=Join-Path $RuntimeRoot 'handoff.log'
 $LockPath=Join-Path $RuntimeRoot 'handoff.lock'
 $ProductionStatePath=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent\output\production-agent\state.json'
 $ControllerTask='XinZhaoWrt-Arthur-v3-Controller'
+$ControllerLauncher=Join-Path $Root 'scripts\start-ci-controller-v3.ps1'
 $V3RequestRelative='production\v3-request.json'
 $V3RequestGit='production/v3-request.json'
 $V3AutoWorkflow='arthur-update-v3-auto.yml'
@@ -46,7 +47,7 @@ function Invoke-Native([string]$File,[string[]]$Args,[switch]$AllowFailure) {
 }
 
 function Test-Recoverable([string]$Message) {
-    return $Message -match '(?i)timeout|timed out|connection|HTTP 5\d\d|HTTP 409|conflict|rate limit|temporar|EOF|queued|runner|network|could not resolve|TLS|try again|AUTO_TRIGGER_WAIT'
+    return $Message -match '(?i)timeout|timed out|connection|HTTP 5\d\d|HTTP 409|conflict|rate limit|temporar|EOF|queued|runner|network|could not resolve|TLS|try again|AUTO_TRIGGER_WAIT|CONTROLLER_RESUME_START'
 }
 
 function Ensure-StateField($State,[string]$Name,$Value) {
@@ -210,13 +211,15 @@ function Stage-And-Commit($State) {
     if ($staged.Output) { Invoke-Native git @('-C',$Root,'commit','-m',"feat: freeze accepted $($State.feature_id) live preview") | Out-Null }
     $State.feature_commit_sha=(Invoke-Native git @('-C',$Root,'rev-parse','HEAD')).Output.Trim()
     Invoke-Native git @('-C',$Root,'push','-u','origin',$branch) | Out-Null
+    Save-FeatureHandoffState -State $State -StatePath $StatePath
     Log "FEATURE_BRANCH_PUSHED branch=$branch sha=$($State.feature_commit_sha)"
 }
 
 function Get-OrCreatePr($State) {
-    $list=Invoke-Native gh @('pr','list','--repo',$Repository,'--head',[string]$State.branch,'--base','main','--state','open','--json','number,headRefOid')
+    $list=Invoke-Native gh @('pr','list','--repo',$Repository,'--head',[string]$State.branch,'--base','main','--state','all','--limit','20','--json','number,headRefOid,state,mergedAt')
     $prs=@(); if ($list.Output) { $prs=@($list.Output | ConvertFrom-Json) }
-    if ($prs.Count -gt 0) { return [int]$prs[0].number }
+    $match=$prs | Where-Object { [string]$_.headRefOid -eq [string]$State.feature_commit_sha } | Sort-Object { [int]$_.number } -Descending | Select-Object -First 1
+    if ($match) { return [int]$match.number }
     $create=Invoke-Native gh @('pr','create','--repo',$Repository,'--base','main','--head',[string]$State.branch,'--title',"Arthur: freeze accepted $($State.feature_id) preview",'--body',"Automated Feature Handoff for accepted LIVE_PREVIEW. WIFI=VERIFIED_FROZEN. Production continues through durable v3 request, existing v3 Controller and Production Agent.")
     $m=[regex]::Match($create.Output,'/pull/(\d+)')
     if (-not $m.Success) { throw "FEATURE_HANDOFF_PR_CREATE_UNRESOLVED output=$($create.Output)" }
@@ -251,19 +254,42 @@ $FailureText
         Invoke-Native git @('-C',$Root,'commit','-m',"fix: repair $($State.feature_id) handoff CI") | Out-Null
         $State.feature_commit_sha=(Invoke-Native git @('-C',$Root,'rev-parse','HEAD')).Output.Trim()
         Invoke-Native git @('-C',$Root,'push','origin',[string]$State.branch) | Out-Null
+        Save-FeatureHandoffState -State $State -StatePath $StatePath
     }
 }
 
+function Get-PrMergeCommit([int]$PrNumber,[string]$ExpectedHead) {
+    for ($i=0; $i -lt 30; $i++) {
+        $info=Invoke-Native gh @('pr','view',[string]$PrNumber,'--repo',$Repository,'--json','state,headRefOid,mergeCommit') -AllowFailure
+        if ($info.ExitCode -eq 0 -and $info.Output) {
+            $pr=$info.Output | ConvertFrom-Json
+            if ($ExpectedHead -and [string]$pr.headRefOid -ne $ExpectedHead) { throw "FEATURE_HANDOFF_PR_HEAD_MOVED expected=$ExpectedHead actual=$($pr.headRefOid)" }
+            if ([string]$pr.state -eq 'MERGED' -and $pr.mergeCommit -and [string]$pr.mergeCommit.oid -match '^[0-9a-f]{40}$') { return [string]$pr.mergeCommit.oid }
+        }
+        Start-Sleep -Seconds 2
+    }
+    throw 'FEATURE_HANDOFF_PR_MERGE_COMMIT_TIMEOUT'
+}
+
 function Wait-PrAndMerge($State,[int]$PrNumber) {
+    $already=Invoke-Native gh @('pr','view',[string]$PrNumber,'--repo',$Repository,'--json','state,headRefOid,mergeCommit') -AllowFailure
+    if ($already.ExitCode -eq 0 -and $already.Output) {
+        $p=$already.Output | ConvertFrom-Json
+        if ([string]$p.headRefOid -ne [string]$State.feature_commit_sha) { throw "FEATURE_HANDOFF_PR_HEAD_MOVED expected=$($State.feature_commit_sha) actual=$($p.headRefOid)" }
+        if ([string]$p.state -eq 'MERGED') { return Get-PrMergeCommit -PrNumber $PrNumber -ExpectedHead ([string]$State.feature_commit_sha) }
+    }
+
     for ($round=0; $round -lt 4; $round++) {
         $checks=Invoke-Native gh @('pr','checks',[string]$PrNumber,'--repo',$Repository,'--watch','--fail-fast=false') -AllowFailure
         if ($checks.ExitCode -eq 0) {
-            $info=Invoke-Native gh @('pr','view',[string]$PrNumber,'--repo',$Repository,'--json','headRefOid,state,mergeStateStatus')
+            $info=Invoke-Native gh @('pr','view',[string]$PrNumber,'--repo',$Repository,'--json','headRefOid,state')
             $pr=$info.Output | ConvertFrom-Json
             if ([string]$pr.headRefOid -ne [string]$State.feature_commit_sha) { throw "FEATURE_HANDOFF_PR_HEAD_MOVED expected=$($State.feature_commit_sha) actual=$($pr.headRefOid)" }
-            $merge=Invoke-Native gh @('pr','merge',[string]$PrNumber,'--repo',$Repository,'--merge','--match-head-commit',[string]$State.feature_commit_sha) -AllowFailure
-            if ($merge.ExitCode -ne 0) { throw "FEATURE_HANDOFF_PR_MERGE_FAILED: $($merge.Output)" }
-            return
+            if ([string]$pr.state -ne 'MERGED') {
+                $merge=Invoke-Native gh @('pr','merge',[string]$PrNumber,'--repo',$Repository,'--merge','--match-head-commit',[string]$State.feature_commit_sha) -AllowFailure
+                if ($merge.ExitCode -ne 0) { throw "FEATURE_HANDOFF_PR_MERGE_FAILED: $($merge.Output)" }
+            }
+            return Get-PrMergeCommit -PrNumber $PrNumber -ExpectedHead ([string]$State.feature_commit_sha)
         }
         if (Test-Recoverable $checks.Output) { Start-Sleep -Seconds 30; continue }
         Invoke-PrRepair -State $State -PrNumber $PrNumber -FailureText $checks.Output
@@ -271,29 +297,45 @@ function Wait-PrAndMerge($State,[int]$PrNumber) {
     throw 'FEATURE_HANDOFF_PR_CHECK_RETRIES_EXHAUSTED'
 }
 
-function Verify-FrozenFilesOnMain($State) {
+function Verify-FrozenFilesOnMain($State,[string]$ExpectedMergeSha) {
+    if ($ExpectedMergeSha -notmatch '^[0-9a-f]{40}$') { throw 'FEATURE_HANDOFF_MERGE_SHA_INVALID' }
     Invoke-Native git @('-C',$Root,'fetch','origin','main') | Out-Null
-    $mainSha=(Invoke-Native git @('-C',$Root,'rev-parse','origin/main')).Output.Trim()
+    $ancestor=Invoke-Native git @('-C',$Root,'merge-base','--is-ancestor',$ExpectedMergeSha,'origin/main') -AllowFailure
+    if ($ancestor.ExitCode -ne 0) { throw "FEATURE_HANDOFF_MERGE_NOT_ON_MAIN sha=$ExpectedMergeSha" }
     foreach ($f in @($State.frozen_files)) {
         $featureBlob=(Invoke-Native git @('-C',$Root,'rev-parse',"$($State.feature_commit_sha):$($f.overlay)")).Output.Trim()
-        $mainBlob=Invoke-Native git @('-C',$Root,'rev-parse',"origin/main:$($f.overlay)") -AllowFailure
-        if ($mainBlob.ExitCode -ne 0 -or $mainBlob.Output.Trim() -ne $featureBlob) { throw "FEATURE_HANDOFF_ACCEPTED_SOURCE_NOT_ON_MAIN path=$($f.overlay)" }
+        $mergeBlob=Invoke-Native git @('-C',$Root,'rev-parse',"$ExpectedMergeSha`:$($f.overlay)") -AllowFailure
+        if ($mergeBlob.ExitCode -ne 0 -or $mergeBlob.Output.Trim() -ne $featureBlob) { throw "FEATURE_HANDOFF_ACCEPTED_SOURCE_NOT_IN_MERGE path=$($f.overlay) merge=$ExpectedMergeSha" }
     }
-    $State.merge_sha=$mainSha
-    $State.dispatch_source_sha=$mainSha
-    return $mainSha
+    $State.merge_sha=$ExpectedMergeSha
+    $State.dispatch_source_sha=$ExpectedMergeSha
+    Save-FeatureHandoffState -State $State -StatePath $StatePath
+}
+
+function Return-WorktreeToMain($State,[string]$ExpectedMergeSha) {
+    $dirty=Invoke-Native git @('-C',$Root,'status','--porcelain')
+    if ($dirty.Output) { throw "FEATURE_HANDOFF_POST_MERGE_DIRTY_WORKTREE: $($dirty.Output)" }
+    Invoke-Native git @('-C',$Root,'fetch','origin','main') | Out-Null
+    $branch=Get-CurrentBranch
+    if ($branch -ne 'main') { Invoke-Native git @('-C',$Root,'switch','main') | Out-Null }
+    Invoke-Native git @('-C',$Root,'pull','--ff-only','origin','main') | Out-Null
+    $ancestor=Invoke-Native git @('-C',$Root,'merge-base','--is-ancestor',$ExpectedMergeSha,'HEAD') -AllowFailure
+    if ($ancestor.ExitCode -ne 0) { throw "FEATURE_HANDOFF_MAIN_SYNC_LOST_MERGE sha=$ExpectedMergeSha" }
+    Log "WORKTREE_MAIN_SYNC=PASS merge=$ExpectedMergeSha head=$((Invoke-Native git @('-C',$Root,'rev-parse','HEAD')).Output.Trim())"
 }
 
 function Integrate-Remote($State) {
-    Stage-And-Commit $State
-    $pr=Get-OrCreatePr $State
-    $State.pr_number=$pr
-    Save-FeatureHandoffState -State $State -StatePath $StatePath
-    Wait-PrAndMerge -State $State -PrNumber $pr
-    Verify-FrozenFilesOnMain $State | Out-Null
+    if (-not [int]$State.pr_number -or -not [string]$State.feature_commit_sha) {
+        Stage-And-Commit $State
+        $State.pr_number=Get-OrCreatePr $State
+        Save-FeatureHandoffState -State $State -StatePath $StatePath
+    }
+    $mergeSha=Wait-PrAndMerge -State $State -PrNumber ([int]$State.pr_number)
+    Verify-FrozenFilesOnMain -State $State -ExpectedMergeSha $mergeSha
+    Return-WorktreeToMain -State $State -ExpectedMergeSha $mergeSha
     Set-FeatureHandoffStage -State $State -Stage 'REMOTE_INTEGRATED' -Status 'VERIFIED' | Out-Null
     Save-FeatureHandoffState -State $State -StatePath $StatePath
-    Log "REMOTE_INTEGRATED pr=$pr main=$($State.merge_sha)"
+    Log "REMOTE_INTEGRATED pr=$($State.pr_number) merge=$mergeSha"
 }
 
 function Get-ProductionState {
@@ -301,7 +343,23 @@ function Get-ProductionState {
     try { return Get-Content -Raw -LiteralPath $ProductionStatePath | ConvertFrom-Json -Depth 20 } catch { return $null }
 }
 
-function Ensure-ControllerRecovery {
+function Ensure-ControllerRecovery($State) {
+    if ($State -and [long]$State.dispatched_run_id -gt 0) {
+        $runId=[long]$State.dispatched_run_id
+        if (-not (Test-Path -LiteralPath $ControllerLauncher -PathType Leaf)) { throw "FEATURE_HANDOFF_CONTROLLER_LAUNCHER_MISSING=$ControllerLauncher" }
+        $matching=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            [string]$_.CommandLine -match '(?i)ci-controller-v3\.ps1' -and
+            [string]$_.CommandLine -match '(?i)-Mode\s+Resume(?:\s|$)' -and
+            [string]$_.CommandLine -match ("(?i)-RunId\s+" + [regex]::Escape([string]$runId) + '(?:\s|$)')
+        }) | Select-Object -First 1
+        if ($matching) { return $true }
+        if ((Get-CurrentBranch) -ne 'main') { throw 'RECOVERABLE_CONTROLLER_RESUME_START: Feature Handoff must be on main before controller Resume.' }
+        $launch=Invoke-Native 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ControllerLauncher,'-Mode','Resume','-UpdateMode',[string]$State.v3_mode,'-RunId',[string]$runId) -AllowFailure
+        if ($launch.ExitCode -ne 0) { throw "RECOVERABLE_CONTROLLER_RESUME_START: $($launch.Output)" }
+        Log "CONTROLLER_RESUME_STARTED run=$runId mode=$($State.v3_mode)"
+        return $true
+    }
+
     $task=Get-ScheduledTask -TaskName $ControllerTask -ErrorAction SilentlyContinue
     if ($task) { Start-ScheduledTask -TaskName $ControllerTask -ErrorAction SilentlyContinue; return $true }
     $deploy=Invoke-Native gh @('workflow','run','production-agent-deploy.yml','--repo',$Repository,'--ref','main') -AllowFailure
@@ -439,7 +497,7 @@ function Wait-DurableV3Dispatch($State) {
             $State.dispatch_accepted=$true
             Set-FeatureHandoffStage -State $State -Stage 'BUILD_DISPATCHED' -Status 'LIVE' | Out-Null
             Save-FeatureHandoffState -State $State -StatePath $StatePath
-            Ensure-ControllerRecovery | Out-Null
+            Ensure-ControllerRecovery -State $State | Out-Null
             Log "BUILD_DISPATCHED run=$($State.dispatched_run_id) request_id=$($State.request_id) source_ref=$($State.source_ref)"
             return
         }
@@ -463,9 +521,9 @@ function Wait-DurableV3Dispatch($State) {
 
 function Dispatch-BuildOnce($State) {
     Ensure-RequestStateFields $State
-    if ([long]$State.dispatched_run_id -gt 0) { Ensure-ControllerRecovery | Out-Null; return }
+    if ([long]$State.dispatched_run_id -gt 0) { Ensure-ControllerRecovery -State $State | Out-Null; return }
     $prod=Get-ProductionState
-    if ($prod -and [long]$prod.run_id -gt 0 -and [long]$State.dispatched_run_id -eq [long]$prod.run_id) {
+    if ($prod -and [long]$State.dispatched_run_id -gt 0 -and [long]$prod.run_id -eq [long]$State.dispatched_run_id) {
         $updated=Reconcile-ProductionState -HandoffState $State -ProductionState $prod
         foreach ($p in $updated.PSObject.Properties) { $State.($p.Name)=$p.Value }
         Save-FeatureHandoffState -State $State -StatePath $StatePath
@@ -490,7 +548,7 @@ function Monitor-Production($State,[switch]$OneShot) {
                 }
             }
         }
-        Ensure-ControllerRecovery | Out-Null
+        Ensure-ControllerRecovery -State $State | Out-Null
         if ($OneShot) { return }
         Start-Sleep -Seconds 30
     }
@@ -503,7 +561,7 @@ function Invoke-OneStage($State) {
         'STATIC_VERIFIED' { Freeze-AcceptedSource $State; return }
         'SOURCE_FROZEN' { Integrate-Remote $State; return }
         'REMOTE_INTEGRATED' { Dispatch-BuildOnce $State; return }
-        'BUILD_DISPATCHED' { Ensure-ControllerRecovery | Out-Null; Set-FeatureHandoffStage -State $State -Stage 'CONTROLLER_ATTACHED' -Status 'LIVE' | Out-Null; Save-FeatureHandoffState -State $State -StatePath $StatePath; return }
+        'BUILD_DISPATCHED' { Ensure-ControllerRecovery -State $State | Out-Null; Set-FeatureHandoffStage -State $State -Stage 'CONTROLLER_ATTACHED' -Status 'LIVE' | Out-Null; Save-FeatureHandoffState -State $State -StatePath $StatePath; return }
         'CONTROLLER_ATTACHED' { Monitor-Production -State $State -OneShot; return }
         'PRODUCTION_RUNNING' { Monitor-Production -State $State -OneShot; return }
         'PRODUCTION_RELEASED' { Write-Host 'PRODUCTION_RELEASED=YES'; return }
