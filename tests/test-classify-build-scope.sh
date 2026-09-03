@@ -48,6 +48,12 @@ run_case FAST_GATE \
   scripts/run-supervisor.py \
   ai_orchestrator/adapters.py
 
+# LIVE_PREVIEW is a pre-Candidate control-plane tool. It must never trigger a firmware build by itself.
+run_case FAST_GATE \
+  scripts/live-preview.ps1 \
+  production/live-preview-policy.json \
+  tests/test-live-preview-contract.sh
+
 # v4 explicit ImageBuilder lane. Only explicitly migrated v4 paths may use it.
 run_case IMAGEBUILDER \
   production/v4/imagebuilder-request.json \
