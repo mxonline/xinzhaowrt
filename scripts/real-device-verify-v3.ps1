@@ -1,6 +1,5 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Candidate,
+    [string]$Candidate = 'prebuild-current-router',
 
     [Parameter(Mandatory = $true)]
     [string]$Commit,
@@ -20,8 +19,8 @@ if (-not (Test-Path $BaseScript)) {
     throw "Base real-device verification script is missing: $BaseScript"
 }
 
-if ($Candidate -notmatch '^arthur-(known-good|update)-\d+$') {
-    throw "Unsupported Candidate tag: $Candidate"
+if ($Mode -eq 'PostFlash' -and $Candidate -notmatch '^arthur-(known-good|update)-\d+$') {
+    throw "PostFlash verification requires a real Candidate tag: $Candidate"
 }
 if ($Candidate -match '33462873812') {
     throw 'REJECTED_FOR_RELEASE: candidate 33462873812 is REAL_DEVICE_VERIFY_INVALIDATED and may not be reflashed or released.'
