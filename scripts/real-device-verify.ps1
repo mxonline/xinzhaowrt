@@ -119,8 +119,9 @@ function New-LuciSessionFromSsh {
     try { $created = $create.Output | ConvertFrom-Json } catch { throw 'LUCI_SESSION_CREATE_INVALID_JSON' }
     $sid = [string]$created.ubus_rpc_session
     if ([string]::IsNullOrWhiteSpace($sid)) { throw 'LUCI_SESSION_ID_MISSING' }
+    $token = [Guid]::NewGuid().ToString('N')
 
-    $set = "ubus call session set '{`"ubus_rpc_session`":`"$sid`",`"values`":{`"username`":`"root`"}}'"
+    $set = "ubus call session set '{`"ubus_rpc_session`":`"$sid`",`"values`":{`"username`":`"root`",`"token`":`"$token`"}}'"
     $grantUbus = "ubus call session grant '{`"ubus_rpc_session`":`"$sid`",`"scope`":`"ubus`",`"objects`":[[`"*`",`"*`"]]}'"
     $grantFile = "ubus call session grant '{`"ubus_rpc_session`":`"$sid`",`"scope`":`"file`",`"objects`":[[`"*`",`"*`"]]}'"
     foreach ($command in @($set,$grantUbus,$grantFile)) {
