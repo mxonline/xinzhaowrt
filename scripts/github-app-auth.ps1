@@ -185,10 +185,10 @@ if ($GhProductionDispatch) {
     try {
         # Git Bash accepts repository-relative paths reliably on Windows; pass
         # relative paths instead of native C:\ paths that it may reinterpret.
+        $gateCommand = "./scripts/check-prebuild-real-device-gate.sh output/real-device/real-device-verification.json $localHead"
         $gateProcess = Start-Process -FilePath $bashExecutable -ArgumentList @(
-            'scripts/check-prebuild-real-device-gate.sh',
-            'output/real-device/real-device-verification.json',
-            $localHead
+            '-lc',
+            $gateCommand
         ) -WorkingDirectory $repoRoot -Wait -PassThru -NoNewWindow
         $prebuildGateExit = $gateProcess.ExitCode
     }
