@@ -160,20 +160,34 @@ if ($GhDispatch) {
 }
 if ($GhProductionDispatch) {
     if ([string]::IsNullOrWhiteSpace($Ref)) { throw 'GH_PRODUCTION_DISPATCH_REF_REQUIRED' }
+    $prebuildVerify = Join-Path $PSScriptRoot 'real-device-verify-v3.ps1'
     $prebuildGate = Join-Path $PSScriptRoot 'check-prebuild-real-device-gate.sh'
     $prebuildReport = Join-Path $PSScriptRoot '..\output\real-device\real-device-verification.json'
+    if (-not (Test-Path -LiteralPath $prebuildVerify -PathType Leaf)) { throw 'PREBUILD_REAL_DEVICE_VERIFY_SCRIPT_MISSING' }
     if (-not (Test-Path -LiteralPath $prebuildGate -PathType Leaf)) { throw 'PREBUILD_REAL_DEVICE_GATE_SCRIPT_MISSING' }
-    if (-not (Test-Path -LiteralPath $prebuildReport -PathType Leaf)) { throw 'PREBUILD_REAL_DEVICE_EVIDENCE_MISSING' }
+
+    $localHead = ((& git -C (Join-Path $PSScriptRoot '..') rev-parse HEAD 2>&1) | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $localHead -notmatch '^[0-9a-f]{40}$') { throw 'PREBUILD_LOCAL_HEAD_UNAVAILABLE' }
+    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $prebuildReport
+
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $prebuildVerify -Commit $localHead -Target 'root@192.168.6.1' -Mode Prebuild
+    if ($LASTEXITCODE -ne 0) { throw 'PREBUILD_REAL_DEVICE_VERIFY_FAILED' }
+    if (-not (Test-Path -LiteralPath $prebuildReport -PathType Leaf)) { throw 'PREBUILD_REAL_DEVICE_EVIDENCE_MISSING_AFTER_VERIFY' }
+
     $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
     $bashExecutable = if ($bashCommand) { $bashCommand.Source } else { $null }
     if (-not $bashExecutable) {
         $bashExecutable = @('C:\Program Files\Git\bin\bash.exe', 'C:\Program Files\Git\usr\bin\bash.exe') | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     }
     if (-not $bashExecutable) { throw 'PREBUILD_REAL_DEVICE_GATE_BASH_MISSING' }
-    & $bashExecutable $prebuildGate $prebuildReport
+    & $bashExecutable $prebuildGate $prebuildReport $localHead
     if ($LASTEXITCODE -ne 0) { throw 'PREBUILD_REAL_DEVICE_GATE_FAILED' }
+
     $body = @{ ref = $Ref; inputs = @{ mode = $Mode } } | ConvertTo-Json -Compress
     Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$repository/actions/workflows/arthur-update-v3.yml/dispatches" -Headers ($headers + @{ Authorization = "token $token"; 'Content-Type' = 'application/json' }) -Body $body | Out-Null
+    Write-Output "PREBUILD_REAL_DEVICE_VERIFY=PASS"
+    Write-Output "PREBUILD_REAL_DEVICE_GATE=PASS"
+    Write-Output "PREBUILD_SOURCE_SHA=$localHead"
     Write-Output "PRODUCTION_DISPATCHED=arthur-update-v3.yml"
     Write-Output "PRODUCTION_DISPATCH_REF=$Ref"
     Write-Output "PRODUCTION_DISPATCH_MODE=$Mode"
