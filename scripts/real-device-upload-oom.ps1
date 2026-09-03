@@ -18,13 +18,31 @@ $ErrorActionPreference = 'Stop'
 
 # This Stage M runner validates only the LuCI cgi-upload handoff. The production
 # orchestrator performs standard sysupgrade after AUTO_FLASH_SAFETY_GATE.
+function Invoke-NativeCaptured {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $FilePath @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Output = ($raw -join "`n").Trim() }
+}
+
 function Invoke-TargetSsh {
     param([Parameter(Mandatory = $true)][string]$Command)
-    $result = & ssh -o BatchMode=yes -o ConnectTimeout=8 $Target $Command 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "SSH command failed: $Command`n$result"
+    $result = Invoke-NativeCaptured -FilePath 'ssh' -Arguments @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', $Target, $Command)
+    if ($result.ExitCode -ne 0) {
+        throw "SSH command failed: $Command`n$($result.Output)"
     }
-    return ($result -join "`n")
+    return $result.Output
 }
 
 function Get-LuciUploadEndpoint {
@@ -134,7 +152,17 @@ $monitorJob = Start-Job -ScriptBlock {
     param($Target, $MonitorPath, $MonitorCommand)
     while ($true) {
         "=== $(Get-Date -Format o) ===" | Add-Content -Encoding utf8 $MonitorPath
-        & ssh -o BatchMode=yes -o ConnectTimeout=8 $Target $MonitorCommand 2>&1 | Add-Content -Encoding utf8 $MonitorPath
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $monitorOutput = @(& ssh -o BatchMode=yes -o ConnectTimeout=8 $Target $MonitorCommand 2>&1)
+            $monitorExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        $monitorOutput | Add-Content -Encoding utf8 $MonitorPath
+        "ssh_exit_code=$monitorExitCode" | Add-Content -Encoding utf8 $MonitorPath
         Start-Sleep -Seconds 1
     }
 } -ArgumentList $Target, $monitorPath, $monitorCommand

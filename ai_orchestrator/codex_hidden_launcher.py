@@ -1,12 +1,17 @@
 """Console-free bridge used as the official SDK's launch_args_override."""
 
-import ctypes
 import json
 import os
 import subprocess
 import sys
-from ctypes import wintypes
 from pathlib import Path
+
+try:
+    import ctypes
+    from ctypes import wintypes
+except ImportError:  # pythonw on the bundled runtime may omit _ctypes loading
+    ctypes = None
+    wintypes = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -26,7 +31,7 @@ def _codex_binary():
 
 def _startupinfo_with_inherited_stdio():
     startup = hidden_startupinfo()
-    if os.name != "nt":
+    if os.name != "nt" or ctypes is None:
         return startup
     # pythonw does not populate Python-level sys.std* streams, but the SDK's
     # inherited pipe handles are still available through GetStdHandle.
@@ -41,7 +46,7 @@ def _startupinfo_with_inherited_stdio():
 class _Job:
     def __init__(self, process):
         self.handle = None
-        if os.name != "nt":
+        if os.name != "nt" or ctypes is None:
             return
         kernel32 = ctypes.windll.kernel32
         self.handle = kernel32.CreateJobObjectW(None, None)
@@ -97,8 +102,18 @@ def main():
     extra = os.environ.get("XINZHAO_CODEX_EXTRA_ARGS_JSON")
     if extra:
         command = [_codex_binary(), *json.loads(extra)]
+    # The Runtime is a standalone durable Arthur workflow.  When it is
+    # launched from the Codex desktop, these inherited variables identify the
+    # desktop conversation and its private MCP pipe, not this workflow.  They
+    # can make a fresh app-server attach to the wrong writer/session and then
+    # remain alive while every turn waits indefinitely.  Keep CODEX_HOME and
+    # credentials, but remove only desktop ownership markers.
+    child_env = os.environ.copy()
+    for key in ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_APP_TOOLS_PIPE_PATH", "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"):
+        child_env.pop(key, None)
     child = subprocess.Popen(
         command,
+        env=child_env,
         stdin=None,
         stdout=None,
         stderr=None,

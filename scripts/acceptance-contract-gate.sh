@@ -57,28 +57,13 @@ if rg -n "uci(\s+-q)?\s+set\s+network\.lan\.ipaddr=.*192\.168\.1\.1|uci(\s+-q)?\
 fi
 pass LEGACY_OVERRIDE_SCAN
 
-adguard_view='files/www/luci-static/resources/view/adguardhome/config.js'
-adguard_acl='files/usr/share/rpcd/acl.d/luci-app-adguardhome.json'
 adguard_cfg='files/etc/config/adguardhome'
 grep -Fq "option enabled '0'" "$adguard_cfg" || fail 'AdGuard Home is not default-off'
-grep -Fq 'getInitList' "$adguard_view" || fail 'AdGuard LuCI does not read lifecycle state'
-grep -Fq 'setInitAction' "$adguard_view" || fail 'AdGuard LuCI does not expose lifecycle actions'
-grep -Fq 'adguardhome.yaml' "$adguard_view" || fail 'AdGuard LuCI config read/write path is missing'
-grep -Fq 'logread' "$adguard_view" || fail 'AdGuard LuCI log function is missing'
 grep -Fq '3000' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard Web UI port seed is missing'
 grep -Fq '5353' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard DNS compatibility seed is missing'
-"$PYTHON_BIN" - "$adguard_acl" <<'PY'
-import json, sys
-data = json.load(open(sys.argv[1], encoding='utf-8'))['luci-app-adguardhome']
-read_ubus = data['read']['ubus']; write_ubus = data['write']['ubus']
-assert 'getInitList' in read_ubus['luci']
-assert 'setInitAction' in write_ubus['luci']
-read = data['read']['file']; write = data['write']['file']
-assert '/etc/adguardhome/adguardhome.yaml' in read
-assert '/etc/adguardhome/adguardhome.yaml' in write
-assert 'exec' in read['/usr/bin/AdGuardHome --version']
-PY
-grep -Fq 'adguard_rpc_functional' "$verify" || fail 'real-device AdGuard functional check is missing'
+bash tests/test-adguard-manager.sh || fail 'mature AdGuard manager contract is missing'
+grep -Fq 'adguard_page_functional' "$verify" || fail 'real-device AdGuard page functional check is missing'
+grep -Fq 'ARTHUR_LUCI_COOKIE_FILE' "$verify" || fail 'real-device AdGuard page check must use an existing authenticated session'
 pass ADGUARD_FUNCTIONAL_CONTRACT
 
 grep -Fq '/cgi-bin/luci/admin/quickstart/' "$verify" || fail 'real-device QuickStart route check is missing'
@@ -86,6 +71,8 @@ grep -Fq 'luci-static/quickstart/index.js' "$verify" || fail 'real-device QuickS
 grep -Fq 'quickstart_home_functional' "$verify" || fail 'real-device QuickStart functional check is missing'
 grep -Fq 'id=' "$verify" || fail 'real-device QuickStart app mount check is missing'
 grep -Fq 'app' "$verify" || fail 'real-device QuickStart app mount marker is missing'
+grep -Fq 'prebuild_features' "$verify" || fail 'real-device prebuild feature evidence is missing'
+grep -Fq 'FIRMWARE_BUILD_ALLOWED' "$verify" || fail 'real-device build permission gate is missing'
 pass ISTORE_QUICKSTART_FUNCTIONAL_CONTRACT
 
 plugin_count="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | wc -l | tr -d ' ')"

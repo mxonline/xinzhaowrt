@@ -85,3 +85,34 @@ def hidden_codex_launch_args():
         raise RuntimeError("pythonw.exe is required for hidden Codex SDK launch")
     launcher = Path(__file__).with_name("codex_hidden_launcher.py")
     return [str(pythonw_path()), str(launcher), "app-server", "--listen", "stdio://"]
+
+
+def terminate_process_tree(pid, timeout=5):
+    """Terminate one exact child process and its descendants.
+
+    The SDK close path can return while the hidden launcher or bundled
+    ``codex-code-mode-host`` remains alive.  On Windows, taskkill's ``/T``
+    flag is the OS-supported way to close that exact process tree.  The
+    caller must supply a PID it already observed from its own subprocess.
+    """
+    if not pid or int(pid) == os.getpid():
+        return False
+    pid = int(pid)
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    try:
+        os.kill(pid, 15)
+        return True
+    except OSError:
+        return False

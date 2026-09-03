@@ -3,6 +3,7 @@ from enum import Enum
 import asyncio
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from ai_orchestrator.adapters import (
     PreflightStatus,
@@ -35,6 +36,49 @@ class HeadlessAdapterTests(unittest.TestCase):
 
         candidate = DECISION_JSON_SCHEMA["properties"]["metadata"]["properties"]["candidate"]
         self.assertEqual(set(candidate["properties"]), set(candidate["required"]))
+
+    def test_controller_schema_has_no_provider_strict_object_errors(self):
+        from ai_orchestrator.adapters import DECISION_JSON_SCHEMA, validate_strict_json_schema
+
+        self.assertEqual([], validate_strict_json_schema(DECISION_JSON_SCHEMA))
+
+    def test_strict_schema_validator_reports_missing_required_property(self):
+        from copy import deepcopy
+        from ai_orchestrator.adapters import DECISION_JSON_SCHEMA, validate_strict_json_schema
+
+        schema = deepcopy(DECISION_JSON_SCHEMA)
+        schema["properties"]["metadata"]["properties"]["candidate"]["required"].remove("size_bytes")
+
+        errors = validate_strict_json_schema(schema)
+
+        self.assertEqual(
+            ["metadata.candidate: required must include every declared property; missing size_bytes"],
+            errors,
+        )
+
+    def test_controller_prompt_bounds_large_executor_items(self):
+        from ai_orchestrator.adapters import _controller_prompt
+        from ai_orchestrator.models import CodexResult, PipelineState
+
+        large_item = {
+            "type": "command_execution",
+            "id": "large-output",
+            "command": "gh run view 33491477270",
+            "aggregated_output": "x" * 1_100_000,
+        }
+        result = CodexResult("turn-large", "Run remains in progress.", items=[large_item])
+        state = PipelineState(
+            "request",
+            "jdcloud_re-ss-01",
+            "BUILD",
+            "Continue BUILD.",
+            last_result=result.to_dict(),
+        )
+
+        prompt = _controller_prompt(result, state)
+
+        self.assertLessEqual(len(prompt), 1_048_576)
+        self.assertIn("large-output", prompt)
 
     def test_no_backend_is_a_credential_required_preflight_blocker(self):
         backend = choose_controller_backend(None, [])
@@ -131,6 +175,35 @@ class HeadlessAdapterTests(unittest.TestCase):
             self.assertEqual(2, controller.codex.starts)
         finally:
             adapters._import_sdk = original
+
+    def test_controller_reset_terminates_hidden_process_tree_before_close(self):
+        from ai_orchestrator import adapters
+
+        class Process:
+            pid = 12345
+
+            def poll(self):
+                return None
+
+        class Codex:
+            def __init__(self):
+                self._client = SimpleNamespace(_sync=SimpleNamespace(_proc=Process()))
+                self.closed = False
+
+            async def close(self):
+                self.closed = True
+
+        controller = adapters.CodexThreadController("C:/repo", "gpt-5.6-sol")
+        codex = Codex()
+        controller.codex = codex
+
+        with patch("ai_orchestrator.adapters.terminate_process_tree") as terminate:
+            asyncio.run(controller.reset_after_error())
+
+        terminate.assert_called_once_with(12345)
+        self.assertTrue(codex.closed)
+        self.assertIsNone(controller.codex)
+        self.assertIsNone(controller.thread)
 
     def test_executor_recreates_thread_when_rollout_disappears_during_run(self):
         from ai_orchestrator import adapters

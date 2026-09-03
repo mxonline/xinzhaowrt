@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .models import CodexResult, GPTDecision, PipelineState
-from .windows_process import hidden_codex_launch_args
+from .windows_process import hidden_codex_launch_args, terminate_process_tree
 
 
 class PreflightStatus(str, Enum):
@@ -51,6 +51,57 @@ def executor_thread_options(cwd):
         "sandbox": "workspace_write",
         "cwd": str(cwd),
     }
+
+
+def validate_strict_json_schema(schema):
+    """Return provider-facing errors for every nested strict object schema."""
+    errors = []
+
+    def visit(node, path):
+        if not isinstance(node, dict):
+            return
+        schema_type = node.get("type")
+        object_schema = schema_type == "object" or (
+            isinstance(schema_type, list) and "object" in schema_type
+        )
+        if object_schema and node.get("additionalProperties") is False:
+            properties = node.get("properties")
+            required = node.get("required")
+            if not isinstance(properties, dict):
+                properties = {}
+            if not isinstance(required, list):
+                errors.append("%s: required must be supplied as an array" % (path or "<root>"))
+            else:
+                missing = [name for name in properties if name not in required]
+                extra = [name for name in required if name not in properties]
+                if missing:
+                    errors.append(
+                        "%s: required must include every declared property; missing %s"
+                        % (path or "<root>", ", ".join(missing))
+                    )
+                if extra:
+                    errors.append(
+                        "%s: required contains undeclared properties; extra %s"
+                        % (path or "<root>", ", ".join(extra))
+                    )
+
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            for name, child in properties.items():
+                child_path = "%s.%s" % (path, name) if path else name
+                visit(child, child_path)
+        for key in ("items", "additionalProperties", "not", "if", "then", "else"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                visit(child, "%s.%s" % (path, key) if path else key)
+        for key in ("anyOf", "oneOf", "allOf", "prefixItems"):
+            children = node.get(key)
+            if isinstance(children, list):
+                for index, child in enumerate(children):
+                    visit(child, "%s.%s[%d]" % (path, key, index) if path else "%s[%d]" % (key, index))
+
+    visit(schema, "")
+    return errors
 
 
 DECISION_JSON_SCHEMA = {
@@ -179,8 +230,17 @@ DECISION_JSON_SCHEMA = {
 }
 
 
+_DECISION_SCHEMA_ERRORS = validate_strict_json_schema(DECISION_JSON_SCHEMA)
+if _DECISION_SCHEMA_ERRORS:
+    raise ValueError("invalid codex_output_schema: %s" % "; ".join(_DECISION_SCHEMA_ERRORS))
+
+
 class AdapterError(RuntimeError):
     pass
+
+
+class TransportAmbiguityError(AdapterError):
+    """The executor stream ended after dispatch; replay could duplicate side effects."""
 
 
 class SDKUnavailable(AdapterError):
@@ -221,12 +281,19 @@ def _as_dict(value):
 class AsyncCodexExecutor:
     """One durable SDK executor thread; never makes release or gate decisions."""
 
-    def __init__(self, cwd, model=None, codex_factory=None):
+    def __init__(self, cwd, model=None, codex_factory=None, sleep_fn=None, backoff_base=2.0, backoff_max=30.0, max_recovery_attempts=2):
         self.cwd = str(cwd)
         self.model = model
         self.codex_factory = codex_factory
         self.codex = None
         self.thread = None
+        self.last_error = ""
+        self.launch_args = []
+        self.sleep_fn = sleep_fn or asyncio.sleep
+        self.backoff_base = max(0.0, float(backoff_base))
+        self.backoff_max = max(self.backoff_base, float(backoff_max))
+        self.max_recovery_attempts = max(1, int(max_recovery_attempts))
+        self.last_recovery = None
 
     async def preflight(self):
         module = _import_sdk()
@@ -251,7 +318,18 @@ class AsyncCodexExecutor:
             try:
                 self.thread = await self.codex.thread_resume(state.executor_thread_id, **options)
             except Exception as exc:
-                if "no rollout found" not in str(exc).lower():
+                error_text = str(exc).lower()
+                if "active writer" in error_text:
+                    # The local Codex child has already been replaced, but
+                    # the old persisted writer can remain registered briefly.
+                    # Preserve the Arthur pipeline HANDOFF and start a fresh
+                    # writer for the same durable task context.
+                    self.last_error = str(exc)
+                    state.executor_thread_id = None
+                    self.thread = await self.codex.thread_start(**options)
+                    state.executor_thread_id = str(getattr(self.thread, "id"))
+                    return module
+                if "no rollout found" not in error_text:
                     raise
                 state.executor_thread_id = None
                 self.thread = await self.codex.thread_start(**options)
@@ -264,17 +342,23 @@ class AsyncCodexExecutor:
     def _new_codex(self, module):
         if self.codex_factory:
             return self.codex_factory(module)
+        self.launch_args = list(hidden_codex_launch_args())
         config = module.CodexConfig(
-            launch_args_override=tuple(hidden_codex_launch_args()),
+            launch_args_override=tuple(self.launch_args),
             cwd=self.cwd,
         )
         return module.AsyncCodex(config=config)
 
     async def prepare(self, state):
         """Create or resume the executor thread before a turn is started."""
-        await self._ensure_thread(state)
+        try:
+            await self._ensure_thread(state)
+        except Exception as exc:
+            self.last_error = str(exc)
+            raise
 
     async def run(self, prompt, state):
+        self.last_recovery = None
         module = await self._ensure_thread(state)
         try:
             result = await self.thread.run(
@@ -283,16 +367,13 @@ class AsyncCodexExecutor:
                 sandbox=module.Sandbox.workspace_write,
             )
         except Exception as exc:
-            if "no rollout found" not in str(exc).lower():
+            self.last_error = str(exc)
+            if "no rollout found" in str(exc).lower():
+                result, module = await self._recover_missing_thread(state, prompt, module)
+            elif _is_transport_disconnect(exc):
+                result, module = await self._recover_stream(state, prompt, module, exc)
+            else:
                 raise
-            state.executor_thread_id = None
-            self.thread = None
-            await self._ensure_thread(state)
-            result = await self.thread.run(
-                prompt,
-                approval_mode=module.ApprovalMode.auto_review,
-                sandbox=module.Sandbox.workspace_write,
-            )
         return CodexResult(
             turn_id=str(getattr(result, "id", "unknown")),
             final_response=str(getattr(result, "final_response", None) or ""),
@@ -301,20 +382,47 @@ class AsyncCodexExecutor:
             items=[_as_dict(item) for item in (getattr(result, "items", None) or [])],
         )
 
+    async def _run_turn(self, module, prompt):
+        return await self.thread.run(
+            prompt,
+            approval_mode=module.ApprovalMode.auto_review,
+            sandbox=module.Sandbox.workspace_write,
+        )
+
+    async def _recover_missing_thread(self, state, prompt, module):
+        state.executor_thread_id = None
+        self.thread = await self.codex.thread_start(
+            approval_mode=module.ApprovalMode.auto_review,
+            cwd=self.cwd,
+            sandbox=module.Sandbox.workspace_write,
+            model=self.model,
+        )
+        state.executor_thread_id = str(getattr(self.thread, "id"))
+        result = await self._run_turn(module, prompt)
+        self.last_recovery = {"mode": "recreate_missing_thread", "thread_id": state.executor_thread_id}
+        return result, module
+
+    async def _recover_stream(self, state, prompt, module, initial_error):
+        await self.reset_after_error()
+        raise TransportAmbiguityError(
+            "executor stream disconnected after request dispatch; outcome is ambiguous and automatic replay is forbidden: %s"
+            % initial_error
+        )
+
     async def close(self):
-        if self.codex is not None and hasattr(self.codex, "close"):
-            await self.codex.close()
+        await self._close_codex(self.codex)
 
     def active_process_info(self):
         client = getattr(self.codex, "_client", None)
         sync_client = getattr(client, "_sync", None) or client
         process = getattr(sync_client, "_proc", None)
         if process is None:
-            return {"pid": None, "alive": False, "console_visible": False}
+            return {"pid": None, "alive": False, "returncode": None, "stderr_tail": self.last_error, "console_visible": False}
         return {
             "pid": getattr(process, "pid", None),
             "alive": process.poll() is None,
             "returncode": process.poll(),
+            "stderr_tail": self.last_error if process.poll() is not None else "",
             "console_visible": False,
         }
 
@@ -322,11 +430,31 @@ class AsyncCodexExecutor:
         old = self.codex
         self.codex = None
         self.thread = None
-        if old is not None and hasattr(old, "close"):
+        await self._close_codex(old)
+
+    async def _close_codex(self, codex):
+        if codex is None:
+            return
+        process = getattr(getattr(getattr(codex, "_client", None), "_sync", None), "_proc", None)
+        pid = getattr(process, "pid", None)
+        if pid:
+            # Do this before SDK close: once the wrapper disappears, its
+            # descendants may otherwise become orphaned and keep the durable
+            # Codex writer lock alive for the next resume.
+            terminate_process_tree(pid)
+        if hasattr(codex, "close"):
             try:
-                await asyncio.wait_for(old.close(), timeout=5)
+                await asyncio.wait_for(codex.close(), timeout=5)
             except Exception:
                 pass
+
+    def launch_diagnostics(self):
+        return {
+            "command": list(self.launch_args),
+            "cwd": self.cwd,
+            "python": sys.executable,
+            "path_present": bool(os.environ.get("PATH")),
+        }
 
 
 class ControllerAdapter:
@@ -339,15 +467,37 @@ class ControllerAdapter:
         raise NotImplementedError
 
 
+def _is_transport_disconnect(error):
+    text = str(error).lower()
+    return any(marker in text for marker in (
+        "stream disconnected before completion",
+        "transportclosederror",
+        "codex process is not running",
+        "codex process closed stdout",
+        "no rollout found",
+        "connection reset",
+        "connection aborted",
+    ))
+
+
+def _is_controller_stream_disconnect(error):
+    return _is_transport_disconnect(error)
+
+
 class CodexThreadController(ControllerAdapter):
     """Separate read-only controller thread. It only returns structured decisions."""
 
-    def __init__(self, cwd, model, codex_factory=None):
+    def __init__(self, cwd, model, codex_factory=None, sleep_fn=None, backoff_base=2.0, backoff_max=30.0, max_recovery_attempts=2):
         self.cwd = str(cwd)
         self.model = model
         self.codex_factory = codex_factory
         self.codex = None
         self.thread = None
+        self.sleep_fn = sleep_fn or asyncio.sleep
+        self.backoff_base = max(0.0, float(backoff_base))
+        self.backoff_max = max(self.backoff_base, float(backoff_max))
+        self.max_recovery_attempts = max(1, int(max_recovery_attempts))
+        self.last_recovery = None
 
     async def preflight(self):
         module = _import_sdk()
@@ -386,6 +536,18 @@ class CodexThreadController(ControllerAdapter):
             state.controller_thread_id = str(getattr(self.thread, "id"))
         return module
 
+    def _thread_options(self, module):
+        return {
+            "approval_mode": module.ApprovalMode.auto_review,
+            "cwd": self.cwd,
+            "sandbox": module.Sandbox.read_only,
+            "model": self.model,
+            "developer_instructions": (
+                "You are a read-only production policy controller. Never execute commands, use tools, modify files, "
+                "choose a release result without evidence, or ask the user questions. Return only the JSON schema."
+            ),
+        }
+
     def _new_codex(self, module):
         if self.codex_factory:
             return self.codex_factory(module)
@@ -398,28 +560,38 @@ class CodexThreadController(ControllerAdapter):
     async def prepare(self, state):
         await self._ensure_thread(state)
 
+    async def close(self):
+        await self._close_codex(self.codex)
+
+    async def reset_after_error(self):
+        old = self.codex
+        self.codex = None
+        self.thread = None
+        await self._close_codex(old)
+
+    async def _close_codex(self, codex):
+        if codex is None:
+            return
+        process = getattr(getattr(getattr(codex, "_client", None), "_sync", None), "_proc", None)
+        pid = getattr(process, "pid", None)
+        if pid:
+            terminate_process_tree(pid)
+        if hasattr(codex, "close"):
+            try:
+                await asyncio.wait_for(codex.close(), timeout=5)
+            except Exception:
+                pass
+
     async def review(self, result, state):
+        self.last_recovery = None
         module = await self._ensure_thread(state)
         prompt = _controller_prompt(result, state)
         try:
-            response = await self.thread.run(
-                prompt,
-                approval_mode=module.ApprovalMode.auto_review,
-                sandbox=module.Sandbox.read_only,
-                output_schema=DECISION_JSON_SCHEMA,
-            )
+            response = await self._run_review(module, prompt)
         except Exception as exc:
-            if "no rollout found" not in str(exc).lower():
+            if not _is_controller_stream_disconnect(exc):
                 raise
-            state.controller_thread_id = None
-            self.thread = None
-            module = await self._ensure_thread(state)
-            response = await self.thread.run(
-                prompt,
-                approval_mode=module.ApprovalMode.auto_review,
-                sandbox=module.Sandbox.read_only,
-                output_schema=DECISION_JSON_SCHEMA,
-            )
+            response, module = await self._recover_stream(result, state, prompt, module, exc)
         items = getattr(response, "items", None) or []
         if any(_item_is_execution(item) for item in items):
             raise AdapterError("controller attempted command execution")
@@ -428,9 +600,56 @@ class CodexThreadController(ControllerAdapter):
             raise AdapterError("controller returned no structured response")
         return json.loads(text)
 
-    async def close(self):
-        if self.codex is not None and hasattr(self.codex, "close"):
-            await self.codex.close()
+    async def _run_review(self, module, prompt):
+        return await self.thread.run(
+            prompt,
+            approval_mode=module.ApprovalMode.auto_review,
+            sandbox=module.Sandbox.read_only,
+            output_schema=DECISION_JSON_SCHEMA,
+        )
+
+    async def _recover_stream(self, result, state, prompt, module, initial_error):
+        original_thread_id = state.controller_thread_id
+        original_transport = self.codex
+        last_error = initial_error
+        for attempt in range(self.max_recovery_attempts):
+            delay = min(self.backoff_max, self.backoff_base * (2 ** attempt))
+            await self.sleep_fn(delay)
+            try:
+                if original_thread_id:
+                    self.thread = await self.codex.thread_resume(
+                        original_thread_id,
+                        **self._thread_options(module),
+                    )
+                    state.controller_thread_id = original_thread_id
+                response = await self._run_review(module, prompt)
+                self.last_recovery = {"mode": "resume", "attempt": attempt + 1, "thread_id": original_thread_id}
+                return response, module
+            except Exception as resume_error:
+                last_error = resume_error
+                await self.reset_after_error()
+                state.controller_thread_id = None
+                try:
+                    module = _import_sdk()
+                    if self.codex_factory is None and not hasattr(module, "CodexConfig"):
+                        self.codex = original_transport
+                    else:
+                        self.codex = self._new_codex(module)
+                    self.thread = await self.codex.thread_start(**self._thread_options(module))
+                    state.controller_thread_id = str(getattr(self.thread, "id"))
+                    response = await self._run_review(module, prompt)
+                    self.last_recovery = {
+                        "mode": "recreate",
+                        "attempt": attempt + 1,
+                        "previous_thread_id": original_thread_id,
+                        "thread_id": state.controller_thread_id,
+                    }
+                    return response, module
+                except Exception as recreate_error:
+                    last_error = recreate_error
+                    await self.reset_after_error()
+                    state.controller_thread_id = original_thread_id
+        raise AdapterError("controller stream recovery exhausted: %s" % last_error)
 
     def active_process_info(self):
         client = getattr(self.codex, "_client", None)
@@ -444,17 +663,6 @@ class CodexThreadController(ControllerAdapter):
             "returncode": process.poll(),
             "console_visible": False,
         }
-
-    async def reset_after_error(self):
-        old = self.codex
-        self.codex = None
-        self.thread = None
-        if old is not None and hasattr(old, "close"):
-            try:
-                await asyncio.wait_for(old.close(), timeout=5)
-            except Exception:
-                pass
-
 
 class ResponsesController(ControllerAdapter):
     def __init__(self, api_key, model="gpt-5.6-sol", base_url=None):
@@ -494,11 +702,51 @@ class ResponsesController(ControllerAdapter):
 
 
 def _controller_prompt(result, state):
+    controller_state = state.to_dict()
+    controller_result = _compact_controller_result(result.to_dict())
+    controller_state["last_result"] = controller_result
+    probe_id = state.observability.get("e2e_probe_id")
+    probe_contract = None
+    if probe_id:
+        probe_contract = {
+            "purpose": "temporary_existing_bridge_e2e_verify_only",
+            "do_not_modify_firmware_or_pipeline": True,
+            "probe_id": probe_id,
+            "routing": {
+                "BRIDGE_PROBE_STAGE_1": {
+                    "match": "final_response exactly contains BRIDGE_PROBE_STAGE_1 with this probe_id and value=37",
+                    "action": "RECOVERABLE",
+                    "next_codex_prompt": "Return exactly BRIDGE_PROBE_STAGE_2 probe_id=%s value=42, then stop." % probe_id,
+                    "reason_code": "BRIDGE_PROBE_STAGE_1_CONFIRMED",
+                },
+                "BRIDGE_PROBE_STAGE_2": {
+                    "match": "final_response exactly contains BRIDGE_PROBE_STAGE_2 with this probe_id and value=42",
+                    "action": "RECOVERABLE",
+                    "next_codex_prompt": "Return exactly BRIDGE_PROBE_STAGE_3 probe_id=%s value=100, then stop." % probe_id,
+                    "reason_code": "BRIDGE_PROBE_NORMAL_PASS",
+                    "summary_marker": "BRIDGE_PROBE_NORMAL=PASS",
+                },
+                "BRIDGE_PROBE_STAGE_3": {
+                    "match": "final_response exactly contains BRIDGE_PROBE_STAGE_3 with this probe_id and value=100",
+                    "action": "RECOVERABLE",
+                    "next_codex_prompt": "Return exactly BRIDGE_PROBE_STAGE_4 probe_id=%s value=200, then stop." % probe_id,
+                    "reason_code": "BRIDGE_PROBE_RECOVERY_CONTINUE",
+                },
+                "BRIDGE_PROBE_STAGE_4": {
+                    "match": "final_response exactly contains BRIDGE_PROBE_STAGE_4 with this probe_id and value=200",
+                    "action": "RECOVERABLE",
+                    "next_codex_prompt": "Resume the existing Arthur FORENSICS task from HANDOFF and existing evidence; do not run another probe.",
+                    "reason_code": "BRIDGE_PROBE_RECOVERY_PASS",
+                    "summary_marker": "BRIDGE_PROBE_RECOVERY=PASS",
+                },
+            },
+        }
     return json.dumps(
         {
             "instruction": "Review this executor result and pipeline state. Decide the next automatic action under the whitelist.",
-            "pipeline_state": state.to_dict(),
-            "codex_result": result.to_dict(),
+            "pipeline_state": controller_state,
+            "codex_result": controller_result,
+            "temporary_probe_contract": probe_contract,
             "constraints": {
                 "no_interactive_workflow": True,
                 "no_executor_release_decision": True,
@@ -512,6 +760,55 @@ def _controller_prompt(result, state):
         },
         ensure_ascii=False,
     )
+
+
+_CONTROLLER_ITEM_TEXT_LIMIT = 4096
+
+
+def _compact_controller_result(result):
+    """Keep controller input bounded while raw results remain in durable evidence."""
+    if not isinstance(result, dict):
+        return {"status": "invalid", "final_response": str(result)[:_CONTROLLER_ITEM_TEXT_LIMIT]}
+    compact = dict(result)
+    items = result.get("items")
+    if isinstance(items, list):
+        compact["items"] = [_compact_controller_item(item) for item in items]
+    return compact
+
+
+def _compact_controller_item(item):
+    if not isinstance(item, dict):
+        return str(item)[:_CONTROLLER_ITEM_TEXT_LIMIT]
+    keep = (
+        "type",
+        "id",
+        "status",
+        "command",
+        "exit_code",
+        "duration_ms",
+        "source",
+        "plugin_id",
+        "summary",
+        "content",
+        "aggregated_output",
+        "error",
+        "query",
+    )
+    compact = {}
+    for key in keep:
+        if key not in item:
+            continue
+        value = item[key]
+        if isinstance(value, str):
+            compact[key] = value[:_CONTROLLER_ITEM_TEXT_LIMIT]
+        elif isinstance(value, (int, float, bool)) or value is None:
+            compact[key] = value
+        elif key in ("content", "query"):
+            compact[key] = str(value)[:_CONTROLLER_ITEM_TEXT_LIMIT]
+    omitted = sorted(set(item) - set(compact))
+    if omitted:
+        compact["omitted_fields"] = omitted
+    return compact
 
 
 def _item_is_execution(item):

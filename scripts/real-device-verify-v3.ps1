@@ -7,7 +7,7 @@ param(
 
     [string]$Target = 'root@192.168.6.1',
 
-    [string]$RootPassword = $env:ARTHUR_ROOT_PASSWORD
+    [string]$LuciCookieFile = $env:ARTHUR_LUCI_COOKIE_FILE
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +38,7 @@ Write-Host "REAL_DEVICE_V3_TARGET=$Target"
 Write-Host "REAL_DEVICE_V3_CANDIDATE=$Candidate"
 Write-Host "REAL_DEVICE_V3_COMMIT=$Commit"
 
-& pwsh -NoProfile -ExecutionPolicy Bypass -File $BaseScript -DeviceIp $HostIp -Candidate $Candidate -Commit $Commit -RootPassword $RootPassword
+& pwsh -NoProfile -ExecutionPolicy Bypass -File $BaseScript -DeviceIp $HostIp -Candidate $Candidate -Commit $Commit -LuciCookieFile $LuciCookieFile
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

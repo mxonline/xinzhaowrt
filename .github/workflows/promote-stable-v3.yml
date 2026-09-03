@@ -112,6 +112,13 @@ jobs:
           require(data.get('required_plugins_passed') == 22, 'required_plugins_passed is not 22')
           require((data.get('device') or {}).get('target') == 'jdcloud_re-ss-01', 'device target mismatch')
 
+          features = data.get('prebuild_features') or {}
+          require(features.get('ADGUARD_LIVE') == 'PASS', 'ADGUARD_LIVE is not PASS')
+          require(features.get('QUICKSTART_LIVE') == 'PASS', 'QUICKSTART_LIVE is not PASS')
+          require(features.get('WIFI_LIVE') == 'PASS', 'WIFI_LIVE is not PASS')
+          require(features.get('FIRMWARE_BUILD_ALLOWED') == 'true', 'FIRMWARE_BUILD_ALLOWED is not true')
+          require(features.get('wifi_configuration_mutated') is False, 'Wi-Fi configuration mutation marker is not false')
+
           for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
               require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
 

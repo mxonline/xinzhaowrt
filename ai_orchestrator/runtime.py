@@ -2,6 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 
+from .adapters import TransportAmbiguityError
 from .models import ActionKind, CodexResult, GPTDecision, PipelineState, TerminalState
 from .policy import DecisionValidationError, PolicyRoute, policy_gate
 from .observability import (
@@ -84,6 +85,7 @@ class ProductionRuntime:
                 prompt = state.next_codex_prompt or self.pipeline.prompt_for(state.phase)
                 prepare = getattr(self.executor, "prepare", None)
                 prepare_error = None
+                executor_ambiguity = None
                 if prepare:
                     self._set_observation(state, runtime="LIVE", stage=state.phase, action="executor.prepare")
                     try:
@@ -102,12 +104,16 @@ class ProductionRuntime:
                 if prepare_error is not None:
                     await _reset_adapter_after_error(self.executor, state, "executor")
                     error_text = _exception_text(prepare_error)
+                    if isinstance(prepare_error, TransportAmbiguityError):
+                        executor_ambiguity = error_text
                     result = CodexResult(
                         turn_id="executor-error-%d" % (state.turn_count + 1),
                         final_response="executor error: %s" % error_text,
-                        status="error",
+                        status="blocked" if executor_ambiguity else "error",
                         executor_thread_id=state.executor_thread_id,
-                        evidence=["executor exception: %s" % error_text],
+                        evidence=(
+                            ["runtime/executor-transport-ambiguous.log"] if executor_ambiguity else []
+                        ) + ["executor exception: %s" % error_text],
                     )
                 else:
                     self._set_observation(state, runtime="LIVE", stage=state.phase, action="executor.run")
@@ -116,15 +122,28 @@ class ProductionRuntime:
                     except Exception as exc:
                         await _reset_adapter_after_error(self.executor, state, "executor")
                         error_text = _exception_text(exc)
+                        if isinstance(exc, TransportAmbiguityError):
+                            executor_ambiguity = error_text
                         result = CodexResult(
                             turn_id="executor-error-%d" % (state.turn_count + 1),
                             final_response="executor error: %s" % error_text,
-                            status="error",
+                            status="blocked" if executor_ambiguity else "error",
                             executor_thread_id=state.executor_thread_id,
-                            evidence=["executor exception: %s" % error_text],
+                            evidence=(
+                                ["runtime/executor-transport-ambiguous.log"] if executor_ambiguity else []
+                            ) + ["executor exception: %s" % error_text],
                         )
                 state.turn_count += 1
                 state.last_result = result.to_dict()
+                executor_recovery = getattr(self.executor, "last_recovery", None)
+                if executor_recovery:
+                    state.observability["executor_stream_recovery"] = dict(executor_recovery)
+                    self.store.append_event("executor_stream_recovered", dict(executor_recovery))
+                self.store.persist_result_packet(state.last_result)
+                self.store.append_event(
+                    "result_packet_persisted",
+                    {"turn_id": result.turn_id, "turn_number": state.turn_count},
+                )
                 self.store.append_event(
                     "executor_result",
                     dict(result.to_dict(), source="executor", turn_number=state.turn_count),
@@ -132,35 +151,26 @@ class ProductionRuntime:
                 self.store.save(state)
                 self._mark_progress(state, "executor_result")
 
-                try:
-                    prepare_controller = getattr(self.controller, "prepare", None)
-                    if prepare_controller:
-                        self._set_observation(state, runtime="LIVE", stage=state.phase, action="controller.prepare")
-                        await _with_timeout(prepare_controller(state), self.turn_timeout)
-                        self.store.save(state)
-                        self.store.append_event(
-                            "controller_thread_ready",
-                            {"controller_thread_id": state.controller_thread_id},
-                        )
-                    raw_decision = await _with_timeout(self.controller.review(result, state), self.turn_timeout)
-                    conversation_id = getattr(self.controller, "last_conversation_id", None)
-                    if conversation_id:
-                        state.responses_conversation_id = conversation_id
-                    decision = policy_gate(raw_decision).decision
-                except (DecisionValidationError, ValueError, TypeError, Exception) as exc:
-                    await _reset_adapter_after_error(self.controller, state, "controller")
-                    error_text = _exception_text(exc)
+                if executor_ambiguity:
                     decision = GPTDecision(
-                        action=ActionKind.RECOVERABLE,
-                        reason_code="CONTROLLER_PROTOCOL_ERROR",
-                        summary="Controller response failed validation or transport; retry automatically.",
-                        next_codex_prompt=(
-                            "Recover the controller protocol error, preserve all evidence, and rerun phase %s. Error: %s"
-                            % (state.phase, error_text)
-                        ),
-                        evidence=["runtime/controller-error.log"],
+                        action=ActionKind.TERMINAL,
+                        reason_code="EXECUTOR_TRANSPORT_AMBIGUOUS",
+                        summary="Executor transport ended after dispatch; the operation outcome is unknown, so automatic replay is forbidden.",
+                        evidence=["runtime/executor-transport-ambiguous.log"],
+                        terminal_state=TerminalState.SAFETY_BLOCKED,
+                        metadata={
+                            "next_action": "Confirm the remote operation outcome from durable device evidence before any retry.",
+                            "error": executor_ambiguity,
+                        },
                     )
+                else:
+                    decision = await self._review_controller(result, state)
                 state.last_decision = decision.to_dict()
+                self.store.persist_next_action_packet(state.last_decision)
+                self.store.append_event(
+                    "next_action_packet_persisted",
+                    {"action": decision.action.value, "turn_number": state.turn_count},
+                )
                 self.store.append_event(
                     "controller_decision",
                     dict(decision.to_dict(), reviewed_by="controller", turn_number=state.turn_count),
@@ -204,6 +214,40 @@ class ProductionRuntime:
             if close:
                 await _close_with_timeout(close)
         return state
+
+    async def _review_controller(self, result, state):
+        try:
+            prepare_controller = getattr(self.controller, "prepare", None)
+            if prepare_controller:
+                self._set_observation(state, runtime="LIVE", stage=state.phase, action="controller.prepare")
+                await _with_timeout(prepare_controller(state), self.turn_timeout)
+                self.store.save(state)
+                self.store.append_event(
+                    "controller_thread_ready",
+                    {"controller_thread_id": state.controller_thread_id},
+                )
+            raw_decision = await _with_timeout(self.controller.review(result, state), self.turn_timeout)
+            recovery = getattr(self.controller, "last_recovery", None)
+            if recovery:
+                state.observability["controller_stream_recovery"] = dict(recovery)
+                self.store.append_event("controller_stream_recovered", dict(recovery))
+            conversation_id = getattr(self.controller, "last_conversation_id", None)
+            if conversation_id:
+                state.responses_conversation_id = conversation_id
+            return policy_gate(raw_decision).decision
+        except (DecisionValidationError, ValueError, TypeError, Exception) as exc:
+            await _reset_adapter_after_error(self.controller, state, "controller")
+            error_text = _exception_text(exc)
+            return GPTDecision(
+                action=ActionKind.RECOVERABLE,
+                reason_code=_controller_failure_reason(error_text),
+                summary="Controller response failed; controller transport may recover without changing the checkpoint.",
+                next_codex_prompt=(
+                    "Recover the controller protocol error, preserve all evidence, and rerun phase %s. Error: %s"
+                    % (state.phase, error_text)
+                ),
+                evidence=["runtime/controller-error.log"],
+            )
 
     def _apply_outcome(self, state, outcome):
         decision = outcome.decision
@@ -283,7 +327,11 @@ class ProductionRuntime:
         observations["pid"] = os.getpid()
         observations["stage"] = state.phase
         observations["heartbeat_at"] = utc_now()
-        observations["active_process"] = self._active_process_info()
+        executor_process = self._active_process_info()
+        controller_process = self._controller_process_info()
+        observations["active_process"] = executor_process
+        observations["executor_process"] = executor_process
+        observations["controller_process"] = controller_process
         observations["human_input_required"] = state.pending_human_gate
         self._publish_runtime_status(state)
 
@@ -293,7 +341,10 @@ class ProductionRuntime:
         observations["last_progress_at"] = now
         observations["last_progress_reason"] = reason
         observations["observed_turn_count"] = state.turn_count
-        observations["active_process"] = self._active_process_info()
+        executor_process = self._active_process_info()
+        observations["active_process"] = executor_process
+        observations["executor_process"] = executor_process
+        observations["controller_process"] = self._controller_process_info()
         observations["heartbeat_at"] = now
         self.store.save(state)
         self._publish_runtime_status(state)
@@ -310,11 +361,20 @@ class ProductionRuntime:
                 return {"pid": None, "alive": False, "error": _exception_text(exc)}
         return {"pid": None, "alive": False}
 
+    def _controller_process_info(self):
+        getter = getattr(self.controller, "active_process_info", None)
+        if getter:
+            try:
+                return getter()
+            except Exception as exc:
+                return {"pid": None, "alive": False, "error": _exception_text(exc)}
+        return {"pid": None, "alive": False}
+
     def _progress_root(self):
         output_root = self.project_root / "output"
         return output_root if output_root.exists() else self.store.root
 
-    def _health_payload(self, state, active_process, output_before, output_after, cpu_before, cpu_after):
+    def _health_payload(self, state, active_process, controller_process, output_before, output_after, cpu_before, cpu_after):
         output_delta = output_after.get("bytes", 0) - output_before.get("bytes", 0)
         output_file_delta = output_after.get("files", 0) - output_before.get("files", 0)
         cpu_delta = None if cpu_before is None or cpu_after is None else cpu_after - cpu_before
@@ -330,6 +390,9 @@ class ProductionRuntime:
             "last_progress_age_seconds": age_seconds(last_progress_at),
             "active_process": active_process,
             "active_process_alive": bool(active_process.get("alive")),
+            "executor_process": active_process,
+            "controller_process": controller_process,
+            "controller_process_alive": bool(controller_process.get("alive")),
             "output_delta_bytes": output_delta,
             "output_delta_files": output_file_delta,
             "cpu_delta_seconds": cpu_delta,
@@ -350,6 +413,7 @@ class ProductionRuntime:
             else:
                 await asyncio.sleep(max(0.01, min(self.heartbeat_interval, self.health_interval)))
             active_process = self._active_process_info()
+            controller_process = self._controller_process_info()
             output_after = output_snapshot(self._progress_root(), excluded_roots=(self.store.root,))
             cpu_after = process_cpu_snapshot(active_process.get("pid"))
             output_delta = output_after.get("bytes", 0) - output_before.get("bytes", 0)
@@ -366,6 +430,8 @@ class ProductionRuntime:
                     "heartbeat_at": now,
                     "stage": state.phase,
                     "active_process": active_process,
+                    "executor_process": active_process,
+                    "controller_process": controller_process,
                     "output_snapshot": output_after,
                 }
             )
@@ -376,19 +442,20 @@ class ProductionRuntime:
                     "stage": state.phase,
                     "action": state.observability.get("action"),
                     "active_process": active_process,
+                    "controller_process": controller_process,
                     "last_progress_at": state.observability.get("last_progress_at"),
                 },
             )
             monotonic = asyncio.get_event_loop().time()
             if monotonic - last_health_monotonic >= self.health_interval:
-                health = self._health_payload(state, active_process, output_before, output_after, cpu_before, cpu_after)
+                health = self._health_payload(state, active_process, controller_process, output_before, output_after, cpu_before, cpu_after)
                 state.observability["last_health_at"] = now
                 state.observability["health"] = health
                 self.store.append_event("runtime_health", health)
                 last_health_monotonic = monotonic
             progress_age = age_seconds(state.observability.get("last_progress_at"))
             if progress_age is not None and progress_age >= self.stall_timeout and not stall_reported:
-                diagnosis = self._health_payload(state, active_process, output_before, output_after, cpu_before, cpu_after)
+                diagnosis = self._health_payload(state, active_process, controller_process, output_before, output_after, cpu_before, cpu_after)
                 diagnosis.update({"reason": "no_actual_progress", "threshold_seconds": self.stall_timeout})
                 state.observability.update(
                     {"runtime": "STALLED", "action": "STALL_DIAGNOSIS", "stall_diagnosis_at": now}
@@ -437,6 +504,17 @@ def _exception_text(exc):
     return type(exc).__name__
 
 
+def _controller_failure_reason(error_text):
+    lowered = error_text.lower()
+    if any(marker in lowered for marker in ("usage limit", "insufficient_quota", "credit_balance_exhausted")):
+        return "CONTROLLER_USAGE_LIMIT"
+    if "rate_limit_exceeded" in lowered:
+        return "CONTROLLER_RATE_LIMIT"
+    if any(marker in lowered for marker in ("stream disconnected", "transportclosederror", "connection reset", "connection aborted")):
+        return "CONTROLLER_TRANSPORT_RECOVERABLE"
+    return "CONTROLLER_PROTOCOL_ERROR"
+
+
 def _reset_thread_after_error(adapter, state, role):
     """Make the next automatic iteration start from a fresh SDK thread."""
     if role == "executor":
@@ -448,7 +526,8 @@ def _reset_thread_after_error(adapter, state, role):
 
 
 async def _reset_adapter_after_error(adapter, state, role):
-    _reset_thread_after_error(adapter, state, role)
+    if role == "executor":
+        _reset_thread_after_error(adapter, state, role)
     reset = getattr(adapter, "reset_after_error", None)
     if reset:
         try:

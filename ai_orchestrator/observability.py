@@ -192,6 +192,8 @@ def atomic_json_write(path, payload):
 def runtime_status_payload(state):
     observations = state.observability or {}
     active = observations.get("active_process") or {"pid": None, "alive": False, "console_visible": False}
+    executor_process = observations.get("executor_process") or active
+    controller_process = observations.get("controller_process") or {"pid": None, "alive": False, "console_visible": False}
     last_decision = state.last_decision or {}
     candidate = state.candidate or {}
     candidate_id = (
@@ -226,6 +228,10 @@ def runtime_status_payload(state):
         "github_run_id": github_run_id,
         "codex_child_pid": active.get("pid"),
         "codex_thread_id": state.executor_thread_id,
+        "executor_process": executor_process,
+        "controller_process": controller_process,
+        "controller_thread_id": state.controller_thread_id,
+        "controller_stream_recovery": observations.get("controller_stream_recovery"),
         "controller_state": last_decision.get("action") or "IDLE",
         "active_process": active,
         "heartbeat_at": observations.get("heartbeat_at"),

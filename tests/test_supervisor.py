@@ -115,6 +115,38 @@ class SupervisorTests(unittest.TestCase):
             self.assertIn("XinZhaoWrtGPTCodexBridgeSupervisor", command)
             self.assertIn("run-supervisor.py", " ".join(command))
 
+    def test_runtime_heartbeat_with_dead_codex_is_not_reported_healthy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.make_state(directory)
+            runtime_state = json.loads((Path(directory) / "runtime-state.json").read_text(encoding="utf-8"))
+            runtime_state["observability"].update({
+                "runtime": "LIVE",
+                "pid": 999999,
+                "active_process": {"pid": 999998, "alive": False, "returncode": 23},
+                "codex_pid": 999998,
+                "codex_alive": False,
+                "resume_status": "RESUME_FAILED",
+                "heartbeat_at": "2026-08-31T00:00:00+00:00",
+            })
+            (Path(directory) / "runtime-state.json").write_text(json.dumps(runtime_state), encoding="utf-8")
+            (Path(directory) / "runtime-status.json").write_text(json.dumps({
+                "runtime": "LIVE",
+                "daemon_pid": 999999,
+                "codex_pid": 999998,
+                "codex_alive": False,
+                "resume_status": "RESUME_FAILED",
+                "heartbeat_at": "2026-08-31T00:00:00+00:00",
+                "last_progress_at": "2026-08-31T00:00:00+00:00",
+                "active_process": {"pid": 999998, "alive": False, "returncode": 23},
+            }), encoding="utf-8")
+            launched = []
+            supervisor = RuntimeSupervisor(directory, launcher=lambda command: launched.append(FakeProcess())[-1], heartbeat_timeout=10)
+
+            result = supervisor.run_once()
+
+            self.assertEqual("RECOVERING", result["status"])
+            self.assertEqual(1, len(launched))
+
 
 if __name__ == "__main__":
     unittest.main()

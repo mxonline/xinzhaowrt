@@ -72,6 +72,10 @@ grep -Fq 'PLUGIN_I18N_INCLUDED' "$workflow" || fail 'plugin zh-cn inclusion gate
 grep -Fq 'XZ_ICON_SOURCE=PASS' "$workflow" || fail 'XZ icon source gate is absent'
 grep -Fq 'BUILD_INFO_PRESENT=PASS' "$workflow" || fail 'build info gate is absent'
 grep -Fq 'luci-i18n-adguardhome-zh-cn' "$workflow" || fail 'AdGuard Home zh-cn package gate is absent'
+grep -Fq 'ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./tests/test-adguard-manager.sh' "$workflow" || fail 'AdGuard manager gate must use the prepared SDK source on clean runners'
+adguard_gate_line="$(grep -nF 'ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./tests/test-adguard-manager.sh' "$workflow" | cut -d: -f1 | head -n1)"
+source_prepare_line="$(grep -nF 'scripts/feeds install -p base ucode' "$workflow" | cut -d: -f1 | head -n1)"
+test -n "$adguard_gate_line" && test -n "$source_prepare_line" && test "$source_prepare_line" -lt "$adguard_gate_line" || fail 'AdGuard manager gate runs before clean-runner source preparation'
 grep -Fq 'nas-packages-luci.git' "$workflow" || fail 'official QuickStart LuCI source is absent from the candidate workflow'
 grep -Fq 'nas-packages.git' "$workflow" || fail 'official QuickStart service source is absent from the candidate workflow'
 grep -Fq 'ISTORE_QUICKSTART_LUCI_REF' "$workflow" || fail 'official QuickStart LuCI ref is absent from the candidate workflow'

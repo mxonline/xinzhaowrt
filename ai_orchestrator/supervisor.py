@@ -51,7 +51,6 @@ def ensure_windows_startup(project_root, state_dir):
             "/f",
         ],
         capture_output=True,
-        text=True,
         creationflags=hidden_creation_flags(),
         startupinfo=hidden_startupinfo(),
     )
@@ -188,6 +187,10 @@ class RuntimeSupervisor:
         stalled = runtime == "STALLED" or status.get("action") == "STALL_DIAGNOSIS"
         daemon_pid = status.get("daemon_pid")
         daemon_alive = bool(daemon_pid and process_is_alive(daemon_pid))
+        executor_process = status.get("executor_process") or status.get("active_process") or {}
+        controller_process = status.get("controller_process") or state.get("observability", {}).get("controller_process") or {}
+        executor_alive = bool(executor_process.get("alive"))
+        controller_alive = bool(controller_process.get("alive"))
         return {
             "runtime": runtime,
             "heartbeat_age_seconds": heartbeat_age,
@@ -198,6 +201,11 @@ class RuntimeSupervisor:
             "child_alive": child_alive,
             "daemon_pid": daemon_pid,
             "daemon_alive": daemon_alive,
+            "executor_process": executor_process,
+            "executor_alive": executor_alive,
+            "controller_process": controller_process,
+            "controller_alive": controller_alive,
+            "controller_degraded": bool(controller_process) and not controller_alive,
             # A live PID is not sufficient: a wedged bridge can remain alive
             # while its persisted heartbeat is stale.  Require a fresh
             # heartbeat for every automatic-health decision.
@@ -252,12 +260,25 @@ class RuntimeSupervisor:
         self.root.mkdir(parents=True, exist_ok=True)
         log = self.log_path.open("a", encoding="utf-8")
         flags = hidden_creation_flags()
+        env = os.environ.copy()
+        bridge_home = self.root / "bridge-home"
+        if (bridge_home / "auth.json").is_file():
+            # Keep the existing Codex login, but place the CLI's mutable
+            # SQLite/runtime state under the ignored production state tree,
+            # which is writable by the supervised process on this host.
+            env["CODEX_HOME"] = str(bridge_home.resolve())
+        # The SDK drains the app-server stderr using the process locale.  The
+        # Windows host locale is not UTF-8, while Codex may emit UTF-8 text in
+        # warnings.  Set this before Python starts so the decoder is UTF-8.
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         if os.name == "nt":
             flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
         try:
             return subprocess.Popen(
                 command,
                 cwd=str(self.project_root),
+                env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -281,6 +302,11 @@ class RuntimeSupervisor:
             "runtime_progress_age_seconds": health["progress_age_seconds"],
             "daemon_pid": health["daemon_pid"],
             "daemon_alive": health["daemon_alive"],
+            "executor_process": health["executor_process"],
+            "executor_alive": health["executor_alive"],
+            "controller_process": health["controller_process"],
+            "controller_alive": health["controller_alive"],
+            "controller_degraded": health["controller_degraded"],
             "child_pid": health["child_pid"],
             "child_alive": health["child_alive"],
             "restart_count": supervisor_state.get("restart_count", 0),

@@ -2,10 +2,10 @@ param(
     [string]$DeviceIp = '192.168.6.1',
     [string]$Candidate = $env:ARTHUR_CANDIDATE_ID,
     [string]$Commit = $env:ARTHUR_CANDIDATE_SHA,
-    [string]$RootPassword = $env:ARTHUR_ROOT_PASSWORD
+    [string]$LuciCookieFile = $env:ARTHUR_LUCI_COOKIE_FILE
 )
 
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
 $Target = "root@$DeviceIp"
 $Candidate = if ($Candidate) { $Candidate } else { 'candidate-not-supplied' }
@@ -23,9 +23,41 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $script:Checks = [ordered]@{}
 $script:Failures = [System.Collections.Generic.List[object]]::new()
 
+function Invoke-NativeCaptured {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $FilePath @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Output = ($raw -join "`n").Trim() }
+}
+
 function Invoke-Remote([string]$Command) {
-    $raw = @(& ssh -o BatchMode=yes $Target $Command 2>&1)
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($raw -join "`n").Trim() }
+    $result = Invoke-NativeCaptured -FilePath 'ssh' -Arguments @('-o', 'BatchMode=yes', $Target, $Command)
+    [pscustomobject]@{ ExitCode = $result.ExitCode; Output = $result.Output }
+}
+
+function Get-WifiConfigurationSnapshot {
+    $r = Invoke-Remote 'uci -q show wireless'
+    $hash = $null
+    if ($r.ExitCode -eq 0) {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($r.Output)
+        $hash = ([System.Security.Cryptography.SHA256]::HashData($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+    }
+    [pscustomobject]@{
+        ExitCode = $r.ExitCode
+        Sha256 = $hash
+        Output = if ($hash) { "sha256=$hash" } else { $r.Output }
+    }
 }
 
 function Add-Check([string]$Name, [bool]$Passed, [string]$Command, $Result, [string]$Reason = '') {
@@ -68,64 +100,95 @@ function Invoke-Ubus([object]$Request) {
     [pscustomobject]@{ ExitCode = $exitCode; Output = $text; Json = $parsed }
 }
 
-function Test-AdguardRpcFunctional([string]$Prefix) {
-    $command = 'HTTP /ubus session login + session access for AdGuard LuCI read/write RPC and file permissions'
-    if (-not $RootPassword) {
-        $r = [pscustomobject]@{ ExitCode = 1; Output = 'ARTHUR_ROOT_PASSWORD was not supplied; authenticated ACL verification is fail-closed.' }
-        Add-Check "$Prefix.adguard_rpc_functional" $false $command $r 'Authenticated rpcd ACL/RPC verification requires ARTHUR_ROOT_PASSWORD.' | Out-Null
-        return
+function Get-LuciSessionId {
+    if ([string]::IsNullOrWhiteSpace($LuciCookieFile) -or -not (Test-Path -LiteralPath $LuciCookieFile -PathType Leaf)) {
+        return $null
     }
+    foreach ($line in (Get-Content -LiteralPath $LuciCookieFile)) {
+        if ($line -match '^\s*[^#].*\s+(?:sysauth|sysauth_http)\s+(\S+)\s*$') {
+            return $Matches[1]
+        }
+    }
+    return $null
+}
 
-    $loginRequest = [ordered]@{ jsonrpc = '2.0'; id = 1; method = 'call'; params = @('00000000000000000000000000000000', 'session', 'login', [ordered]@{ username = 'root'; password = $RootPassword; timeout = 300 }) }
-    $login = Invoke-Ubus $loginRequest
-    $sid = $null
-    if ($login.Json -and @($login.Json.result).Count -ge 2 -and $login.Json.result[0] -eq 0) { $sid = $login.Json.result[1].ubus_rpc_session }
+function Invoke-AuthenticatedUbus([object]$Request) {
+    $sid = Get-LuciSessionId
+    if ([string]::IsNullOrWhiteSpace($sid)) {
+        return [pscustomobject]@{ ExitCode = 1; Output = 'No sysauth session was found in the supplied LuCI cookie.'; Json = $null }
+    }
+    $body = $Request | ConvertTo-Json -Compress -Depth 12
+    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $LuciCookieFile -H 'Content-Type: application/json' --data-binary $body "http://$DeviceIp/ubus" 2>&1)
+    $exitCode = $LASTEXITCODE
+    $text = ($raw -join "`n").Trim()
+    $parsed = $null
+    if ($exitCode -eq 0) {
+        try { $parsed = $text | ConvertFrom-Json } catch { }
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Output = $text; Json = $parsed }
+}
+
+function Test-AdguardRpcFunctional([string]$Prefix) {
+    $command = 'authenticated /ubus session access checks for mature AdGuard Home RPC dependencies'
+    $sid = Get-LuciSessionId
     $probes = @(
-        @{ scope = 'ubus'; object = 'luci'; function = 'getInitList' },
-        @{ scope = 'ubus'; object = 'luci'; function = 'setInitAction' },
+        @{ scope = 'ubus'; object = 'service'; function = 'list' },
+        @{ scope = 'ubus'; object = 'uci'; function = 'get' },
         @{ scope = 'ubus'; object = 'network.interface.lan'; function = 'status' },
-        @{ scope = 'file'; object = '/etc/adguardhome/adguardhome.yaml'; function = 'read' },
-        @{ scope = 'file'; object = '/etc/adguardhome/adguardhome.yaml'; function = 'write' },
         @{ scope = 'file'; object = '/usr/bin/AdGuardHome --version'; function = 'exec' }
     )
     $failed = [System.Collections.Generic.List[string]]::new()
     $outputs = [System.Collections.Generic.List[string]]::new()
-    if (-not $sid) { $failed.Add('session login'); $outputs.Add($login.Output) }
-    foreach ($probe in $probes) {
-        if (-not $sid) { break }
-        $request = [ordered]@{ jsonrpc = '2.0'; id = 2; method = 'call'; params = @($sid, 'session', 'access', $probe) }
-        $response = Invoke-Ubus $request
-        $allowed = $false
-        if ($response.Json -and @($response.Json.result).Count -ge 2 -and $response.Json.result[0] -eq 0) { $allowed = [bool]$response.Json.result[1].access }
-        if (-not $allowed) { $failed.Add("$($probe.scope):$($probe.object):$($probe.function)") }
-        $outputs.Add("$($probe.scope):$($probe.object):$($probe.function) access=$allowed")
-    }
-    if ($sid) {
-        Invoke-Ubus ([ordered]@{ jsonrpc = '2.0'; id = 3; method = 'call'; params = @($sid, 'session', 'destroy', [ordered]@{}) }) | Out-Null
+    if ([string]::IsNullOrWhiteSpace($sid)) {
+        $failed.Add('session cookie/sysauth')
+        $outputs.Add('No existing authenticated LuCI cookie was supplied; rpcd access verification is fail-closed.')
+    } else {
+        foreach ($probe in $probes) {
+            $request = [ordered]@{ jsonrpc = '2.0'; id = 1; method = 'call'; params = @($sid, 'session', 'access', $probe) }
+            $response = Invoke-AuthenticatedUbus $request
+            $allowed = $false
+            if ($response.Json -and @($response.Json.result).Count -ge 2 -and $response.Json.result[0] -eq 0) {
+                $allowed = [bool]$response.Json.result[1].access
+            }
+            if (-not $allowed) { $failed.Add("$($probe.scope):$($probe.object):$($probe.function)") }
+            $outputs.Add("$($probe.scope):$($probe.object):$($probe.function) access=$allowed")
+        }
     }
     $r = [pscustomobject]@{ ExitCode = if ($failed.Count -eq 0) { 0 } else { 1 }; Output = (($outputs + $failed) -join "`n") }
-    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'AdGuard Home LuCI must have authenticated rpcd ACL access for status, lifecycle, config and core validation.' | Out-Null
+    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'Authenticated LuCI rpcd access must be proven for service lifecycle discovery, UCI reads, LAN status and AdGuard version discovery.' | Out-Null
 }
 
-function Invoke-AuthenticatedLuciPage([string]$Route) {
-    if (-not $RootPassword) { return '' }
-    $cookie = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhao-luci-$PID.cookie")
-    $encodedPassword = [System.Uri]::EscapeDataString($RootPassword)
-    try {
-        & curl.exe -sS --max-time 15 -c $cookie -o NUL "http://$DeviceIp/cgi-bin/luci/$Route" 2>$null | Out-Null
-        $body = @(& curl.exe -sS --max-time 15 -c $cookie -b $cookie -L --data "luci_username=root&luci_password=$encodedPassword" "http://$DeviceIp/cgi-bin/luci" 2>&1)
-        $body += @(& curl.exe -sS --max-time 15 -b $cookie -L "http://$DeviceIp/cgi-bin/luci/$Route" 2>&1)
-        return ($body -join "`n")
-    } finally {
-        Remove-Item -Force -ErrorAction SilentlyContinue $cookie
+function Invoke-AuthenticatedHttp([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($LuciCookieFile) -or -not (Test-Path -LiteralPath $LuciCookieFile -PathType Leaf)) {
+        return [pscustomobject]@{ ExitCode = 1; Output = 'No existing authenticated LuCI cookie was supplied; page acceptance is fail-closed.' }
     }
+    $url = if ($Path -match '^https?://') { $Path } else { "http://$DeviceIp$Path" }
+    $raw = @(& curl.exe -sS --fail-with-body --max-time 15 -b $LuciCookieFile -w "`nHTTP_STATUS:%{http_code}" $url 2>&1)
+    $exitCode = $LASTEXITCODE
+    $text = ($raw -join "`n").Trim()
+    $status = 0
+    if ($text -match '(?m)HTTP_STATUS:(\d{3})$') { $status = [int]$Matches[1]; $text = ($text -replace "(?m)`nHTTP_STATUS:\d{3}$", '').Trim() }
+    [pscustomobject]@{ ExitCode = if ($exitCode -eq 0 -and $status -ge 200 -and $status -lt 300) { 0 } else { 1 }; Output = "HTTP_STATUS=$status`n$text" }
+}
+
+function Test-AdguardPageFunctional([string]$Prefix) {
+    $command = 'authenticated GET AdGuard Home LuCI page and mature view module using an existing LuCI session'
+    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/services/adguardhome/'
+    $view = Invoke-AuthenticatedHttp '/luci-static/resources/view/adguardhome/config.js'
+    $pageOk = $page.ExitCode -eq 0 -and $page.Output -notmatch '(?i)x-luci-login-required|luci_username|luci_password|登录'
+    $viewOk = $view.ExitCode -eq 0 -and $view.Output -match 'form\.Map' -and $view.Output -match 'adguardhome' -and $view.Output -match 'object:\s*.*service' -and $view.Output -match 'method:\s*.*list' -and $view.Output -match 'form\.TypedSection' -and $view.Output -match 'poll\.add'
+    $ok = $pageOk -and $viewOk
+    $r = [pscustomobject]@{ ExitCode = if ($ok) { 0 } else { 1 }; Output = "PAGE`n$($page.Output)`nVIEW`n$($view.Output)" }
+    Add-Check "$Prefix.adguard_page_functional" $ok $command $r 'AdGuard acceptance requires an authenticated real page plus the mature upstream manager module; missing session, login page, or failed page/resource request is a hard failure.' | Out-Null
 }
 
 function Test-QuickstartHomepage([string]$Prefix) {
-    $command = "authenticated GET /cgi-bin/luci/admin/quickstart/ requiring official QuickStart homepage assets"
-    $body = Invoke-AuthenticatedLuciPage 'admin/quickstart/'
-    $ok = ($body -match '(?i)luci-static/quickstart/index\.js') -and ($body -match '(?i)<div[^>]+id=["'']app["'']') -and ($body -match '(?i)QuickStart') -and ($body -notmatch '(?i)x-luci-login-required|登录')
-    $r = [pscustomobject]@{ ExitCode = if ($ok) { 0 } else { 1 }; Output = $body }
+    $command = "authenticated GET /cgi-bin/luci/admin/quickstart/ requiring the official QuickStart homepage and frontend"
+    $page = Invoke-AuthenticatedHttp '/cgi-bin/luci/admin/quickstart/'
+    $index = Invoke-AuthenticatedHttp '/luci-static/quickstart/index.js'
+    $style = Invoke-AuthenticatedHttp '/luci-static/quickstart/style.css'
+    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -notmatch '(?i)x-luci-login-required|luci_username|luci_password|登录') -and ($index.Output.Length -gt 10000)
+    $r = [pscustomobject]@{ ExitCode = if ($ok) { 0 } else { 1 }; Output = "PAGE`n$($page.Output)`nINDEX`n$($index.Output)`nSTYLE`n$($style.Output)" }
     Add-Check "$Prefix.quickstart_home_functional" $ok $command $r 'The authenticated homepage must render the official QuickStart application, not merely expose package files.' | Out-Null
 }
 
@@ -144,6 +207,11 @@ function Run-Phase([string]$Prefix) {
     Add-Check "$Prefix.wifi_5g" ($wifi.Output -match '5\.\d+ GHz') 'ubus call wireless status 2>/dev/null || true; iwinfo' $wifi '5 GHz radio must be present.' | Out-Null
     Test-Remote "$Prefix.wifi_ssids" 'uci -q show wireless; iwinfo 2>/dev/null' { param($o) ([regex]::Matches($o, '(?i)(?:ssid=|ESSID:\s*"?)xinzhaowrt')).Count -ge 2 } 'Both radios must expose the authoritative SSID xinzhaowrt.' | Out-Null
     Test-Remote "$Prefix.wifi_password" 'uci -q show wireless' { param($o) $o -match "12345678" -and $o -notmatch "12356789" } 'The authoritative Wi-Fi password 12345678 must be configured, with no obsolete value.' | Out-Null
+    $wifiLive = @("$Prefix.wifi_2g", "$Prefix.wifi_5g", "$Prefix.wifi_ssids", "$Prefix.wifi_password") | ForEach-Object { $script:Checks[$_] } | Where-Object { $_ }
+    $wifiLivePassed = @($wifiLive | Where-Object { $_.passed }).Count -eq 4
+    $wifiLiveOutput = '2G={0}; 5G={1}; SSID={2}; password={3}' -f $script:Checks["$Prefix.wifi_2g"].passed, $script:Checks["$Prefix.wifi_5g"].passed, $script:Checks["$Prefix.wifi_ssids"].passed, $script:Checks["$Prefix.wifi_password"].passed
+    $wifiLiveResult = [pscustomobject]@{ ExitCode = if ($wifiLivePassed) { 0 } else { 1 }; Output = $wifiLiveOutput }
+    Add-Check "$Prefix.wifi_live" $wifiLivePassed 'Existing Wi-Fi real-device evidence (configuration is read-only in this gate)' $wifiLiveResult 'Wi-Fi is an existing accepted result and is never changed by this repair; any missing/failed evidence keeps the prebuild gate closed.' | Out-Null
     Test-Remote "$Prefix.logread" 'logread -l 300' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in logread are a failure; ordinary warnings are allowed.' | Out-Null
     Test-Remote "$Prefix.dmesg" 'dmesg' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in dmesg are a failure; ordinary warnings are allowed.' | Out-Null
     $pm = Test-Remote "$Prefix.package_manager" 'if command -v apk >/dev/null 2>&1; then echo apk; elif command -v opkg >/dev/null 2>&1; then echo opkg; else echo none; exit 1; fi' { param($o) $o -match '^(apk|opkg)$' } 'The installed package manager must be apk or opkg.'
@@ -162,17 +230,20 @@ function Run-Phase([string]$Prefix) {
     Test-Remote "$Prefix.kucat_theme" "test -d /www/luci-static/kucat; grep -R -F '/luci-static/kucat' /etc/config /etc/uci-defaults 2>/dev/null" { param($o) $o -match '/luci-static/kucat' } 'KuCat must remain selectable and its resources must be present.' | Out-Null
     Test-Remote "$Prefix.branding" 'test -s /www/luci-static/xinzhao/logo.png && test -s /www/luci-static/xinzhao/favicon.ico && test -s /www/luci-static/xinzhao/branding.js && grep -R -F XinZhaoWrt /etc/xinzhao-build-info /www/luci-static/xinzhao/build-info.json 2>/dev/null' { param($o) $o -match 'XinZhaoWrt' } 'XinZhaoWrt branding, icon/logo and author/build information must be present.' | Out-Null
     Test-Remote "$Prefix.adguard_manager" 'test -s /www/luci-static/resources/view/adguardhome/config.js && test -s /etc/config/adguardhome && test -x /etc/init.d/adguardhome' { param($o) $true } 'Complete AdGuard Home manager, config and service must be present.' | Out-Null
-    Test-Remote "$Prefix.adguard_default_off" "printf 'enabled=%s\n' \"\$(uci -q get adguardhome.config.enabled 2>/dev/null || true)\"; ! pidof AdGuardHome >/dev/null 2>&1; ! ls /etc/rc.d/S*adguardhome >/dev/null 2>&1" { param($o) $o -match '(?m)^enabled=0$' } 'AdGuard Home must be disabled by default.' | Out-Null
+    Test-Remote "$Prefix.adguard_default_off" 'printf "enabled=%s\n" "$(uci -q get adguardhome.config.enabled 2>/dev/null || true)"; ! pidof AdGuardHome >/dev/null 2>&1; ! ls /etc/rc.d/S*adguardhome >/dev/null 2>&1' { param($o) $o -match '(?m)^enabled=0$' } 'AdGuard Home must be disabled by default.' | Out-Null
     Test-Remote "$Prefix.adguard_dns_53" "! pidof AdGuardHome >/dev/null 2>&1; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true)" { param($o) $o -notmatch '(?i)AdGuardHome.*:53' } 'AdGuard Home must not claim DNS port 53 on first boot.' | Out-Null
     Test-Remote "$Prefix.quickstart_page" 'test -s /usr/share/luci/menu.d/luci-app-quickstart.json; test -s /www/luci-static/quickstart/index.js; test -s /www/luci-static/quickstart/style.css' { param($o) $true } 'Official QuickStart route and frontend assets must be present.' | Out-Null
     Test-Remote "$Prefix.quickstart_backend" 'command -v quickstart && quickstart --help 2>&1; test -x /etc/init.d/quickstart; pidof quickstart >/dev/null 2>&1' { param($o) $o -match '(?i)quickstart|usage|help' } 'QuickStart backend must be executable and running for its homepage route.' | Out-Null
     Test-AdguardRpcFunctional $Prefix
+    Test-AdguardPageFunctional $Prefix
     Test-QuickstartHomepage $Prefix
     Test-Luci
 }
 
 Test-Remote 'ssh' 'echo CODEX_SSH_OK' { param($o) $o -eq 'CODEX_SSH_OK' } 'SSH connectivity is required.' | Out-Null
 $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+$wifiBefore = Get-WifiConfigurationSnapshot
+Add-Check 'wifi_configuration.before_snapshot' ($wifiBefore.ExitCode -eq 0 -and $wifiBefore.Sha256) 'uci -q show wireless (hashed locally)' $wifiBefore 'The prebuild gate requires a readable Wi-Fi configuration snapshot before any verification activity.' | Out-Null
 $before = Invoke-Remote "printf 'candidate=%s\ntime=%s\n' '$Candidate' '$timestamp' > $TestFile; sync; cat $TestFile"
 Add-Check 'test_file.create' ($before.ExitCode -eq 0 -and $before.Output -match $Candidate) "printf ... > $TestFile; sync; cat $TestFile" $before 'Test file must be written and synced.' | Out-Null
 Run-Phase 'before_reboot'
@@ -196,8 +267,10 @@ if ($recovered) {
     $persist = Invoke-Remote "test -f $TestFile && cat $TestFile"
     Add-Check 'persistence' ($persist.ExitCode -eq 0 -and $persist.Output -match $Candidate) "test -f $TestFile && cat $TestFile" $persist 'Test file must survive reboot.' | Out-Null
     Run-Phase 'after_reboot'
+    $wifiAfter = Get-WifiConfigurationSnapshot
 } else {
     $script:Failures.Add([pscustomobject]@{ name = 'persistence'; command = "test -f $TestFile"; output = 'Skipped: SSH did not recover'; reason = 'Cannot verify persistence without SSH recovery.' })
+    $wifiAfter = [pscustomobject]@{ ExitCode = 1; Sha256 = $null; Output = 'Skipped: SSH did not recover' }
 }
 
 $cleanup = Invoke-Remote "rm -f $TestFile; sync; test ! -e $TestFile"
@@ -206,6 +279,26 @@ if ($cleanup.ExitCode -ne 0) { $script:Failures.Add([pscustomobject]@{ name = 't
 
 $beforePlugins = @($script:Checks['before_reboot.required_plugins'].items)
 $afterPlugins = @($script:Checks['after_reboot.required_plugins'].items)
+$adguardLive = [bool]$script:Checks['after_reboot.adguard_page_functional'].passed
+$quickstartLive = [bool]$script:Checks['after_reboot.quickstart_home_functional'].passed
+$wifiLive = [bool]$script:Checks['after_reboot.wifi_live'].passed
+$wifiComparable = ($wifiBefore.ExitCode -eq 0) -and ($wifiAfter.ExitCode -eq 0) -and $wifiBefore.Sha256 -and $wifiAfter.Sha256
+$wifiConfigurationMutated = if ($wifiComparable) { $wifiBefore.Sha256 -ne $wifiAfter.Sha256 } else { $null }
+$wifiMutationSafe = ($wifiComparable -and $wifiConfigurationMutated -eq $false)
+$wifiAuditResult = [pscustomobject]@{
+    ExitCode = if ($wifiMutationSafe) { 0 } else { 1 }
+    Output = "before=$($wifiBefore.Sha256); after=$($wifiAfter.Sha256); comparable=$([bool]$wifiComparable); mutated=$wifiConfigurationMutated"
+}
+Add-Check 'wifi_configuration.unchanged' $wifiMutationSafe 'compare hashed uci -q show wireless snapshots' $wifiAuditResult 'Wi-Fi configuration must be readable before and after verification and must remain byte-for-byte unchanged.' | Out-Null
+$prebuildPass = $adguardLive -and $quickstartLive -and $wifiLive -and $wifiMutationSafe
+$prebuildFeatures = [ordered]@{
+    ADGUARD_LIVE = if ($adguardLive) { 'PASS' } else { 'FAIL' }
+    QUICKSTART_LIVE = if ($quickstartLive) { 'PASS' } else { 'FAIL' }
+    WIFI_LIVE = if ($wifiLive) { 'PASS' } else { 'FAIL' }
+    FIRMWARE_BUILD_ALLOWED = if ($prebuildPass) { 'true' } else { 'false' }
+    authenticated_session = if ([string]::IsNullOrWhiteSpace($LuciCookieFile)) { 'missing' } else { 'provided' }
+    wifi_configuration_mutated = $wifiConfigurationMutated
+}
 $result = if ($script:Failures.Count -eq 0 -and $beforePlugins.Count -eq $Required.Count -and $afterPlugins.Count -eq $Required.Count -and (@($beforePlugins | Where-Object passed).Count -eq 22) -and (@($afterPlugins | Where-Object passed).Count -eq 22)) { 'PASS' } else { 'FAIL' }
 $report = [ordered]@{
     device = [ordered]@{ model = 'JDCloud RE-SS-01'; target = 'jdcloud_re-ss-01'; address = $DeviceIp; lan = '192.168.6.1'; luci = 'http://192.168.6.1/' }
@@ -220,6 +313,11 @@ $report = [ordered]@{
     dns = $script:Checks['after_reboot.dns']
     wifi_2g = $script:Checks['after_reboot.wifi_2g']
     wifi_5g = $script:Checks['after_reboot.wifi_5g']
+    wifi_live = $script:Checks['after_reboot.wifi_live']
+    wifi_configuration_audit = [ordered]@{ before = $wifiBefore; after = $wifiAfter; comparable = [bool]$wifiComparable }
+    adguard_live = $script:Checks['after_reboot.adguard_page_functional']
+    quickstart_live = $script:Checks['after_reboot.quickstart_home_functional']
+    prebuild_features = $prebuildFeatures
     luci = $script:Checks['luci']
     required_plugins_total = $Required.Count
     required_plugins_passed = @($afterPlugins | Where-Object passed).Count
@@ -241,4 +339,8 @@ $md | Set-Content -Encoding UTF8 $MdPath
 Write-Output "JSON: $((Resolve-Path $JsonPath).Path)"
 Write-Output "Markdown: $((Resolve-Path $MdPath).Path)"
 Write-Output "RESULT: $result"
+Write-Output "ADGUARD_LIVE=$($prebuildFeatures.ADGUARD_LIVE)"
+Write-Output "QUICKSTART_LIVE=$($prebuildFeatures.QUICKSTART_LIVE)"
+Write-Output "WIFI_LIVE=$($prebuildFeatures.WIFI_LIVE)"
+Write-Output "FIRMWARE_BUILD_ALLOWED=$($prebuildFeatures.FIRMWARE_BUILD_ALLOWED)"
 if ($first) { Write-Output "FIRST_FAILURE: $($first.name) -- $($first.reason)"; Write-Output $first.output }

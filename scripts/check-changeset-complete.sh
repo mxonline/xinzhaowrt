@@ -15,6 +15,7 @@ for test_script in \
   tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
   tests/test-functional-acceptance.sh \
+  tests/test-prebuild-feature-gate.sh \
   tests/test-argon-default-theme.sh; do
   bash "$test_script"
 done

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import PipelineState
+from .observability import atomic_json_write
 
 
 class StateStore:
@@ -78,6 +79,12 @@ class StateStore:
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+
+    def persist_result_packet(self, payload):
+        atomic_json_write(self.root / "result-packet.json", payload)
+
+    def persist_next_action_packet(self, payload):
+        atomic_json_write(self.root / "next-action-packet.json", payload)
 
     def append_event(self, event_type, payload):
         event = {

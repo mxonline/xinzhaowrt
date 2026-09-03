@@ -1,5 +1,29 @@
 # Arthur First-Boot Handoff
 
+## Arthur RELEASE-FIRST Candidate 33541575157 — STATIC VALIDATION BLOCKED
+
+- GitHub Run: `33541575157`; source/project commit: `71003e146987aaf41d869a84972d2f4d99908baa`.
+- Artifact: `Arthur-v3-Candidate-33541575157` (`9819776930`).
+- Candidate prerelease: `arthur-update-33541575157`.
+- Firmware: `XinZhaoWrt-Arthur-v0.1.3-20260901-sysupgrade.bin`.
+- Size: `98212112` bytes.
+- Firmware SHA256: `dc2c92b585feea7087d4e3be50427949c4e9bccc2555439e3e97da17106c8c61`.
+- Rollback: `XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin`, SHA256 `9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d`.
+- Device identity and current device health were verified: MAC `dc:d8:7c:46:91:24`, model `JDCloud RE-SS-01`, board `jdcloud,re-ss-01`, target `qualcommax/ipq60xx`, LAN `192.168.6.1`.
+- Candidate local/manifest/remote SHA256 matched. No sysupgrade, raw write, or Release action was executed.
+- Static blocker: exact Candidate SquashFS contains no `argon` or `kucat` resource paths; `full.config` has `CONFIG_PACKAGE_luci-theme-argon` unset. The embedded first-boot root credential remains the project `passwort` hash, not the requested `password`.
+- Evidence: `output/headless-production/candidate-33541575157-manifest.json`, `output/headless-production/static-validation-33541575157.json`.
+- Current directive forbids a new Build, so the corrected Candidate cannot be produced in this run. Runtime/Supervisor remain stopped under safety block to prevent accidental flash or build dispatch.
+
+## Current Recovery BLOCKED — REAL DEVICE PREBUILD GATE
+
+- Fresh read-only network evidence: `Test-NetConnection 192.168.6.1 -Port 22` and `-Port 80` returned `TcpTestSucceeded=True`; unauthenticated LuCI returned HTTP 200.
+- SSH evidence: `ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.6.1` was rejected with `REMOTE HOST IDENTIFICATION HAS CHANGED` for `C:\Users\CodexSandboxOffline/.ssh/known_hosts:2`. Host-key verification was not bypassed and `known_hosts` was not modified.
+- LuCI evidence: `/cgi-bin/luci/admin/services/adguardhome/` and `/cgi-bin/luci/admin/quickstart/` returned HTTP 403 with `x-luci-login-required: yes`. No `ARTHUR_LUCI_COOKIE_FILE` environment variable or cookie file was available.
+- Prebuild evidence: `scripts/check-prebuild-real-device-gate.sh output/real-device/real-device-verification.json` failed closed because `ADGUARD_LIVE`, `QUICKSTART_LIVE`, `WIFI_LIVE`, and `FIRMWARE_BUILD_ALLOWED` were not valid PASS evidence; the existing report also lacks the new Wi-Fi snapshot audit. This report is historical and is not treated as fresh proof.
+- Safety state: `PRODUCTION_RELEASED=false`; no Build, Candidate dispatch, sysupgrade, raw write, or Release action is authorized from this blocked state.
+- Next action: an operator must verify the Arthur host key out-of-band and provide an existing authenticated LuCI cookie; then rerun the read-only real-device verifier, confirm Wi-Fi snapshots are comparable and unchanged, and rerun the prebuild gate. Only a gate PASS may authorize the production Candidate path.
+
 ## ARTHUR FAST CANDIDATE ACCEPTED
 
 Release `arthur-fast-candidate-33241309046` is accepted on the real Arthur after explicit clean-flash authorization.
