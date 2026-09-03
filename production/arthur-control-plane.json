@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "device": {
+    "management_ip": "192.168.6.1",
+    "verified_management_mac": "dc:d8:7c:46:91:24",
+    "board_pattern": "jdcloud,re-ss-01|RE-SS-01",
+    "build_marker": "XinZhaoWrt",
+    "build_info_path": "/luci-static/xinzhao/build-info.json"
+  },
+  "control_path": {
+    "ethernet_required": true,
+    "wireless_route_forbidden": true
+  },
+  "ssh_trust": {
+    "strict_host_key_checking": true,
+    "candidate_capture_mode": "accept-new",
+    "allow_verified_host_key_rebind": true,
+    "known_hosts_backup_required": true,
+    "post_rebind_strict_verification_required": true
+  },
+  "authentication": {
+    "prefer_existing_runner_key": true,
+    "password_environment_variable": "ARTHUR_ROOT_PASSWORD",
+    "password_persistence_forbidden": true,
+    "install_runner_key_after_verified_password_recovery": true
+  },
+  "fail_closed": [
+    "DEVICE_UNREACHABLE",
+    "UNSAFE_CONTROL_PATH",
+    "MANAGEMENT_MAC_MISMATCH",
+    "HTTP_BUILD_IDENTITY_MISMATCH",
+    "AUTHENTICATED_BOARD_IDENTITY_MISMATCH",
+    "AUTHENTICATED_BUILD_IDENTITY_MISMATCH",
+    "UNRECOVERABLE_SSH_AUTH",
+    "KNOWN_HOSTS_ROLLBACK_FAILED"
+  ]
+}
