@@ -1,0 +1,13 @@
+{
+  "schema_version": "github-app-runtime-v1",
+  "repository": "mxonline/xinzhaowrt",
+  "github_app_id": 4785980,
+  "installation_id": 158075076,
+  "credential_target": "GitHubApp:mxonline/xinzhaowrt",
+  "storage": "windows-dpapi",
+  "dpapi_scope": "CurrentUser",
+  "dpapi_path": "%LOCALAPPDATA%/XinZhaoWrt/github-app-private-key.dpapi",
+  "provider": "scripts/github-app-auth.ps1"
+}
+
+
