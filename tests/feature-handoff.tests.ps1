@@ -79,6 +79,8 @@ try {
 
     $manifestRoot = Join-Path $temp 'repo'
     New-Item -ItemType Directory -Force -Path (Join-Path $manifestRoot 'staging') | Out-Null
+    & git -C $manifestRoot init --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'TEST_FAIL: temporary manifest repository git init failed' }
     Set-Content -LiteralPath (Join-Path $manifestRoot 'staging/page.lua') -Value 'accepted-ui' -Encoding UTF8
     Set-Content -LiteralPath (Join-Path $manifestRoot 'staging/init.sh') -Value '#!/bin/sh' -Encoding UTF8
     $manifestPath = Join-Path $manifestRoot 'manifest.json'
@@ -93,7 +95,8 @@ try {
     $identity = Get-PreviewManifestIdentity -RepoRoot $manifestRoot -ManifestPath $manifestPath
     Assert-True ([string]$identity.manifest_sha256 -match '^[0-9a-f]{64}$') 'preview manifest must get SHA256 identity'
     Assert-Equal @($identity.entries).Count 2 'preview manifest identity must preserve both entries'
-    Freeze-PreviewManifestToOverlay -RepoRoot $manifestRoot -ManifestPath $manifestPath
+    $frozen = @(Freeze-PreviewManifestToOverlay -RepoRoot $manifestRoot -ManifestPath $manifestPath)
+    Assert-Equal $frozen.Count 2 'both accepted files must be frozen'
     Assert-True (Test-Path (Join-Path $manifestRoot 'files/usr/lib/lua/luci/controller/Accepted.lua')) 'accepted LuCI byte must freeze into files overlay'
     Assert-True (Test-Path (Join-Path $manifestRoot 'files/etc/init.d/Accepted')) 'accepted init byte must freeze into files overlay'
 
