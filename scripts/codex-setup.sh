@@ -11,5 +11,3 @@ sudo apt-get install -y \
 # GitHub Contents API-created shell scripts may not carry the executable bit.
 # Normalize project script permissions before running any static verification.
 chmod +x scripts/*.sh
-
-./scripts/verify-project.sh

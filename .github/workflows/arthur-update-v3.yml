@@ -49,7 +49,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           chmod +x scripts/*.sh
-          ./scripts/verify-project.sh
           test -s config/arthur-known-good.lock
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
           mkdir -p output

@@ -42,8 +42,6 @@ else
   exec > >(tee -a "$BUILD_LOG") 2>&1
 fi
 
-"$PROJECT_ROOT/scripts/verify-project.sh"
-
 echo "[1/10] Acquire verified ImmortalWrt source at exact ref: $REQUESTED_REF"
 bash "$PROJECT_ROOT/scripts/fetch-immortalwrt-source.sh" "$SRC" "$SOURCE_REPO" "$REQUESTED_REF" "$OUT"
 # shellcheck disable=SC1090
@@ -78,6 +76,7 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 "$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
+"$PROJECT_ROOT/scripts/verify-project.sh"
 
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
