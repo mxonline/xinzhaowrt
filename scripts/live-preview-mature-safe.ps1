@@ -240,25 +240,23 @@ function Get-AcceptedPreviewRecord([string]$ResolvedManifest) {
     return $record
 }
 
-function ConvertTo-ShellSingleQuoted([string]$Text) {
-    if ($Text -match "[\r\n]") { throw 'ACCEPTED_PREVIEW_REMOTE_PATH_INVALID' }
-    return "'" + ($Text -replace "'", "'\"'\"'") + "'"
-}
-
 function Get-RemoteAcceptedHashes($AcceptedRecord) {
-    $commands = New-Object System.Collections.Generic.List[string]
+    $hashes = @{}
     foreach ($file in @($AcceptedRecord.frozen_files | Sort-Object { [string]$_.remote })) {
         $remote = [string]$file.remote
-        $quoted = ConvertTo-ShellSingleQuoted $remote
-        $commands.Add("p=$quoted; if [ -f \"`$p\" ]; then h=`$(sha256sum \"`$p\" | awk '{print `$1}'); printf '%s\\t%s\\n' \"`$p\" \"`$h\"; else printf '%s\\tMISSING\\n' \"`$p\"; fi")
-    }
-    $result = Invoke-Remote ($commands -join '; ')
-    $hashes = @{}
-    foreach ($line in @($result.Output -split "`r?`n")) {
-        if (-not $line) { continue }
-        $parts = $line -split "`t",2
-        if ($parts.Count -ne 2) { throw "ACCEPTED_PREVIEW_HASH_OUTPUT_INVALID line=$line" }
-        $hashes[$parts[0]] = if ($parts[1] -eq 'MISSING') { '' } else { $parts[1].ToLowerInvariant() }
+        if ($remote -notmatch '^/[A-Za-z0-9._+:/-]+$') {
+            throw "ACCEPTED_PREVIEW_REMOTE_PATH_INVALID=$remote"
+        }
+        $result = Invoke-Remote "if [ -f '$remote' ]; then sha256sum '$remote' | cut -d' ' -f1; else echo MISSING; fi"
+        $output = $result.Output.Trim()
+        if ($output -eq 'MISSING') {
+            $hashes[$remote] = ''
+            continue
+        }
+        if ($output -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "ACCEPTED_PREVIEW_HASH_OUTPUT_INVALID path=$remote output=$output"
+        }
+        $hashes[$remote] = $output.ToLowerInvariant()
     }
     return $hashes
 }
