@@ -185,8 +185,12 @@ if ($GhProductionDispatch) {
     try {
         # Git Bash accepts repository-relative paths reliably on Windows; pass
         # relative paths instead of native C:\ paths that it may reinterpret.
-        & $bashExecutable 'scripts/check-prebuild-real-device-gate.sh' 'output/real-device/real-device-verification.json' $localHead
-        $prebuildGateExit = $LASTEXITCODE
+        $gateProcess = Start-Process -FilePath $bashExecutable -ArgumentList @(
+            'scripts/check-prebuild-real-device-gate.sh',
+            'output/real-device/real-device-verification.json',
+            $localHead
+        ) -WorkingDirectory $repoRoot -Wait -PassThru -NoNewWindow
+        $prebuildGateExit = $gateProcess.ExitCode
     }
     finally { Pop-Location }
     if ($prebuildGateExit -ne 0) { throw 'PREBUILD_REAL_DEVICE_GATE_FAILED' }
