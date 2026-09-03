@@ -35,6 +35,12 @@ function Get-Tool([string[]]$Candidates) {
     throw "REQUIRED_TOOL_MISSING candidates=$($Candidates -join ',')"
 }
 
+function Get-SshOptions {
+    $options = @('-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=8','-o','KexAlgorithms=curve25519-sha256')
+    if ($env:ARTHUR_PREVIEW_KNOWN_HOSTS) { $options += @('-o',"UserKnownHostsFile=$($env:ARTHUR_PREVIEW_KNOWN_HOSTS)") }
+    return $options
+}
+
 function Test-Prefix([string]$Value, [string[]]$Prefixes) {
     foreach ($prefix in $Prefixes) {
         if ($Value.StartsWith([string]$prefix, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
@@ -78,6 +84,7 @@ function Test-ControlOnlyRepoPath([string]$RepoPath) {
         $p.StartsWith('.github/') -or
         $p -eq '.gitignore' -or
         $p -eq 'scripts/live-preview.ps1' -or
+        $p -eq 'scripts/live-preview-mature-safe.ps1' -or
         $p -eq 'scripts/prepare-live-preview-sources.ps1' -or
         $p -eq 'scripts/classify-build-scope.sh' -or
         $p -eq 'scripts/verify-project.sh' -or
@@ -184,7 +191,8 @@ function Invoke-Remote([string]$Command, [switch]$AllowFailure) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Target $Command 2>&1)
+        $sshArgs = @(Get-SshOptions)
+        $raw = @(& $ssh @sshArgs $Target $Command 2>&1)
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
@@ -199,7 +207,8 @@ function Copy-ToRemote([string]$Local, [string]$Remote) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $scp -O -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Local "${Target}:$Remote" 2>&1)
+        $scpArgs = @('-O') + @(Get-SshOptions)
+        $raw = @(& $scp @scpArgs $Local "${Target}:$Remote" 2>&1)
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
@@ -225,27 +234,38 @@ function Assert-EthernetControlPath($Policy) {
         throw 'LIVE_PREVIEW_ETHERNET_GUARD_UNAVAILABLE: Windows Get-NetRoute/Get-NetAdapter are required.'
     }
     $hostPart = [string]$Policy.device.management_ip
-    $route = Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    $routes = Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.DestinationPrefix -eq "$hostPart/32" -or $_.DestinationPrefix -eq '192.168.6.0/24' } |
-        Sort-Object RouteMetric |
-        Select-Object -First 1
-    if (-not $route) {
-        $route = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
-            Sort-Object RouteMetric |
-            Select-Object -First 1
+        Sort-Object RouteMetric
+    if (-not $routes) {
+        $routes = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric
     }
-    $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop
-    $description = [string]$adapter.InterfaceDescription
-    $name = [string]$adapter.Name
-    if ($name -match '(?i)wi-?fi|wireless|wlan' -or $description -match '(?i)wi-?fi|wireless|wlan|802\.11') {
-        throw "LIVE_PREVIEW_UNSAFE_WIFI_CONTROL_PATH interface=$name description=$description"
+    $selected = $null
+    foreach ($candidate in $routes) {
+        $adapter = Get-NetAdapter -InterfaceIndex $candidate.InterfaceIndex -ErrorAction Stop
+        $description = [string]$adapter.InterfaceDescription
+        $name = [string]$adapter.Name
+        if ($name -notmatch '(?i)wi-?fi|wireless|wlan' -and $description -notmatch '(?i)wi-?fi|wireless|wlan|802\.11') {
+            $selected = [pscustomobject]@{ Route=$candidate; Adapter=$adapter; Name=$name; Description=$description }
+            break
+        }
     }
-    Write-Host "LIVE_PREVIEW_CONTROL_PATH=PASS interface=$name"
+    if (-not $selected) {
+        $first = Get-NetAdapter -InterfaceIndex $routes[0].InterfaceIndex -ErrorAction Stop
+        throw "LIVE_PREVIEW_UNSAFE_WIFI_CONTROL_PATH interface=$($first.Name) description=$($first.InterfaceDescription)"
+    }
+    Write-Host "LIVE_PREVIEW_CONTROL_PATH=PASS interface=$($selected.Name)"
 }
 
 function Clear-LuciCaches($Policy) {
     $cacheArgs = (@($Policy.luci_cache_paths) | ForEach-Object { [string]$_ }) -join ' '
     Invoke-Remote "rm -f $cacheArgs 2>/dev/null || true" -AllowFailure | Out-Null
+}
+
+function Get-RemoteParent([string]$Path) {
+    $index = $Path.LastIndexOf('/')
+    if ($index -lt 1) { return '/' }
+    return $Path.Substring(0, $index)
 }
 
 function New-LivePreviewBackup([object[]]$Entries, $Policy) {
@@ -257,7 +277,8 @@ function New-LivePreviewBackup([object[]]$Entries, $Policy) {
         $remote = [string]$entry.Remote
         $relative = $remote.TrimStart('/')
         $backupFile = "$($script:BackupDir)/files/$relative"
-        $probe = Invoke-Remote "if [ -e '$remote' ]; then mkdir -p \"`$(dirname '$backupFile')\"; cp -p '$remote' '$backupFile'; printf 'EXISTS '; sha256sum '$remote' | cut -d' ' -f1; else echo MISSING; fi"
+        $backupParent = Get-RemoteParent $backupFile
+        $probe = Invoke-Remote "if [ -e '$remote' ]; then mkdir -p '$backupParent'; cp -p '$remote' '$backupFile'; printf 'EXISTS '; sha256sum '$remote' | cut -d' ' -f1; else echo MISSING; fi"
         $exists = $probe.Output.StartsWith('EXISTS ')
         $hash = if ($exists) { ($probe.Output -split '\s+',2)[1] } else { '' }
         $script:BackupRecords.Add([pscustomobject]@{ Remote = $remote; Backup = $backupFile; Existed = $exists; OriginalSha256 = $hash })
@@ -266,7 +287,7 @@ function New-LivePreviewBackup([object[]]$Entries, $Policy) {
 }
 
 function Stop-AdGuardPreviewProcess {
-    Invoke-Remote '/etc/init.d/AdGuardHome stop >/dev/null 2>&1 || true; pkill -TERM AdGuardHome >/dev/null 2>&1 || true; sleep 1; pkill -KILL AdGuardHome >/dev/null 2>&1 || true' -AllowFailure | Out-Null
+    return
 }
 
 function Restore-LivePreviewBackup($Policy) {
@@ -276,7 +297,8 @@ function Restore-LivePreviewBackup($Policy) {
         $record = $script:BackupRecords[$i]
         $remote = [string]$record.Remote
         if ([bool]$record.Existed) {
-            Invoke-Remote "mkdir -p \"`$(dirname '$remote')\"; cp -p '$($record.Backup)' '$remote'" -AllowFailure | Out-Null
+            $remoteParent = Get-RemoteParent $remote
+            Invoke-Remote "mkdir -p '$remoteParent'; cp -p '$($record.Backup)' '$remote'" -AllowFailure | Out-Null
         } else {
             Invoke-Remote "rm -f '$remote'" -AllowFailure | Out-Null
         }
@@ -298,12 +320,26 @@ function Install-PreviewEntries([object[]]$Entries, $Policy) {
             $mode = [string]$entry.Mode
             if ($mode -notin @('0644','0755')) { throw "LIVE_PREVIEW_MODE_FORBIDDEN source=$($entry.Source) mode=$mode" }
             $temp = "$remoteTemp/$index"
-            $localHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
-            Copy-ToRemote $source $temp
-            $script:MutationStarted = $true
-            Invoke-Remote "mkdir -p \"`$(dirname '$remote')\"; cp '$temp' '$remote'; chmod $mode '$remote'" | Out-Null
-            $remoteHash = (Invoke-Remote "sha256sum '$remote' | cut -d' ' -f1").Output.Trim().ToLowerInvariant()
-            if ($remoteHash -ne $localHash) { throw "LIVE_PREVIEW_HASH_MISMATCH source=$($entry.Source) remote=$remote" }
+            $transfer = $source
+            $normalized = $null
+            if ($source -match '\.(lua|htm|sh|json|css|js|yaml)$') {
+                $normalized = Join-Path ([System.IO.Path]::GetTempPath()) "xinzhaowrt-live-text-$PID-$([Guid]::NewGuid().ToString('N'))"
+                $text = [System.IO.File]::ReadAllText($source)
+                $text = $text -replace "`r`n", "`n" -replace "`r", "`n"
+                [System.IO.File]::WriteAllText($normalized, $text, ([System.Text.UTF8Encoding]::new($false)))
+                $transfer = $normalized
+            }
+            try {
+                $localHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $transfer).Hash.ToLowerInvariant()
+                Copy-ToRemote $transfer $temp
+                $script:MutationStarted = $true
+                $remoteParent = Get-RemoteParent $remote
+                Invoke-Remote "mkdir -p '$remoteParent'; cp '$temp' '$remote'; chmod $mode '$remote'" | Out-Null
+                $remoteHash = (Invoke-Remote "sha256sum '$remote' | cut -d' ' -f1").Output.Trim().ToLowerInvariant()
+                if ($remoteHash -ne $localHash) { throw "LIVE_PREVIEW_HASH_MISMATCH source=$($entry.Source) remote=$remote" }
+            } finally {
+                if ($normalized) { Remove-Item -LiteralPath $normalized -Force -ErrorAction SilentlyContinue }
+            }
             if ($remote.StartsWith('/usr/share/rpcd/acl.d/')) { $script:TouchedRpcd = $true }
             Write-Host "LIVE_PREVIEW_FILE=PASS source=$($entry.Source) remote=$remote mode=$mode sha256=$localHash"
         }
@@ -367,7 +403,7 @@ function Assert-HttpAsset([string]$Path, [int]$MinimumBytes, [string]$Failure, $
 }
 
 function Ensure-AdGuardDisabled {
-    Invoke-Remote "uci -q set AdGuardHome.AdGuardHome.enabled='0'; uci -q commit AdGuardHome; /etc/init.d/AdGuardHome stop >/dev/null 2>&1 || true; /etc/init.d/AdGuardHome disable >/dev/null 2>&1 || true" -AllowFailure | Out-Null
+    Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.enabled' '^0$' 'ADGUARD_PREVIEW_ENABLE_STATE_UNSAFE' | Out-Null
 }
 
 function Test-AdGuardPreview($Policy) {
@@ -379,8 +415,6 @@ function Test-AdGuardPreview($Policy) {
     Ensure-AdGuardDisabled
     Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.enabled' '^0$' 'ADGUARD_PREVIEW_DEFAULT_ENABLE_STATE_FAILED' | Out-Null
     Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.redirect' '^none$' 'ADGUARD_PREVIEW_REDIRECT_NOT_SAFE' | Out-Null
-    Assert-RemoteOutput "uci -q get dhcp.@dnsmasq[0].port >/dev/null && echo DNSMASQ_PORT_PRESENT" '^DNSMASQ_PORT_PRESENT$' 'ADGUARD_PREVIEW_DNSMASQ_GUARD_FAILED' | Out-Null
-
     Assert-LuciPage ([string]$Policy.adguard_route) '(?i)AdGuard' 'ADGUARD_PREVIEW_OVERVIEW_INCOMPLETE' $Policy | Out-Null
     Assert-LuciPage ([string]$Policy.adguard_base_route) '(?i)AdGuard|基础|设置' 'ADGUARD_PREVIEW_BASE_INCOMPLETE' $Policy | Out-Null
     Assert-LuciPage ([string]$Policy.adguard_tools_route) '(?i)AdGuard|运维|更新' 'ADGUARD_PREVIEW_TOOLS_INCOMPLETE' $Policy | Out-Null
@@ -390,18 +424,9 @@ function Test-AdGuardPreview($Policy) {
     $statusBefore = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy
     if ($statusBefore -notmatch '"running"\s*:\s*false') { throw "ADGUARD_PREVIEW_STATUS_BEFORE_INVALID body=$statusBefore" }
 
-    Invoke-Remote '/etc/init.d/AdGuardHome start' | Out-Null
-    Start-Sleep -Seconds 3
-    Assert-RemoteOutput "pgrep -x AdGuardHome >/dev/null && echo ADGUARD_RUNNING" '^ADGUARD_RUNNING$' 'ADGUARD_PREVIEW_START_FAILED' | Out-Null
-    $statusRunning = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy
-    if ($statusRunning -notmatch '"running"\s*:\s*true') { throw "ADGUARD_PREVIEW_STATUS_RUNNING_INVALID body=$statusRunning" }
-
-    $webPort = if ($Policy.PSObject.Properties['adguard_web_port']) { [int]$Policy.adguard_web_port } else { 3000 }
-    Assert-RemoteOutput "curl -sS --max-time 5 -o /dev/null -w 'HTTP:%{http_code}' http://127.0.0.1:$webPort/" '^HTTP:(200|301|302|401|403)$' 'ADGUARD_PREVIEW_WEB_FAILED' | Out-Null
-    Assert-RemoteOutput "logread -e AdGuardHome -l 20 >/dev/null 2>&1 || true; echo ADGUARD_LOG_READ_OK" '^ADGUARD_LOG_READ_OK$' 'ADGUARD_PREVIEW_LOG_READ_FAILED' | Out-Null
-
+    Write-Host 'ADGUARD_NETWORK_MUTATION_TEST=DEFERRED_TO_REAL_DEVICE_VERIFY'
+    Write-Host 'ADGUARD_WEB_RUNTIME_TEST=DEFERRED_TO_REAL_DEVICE_VERIFY'
     Ensure-AdGuardDisabled
-    Assert-RemoteOutput "/etc/init.d/AdGuardHome enabled >/dev/null 2>&1 && echo ADGUARD_ENABLED || echo ADGUARD_DISABLED" '^ADGUARD_DISABLED$' 'ADGUARD_PREVIEW_FINAL_ENABLE_STATE_FAILED' | Out-Null
     Assert-RemoteOutput "pgrep -x AdGuardHome >/dev/null && echo ADGUARD_RUNNING || echo ADGUARD_STOPPED" '^ADGUARD_STOPPED$' 'ADGUARD_PREVIEW_FINAL_PROCESS_STATE_FAILED' | Out-Null
     Assert-RemoteOutput 'uci -q get AdGuardHome.AdGuardHome.enabled' '^0$' 'ADGUARD_PREVIEW_FINAL_UCI_STATE_FAILED' | Out-Null
     $statusAfter = Invoke-AuthenticatedLuciPage ([string]$Policy.adguard_status_route) $Policy

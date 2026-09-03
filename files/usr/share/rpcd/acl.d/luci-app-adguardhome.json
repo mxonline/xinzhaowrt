@@ -1,34 +1,11 @@
 {
-  "luci-app-adguardhome": {
-    "description": "AdGuard Home LuCI manager",
-    "read": {
-      "ubus": {
-        "luci": ["getInitList"],
-        "network.interface.lan": ["status"],
-        "file": ["read", "stat", "exec"]
-      },
-      "uci": ["adguardhome"],
-      "file": {
-        "/etc/adguardhome/adguardhome.yaml": ["read"],
-        "/etc/adguardhome/adguardhome.yaml.xinzhao-backup": ["read"],
-        "/usr/bin/AdGuardHome --version": ["exec"],
-        "/usr/bin/AdGuardHome --check-config --config /etc/adguardhome/adguardhome.yaml": ["exec"],
-        "/usr/bin/logread -e AdGuardHome": ["exec"]
-      }
-    },
-    "write": {
-      "ubus": {
-        "luci": ["setInitAction"],
-        "file": ["read", "write", "stat", "exec"]
-      },
-      "uci": ["adguardhome"],
-      "file": {
-        "/etc/adguardhome/adguardhome.yaml": ["read", "write"],
-        "/etc/adguardhome/adguardhome.yaml.xinzhao-backup": ["read", "write"],
-        "/tmp/adguardhome-log.txt": ["write"],
-        "/bin/cp *": ["exec"],
-        "/usr/bin/AdGuardHome --check-config --config /etc/adguardhome/adguardhome.yaml": ["exec"]
-      }
-    }
-  }
+	"luci-app-adguardhome": {
+		"description": "Grant UCI access for luci-app-adguardhome",
+		"read": {
+			"uci": [ "AdGuardHome" ]
+		},
+		"write": {
+			"uci": [ "AdGuardHome" ]
+		}
+	}
 }
