@@ -265,6 +265,112 @@ function Get-PreviewReuseDecision {
     }
 }
 
+function Get-BuildFingerprint {
+    param([Parameter(Mandatory)]$InputIdentity)
+    $required = @(
+        'target','subtarget','profile','source_lock_sha256','toolchain_identity','config_sha256',
+        'required_plugins_sha256','files_identity','build_scripts_identity','package_inputs_identity','theme_identity'
+    )
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($name in $required) {
+        if ($InputIdentity.PSObject.Properties.Name -notcontains $name) { throw "FAST_SAFE_RELEASE_BUILD_IDENTITY_MISSING=$name" }
+        $value = [string]$InputIdentity.$name
+        if (-not $value) { throw "FAST_SAFE_RELEASE_BUILD_IDENTITY_EMPTY=$name" }
+        if ($name -match '_sha256$|_identity$' -and $name -ne 'toolchain_identity') {
+            if ($value -notmatch '^[0-9a-fA-F]{64}$') { throw "FAST_SAFE_RELEASE_BUILD_IDENTITY_INVALID=$name" }
+            $value = $value.ToLowerInvariant()
+        }
+        $lines.Add("$name=$value")
+    }
+    return Get-Sha256HexFromText -Text (($lines.ToArray()) -join "`n")
+}
+
+function Get-BuildReuseDecision {
+    param(
+        [Parameter(Mandatory)][string]$BuildFingerprint,
+        [object[]]$Runs = @(),
+        [object[]]$Artifacts = @()
+    )
+    if ($BuildFingerprint -notmatch '^[0-9a-f]{64}$') { throw 'FAST_SAFE_RELEASE_BUILD_FINGERPRINT_INVALID' }
+    $activeStatuses = @('queued','in_progress','waiting','requested','pending')
+    foreach ($run in @($Runs)) {
+        if ([string]$run.fingerprint -ne $BuildFingerprint) { continue }
+        if ([string]$run.status -in $activeStatuses) {
+            return [pscustomobject][ordered]@{
+                action='WATCH_EXISTING_RUN'; run_id=[long]$run.id; build_fingerprint=$BuildFingerprint;
+                artifact_sha256=''; artifact_identity=''
+            }
+        }
+    }
+    foreach ($artifact in @($Artifacts)) {
+        if ([string]$artifact.fingerprint -ne $BuildFingerprint) { continue }
+        if ($artifact.immutable -ne $true) { continue }
+        $sha = [string]$artifact.sha256
+        if ($sha -notmatch '^[0-9a-fA-F]{64}$') { continue }
+        $acceptance = [string]$artifact.acceptance
+        $identity = [string]$artifact.identity
+        if ($acceptance -eq 'PASS') {
+            return [pscustomobject][ordered]@{
+                action='REUSE_ARTIFACT'; run_id=0; build_fingerprint=$BuildFingerprint;
+                artifact_sha256=$sha.ToLowerInvariant(); artifact_identity=$identity
+            }
+        }
+        if ($acceptance -in @('CONTROL_ONLY_FAIL','CONTROL_OR_ACCEPTANCE_ONLY','PENDING')) {
+            return [pscustomobject][ordered]@{
+                action='REVALIDATE_QUARANTINE_CANDIDATE'; run_id=0; build_fingerprint=$BuildFingerprint;
+                artifact_sha256=$sha.ToLowerInvariant(); artifact_identity=$identity
+            }
+        }
+    }
+    return [pscustomobject][ordered]@{
+        action='START_NEW_CANDIDATE'; run_id=0; build_fingerprint=$BuildFingerprint;
+        artifact_sha256=''; artifact_identity=''
+    }
+}
+
+function Write-CandidateQuarantineRecord {
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)]$Record)
+    $required = @('build_fingerprint','run_id','source_sha','artifact_name','artifact_sha256','target','profile','acceptance_class')
+    foreach ($name in $required) {
+        if ($Record.PSObject.Properties.Name -notcontains $name -or -not [string]$Record.$name) {
+            throw "FAST_SAFE_RELEASE_QUARANTINE_FIELD_MISSING=$name"
+        }
+    }
+    if ([string]$Record.build_fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'FAST_SAFE_RELEASE_QUARANTINE_BUILD_FINGERPRINT_INVALID' }
+    if ([string]$Record.source_sha -notmatch '^[0-9a-fA-F]{40}$') { throw 'FAST_SAFE_RELEASE_QUARANTINE_SOURCE_SHA_INVALID' }
+    if ([string]$Record.artifact_sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'FAST_SAFE_RELEASE_QUARANTINE_ARTIFACT_SHA_INVALID' }
+    if ([long]$Record.run_id -le 0) { throw 'FAST_SAFE_RELEASE_QUARANTINE_RUN_ID_INVALID' }
+    $dir = Split-Path -Parent $Path
+    if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    $normalized = [pscustomobject][ordered]@{
+        schema_version=1
+        build_fingerprint=([string]$Record.build_fingerprint).ToLowerInvariant()
+        run_id=[long]$Record.run_id
+        source_sha=([string]$Record.source_sha).ToLowerInvariant()
+        artifact_name=[string]$Record.artifact_name
+        artifact_sha256=([string]$Record.artifact_sha256).ToLowerInvariant()
+        target=[string]$Record.target
+        profile=[string]$Record.profile
+        acceptance_class=[string]$Record.acceptance_class
+        quarantined_at=(Get-Date).ToUniversalTime().ToString('o')
+    }
+    $tmp = "$Path.tmp"
+    $normalized | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tmp -Encoding UTF8
+    Move-Item -Force -LiteralPath $tmp -Destination $Path
+    return $normalized
+}
+
+function Get-CandidateQuarantineRecord {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { $record = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json -Depth 20 }
+    catch { throw "FAST_SAFE_RELEASE_QUARANTINE_INVALID: $($_.Exception.Message)" }
+    if ([int]$record.schema_version -ne 1) { throw "FAST_SAFE_RELEASE_QUARANTINE_SCHEMA_UNSUPPORTED=$($record.schema_version)" }
+    if ([string]$record.build_fingerprint -notmatch '^[0-9a-f]{64}$') { throw 'FAST_SAFE_RELEASE_QUARANTINE_BUILD_FINGERPRINT_INVALID' }
+    if ([string]$record.artifact_sha256 -notmatch '^[0-9a-f]{64}$') { throw 'FAST_SAFE_RELEASE_QUARANTINE_ARTIFACT_SHA_INVALID' }
+    return $record
+}
+
 function Set-ReleaseProgress {
     param(
         [Parameter(Mandatory)]$State,
