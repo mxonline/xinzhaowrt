@@ -28,7 +28,8 @@ assert p['schema_version'] == 1
 assert p['device']['management_ip'] == '192.168.6.1'
 assert '/etc/config/wireless' in p['forbidden_remote_prefixes']
 assert '/etc/config/network' in p['forbidden_remote_prefixes']
-assert '/www/' in p['allowed_remote_prefixes']
+assert '/www/luci-static/' in p['allowed_remote_prefixes']
+assert '/www/' not in p['allowed_remote_prefixes']
 assert '/usr/share/rpcd/acl.d/' in p['allowed_remote_prefixes']
 PY
 
