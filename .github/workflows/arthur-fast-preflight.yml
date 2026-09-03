@@ -38,6 +38,10 @@ jobs:
         shell: pwsh
         run: ./tests/feature-handoff.tests.ps1
 
+      - name: Test non-admin Feature Handoff task contract
+        shell: pwsh
+        run: ./tests/feature-handoff-task-privilege.tests.ps1
+
       - name: Test durable v3 request auto trigger contract
         shell: pwsh
         run: ./tests/feature-handoff-auto-trigger.tests.ps1
