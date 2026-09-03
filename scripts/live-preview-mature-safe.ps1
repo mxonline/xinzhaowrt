@@ -1,6 +1,8 @@
 param(
     [string]$Target = 'root@192.168.6.1',
     [string]$ManifestPath = 'sources/live-preview-mature/manifest.json',
+    [string]$FeatureId = 'arthur-adh-quickstart',
+    [switch]$PauseAfterLivePreview,
     [switch]$ValidateOnly
 )
 
@@ -10,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $PolicyPath = Join-Path $Root 'production\live-preview-policy.json'
 $DeployScript = Join-Path $Root 'scripts\live-preview.ps1'
+$HandoffScript = Join-Path $Root 'scripts\feature-handoff.ps1'
+$HandoffInstaller = Join-Path $Root 'scripts\install-feature-handoff.ps1'
 $RootPassword = $env:ARTHUR_ROOT_PASSWORD
 
 function Get-Tool([string[]]$Candidates) {
@@ -195,6 +199,49 @@ function Test-QuickStartPreview($Policy) {
     Write-Host 'QUICKSTART_PREVIEW=PASS'
 }
 
+function Start-FeatureHandoff([string]$ResolvedManifest) {
+    if ($PauseAfterLivePreview) {
+        Write-Host 'FEATURE_HANDOFF=PAUSED_BY_USER'
+        return
+    }
+    if (-not (Test-Path -LiteralPath $HandoffScript -PathType Leaf)) { throw "FEATURE_HANDOFF_SCRIPT_MISSING=$HandoffScript" }
+    if (-not (Test-Path -LiteralPath $HandoffInstaller -PathType Leaf)) { throw "FEATURE_HANDOFF_INSTALLER_MISSING=$HandoffInstaller" }
+    $pwsh=Get-Tool @('pwsh.exe','pwsh')
+    $runtime=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\FeatureHandoff'
+    New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+    $safeFeature=($FeatureId -replace '[^a-zA-Z0-9._-]','-')
+    $evidencePath=Join-Path $runtime ("preview-evidence-$safeFeature.json")
+    [ordered]@{
+        LIVE_PREVIEW='PASS'
+        ADGUARD_UI_PREVIEW='PASS'
+        ADGUARD_PREVIEW='PASS'
+        QUICKSTART_PREVIEW='PASS'
+        WIFI='VERIFIED_FROZEN'
+        REAL_DEVICE_VERIFY='NOT_RUN'
+        RELEASE_ALLOWED=$false
+        ADGUARD_NETWORK_MUTATION_TEST='DEFERRED_TO_REAL_DEVICE_VERIFY'
+        ADGUARD_WEB_RUNTIME_TEST='DEFERRED_TO_REAL_DEVICE_VERIFY'
+        captured_at=(Get-Date).ToString('o')
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $evidencePath -Encoding UTF8
+
+    $acceptedSha=(& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1).Trim()
+    if ($LASTEXITCODE -ne 0 -or $acceptedSha -notmatch '^[0-9a-f]{40}$') { throw 'FEATURE_HANDOFF_ACCEPTED_SOURCE_SHA_UNAVAILABLE' }
+
+    $installRaw=@(& $pwsh -NoProfile -ExecutionPolicy Bypass -File $HandoffInstaller 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw "FEATURE_HANDOFF_INSTALL_FAILED=$($installRaw -join ' ')" }
+
+    $args=@(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',$HandoffScript,
+        '-Mode','Resume','-FeatureId',$FeatureId,
+        '-AcceptedPreviewSourceSha',$acceptedSha,
+        '-PreviewManifestPath',$ResolvedManifest,
+        '-PreviewEvidencePath',$evidencePath
+    )
+    $proc=Start-Process -FilePath $pwsh -ArgumentList $args -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+    Write-Host "FEATURE_HANDOFF_STARTED=$($proc.Id)"
+    Write-Host "FEATURE_HANDOFF_EVIDENCE=$evidencePath"
+}
+
 if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) { throw "LIVE_PREVIEW_POLICY_MISSING path=$PolicyPath" }
 try { $Policy = Get-Content -Raw -LiteralPath $PolicyPath | ConvertFrom-Json -Depth 20 }
 catch { throw "LIVE_PREVIEW_POLICY_INVALID $($_.Exception.Message)" }
@@ -226,8 +273,13 @@ try {
     Write-Host 'WIFI=VERIFIED_FROZEN'
     Write-Host 'REAL_DEVICE_VERIFY=NOT_RUN'
     Write-Host 'RELEASE_ALLOWED=false'
+    Start-FeatureHandoff $ResolvedManifest
 } catch {
     $message = $_.Exception.Message
+    if ($message -like 'FEATURE_HANDOFF_*') {
+        Write-Error "LIVE_PREVIEW_PASS_BUT_HANDOFF_FAILED: $message"
+        throw
+    }
     Restore-PreviewFiles $Manifest $BackupPath
     Write-Error "LIVE_PREVIEW_SAFE_FALLBACK_FAILED: $message"
     throw
