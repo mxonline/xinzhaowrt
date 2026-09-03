@@ -39,6 +39,7 @@ grep -Fqi 'backup' "$access" || { echo 'FAIL: known_hosts mutation must be backe
 grep -Fq '4358685989bf9f0207fb6717dc63dd89a295f27e' "$wifi_baseline" || { echo 'FAIL: frozen Wi-Fi baseline must pin the accepted source blob.' >&2; exit 1; }
 
 grep -Fq 'PREBUILD_REAL_DEVICE_GATE_FAILED' 'scripts/github-app-auth.ps1' || { echo 'FAIL: production dispatch must remain blocked by the prebuild gate.' >&2; exit 1; }
+grep -Fq 'Push-Location' 'scripts/github-app-auth.ps1' || { echo 'FAIL: production dispatch must run the Bash prebuild gate from the repository root.' >&2; exit 1; }
 grep -Fq 'prebuild_features' "$verify" || { echo 'FAIL: real-device verifier must emit prebuild feature evidence.' >&2; exit 1; }
 grep -Fq 'LuciCookieFile' 'scripts/real-device-verify-v3.ps1' || { echo 'FAIL: v3 verifier wrapper must preserve optional LuCI cookie compatibility.' >&2; exit 1; }
 grep -Fq '#HttpOnly_' "$verify" || { echo 'FAIL: verifier must parse curl Netscape cookie jars with HttpOnly session cookies.' >&2; exit 1; }

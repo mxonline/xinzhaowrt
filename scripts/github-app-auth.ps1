@@ -180,8 +180,16 @@ if ($GhProductionDispatch) {
         $bashExecutable = @('C:\Program Files\Git\bin\bash.exe', 'C:\Program Files\Git\usr\bin\bash.exe') | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     }
     if (-not $bashExecutable) { throw 'PREBUILD_REAL_DEVICE_GATE_BASH_MISSING' }
-    & $bashExecutable $prebuildGate $prebuildReport $localHead
-    if ($LASTEXITCODE -ne 0) { throw 'PREBUILD_REAL_DEVICE_GATE_FAILED' }
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    Push-Location $repoRoot
+    try {
+        # Git Bash accepts repository-relative paths reliably on Windows; pass
+        # relative paths instead of native C:\ paths that it may reinterpret.
+        & $bashExecutable 'scripts/check-prebuild-real-device-gate.sh' 'output/real-device/real-device-verification.json' $localHead
+        $prebuildGateExit = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+    if ($prebuildGateExit -ne 0) { throw 'PREBUILD_REAL_DEVICE_GATE_FAILED' }
 
     $body = @{ ref = $Ref; inputs = @{ mode = $Mode } } | ConvertTo-Json -Compress
     Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$repository/actions/workflows/arthur-update-v3.yml/dispatches" -Headers ($headers + @{ Authorization = "token $token"; 'Content-Type' = 'application/json' }) -Body $body | Out-Null
