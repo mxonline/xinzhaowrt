@@ -34,11 +34,11 @@ function Log([string]$Message) {
     Write-Host $line
 }
 
-function Invoke-Native([string]$File,[string[]]$Args,[switch]$AllowFailure) {
+function Invoke-Native([string]$File,[string[]]$Arguments,[switch]$AllowFailure) {
     $old=$ErrorActionPreference
     try {
         $ErrorActionPreference='Continue'
-        $raw=@(& $File @Args 2>&1)
+        $raw=@(& $File @Arguments 2>&1)
         $code=$LASTEXITCODE
     } finally { $ErrorActionPreference=$old }
     $text=($raw | ForEach-Object { [string]$_ }) -join "`n"

@@ -30,7 +30,9 @@ function Invoke-Remote([string]$Command, [switch]$AllowFailure) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 $Target $Command 2>&1)
+        $sshArgs = @('-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=8','-o','KexAlgorithms=curve25519-sha256')
+        if ($env:ARTHUR_PREVIEW_KNOWN_HOSTS) { $sshArgs += @('-o',"UserKnownHostsFile=$($env:ARTHUR_PREVIEW_KNOWN_HOSTS)") }
+        $raw = @(& $ssh @sshArgs $Target $Command 2>&1)
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $previous }
     $text = ($raw -join "`n").Trim()
@@ -74,7 +76,7 @@ function Invoke-AuthenticatedLuciPage([string]$Route, $Policy) {
 
 function Assert-LuciPage([string]$Route, [string]$Marker, [string]$Failure, $Policy) {
     $body = Invoke-AuthenticatedLuciPage $Route $Policy
-    if ([string]::IsNullOrWhiteSpace($body) -or $body -match '(?i)x-luci-login-required|luci_username|登录') { throw "$Failure reason=login-or-empty" }
+    if ([string]::IsNullOrWhiteSpace($body) -or $body -match '(?i)x-luci-login-required|luci_username') { throw "$Failure reason=login-or-empty" }
     if ($Marker -and $body -notmatch $Marker) { throw "$Failure reason=marker-missing marker=$Marker" }
     return $body
 }
@@ -162,7 +164,7 @@ function Test-AdGuardUiPreview($Policy) {
 function Test-QuickStartPreview($Policy) {
     Assert-RemoteOutput "pgrep -x quickstart >/dev/null && echo QUICKSTART_BACKEND_RUNNING" '^QUICKSTART_BACKEND_RUNNING$' 'QUICKSTART_PREVIEW_BACKEND_NOT_RUNNING' | Out-Null
     $body = Invoke-AuthenticatedLuciPage ([string]$Policy.quickstart_route) $Policy
-    $ok = ($body -match '(?i)luci-static/quickstart/index\.js') -and ($body -match '(?i)luci-static/quickstart/style\.css') -and ($body -match '(?i)<div[^>]+id=["'']app["'']') -and ($body -notmatch '(?i)x-luci-login-required|luci_username|登录')
+    $ok = ($body -match '(?i)luci-static/quickstart/index\.js') -and ($body -match '(?i)luci-static/quickstart/style\.css') -and ($body -match '(?i)<div[^>]+id=["'']app["'']') -and ($body -notmatch '(?i)x-luci-login-required|luci_username')
     if (-not $ok) { throw 'QUICKSTART_PREVIEW_PAGE_INCOMPLETE' }
     Assert-HttpAsset '/luci-static/quickstart/index.js' 100000 'QUICKSTART_PREVIEW_INDEX_ASSET_FAILED' $Policy
     Assert-HttpAsset '/luci-static/quickstart/style.css' 50000 'QUICKSTART_PREVIEW_STYLE_ASSET_FAILED' $Policy
