@@ -13,29 +13,46 @@ For every non-trivial firmware task:
 3. Verify the live Git branch/HEAD and relevant workflow/release state. Live evidence overrides stale documentation.
 4. Read this router and load the task-specific knowledge below.
 5. Read `knowledge/BUILD-ROUTING.md` before deciding whether a full OpenWrt build is required.
-6. If the task is a preview-safe LuCI/static/ACL change, read `knowledge/LIVE-PREVIEW.md` before deciding to build or flash.
-7. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
-8. Make the smallest change from the current verified baseline.
-9. Route the change through `Arthur Fast Preflight`; only `FULL_BUILD` changes proceed to the long Candidate build.
-10. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
-11. Record newly verified failure patterns or baseline changes back into the knowledge layer.
+6. For **any new feature development**, read `knowledge/V013-DEVELOPMENT-LOOP.md` first and default to the v0.1.3-style real-router development loop unless the change is inherently non-previewable.
+7. For preview-safe LuCI/static/ACL/service-integration work, also read `knowledge/LIVE-PREVIEW.md` before deciding to build or flash.
+8. If the task changes an upstream/feed/package source, fork, patch strategy or build-system component, execute `knowledge/REUSE-GATE.md` before adopting the change.
+9. Make the smallest change from the current verified baseline.
+10. During feature development, prefer fast real-router HOT/LIVE deployment and authenticated inspection over a Candidate build. Build only after the feature is accepted on the running router, unless the change inherently requires new firmware bytes.
+11. Route frozen source through `Arthur Fast Preflight` and the normal classifier-selected Candidate lane.
+12. On failure, classify the failure and consult `knowledge/KNOWN-FAILURES.md` before inventing a new repair.
+13. Record newly verified failure patterns or baseline changes back into the knowledge layer.
 
 The Reuse Gate is prospective. It does not move the current source lock, invalidate a Candidate/Stable result, restart an active build, or weaken existing acceptance gates.
 
 The Fast Preflight routing layer is also prospective. It must not cancel or restart an active Candidate. It decides the build lane; unknown paths fail closed to `FULL_BUILD`.
 
-`LIVE_PREVIEW` is a pre-Candidate development aid, not a production stage. A preview PASS never replaces Candidate build/flash or post-flash `REAL_DEVICE_VERIFY`.
+The user-approved v0.1.3 development rule is the default **development** route. `LIVE_PREVIEW`/HOT deployment is not a production release stage. A preview PASS never replaces Candidate build/flash or post-flash `REAL_DEVICE_VERIFY`.
 
 ## Routing table
 
+### Any new Arthur/OpenWrt feature
+Read first:
+- `knowledge/V013-DEVELOPMENT-LOOP.md`
+- `knowledge/BUILD-ROUTING.md`
+- then the feature-specific documents below
+
+Default development order:
+
+`requirement -> reuse mature implementation when appropriate -> smallest implementation -> static sanity -> backup -> deploy directly to the running router -> inspect authenticated real behavior -> fix -> redeploy`
+
+Do **not** start with a firmware Candidate/build/sysupgrade merely to see whether a new UI, plugin integration, theme, service-management page or configuration feature works. After the feature works on the running router, freeze source and enter the formal production sequence.
+
+If one preview action is unsafe but the rest can continue safely, automatically defer only that action to formal `REAL_DEVICE_VERIFY`; do not stop for routine user approval. Only a genuine blocker with no safe continuation may stop the chain.
+
 ### Preview-safe LuCI / AdGuard / QuickStart UI work
 Read:
+- `knowledge/V013-DEVELOPMENT-LOOP.md`
 - `knowledge/LIVE-PREVIEW.md`
 - `production/live-preview-policy.json`
 - `scripts/live-preview.ps1`
 - `tests/test-live-preview-contract.sh`
 
-Use the loop `edit -> static test -> LIVE_PREVIEW -> authenticated live check -> fix` when the changed runtime files fall inside the preview policy. The current Arthur Wi-Fi result stays `WIFI=VERIFIED_FROZEN`; the preview path must not modify or reload Wi-Fi, LAN/WAN, firewall core state, system binaries, packages or flash/storage state.
+Use the loop `edit -> static test -> HOT/LIVE deploy -> authenticated live check -> fix -> HOT/LIVE deploy` when the changed runtime files fall inside the preview policy. The current Arthur Wi-Fi result stays `WIFI=VERIFIED_FROZEN`; the preview path must not modify or reload Wi-Fi, LAN/WAN, firewall core state, system binaries, packages or flash/storage state except for an explicitly approved, safely recoverable feature-specific mapping.
 
 After the intended behavior is confirmed, freeze source and return to the existing production release order. `LIVE_PREVIEW=PASS` must still report `REAL_DEVICE_VERIFY=NOT_RUN` and `RELEASE_ALLOWED=false`.
 
@@ -45,7 +62,7 @@ Read:
 - `scripts/classify-build-scope.sh`
 - `.github/workflows/arthur-fast-preflight.yml`
 
-Run Fast Preflight before a long OpenWrt compile. Documentation-only changes do not compile firmware. CI/verifier/test/control-plane changes use static gates. Firmware-affecting or unknown changes use the classifier-selected Candidate lane. A safe LIVE_PREVIEW may be used before source freeze, but it never lowers the formal build scope of the firmware change.
+Run Fast Preflight before a long OpenWrt compile. Documentation-only changes do not compile firmware. CI/verifier/test/control-plane changes use static gates. Firmware-affecting or unknown changes use the classifier-selected Candidate lane **after source freeze**. A safe HOT/LIVE preview may be used before source freeze, but it never lowers the formal build scope of the firmware change.
 
 ### Device, target or image questions
 Read:
@@ -118,7 +135,7 @@ Read:
 - `docs/OPENWRT_CI_V3.md`
 - `.github/workflows/promote-stable-v3.yml`
 
-A cloud build PASS is only a Candidate PASS. Stable promotion requires the project-defined real-device verification gate. LIVE_PREVIEW evidence is never accepted as promotion evidence.
+A cloud build PASS is only a Candidate PASS. Stable promotion requires the project-defined real-device verification gate. HOT/LIVE preview evidence is never accepted as promotion evidence.
 
 ### Large-upload OOM regression
 Read:
@@ -137,16 +154,17 @@ Verifier-only corrections are `FAST_GATE`; changes to the actual OOM patch/appli
 
 When information conflicts, use this order:
 
-1. Real device verification evidence and current GitHub workflow/release state.
-2. `production/known-good.json` for the last promoted Stable.
-3. `config/arthur-known-good.lock` for pinned source/feed/plugin refs.
-4. `VERSION` for the firmware version used by `scripts/build.sh`.
-5. Current repository code and workflow definitions.
-6. `knowledge/PROJECT-STATE.md` as the human/agent state summary.
-7. Older docs and historical workflow reports.
+1. Explicit current user requirements and real device verification evidence/current GitHub workflow state.
+2. `knowledge/V013-DEVELOPMENT-LOOP.md` for the user-approved default feature-development route.
+3. `production/known-good.json` for the last promoted Stable.
+4. `config/arthur-known-good.lock` for pinned source/feed/plugin refs.
+5. `VERSION` for the firmware version used by `scripts/build.sh`.
+6. Current repository code and workflow definitions.
+7. `knowledge/PROJECT-STATE.md` as the human/agent state summary.
+8. Older docs and historical workflow reports.
 
 `build.env` contains project identity/defaults, but `scripts/build.sh` intentionally overrides `FIRMWARE_VERSION` from `VERSION`; do not infer a version conflict without reading that behavior.
 
 ## Safety boundary
 
-Knowledge routing, Fast Preflight, LIVE_PREVIEW and Reuse Gate decisions never authorize bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes, U-Boot modification or raw storage writes. Formal automated standard sysupgrade remains governed only by the existing `AUTO_FLASH_SAFETY_GATE` production path.
+Knowledge routing, Fast Preflight, HOT/LIVE development and Reuse Gate decisions never authorize bootloader writes, eMMC partition changes, ART/EEPROM/calibration changes, U-Boot modification or raw storage writes. Formal automated standard sysupgrade remains governed only by the existing `AUTO_FLASH_SAFETY_GATE` production path.
