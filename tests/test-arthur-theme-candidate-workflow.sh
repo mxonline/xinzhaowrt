@@ -76,6 +76,9 @@ grep -Fq 'ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./tests/test-adguard-manager.sh
 adguard_gate_line="$(grep -nF 'ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./tests/test-adguard-manager.sh' "$workflow" | cut -d: -f1 | head -n1)"
 source_prepare_line="$(grep -nF 'scripts/feeds install -p base ucode' "$workflow" | cut -d: -f1 | head -n1)"
 test -n "$adguard_gate_line" && test -n "$source_prepare_line" && test "$source_prepare_line" -lt "$adguard_gate_line" || fail 'AdGuard manager gate runs before clean-runner source preparation'
+changeset_line="$(grep -nF 'ADGUARD_MANAGER_SOURCE_ROOT="$SDK_DIR" ./scripts/check-changeset-complete.sh' "$workflow" || true)"
+changeset_line="${changeset_line%%:*}"
+test -n "$changeset_line" && test "$adguard_gate_line" -lt "$changeset_line" || fail 'changeset verification must run after the prepared AdGuard source gate'
 grep -Fq 'nas-packages-luci.git' "$workflow" || fail 'official QuickStart LuCI source is absent from the candidate workflow'
 grep -Fq 'nas-packages.git' "$workflow" || fail 'official QuickStart service source is absent from the candidate workflow'
 grep -Fq 'ISTORE_QUICKSTART_LUCI_REF' "$workflow" || fail 'official QuickStart LuCI ref is absent from the candidate workflow'
