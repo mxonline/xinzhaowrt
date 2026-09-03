@@ -5,10 +5,19 @@ name: Arthur v3 Controller Preflight
   push:
     branches:
       - main
+      - 'codex/**'
     paths:
       - 'scripts/ci-controller-v3.ps1'
       - 'scripts/start-ci-controller-v3.ps1'
       - 'scripts/ci-v3-status.ps1'
+      - 'scripts/real-device-verify.ps1'
+      - 'scripts/real-device-verify-v3.ps1'
+      - 'scripts/check-prebuild-real-device-gate.sh'
+      - 'scripts/ensure-arthur-unattended-access.ps1'
+      - 'scripts/github-app-auth.ps1'
+      - 'production/arthur-control-plane.json'
+      - 'production/wifi-frozen-baseline.json'
+      - 'tests/test-prebuild-feature-gate.sh'
       - '.github/workflows/controller-v3-preflight.yml'
   pull_request:
     branches:
@@ -21,6 +30,7 @@ name: Arthur v3 Controller Preflight
       - 'scripts/real-device-verify-v3.ps1'
       - 'scripts/check-prebuild-real-device-gate.sh'
       - 'scripts/ensure-arthur-unattended-access.ps1'
+      - 'scripts/github-app-auth.ps1'
       - 'production/arthur-control-plane.json'
       - 'production/wifi-frozen-baseline.json'
       - 'tests/test-prebuild-feature-gate.sh'
@@ -48,7 +58,8 @@ jobs:
             'scripts/ci-v3-status.ps1',
             'scripts/ensure-arthur-unattended-access.ps1',
             'scripts/real-device-verify.ps1',
-            'scripts/real-device-verify-v3.ps1'
+            'scripts/real-device-verify-v3.ps1',
+            'scripts/github-app-auth.ps1'
           )
 
           foreach ($file in $files) {
