@@ -1,32 +1,17 @@
 Set-StrictMode -Version Latest
 
 $script:FeatureHandoffStages = @(
-    'PREVIEW_ACCEPTED',
-    'LOCAL_CHANGES_CAPTURED',
-    'STATIC_VERIFIED',
-    'SOURCE_FROZEN',
-    'REMOTE_INTEGRATED',
-    'BUILD_DISPATCHED',
-    'CONTROLLER_ATTACHED',
-    'PRODUCTION_RUNNING',
-    'PRODUCTION_RELEASED'
+    'PREVIEW_ACCEPTED','LOCAL_CHANGES_CAPTURED','STATIC_VERIFIED','SOURCE_FROZEN',
+    'REMOTE_INTEGRATED','BUILD_DISPATCHED','CONTROLLER_ATTACHED','PRODUCTION_RUNNING','PRODUCTION_RELEASED'
 )
 
 $script:FeatureHandoffProtectedExact = @(
-    'config/required-plugins.txt',
-    'config/arthur.config',
-    'config/arthur-known-good.lock',
-    'production/known-good.json',
-    'production/status.json',
-    'VERSION',
-    'build.env',
-    'files/etc/config/wireless',
-    'files/etc/config/network'
+    'config/required-plugins.txt','config/arthur.config','config/arthur-known-good.lock',
+    'production/known-good.json','production/status.json','VERSION','build.env',
+    'files/etc/config/wireless','files/etc/config/network'
 )
 
-$script:FeatureHandoffExcludedPrefixes = @(
-    'work/','output/','build_dir/','staging_dir/','dl/','tmp/'
-)
+$script:FeatureHandoffExcludedPrefixes = @('work/','output/','build_dir/','staging_dir/','dl/','tmp/')
 
 function ConvertTo-HandoffPath([string]$Path) {
     return (($Path -replace '\\','/').Trim()).TrimStart('./')
@@ -69,6 +54,8 @@ function New-FeatureHandoffState {
         dispatch_source_sha = ''
         selected_build_lane = ''
         v3_mode = ''
+        dispatch_started_at = ''
+        dispatch_accepted = $false
         dispatched_run_id = 0
         production_stage = ''
         suppress_dispatch = $false
@@ -79,13 +66,21 @@ function New-FeatureHandoffState {
     }
 }
 
+function Add-HandoffStateDefault($State,[string]$Name,$Value) {
+    if ($State.PSObject.Properties.Name -notcontains $Name) {
+        Add-Member -InputObject $State -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
 function Save-FeatureHandoffState {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$StatePath)
     $dir = Split-Path -Parent $StatePath
     if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    Add-HandoffStateDefault $State 'dispatch_started_at' ''
+    Add-HandoffStateDefault $State 'dispatch_accepted' $false
     $State.updated_at = (Get-Date).ToString('o')
     $tmp = "$StatePath.tmp"
-    $State | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tmp -Encoding UTF8
+    $State | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $tmp -Encoding UTF8
     Move-Item -Force -LiteralPath $tmp -Destination $StatePath
 }
 
@@ -95,7 +90,28 @@ function Load-FeatureHandoffState {
     try { $state = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json -Depth 30 }
     catch { throw "FEATURE_HANDOFF_STATE_INVALID: $($_.Exception.Message)" }
     if ([int]$state.schema_version -ne 1) { throw "FEATURE_HANDOFF_STATE_SCHEMA_UNSUPPORTED=$($state.schema_version)" }
+    Add-HandoffStateDefault $state 'dispatch_started_at' ''
+    Add-HandoffStateDefault $state 'dispatch_accepted' $false
     return $state
+}
+
+function Assert-HandoffResumeIdentity {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][string]$FeatureId,
+        [Parameter(Mandatory)][string]$AcceptedPreviewSourceSha,
+        [Parameter(Mandatory)][string]$AcceptedDiffSha256,
+        [Parameter(Mandatory)][string]$PreviewManifestSha256
+    )
+    $mismatches = New-Object System.Collections.Generic.List[string]
+    if ([string]$State.feature_id -ne $FeatureId) { $mismatches.Add('feature_id') }
+    if ([string]$State.accepted_preview_source_sha -ne $AcceptedPreviewSourceSha.ToLowerInvariant()) { $mismatches.Add('accepted_preview_source_sha') }
+    if ([string]$State.accepted_diff_sha256 -ne $AcceptedDiffSha256.ToLowerInvariant()) { $mismatches.Add('accepted_diff_sha256') }
+    if ([string]$State.preview_manifest_sha256 -ne $PreviewManifestSha256.ToLowerInvariant()) { $mismatches.Add('preview_manifest_sha256') }
+    if ($mismatches.Count -gt 0) {
+        throw "FEATURE_HANDOFF_SOURCE_IDENTITY_MISMATCH fields=$($mismatches -join ',')"
+    }
+    return $true
 }
 
 function Set-FeatureHandoffStage {
@@ -123,6 +139,17 @@ function Test-ProductionWriteInProgress([string]$Stage) {
     return $Stage -in @('FLASH_STARTED','WAIT_DEVICE','REAL_DEVICE_VERIFY')
 }
 
+function Get-HandoffDispatchAction {
+    param([Parameter(Mandatory)]$State,[string]$ProductionStage='')
+    Add-HandoffStateDefault $State 'dispatch_started_at' ''
+    Add-HandoffStateDefault $State 'dispatch_accepted' $false
+    if (Test-ProductionWriteInProgress -Stage $ProductionStage) { return 'RECONCILE' }
+    if ($ProductionStage -eq 'PRODUCTION_RELEASED') { return 'RECONCILE' }
+    if ([long]$State.dispatched_run_id -gt 0 -or $State.suppress_dispatch -eq $true) { return 'RECONCILE' }
+    if ([string]$State.dispatch_started_at -or $State.dispatch_accepted -eq $true) { return 'DISCOVER' }
+    return 'DISPATCH'
+}
+
 function Assert-FeatureChangedPathsSafe {
     param([Parameter(Mandatory)][string[]]$ChangedPaths)
     foreach ($raw in $ChangedPaths) {
@@ -130,12 +157,8 @@ function Assert-FeatureChangedPathsSafe {
         if (-not $path -or $path.StartsWith('/') -or $path -match '^[A-Za-z]:' -or $path -match '(^|/)\.\.(/|$)') {
             throw "FEATURE_HANDOFF_FORBIDDEN_PATH=$raw"
         }
-        if ($script:FeatureHandoffProtectedExact -contains $path) {
-            throw "FEATURE_HANDOFF_PROTECTED_PATH=$path"
-        }
-        if ($path -match '^files/etc/config/(wireless|network|firewall|dhcp)(/|$)') {
-            throw "FEATURE_HANDOFF_FROZEN_NETWORK_PATH=$path"
-        }
+        if ($script:FeatureHandoffProtectedExact -contains $path) { throw "FEATURE_HANDOFF_PROTECTED_PATH=$path" }
+        if ($path -match '^files/etc/config/(wireless|network|firewall|dhcp)(/|$)') { throw "FEATURE_HANDOFF_FROZEN_NETWORK_PATH=$path" }
     }
     return $true
 }
@@ -177,26 +200,21 @@ function Get-WorktreeDiffSha256 {
         if (Test-Path -LiteralPath $full -PathType Leaf) {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
             $parts.Add("$path=$hash")
-        } else {
-            $parts.Add("$path=<deleted>")
-        }
+        } else { $parts.Add("$path=<deleted>") }
     }
     return Get-StringSha256 (($parts | Sort-Object) -join "`n")
 }
 
 function Resolve-ManifestLocalPath([string]$RepoRoot,[string]$ManifestPath,[string]$Local) {
-    if ([System.IO.Path]::IsPathRooted($Local)) {
-        $resolved = [System.IO.Path]::GetFullPath($Local)
-    } else {
+    if ([System.IO.Path]::IsPathRooted($Local)) { $resolved = [System.IO.Path]::GetFullPath($Local) }
+    else {
         $candidate = Join-Path $RepoRoot $Local
         if (Test-Path -LiteralPath $candidate) { $resolved = [System.IO.Path]::GetFullPath($candidate) }
         else { $resolved = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $ManifestPath) $Local)) }
     }
     $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar,[System.IO.Path]::AltDirectorySeparatorChar)
     $rootFull = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd($trimChars) + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $resolved.StartsWith($rootFull,[System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "FEATURE_HANDOFF_MANIFEST_LOCAL_OUTSIDE_REPO=$Local"
-    }
+    if (-not $resolved.StartsWith($rootFull,[System.StringComparison]::OrdinalIgnoreCase)) { throw "FEATURE_HANDOFF_MANIFEST_LOCAL_OUTSIDE_REPO=$Local" }
     return $resolved
 }
 
@@ -219,11 +237,8 @@ function Get-PreviewManifestIdentity {
         $localPath = Resolve-ManifestLocalPath -RepoRoot $RepoRoot -ManifestPath $ManifestPath -Local $sourceField
         if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) { throw "FEATURE_HANDOFF_MANIFEST_LOCAL_MISSING=$localPath" }
         $normalized.Add([pscustomobject]@{
-            source = $sourceField
-            local = $localPath
-            remote = $remote
-            mode = [string]$entry.mode
-            sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $localPath).Hash.ToLowerInvariant()
+            source=$sourceField; local=$localPath; remote=$remote; mode=[string]$entry.mode;
+            sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $localPath).Hash.ToLowerInvariant()
         })
     }
     [pscustomobject]@{
@@ -256,26 +271,17 @@ function Freeze-PreviewManifestToOverlay {
 }
 
 function Write-AcceptedPreviewRecord {
-    param(
-        [Parameter(Mandatory)][string]$RepoRoot,
-        [Parameter(Mandatory)]$State,
-        [Parameter(Mandatory)][object[]]$FrozenFiles,
-        [string[]]$DeferredAcceptance=@()
-    )
+    param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)]$State,[Parameter(Mandatory)][object[]]$FrozenFiles,[string[]]$DeferredAcceptance=@())
     $dir = Join-Path $RepoRoot 'production\accepted-preview'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $path = Join-Path $dir ("$($State.feature_id).json")
     [ordered]@{
-        schema_version = 1
-        feature_id = [string]$State.feature_id
-        accepted_preview_source_sha = [string]$State.accepted_preview_source_sha
-        accepted_diff_sha256 = [string]$State.accepted_diff_sha256
-        preview_manifest_sha256 = [string]$State.preview_manifest_sha256
-        frozen_files = @($FrozenFiles)
-        preview_evidence = $State.preview_evidence
-        deferred_acceptance = @($DeferredAcceptance)
-        wifi_state = 'VERIFIED_FROZEN'
-        frozen_at = (Get-Date).ToString('o')
+        schema_version=1; feature_id=[string]$State.feature_id;
+        accepted_preview_source_sha=[string]$State.accepted_preview_source_sha;
+        accepted_diff_sha256=[string]$State.accepted_diff_sha256;
+        preview_manifest_sha256=[string]$State.preview_manifest_sha256;
+        frozen_files=@($FrozenFiles); preview_evidence=$State.preview_evidence;
+        deferred_acceptance=@($DeferredAcceptance); wifi_state='VERIFIED_FROZEN'; frozen_at=(Get-Date).ToString('o')
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path -Encoding UTF8
     return $path
 }
@@ -285,16 +291,10 @@ function Select-HandoffBuildPlan {
     if ($KnownGoodLockChanged -or ($ChangedPaths | Where-Object { (ConvertTo-HandoffPath $_) -eq 'config/arthur-known-good.lock' })) {
         throw 'FEATURE_HANDOFF_SOURCE_IDENTITY_UNPROVEN: KNOWN_GOOD lock change requires an explicit source-update flow.'
     }
-    [pscustomobject]@{
-        selected_build_lane = 'V3_REBUILD_KNOWN_GOOD'
-        v3_mode = 'rebuild_known_good'
-        reason = 'source-lock-preserving accepted preview overlay; use existing production-integrated v3 Candidate lane'
-    }
+    [pscustomobject]@{ selected_build_lane='V3_REBUILD_KNOWN_GOOD'; v3_mode='rebuild_known_good'; reason='source-lock-preserving accepted preview overlay; use existing production-integrated v3 Candidate lane' }
 }
 
-function Copy-HandoffStateObject($State) {
-    return (($State | ConvertTo-Json -Depth 30) | ConvertFrom-Json -Depth 30)
-}
+function Copy-HandoffStateObject($State) { return (($State | ConvertTo-Json -Depth 30) | ConvertFrom-Json -Depth 30) }
 
 function Reconcile-ProductionState {
     param([Parameter(Mandatory)]$HandoffState,[Parameter(Mandatory)]$ProductionState)
@@ -302,18 +302,12 @@ function Reconcile-ProductionState {
     $stage = [string]$ProductionState.stage
     $state.production_stage = $stage
     if (Test-ProductionWriteInProgress -Stage $stage) {
-        $state.current_stage = 'PRODUCTION_RUNNING'
-        $state.stage_status = 'LIVE'
-        $state.suppress_dispatch = $true
+        $state.current_stage='PRODUCTION_RUNNING'; $state.stage_status='LIVE'; $state.suppress_dispatch=$true
     } elseif ($stage -eq 'PRODUCTION_RELEASED') {
-        $state.current_stage = 'PRODUCTION_RELEASED'
-        $state.stage_status = 'VERIFIED'
-        $state.suppress_dispatch = $true
+        $state.current_stage='PRODUCTION_RELEASED'; $state.stage_status='VERIFIED'; $state.suppress_dispatch=$true
     } elseif ($stage) {
-        if ([array]::IndexOf($script:FeatureHandoffStages,[string]$state.current_stage) -lt [array]::IndexOf($script:FeatureHandoffStages,'CONTROLLER_ATTACHED')) {
-            $state.current_stage = 'CONTROLLER_ATTACHED'
-        }
-        $state.stage_status = 'LIVE'
+        if ([array]::IndexOf($script:FeatureHandoffStages,[string]$state.current_stage) -lt [array]::IndexOf($script:FeatureHandoffStages,'CONTROLLER_ATTACHED')) { $state.current_stage='CONTROLLER_ATTACHED' }
+        $state.stage_status='LIVE'
     }
     return $state
 }
