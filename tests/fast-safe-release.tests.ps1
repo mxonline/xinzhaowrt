@@ -56,5 +56,28 @@ Add-ReleaseInvalidation `
 Assert-True (Test-CheckpointValid -State $state -Checkpoint 'SOURCE_FROZEN' -Fingerprint ('a' * 64) -eq $false) 'invalidated checkpoint must not remain valid'
 Assert-ReleaseStageTransition -State $state -NextStage 'PREVIEW_ACCEPTED' | Out-Null
 
+$v1 = [pscustomobject][ordered]@{
+    schema_version = 1
+    feature_id = 'arthur-adh-quickstart'
+    accepted_preview_source_sha = ('c' * 40)
+    accepted_diff_sha256 = ('d' * 64)
+    preview_manifest_sha256 = ('e' * 64)
+    preview_manifest_path = 'manifest.json'
+    current_stage = 'BUILD_DISPATCHED'
+    stage_status = 'LIVE'
+    dispatched_run_id = 12345
+    suppress_dispatch = $false
+    last_error = ''
+    retry_count = 0
+}
+$migrated = ConvertTo-ReleaseTaskStateV2 -State $v1 -DeviceId 'jdcloud_re-ss-01'
+Assert-Equal $migrated.schema_version 2 'schema v1 upgrades to v2'
+Assert-Equal $migrated.feature_id 'arthur-adh-quickstart' 'migration preserves feature id'
+Assert-Equal $migrated.accepted_preview_source_sha ('c' * 40) 'migration preserves accepted source identity'
+Assert-Equal $migrated.dispatched_run_id 12345 'migration preserves active run id'
+Assert-Equal $migrated.current_stage 'BUILD_DISPATCHED' 'migration preserves current stage'
+Assert-True ([string]$migrated.release_task_id -like 'arthur:arthur-adh-quickstart:*') 'migration creates durable release task id'
+
 Write-Host 'FAST_SAFE_RELEASE_POLICY_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MONOTONIC_STATE_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_RELEASE_V1_MIGRATION_CONTRACT=PASS'
