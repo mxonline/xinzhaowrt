@@ -79,6 +79,16 @@ Assert-Equal $migrated.dispatched_run_id 12345 'migration preserves active run i
 Assert-Equal $migrated.current_stage 'BUILD_DISPATCHED' 'migration preserves current stage'
 Assert-True ([string]$migrated.release_task_id -like 'arthur:arthur-adh-quickstart:*') 'migration creates durable release task id'
 
+Assert-Equal (Get-MinimumInvalidationForImpact -ImpactClass 'DOC_ONLY') 'NONE' 'docs invalidate no release evidence'
+Assert-Equal (Get-MinimumInvalidationForImpact -ImpactClass 'CONTROL_PLANE_ONLY') 'CONTROL_EVIDENCE_ONLY' 'control-only edits preserve firmware bytes'
+Assert-Equal (Get-MinimumInvalidationForImpact -ImpactClass 'PREVIEW_BYTES') 'PREVIEW_AND_DOWNSTREAM' 'preview byte changes repeat preview and downstream only'
+Assert-Equal (Get-MinimumInvalidationForImpact -ImpactClass 'FIRMWARE_INPUT') 'BUILD_AND_DOWNSTREAM' 'firmware input changes repeat build and downstream only'
+Assert-Equal (Get-MinimumInvalidationForImpact -ImpactClass 'DEVICE_WRITE_POLICY') 'PREFLASH_AND_DOWNSTREAM' 'write-policy changes repeat preflash safety and downstream only'
+Assert-Throws {
+    Get-MinimumInvalidationForImpact -ImpactClass 'UNKNOWN'
+} 'FAST_SAFE_RELEASE_UNKNOWN_IMPACT_CLASS' 'unknown impact class must fail closed'
+
 Write-Host 'FAST_SAFE_RELEASE_POLICY_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MONOTONIC_STATE_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_V1_MIGRATION_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_RELEASE_MINIMUM_INVALIDATION_CONTRACT=PASS'
