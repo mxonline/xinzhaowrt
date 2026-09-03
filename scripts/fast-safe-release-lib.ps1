@@ -157,6 +157,18 @@ function Assert-ReleaseStageTransition {
     throw "RELEASE_STAGE_REGRESSION_WITHOUT_INVALIDATION current=$current next=$NextStage"
 }
 
+function Get-MinimumInvalidationForImpact {
+    param([Parameter(Mandatory)][string]$ImpactClass)
+    switch ($ImpactClass) {
+        'DOC_ONLY'            { return 'NONE' }
+        'CONTROL_PLANE_ONLY'  { return 'CONTROL_EVIDENCE_ONLY' }
+        'PREVIEW_BYTES'       { return 'PREVIEW_AND_DOWNSTREAM' }
+        'FIRMWARE_INPUT'      { return 'BUILD_AND_DOWNSTREAM' }
+        'DEVICE_WRITE_POLICY' { return 'PREFLASH_AND_DOWNSTREAM' }
+        default { throw "FAST_SAFE_RELEASE_UNKNOWN_IMPACT_CLASS=$ImpactClass" }
+    }
+}
+
 function Set-ReleaseProgress {
     param(
         [Parameter(Mandatory)]$State,
