@@ -212,9 +212,14 @@ function Get-PreviewManifestIdentity {
         $remote = [string]$entry.remote
         if (-not $remote.StartsWith('/') -or $remote -match '(^|/)\.\.(/|$)') { throw "FEATURE_HANDOFF_MANIFEST_REMOTE_INVALID=$remote" }
         if ($remote -match '^/etc/config/(wireless|network|firewall|dhcp)(/|$)') { throw "FEATURE_HANDOFF_MANIFEST_REMOTE_FORBIDDEN=$remote" }
-        $localPath = Resolve-ManifestLocalPath -RepoRoot $RepoRoot -ManifestPath $ManifestPath -Local ([string]$entry.local)
+        $sourceField = ''
+        if ($entry.PSObject.Properties.Name -contains 'source') { $sourceField = [string]$entry.source }
+        elseif ($entry.PSObject.Properties.Name -contains 'local') { $sourceField = [string]$entry.local }
+        if (-not $sourceField) { throw "FEATURE_HANDOFF_MANIFEST_SOURCE_MISSING remote=$remote" }
+        $localPath = Resolve-ManifestLocalPath -RepoRoot $RepoRoot -ManifestPath $ManifestPath -Local $sourceField
         if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) { throw "FEATURE_HANDOFF_MANIFEST_LOCAL_MISSING=$localPath" }
         $normalized.Add([pscustomobject]@{
+            source = $sourceField
             local = $localPath
             remote = $remote
             mode = [string]$entry.mode
@@ -245,7 +250,7 @@ function Freeze-PreviewManifestToOverlay {
             & git -C $RepoRoot update-index --add --chmod=+x -- $relative *> $null
             if ($LASTEXITCODE -ne 0) { throw "FEATURE_HANDOFF_EXECUTABLE_INDEX_FAILED=$relative" }
         }
-        $frozen.Add([pscustomobject]@{ remote=$entry.remote; overlay=$relative; sha256=$destHash; mode=$entry.mode })
+        $frozen.Add([pscustomobject]@{ source=$entry.source; remote=$entry.remote; overlay=$relative; sha256=$destHash; mode=$entry.mode })
     }
     return [object[]]$frozen.ToArray()
 }
