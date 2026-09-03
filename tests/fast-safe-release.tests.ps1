@@ -88,7 +88,47 @@ Assert-Throws {
     Get-MinimumInvalidationForImpact -ImpactClass 'UNKNOWN'
 } 'FAST_SAFE_RELEASE_UNKNOWN_IMPACT_CLASS' 'unknown impact class must fail closed'
 
+$previewRecord = [pscustomobject][ordered]@{
+    schema_version = 1
+    feature_id = 'arthur-adh-quickstart'
+    accepted_preview_source_sha = ('1' * 40)
+    accepted_diff_sha256 = ('2' * 64)
+    preview_manifest_sha256 = ('3' * 64)
+    frozen_files = @(
+        [pscustomobject][ordered]@{ remote='/usr/lib/lua/luci/controller/AdGuardHome.lua'; sha256=('4' * 64); mode='0644'; overlay='files/usr/lib/lua/luci/controller/AdGuardHome.lua' },
+        [pscustomobject][ordered]@{ remote='/etc/init.d/AdGuardHome'; sha256=('5' * 64); mode='0755'; overlay='files/etc/init.d/AdGuardHome' }
+    )
+}
+$previewRecordWithHandoffNoise = (($previewRecord | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+Add-Member -InputObject $previewRecordWithHandoffNoise -NotePropertyName handoff_text -NotePropertyValue 'changed documentation only'
+$fp1 = Get-AcceptedPreviewFingerprint -AcceptedRecord $previewRecord -PreviewPolicyIdentity 'policy-v1'
+$fp2 = Get-AcceptedPreviewFingerprint -AcceptedRecord $previewRecordWithHandoffNoise -PreviewPolicyIdentity 'policy-v1'
+Assert-Equal $fp1 $fp2 'HANDOFF/docs noise must not alter accepted preview fingerprint'
+Assert-True ($fp1 -match '^[0-9a-f]{64}$') 'accepted preview fingerprint must be SHA256'
+
+$matchingHashes = @{
+    '/usr/lib/lua/luci/controller/AdGuardHome.lua' = ('4' * 64)
+    '/etc/init.d/AdGuardHome' = ('5' * 64)
+}
+$reuse = Get-PreviewReuseDecision -AcceptedRecord $previewRecord -DeviceHashes $matchingHashes -PreviewPolicyIdentity 'policy-v1'
+Assert-Equal $reuse.action 'REUSE_PREVIEW_ACCEPTED' 'matching device hashes reuse accepted preview'
+Assert-Equal @($reuse.paths).Count 0 'matching preview requires no file writes'
+Assert-True (-not [bool]$reuse.source_discovery_allowed) 'same accepted fingerprint forbids source rediscovery'
+Assert-True (-not [bool]$reuse.full_preview_deploy_allowed) 'same accepted fingerprint forbids full preview deployment'
+
+$driftedHashes = @{
+    '/usr/lib/lua/luci/controller/AdGuardHome.lua' = ('0' * 64)
+    '/etc/init.d/AdGuardHome' = ('5' * 64)
+}
+$restore = Get-PreviewReuseDecision -AcceptedRecord $previewRecord -DeviceHashes $driftedHashes -PreviewPolicyIdentity 'policy-v1'
+Assert-Equal $restore.action 'RESTORE_DRIFTED_PREVIEW_FILES' 'one drifted file triggers minimum restore only'
+Assert-Equal @($restore.paths).Count 1 'one drifted file must not redeploy the full bundle'
+Assert-Equal $restore.paths[0] '/usr/lib/lua/luci/controller/AdGuardHome.lua' 'restore identifies only the drifted target'
+Assert-True (-not [bool]$restore.source_discovery_allowed) 'drift repair still forbids source rediscovery'
+Assert-True (-not [bool]$restore.full_preview_deploy_allowed) 'drift repair still forbids full preview deployment'
+
 Write-Host 'FAST_SAFE_RELEASE_POLICY_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MONOTONIC_STATE_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_V1_MIGRATION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MINIMUM_INVALIDATION_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_RELEASE_PREVIEW_REUSE_CONTRACT=PASS'
