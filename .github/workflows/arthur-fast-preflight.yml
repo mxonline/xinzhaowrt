@@ -37,13 +37,20 @@ jobs:
       - name: Parse LIVE_PREVIEW PowerShell
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile('scripts/live-preview.ps1', [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Error
-            exit 1
+          foreach ($file in @('scripts/live-preview.ps1', 'scripts/prepare-live-preview-sources.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
           }
+
+      - name: Validate LIVE_PREVIEW JSON contracts
+        run: |
+          python3 -m json.tool production/live-preview-policy.json >/dev/null
+          python3 -m json.tool production/mature-ui-sources.json >/dev/null
 
       - name: Test v4 toolchain bootstrap gate
         run: ./tests/test-v4-toolchain-bootstrap.sh
@@ -83,6 +90,7 @@ jobs:
             echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
             echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
             echo '- LIVE_PREVIEW is a pre-Candidate development aid and never counts as formal REAL_DEVICE_VERIFY.'
+            echo '- Mature AdGuard Home and official QuickStart sources are pinned separately from Known-Good firmware refs.'
             echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
             echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
             echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'
