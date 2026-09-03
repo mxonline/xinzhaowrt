@@ -11,6 +11,7 @@ safe="$ROOT/scripts/live-preview-mature-safe.ps1"
 prepare="$ROOT/scripts/prepare-live-preview-sources.ps1"
 handoff="$ROOT/scripts/feature-handoff.ps1"
 installer="$ROOT/scripts/install-feature-handoff.ps1"
+fastsafe="$ROOT/scripts/fast-safe-release-lib.ps1"
 [[ -s "$policy" ]] || fail 'live preview policy missing'
 [[ -s "$sources" ]] || fail 'mature UI source lock missing'
 [[ -s "$script" ]] || fail 'live preview executor missing'
@@ -18,6 +19,7 @@ installer="$ROOT/scripts/install-feature-handoff.ps1"
 [[ -s "$prepare" ]] || fail 'mature source preparation script missing'
 [[ -s "$handoff" ]] || fail 'feature handoff executor missing'
 [[ -s "$installer" ]] || fail 'feature handoff installer missing'
+[[ -s "$fastsafe" ]] || fail 'fast-safe release library missing'
 
 grep -Fq 'WIFI=VERIFIED_FROZEN' "$safe" || fail 'Wi-Fi frozen marker missing from safe wrapper'
 grep -Fq 'REAL_DEVICE_VERIFY=NOT_RUN' "$safe" || fail 'safe preview must not claim formal real-device verification'
@@ -36,6 +38,14 @@ grep -Fq 'FEATURE_HANDOFF_STARTED=' "$safe" || fail 'successful preview must sta
 grep -Fq 'feature-handoff.ps1' "$safe" || fail 'safe preview must invoke feature handoff executor'
 grep -Fq 'PRODUCTION_RELEASED' "$handoff" || fail 'handoff must continue to sole production terminal state'
 grep -Fq 'arthur-update-v3.yml' "$handoff" || fail 'handoff must reuse existing v3 Candidate workflow'
+
+# Accepted preview is a reusable verified checkpoint. Re-entering the preview
+# wrapper must reconcile hashes before any complete deployment/source rebuild.
+grep -Fq 'Get-PreviewReuseDecision' "$safe" || fail 'safe preview must consult accepted-preview reuse decision before deploy'
+grep -Fq 'REUSE_PREVIEW_ACCEPTED' "$safe" || fail 'safe preview must expose exact accepted-preview reuse'
+grep -Fq 'RESTORE_DRIFTED_PREVIEW_FILES' "$safe" || fail 'safe preview must support minimum drift restore'
+grep -Fq 'production\accepted-preview' "$safe" || fail 'safe preview must read the durable accepted-preview record'
+grep -Fq 'PREVIEW_FULL_DEPLOY_SKIPPED=true' "$safe" || fail 'safe preview must prove full deploy was skipped when evidence is reusable'
 
 grep -Fq 'allowed_remote_exact' "$script" || fail 'exact-path safety exception support missing'
 grep -Fq 'Mode' "$script" || fail 'per-file mode support missing'
@@ -88,4 +98,4 @@ assert by_name['quickstart']['ref'] == '7e5083e2ca4cfa4d31f312026f46e5213c5b03f5
 assert by_name['quickstart']['subdir'] == 'luci/luci-app-quickstart'
 PY
 
-echo 'PASS: LIVE_PREVIEW mature UI safe-fallback and production handoff contract is present.'
+echo 'PASS: LIVE_PREVIEW mature UI safe-fallback, checkpoint reuse, and production handoff contract is present.'
