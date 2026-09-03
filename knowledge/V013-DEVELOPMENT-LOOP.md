@@ -8,9 +8,23 @@ The development objective is to make the requested feature appear and work on th
 
 This rule applies to new LuCI pages, themes, plugin management UIs, package-facing configuration, QuickStart/iStore UI, service-management integration and other changes that can be safely exercised on the running device.
 
+## Mature-reuse-first rule
+
+Every new feature begins with the mandatory `knowledge/REUSE-GATE.md` decision before implementation code is written.
+
+Default preference order:
+
+`official OpenWrt/ImmortalWrt -> official package/application upstream -> maintained same-device/same-target implementation -> maintained community implementation -> thin compatibility layer -> project-specific BUILD only as last resort`
+
+Do not recreate an existing mature feature by progressively adding local LuCI pages, buttons, scripts, RPC calls or partial backend logic. If a mature implementation already provides the requested management experience, reuse that implementation and adapt only what Arthur requires.
+
+`BUILD` is allowed only when the Reuse Gate records concrete evidence that suitable mature solutions are unavailable, incompatible, unsafe, abandoned or materially incomplete. Even then, selectively reuse mature components wherever possible.
+
+The HOT/LIVE development loop is for rapidly integrating and validating the selected solution on the real router; it is not permission to bypass Reuse Gate or hand-build a substitute for a mature upstream solution.
+
 ## Default order
 
-`requirement -> Reuse Gate when needed -> implement smallest change -> static sanity check -> backup current router targets -> HOT/LIVE deploy to running Arthur -> clear/reload only required runtime state -> authenticated real-router check -> inspect/fix -> repeat HOT/LIVE deploy`
+`requirement -> mandatory Reuse Gate -> USE/REUSE/FORK/BUILD decision -> implement smallest integration/change -> static sanity check -> backup current router targets -> HOT/LIVE deploy to running Arthur -> clear/reload only required runtime state -> authenticated real-router check -> inspect/fix -> repeat HOT/LIVE deploy`
 
 Only after the requested feature is visibly and functionally correct on Arthur:
 
@@ -67,7 +81,7 @@ It must not be misreported as a new firmware release:
 
 Skip HOT/LIVE implementation only when the requested change inherently requires firmware bytes that cannot be safely represented on the running system, such as kernel/modules/drivers, boot-critical components, ABI-dependent package binaries that cannot be safely hot-installed, partition/storage layout, bootloader, or another explicitly non-previewable change.
 
-Even then, use the shortest safe build lane selected by change impact; do not default to a full source rebuild without evidence.
+Even then, the mandatory Reuse Gate still runs first, and the shortest safe build lane is selected by change impact. Do not default to a full source rebuild or custom implementation without evidence.
 
 ## Unattended execution rule
 
