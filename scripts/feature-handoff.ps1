@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Resume','RunOnce','Status')][string]$Mode='Resume',
+    [ValidateSet('AcceptPreview','Resume','RunOnce','Status')][string]$Mode='Resume',
     [string]$FeatureId='',
     [string]$AcceptedPreviewSourceSha='',
     [string]$PreviewManifestPath='',
@@ -15,15 +15,13 @@ Set-StrictMode -Version Latest
 $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'feature-handoff-lib.ps1')
 
-if (-not $RuntimeRoot) {
-    $RuntimeRoot=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\FeatureHandoff'
-}
+if (-not $RuntimeRoot) { $RuntimeRoot=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\FeatureHandoff' }
 New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
 $StatePath=Join-Path $RuntimeRoot 'handoff.json'
 $LogPath=Join-Path $RuntimeRoot 'handoff.log'
+$LockPath=Join-Path $RuntimeRoot 'handoff.lock'
 $ProductionStatePath=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent\output\production-agent\state.json'
 $ControllerTask='XinZhaoWrt-Arthur-v3-Controller'
-$HandoffTask='XinZhaoWrt-Arthur-Feature-Handoff'
 
 function Log([string]$Message) {
     $line='{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$Message
@@ -40,7 +38,7 @@ function Invoke-Native([string]$File,[string[]]$Args,[switch]$AllowFailure) {
     } finally { $ErrorActionPreference=$old }
     $text=($raw | ForEach-Object { [string]$_ }) -join "`n"
     if (-not $AllowFailure -and $code -ne 0) { throw "$File failed ($code): $text" }
-    [pscustomobject]@{ ExitCode=$code; Output=$text.Trim() }
+    return [pscustomobject]@{ ExitCode=$code; Output=$text.Trim() }
 }
 
 function Test-Recoverable([string]$Message) {
@@ -64,44 +62,70 @@ function Read-PreviewEvidence([string]$Path) {
     return $e
 }
 
-function Initialize-StateIfNeeded {
-    $existing=Load-FeatureHandoffState -StatePath $StatePath
-    if ($existing) {
-        if ($FeatureId -and [string]$existing.feature_id -ne $FeatureId -and [string]$existing.current_stage -ne 'PRODUCTION_RELEASED') {
-            throw "FEATURE_HANDOFF_ACTIVE_FEATURE_CONFLICT active=$($existing.feature_id) requested=$FeatureId"
-        }
-        return $existing
-    }
+function Get-AcceptanceIdentity {
     if (-not $FeatureId -or -not $AcceptedPreviewSourceSha -or -not $PreviewManifestPath -or -not $PreviewEvidencePath) {
-        return $null
+        throw 'FEATURE_HANDOFF_ACCEPT_PREVIEW_ARGUMENTS_REQUIRED'
     }
-    if ($PauseAfterLivePreview) {
-        Write-Host 'FEATURE_HANDOFF=PAUSED_BY_USER'
-        return $null
-    }
+    if ($AcceptedPreviewSourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'FEATURE_HANDOFF_INVALID_ACCEPTED_SHA' }
     $evidence=Read-PreviewEvidence $PreviewEvidencePath
     $resolvedManifest=Get-ResolvedManifestPath $PreviewManifestPath
     $identity=Get-PreviewManifestIdentity -RepoRoot $Root -ManifestPath $resolvedManifest
     $diffSha=Get-WorktreeDiffSha256 -RepoRoot $Root
-    $state=New-FeatureHandoffState `
-        -FeatureId $FeatureId `
-        -AcceptedPreviewSourceSha $AcceptedPreviewSourceSha.ToLowerInvariant() `
-        -AcceptedDiffSha256 $diffSha `
-        -PreviewManifestSha256 $identity.manifest_sha256 `
-        -PreviewManifestPath $resolvedManifest `
-        -PreviewEvidence $evidence
+    return [pscustomobject]@{
+        evidence=$evidence
+        manifest_path=$resolvedManifest
+        manifest_sha256=$identity.manifest_sha256
+        diff_sha256=$diffSha
+        source_sha=$AcceptedPreviewSourceSha.ToLowerInvariant()
+    }
+}
+
+function Accept-PreviewState {
+    if ($PauseAfterLivePreview) {
+        Write-Host 'FEATURE_HANDOFF=PAUSED_BY_USER'
+        return $null
+    }
+    $accept=Get-AcceptanceIdentity
+    $existing=Load-FeatureHandoffState -StatePath $StatePath
+    if ($existing -and [string]$existing.current_stage -ne 'PRODUCTION_RELEASED') {
+        Assert-HandoffResumeIdentity -State $existing -FeatureId $FeatureId -AcceptedPreviewSourceSha $accept.source_sha -AcceptedDiffSha256 $accept.diff_sha256 -PreviewManifestSha256 $accept.manifest_sha256 | Out-Null
+        Write-Host "FEATURE_HANDOFF_ACCEPTED=EXISTING dispatch_key=$($existing.dispatch_key)"
+        return $existing
+    }
+    if ($existing -and [string]$existing.current_stage -eq 'PRODUCTION_RELEASED') {
+        $sameKey=(Get-FeatureHandoffKey -FeatureId $FeatureId -AcceptedPreviewSourceSha $accept.source_sha) -eq [string]$existing.dispatch_key
+        if ($sameKey -and [string]$existing.accepted_diff_sha256 -eq $accept.diff_sha256 -and [string]$existing.preview_manifest_sha256 -eq $accept.manifest_sha256) {
+            Write-Host "FEATURE_HANDOFF_ACCEPTED=ALREADY_RELEASED dispatch_key=$($existing.dispatch_key)"
+            return $existing
+        }
+        $archive=Join-Path $RuntimeRoot ("handoff.released.$((Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss')).json")
+        Copy-Item -LiteralPath $StatePath -Destination $archive -Force
+    }
+    $state=New-FeatureHandoffState -FeatureId $FeatureId -AcceptedPreviewSourceSha $accept.source_sha -AcceptedDiffSha256 $accept.diff_sha256 -PreviewManifestSha256 $accept.manifest_sha256 -PreviewManifestPath $accept.manifest_path -PreviewEvidence $accept.evidence
     Save-FeatureHandoffState -State $state -StatePath $StatePath
-    Log "PREVIEW_ACCEPTED feature=$FeatureId source=$AcceptedPreviewSourceSha diff=$diffSha"
+    Log "PREVIEW_ACCEPTED feature=$FeatureId source=$($accept.source_sha) diff=$($accept.diff_sha256)"
+    Write-Host "FEATURE_HANDOFF_ACCEPTED=PASS dispatch_key=$($state.dispatch_key)"
     return $state
+}
+
+function Load-OrAcceptState {
+    $state=Load-FeatureHandoffState -StatePath $StatePath
+    if ($state) {
+        if ($FeatureId -and [string]$state.current_stage -ne 'PRODUCTION_RELEASED') {
+            $accept=Get-AcceptanceIdentity
+            Assert-HandoffResumeIdentity -State $state -FeatureId $FeatureId -AcceptedPreviewSourceSha $accept.source_sha -AcceptedDiffSha256 $accept.diff_sha256 -PreviewManifestSha256 $accept.manifest_sha256 | Out-Null
+        }
+        return $state
+    }
+    if ($FeatureId) { return Accept-PreviewState }
+    return $null
 }
 
 function Capture-LocalChanges($State) {
     $paths=@(Get-FeatureChangedPaths -RepoRoot $Root)
     Assert-FeatureChangedPathsSafe -ChangedPaths $paths | Out-Null
     $currentDiff=Get-WorktreeDiffSha256 -RepoRoot $Root
-    if ($currentDiff -ne [string]$State.accepted_diff_sha256) {
-        throw "FEATURE_HANDOFF_SOURCE_IDENTITY_CHANGED accepted=$($State.accepted_diff_sha256) current=$currentDiff"
-    }
+    if ($currentDiff -ne [string]$State.accepted_diff_sha256) { throw "FEATURE_HANDOFF_SOURCE_IDENTITY_CHANGED accepted=$($State.accepted_diff_sha256) current=$currentDiff" }
     $State.changed_paths=@($paths)
     Set-FeatureHandoffStage -State $State -Stage 'LOCAL_CHANGES_CAPTURED' -Status 'VERIFIED' | Out-Null
     Save-FeatureHandoffState -State $State -StatePath $StatePath
@@ -147,10 +171,7 @@ function Freeze-AcceptedSource($State) {
     Log "SOURCE_FROZEN files=$($frozen.Count) record=$recordRel"
 }
 
-function Get-CurrentBranch {
-    $r=Invoke-Native git @('-C',$Root,'branch','--show-current')
-    return $r.Output.Trim()
-}
+function Get-CurrentBranch { return (Invoke-Native git @('-C',$Root,'branch','--show-current')).Output.Trim() }
 
 function Ensure-FeatureBranch($State) {
     $branch=Get-CurrentBranch
@@ -175,17 +196,11 @@ function Stage-And-Commit($State) {
     $ancestor=Invoke-Native git @('-C',$Root,'merge-base','--is-ancestor','origin/main','HEAD') -AllowFailure
     if ($ancestor.ExitCode -ne 0) {
         $merge=Invoke-Native git @('-C',$Root,'merge','--no-edit','origin/main') -AllowFailure
-        if ($merge.ExitCode -ne 0) {
-            throw "FEATURE_HANDOFF_SOURCE_RECONCILIATION_BLOCKED: merge conflict preserved for inspection. $($merge.Output)"
-        }
+        if ($merge.ExitCode -ne 0) { throw "FEATURE_HANDOFF_SOURCE_RECONCILIATION_BLOCKED: merge conflict preserved for inspection. $($merge.Output)" }
     }
-    foreach ($path in @($State.changed_paths)) {
-        Invoke-Native git @('-C',$Root,'add','--',[string]$path) | Out-Null
-    }
+    foreach ($path in @($State.changed_paths)) { Invoke-Native git @('-C',$Root,'add','--',[string]$path) | Out-Null }
     $staged=Invoke-Native git @('-C',$Root,'diff','--cached','--name-only')
-    if ($staged.Output) {
-        Invoke-Native git @('-C',$Root,'commit','-m',"feat: freeze accepted $($State.feature_id) live preview") | Out-Null
-    }
+    if ($staged.Output) { Invoke-Native git @('-C',$Root,'commit','-m',"feat: freeze accepted $($State.feature_id) live preview") | Out-Null }
     $State.feature_commit_sha=(Invoke-Native git @('-C',$Root,'rev-parse','HEAD')).Output.Trim()
     Invoke-Native git @('-C',$Root,'push','-u','origin',$branch) | Out-Null
     Log "FEATURE_BRANCH_PUSHED branch=$branch sha=$($State.feature_commit_sha)"
@@ -193,8 +208,7 @@ function Stage-And-Commit($State) {
 
 function Get-OrCreatePr($State) {
     $list=Invoke-Native gh @('pr','list','--repo',$Repository,'--head',[string]$State.branch,'--base','main','--state','open','--json','number,headRefOid')
-    $prs=@()
-    if ($list.Output) { $prs=@($list.Output | ConvertFrom-Json) }
+    $prs=@(); if ($list.Output) { $prs=@($list.Output | ConvertFrom-Json) }
     if ($prs.Count -gt 0) { return [int]$prs[0].number }
     $create=Invoke-Native gh @('pr','create','--repo',$Repository,'--base','main','--head',[string]$State.branch,'--title',"Arthur: freeze accepted $($State.feature_id) preview",'--body',"Automated Feature Handoff for accepted LIVE_PREVIEW. WIFI=VERIFIED_FROZEN. Production continues through existing v3 Controller and Production Agent.")
     $m=[regex]::Match($create.Output,'/pull/(\d+)')
@@ -203,14 +217,13 @@ function Get-OrCreatePr($State) {
 }
 
 function Invoke-PrRepair($State,[int]$PrNumber,[string]$FailureText) {
-    $codex=(Get-Command codex.cmd -ErrorAction SilentlyContinue)
+    $codex=Get-Command codex.cmd -ErrorAction SilentlyContinue
     if (-not $codex) { $codex=Get-Command codex -ErrorAction SilentlyContinue }
     if (-not $codex) { throw "FEATURE_HANDOFF_PR_CHECK_FAILED_NO_CODEX: $FailureText" }
     $prompt=@"
 Repair PR #$PrNumber for mxonline/xinzhaowrt after Feature Handoff static/CI failure.
 Read AGENTS.md, knowledge/V013-DEVELOPMENT-LOOP.md, and the handoff spec/plan.
-Keep WIFI=VERIFIED_FROZEN. Do not modify config/required-plugins.txt, config/arthur.config, config/arthur-known-good.lock, production/known-good.json, VERSION, or build.env.
-Do not force push, reset/clean away work, remove required plugins, weaken tests/gates, flash the router, or touch raw storage.
+Keep WIFI=VERIFIED_FROZEN. Do not modify protected baseline files, force push, reset/clean away work, weaken tests/gates, flash the router, or touch raw storage.
 Diagnose the first concrete error below, make the smallest repair in the current branch, run the relevant tests, and stop without git commit/push.
 Failure evidence:
 $FailureText
@@ -243,9 +256,7 @@ function Wait-PrAndMerge($State,[int]$PrNumber) {
         if ($checks.ExitCode -eq 0) {
             $info=Invoke-Native gh @('pr','view',[string]$PrNumber,'--repo',$Repository,'--json','headRefOid,state,mergeStateStatus')
             $pr=$info.Output | ConvertFrom-Json
-            if ([string]$pr.headRefOid -ne [string]$State.feature_commit_sha) {
-                throw "FEATURE_HANDOFF_PR_HEAD_MOVED expected=$($State.feature_commit_sha) actual=$($pr.headRefOid)"
-            }
+            if ([string]$pr.headRefOid -ne [string]$State.feature_commit_sha) { throw "FEATURE_HANDOFF_PR_HEAD_MOVED expected=$($State.feature_commit_sha) actual=$($pr.headRefOid)" }
             $merge=Invoke-Native gh @('pr','merge',[string]$PrNumber,'--repo',$Repository,'--merge','--match-head-commit',[string]$State.feature_commit_sha) -AllowFailure
             if ($merge.ExitCode -ne 0) { throw "FEATURE_HANDOFF_PR_MERGE_FAILED: $($merge.Output)" }
             return
@@ -261,10 +272,8 @@ function Verify-FrozenFilesOnMain($State) {
     $mainSha=(Invoke-Native git @('-C',$Root,'rev-parse','origin/main')).Output.Trim()
     foreach ($f in @($State.frozen_files)) {
         $featureBlob=(Invoke-Native git @('-C',$Root,'rev-parse',"$($State.feature_commit_sha):$($f.overlay)")).Output.Trim()
-        $mainBlob=(Invoke-Native git @('-C',$Root,'rev-parse',"origin/main:$($f.overlay)") -AllowFailure)
-        if ($mainBlob.ExitCode -ne 0 -or $mainBlob.Output.Trim() -ne $featureBlob) {
-            throw "FEATURE_HANDOFF_ACCEPTED_SOURCE_NOT_ON_MAIN path=$($f.overlay)"
-        }
+        $mainBlob=Invoke-Native git @('-C',$Root,'rev-parse',"origin/main:$($f.overlay)") -AllowFailure
+        if ($mainBlob.ExitCode -ne 0 -or $mainBlob.Output.Trim() -ne $featureBlob) { throw "FEATURE_HANDOFF_ACCEPTED_SOURCE_NOT_ON_MAIN path=$($f.overlay)" }
     }
     $State.merge_sha=$mainSha
     $State.dispatch_source_sha=$mainSha
@@ -285,20 +294,14 @@ function Integrate-Remote($State) {
 
 function Get-ProductionState {
     if (-not (Test-Path -LiteralPath $ProductionStatePath)) { return $null }
-    try { return Get-Content -Raw -LiteralPath $ProductionStatePath | ConvertFrom-Json -Depth 20 }
-    catch { return $null }
+    try { return Get-Content -Raw -LiteralPath $ProductionStatePath | ConvertFrom-Json -Depth 20 } catch { return $null }
 }
 
 function Ensure-ControllerRecovery {
     $task=Get-ScheduledTask -TaskName $ControllerTask -ErrorAction SilentlyContinue
-    if ($task) {
-        Start-ScheduledTask -TaskName $ControllerTask -ErrorAction SilentlyContinue
-        return $true
-    }
+    if ($task) { Start-ScheduledTask -TaskName $ControllerTask -ErrorAction SilentlyContinue; return $true }
     $deploy=Invoke-Native gh @('workflow','run','production-agent-deploy.yml','--repo',$Repository,'--ref','main') -AllowFailure
-    if ($deploy.ExitCode -ne 0 -and -not (Test-Recoverable $deploy.Output)) {
-        throw "FEATURE_HANDOFF_CONTROLLER_RECOVERY_DISPATCH_FAILED: $($deploy.Output)"
-    }
+    if ($deploy.ExitCode -ne 0 -and -not (Test-Recoverable $deploy.Output)) { throw "FEATURE_HANDOFF_CONTROLLER_RECOVERY_DISPATCH_FAILED: $($deploy.Output)" }
     return $false
 }
 
@@ -317,27 +320,52 @@ function Discover-V3Run([string]$SourceSha,[datetime]$StartedAt) {
     throw 'FEATURE_HANDOFF_V3_RUN_DISCOVERY_TIMEOUT'
 }
 
-function Dispatch-BuildOnce($State) {
-    $prod=Get-ProductionState
-    if ($prod -and [long]$State.dispatched_run_id -gt 0 -and [long]$prod.run_id -eq [long]$State.dispatched_run_id) {
-        $updated=Reconcile-ProductionState -HandoffState $State -ProductionState $prod
-        foreach ($p in $updated.PSObject.Properties) { $State.($p.Name)=$p.Value }
-        Save-FeatureHandoffState -State $State -StatePath $StatePath
-        return
-    }
-    if ([long]$State.dispatched_run_id -gt 0 -or $State.suppress_dispatch -eq $true) { return }
-    $lockChanged=@($State.changed_paths) -contains 'config/arthur-known-good.lock'
-    $plan=Select-HandoffBuildPlan -ChangedPaths @($State.changed_paths) -KnownGoodLockChanged:$lockChanged
-    $State.selected_build_lane=$plan.selected_build_lane
-    $State.v3_mode=$plan.v3_mode
-    $started=Get-Date
-    Invoke-Native gh @('workflow','run','arthur-update-v3.yml','--repo',$Repository,'--ref','main','-f',"mode=$($plan.v3_mode)") | Out-Null
-    $runId=Discover-V3Run -SourceSha ([string]$State.dispatch_source_sha) -StartedAt $started
+function Attach-DiscoveredRun($State) {
+    if (-not [string]$State.dispatch_started_at) { throw 'FEATURE_HANDOFF_DISPATCH_STARTED_AT_MISSING' }
+    $runId=Discover-V3Run -SourceSha ([string]$State.dispatch_source_sha) -StartedAt ([datetime]$State.dispatch_started_at)
     $State.dispatched_run_id=$runId
+    $State.dispatch_accepted=$true
     Set-FeatureHandoffStage -State $State -Stage 'BUILD_DISPATCHED' -Status 'LIVE' | Out-Null
     Save-FeatureHandoffState -State $State -StatePath $StatePath
     Ensure-ControllerRecovery | Out-Null
     Log "BUILD_DISPATCHED run=$runId mode=$($State.v3_mode)"
+}
+
+function Dispatch-BuildOnce($State) {
+    $prod=Get-ProductionState
+    $prodStage=if ($prod) { [string]$prod.stage } else { '' }
+    $action=Get-HandoffDispatchAction -State $State -ProductionStage $prodStage
+
+    if ($action -eq 'RECONCILE') {
+        if ($prod -and ([long]$State.dispatched_run_id -eq 0 -or [long]$prod.run_id -eq [long]$State.dispatched_run_id)) {
+            $updated=Reconcile-ProductionState -HandoffState $State -ProductionState $prod
+            foreach ($p in $updated.PSObject.Properties) { $State.($p.Name)=$p.Value }
+            Save-FeatureHandoffState -State $State -StatePath $StatePath
+        }
+        if ([long]$State.dispatched_run_id -gt 0) { Ensure-ControllerRecovery | Out-Null }
+        return
+    }
+
+    if ($action -eq 'DISCOVER') { Attach-DiscoveredRun $State; return }
+
+    $lockChanged=@($State.changed_paths) -contains 'config/arthur-known-good.lock'
+    $plan=Select-HandoffBuildPlan -ChangedPaths @($State.changed_paths) -KnownGoodLockChanged:$lockChanged
+    $State.selected_build_lane=$plan.selected_build_lane
+    $State.v3_mode=$plan.v3_mode
+    $State.dispatch_started_at=(Get-Date).ToUniversalTime().ToString('o')
+    $State.dispatch_accepted=$false
+    Save-FeatureHandoffState -State $State -StatePath $StatePath
+    Log "BUILD_DISPATCH_ATTEMPT_PERSISTED source=$($State.dispatch_source_sha) mode=$($State.v3_mode)"
+
+    $dispatch=Invoke-Native gh @('workflow','run','arthur-update-v3.yml','--repo',$Repository,'--ref','main','-f',"mode=$($plan.v3_mode)") -AllowFailure
+    if ($dispatch.ExitCode -eq 0) {
+        $State.dispatch_accepted=$true
+        Save-FeatureHandoffState -State $State -StatePath $StatePath
+        Log 'BUILD_DISPATCH_REQUEST_ACCEPTED=PASS'
+    } else {
+        Log "BUILD_DISPATCH_REQUEST_UNCERTAIN exit=$($dispatch.ExitCode) output=$($dispatch.Output)"
+    }
+    Attach-DiscoveredRun $State
 }
 
 function Monitor-Production($State,[switch]$OneShot) {
@@ -347,18 +375,11 @@ function Monitor-Production($State,[switch]$OneShot) {
             $updated=Reconcile-ProductionState -HandoffState $State -ProductionState $prod
             foreach ($p in $updated.PSObject.Properties) { $State.($p.Name)=$p.Value }
             Save-FeatureHandoffState -State $State -StatePath $StatePath
-            if ([string]$State.current_stage -eq 'PRODUCTION_RELEASED') {
-                Log "PRODUCTION_RELEASED run=$($State.dispatched_run_id)"
-                Write-Host 'PRODUCTION_RELEASED=YES'
-                return
-            }
+            if ([string]$State.current_stage -eq 'PRODUCTION_RELEASED') { Log "PRODUCTION_RELEASED run=$($State.dispatched_run_id)"; Write-Host 'PRODUCTION_RELEASED=YES'; return }
             if ($prod.PSObject.Properties.Name -contains 'human_gate' -and [string]$prod.human_gate) {
                 $gate=[string]$prod.human_gate
                 if ($gate -in @('NO_SAFE_ROLLBACK','DEVICE_IDENTITY_MISMATCH','SSH_HOST_IDENTITY_MISMATCH','REAL_DEVICE_BASELINE_GATE_FAILED','AUTO_FLASH_SAFETY_GATE_FAILED')) {
-                    $State.stage_status='BLOCKED'
-                    $State.last_error="PRODUCTION_SAFETY_BLOCK=$gate"
-                    Save-FeatureHandoffState -State $State -StatePath $StatePath
-                    throw $State.last_error
+                    $State.stage_status='BLOCKED'; $State.last_error="PRODUCTION_SAFETY_BLOCK=$gate"; Save-FeatureHandoffState -State $State -StatePath $StatePath; throw $State.last_error
                 }
             }
         }
@@ -375,12 +396,7 @@ function Invoke-OneStage($State) {
         'STATIC_VERIFIED' { Freeze-AcceptedSource $State; return }
         'SOURCE_FROZEN' { Integrate-Remote $State; return }
         'REMOTE_INTEGRATED' { Dispatch-BuildOnce $State; return }
-        'BUILD_DISPATCHED' {
-            Ensure-ControllerRecovery | Out-Null
-            Set-FeatureHandoffStage -State $State -Stage 'CONTROLLER_ATTACHED' -Status 'LIVE' | Out-Null
-            Save-FeatureHandoffState -State $State -StatePath $StatePath
-            return
-        }
+        'BUILD_DISPATCHED' { Ensure-ControllerRecovery | Out-Null; Set-FeatureHandoffStage -State $State -Stage 'CONTROLLER_ATTACHED' -Status 'LIVE' | Out-Null; Save-FeatureHandoffState -State $State -StatePath $StatePath; return }
         'CONTROLLER_ATTACHED' { Monitor-Production -State $State -OneShot; return }
         'PRODUCTION_RUNNING' { Monitor-Production -State $State -OneShot; return }
         'PRODUCTION_RELEASED' { Write-Host 'PRODUCTION_RELEASED=YES'; return }
@@ -400,37 +416,53 @@ if ($Mode -eq 'Status') {
     exit 0
 }
 
-$state=Initialize-StateIfNeeded
-if (-not $state) { Write-Host 'FEATURE_HANDOFF=IDLE'; exit 0 }
-
-if ($Mode -eq 'RunOnce') {
-    Invoke-OneStage $state
-    exit 0
-}
-
-while ($true) {
+$lockStream=$null
+try {
     try {
-        if ([string]$state.current_stage -eq 'PRODUCTION_RELEASED') { Write-Host 'PRODUCTION_RELEASED=YES'; exit 0 }
-        Invoke-OneStage $state
-        $state=Load-FeatureHandoffState -StatePath $StatePath
+        $lockStream=[System.IO.File]::Open($LockPath,[System.IO.FileMode]::OpenOrCreate,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None)
+    } catch {
+        if ($Mode -eq 'AcceptPreview') { throw 'FEATURE_HANDOFF_ACCEPT_PREVIEW_LOCKED_BY_ACTIVE_RUNTIME' }
+        Write-Host 'FEATURE_HANDOFF_ALREADY_RUNNING=YES'
+        exit 0
     }
-    catch {
-        $message=$_.Exception.Message
-        $state=Load-FeatureHandoffState -StatePath $StatePath
-        if ($state) {
-            $state.last_error=$message
-            $state.retry_count=[int]$state.retry_count + 1
-            if (Test-Recoverable $message) {
-                $state.stage_status='RETRYING'
+
+    if ($Mode -eq 'AcceptPreview') {
+        $state=Accept-PreviewState
+        if (-not $state) { exit 0 }
+        Write-Host "FEATURE_HANDOFF_STAGE=$($state.current_stage)"
+        exit 0
+    }
+
+    $state=Load-OrAcceptState
+    if (-not $state) { Write-Host 'FEATURE_HANDOFF=IDLE'; exit 0 }
+
+    if ($Mode -eq 'RunOnce') { Invoke-OneStage $state; exit 0 }
+
+    while ($true) {
+        try {
+            if ([string]$state.current_stage -eq 'PRODUCTION_RELEASED') { Write-Host 'PRODUCTION_RELEASED=YES'; exit 0 }
+            Invoke-OneStage $state
+            $state=Load-FeatureHandoffState -StatePath $StatePath
+        } catch {
+            $message=$_.Exception.Message
+            $state=Load-FeatureHandoffState -StatePath $StatePath
+            if ($state) {
+                $state.last_error=$message
+                $state.retry_count=[int]$state.retry_count + 1
+                if (Test-Recoverable $message) {
+                    $state.stage_status='RETRYING'
+                    Save-FeatureHandoffState -State $state -StatePath $StatePath
+                    Log "RETRYING stage=$($state.current_stage) error=$message"
+                    Start-Sleep -Seconds 30
+                    continue
+                }
+                $state.stage_status='BLOCKED'
                 Save-FeatureHandoffState -State $state -StatePath $StatePath
-                Log "RETRYING stage=$($state.current_stage) error=$message"
-                Start-Sleep -Seconds 30
-                continue
             }
-            $state.stage_status='BLOCKED'
-            Save-FeatureHandoffState -State $state -StatePath $StatePath
+            Log "BLOCKED error=$message"
+            throw
         }
-        Log "BLOCKED error=$message"
-        throw
     }
+} finally {
+    if ($lockStream) { $lockStream.Dispose() }
 }
