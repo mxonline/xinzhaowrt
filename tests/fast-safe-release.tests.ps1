@@ -127,8 +127,25 @@ Assert-Equal $restore.paths[0] '/usr/lib/lua/luci/controller/AdGuardHome.lua' 'r
 Assert-True (-not [bool]$restore.source_discovery_allowed) 'drift repair still forbids source rediscovery'
 Assert-True (-not [bool]$restore.full_preview_deploy_allowed) 'drift repair still forbids full preview deployment'
 
+. (Join-Path $Root 'scripts/feature-handoff-lib.ps1')
+$handoffState = New-FeatureHandoffState `
+    -FeatureId 'arthur-adh-quickstart' `
+    -AcceptedPreviewSourceSha ('6' * 40) `
+    -AcceptedDiffSha256 ('7' * 64) `
+    -PreviewManifestSha256 ('8' * 64) `
+    -PreviewManifestPath 'manifest.json' `
+    -PreviewEvidence @{ LIVE_PREVIEW='PASS'; WIFI='VERIFIED_FROZEN' }
+Assert-Equal $handoffState.schema_version 2 'new Feature Handoff state must use durable release schema v2'
+Assert-Equal $handoffState.terminal_state 'ACTIVE' 'Feature Handoff release remains active until production release'
+Assert-Equal $handoffState.last_verified_stage 'PREVIEW_ACCEPTED' 'accepted preview is retained as verified checkpoint'
+Assert-True ([string]$handoffState.release_task_id -like 'arthur:arthur-adh-quickstart:*') 'Feature Handoff state must own durable release task identity'
+Assert-True ($handoffState.PSObject.Properties.Name -contains 'accepted_preview_fingerprint') 'Feature Handoff state must persist preview fingerprint slot'
+Assert-True ($handoffState.PSObject.Properties.Name -contains 'build_fingerprint') 'Feature Handoff state must persist build fingerprint slot'
+Assert-True ($handoffState.PSObject.Properties.Name -contains 'executor_state') 'Feature Handoff state must separate executor state from release state'
+
 Write-Host 'FAST_SAFE_RELEASE_POLICY_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MONOTONIC_STATE_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_V1_MIGRATION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_MINIMUM_INVALIDATION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_RELEASE_PREVIEW_REUSE_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_RELEASE_HANDOFF_V2_CONTRACT=PASS'
