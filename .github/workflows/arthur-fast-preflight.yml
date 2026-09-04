@@ -71,6 +71,7 @@ jobs:
             'scripts/feature-handoff-status.ps1',
             'scripts/arthur-resume-state.ps1',
             'scripts/arthur-operator-intent.ps1',
+            'scripts/arthur-control-plane-gate.ps1',
             'scripts/arthur-control-plane.ps1'
           )) {
             if (-not (Test-Path $file)) {
