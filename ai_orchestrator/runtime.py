@@ -36,7 +36,7 @@ class ProductionRuntime:
     async def run(self, request_id=None, max_turns=None):
         state = self.store.load()
         if state is None:
-            state = self.pipeline.initial_state(request_id or "arthur-production")
+            state = self.pipeline.initial_state(request_id or self.pipeline.default_request_id)
             self.store.save(state)
             self.store.append_event("runtime_started", {"request_id": state.request_id})
         elif request_id and state.request_id != request_id:
@@ -238,183 +238,76 @@ class ProductionRuntime:
             payload = path.read_text(encoding="utf-8")
             self.store.append_event("human_gate_approved", {"gate": state.pending_human_gate, "approval": payload})
             path.unlink()
-        except FileNotFoundError:
+        except OSError:
             return
         state.pending_human_gate = None
         state.next_codex_prompt = self.pipeline.prompt_for(state.phase)
         self.store.save(state)
 
+    def _set_observation(self, state, **values):
+        state.observability.update(values)
+        state.observability["heartbeat_at"] = utc_now()
+        state.observability["pid"] = os.getpid()
+        publish_runtime_status(state, self.status_path, self.handoff_path)
+
+    def _mark_progress(self, state, action):
+        now = utc_now()
+        state.observability["last_progress_at"] = now
+        state.observability["heartbeat_at"] = now
+        state.observability["action"] = action
+        state.observability["pid"] = os.getpid()
+        publish_runtime_status(state, self.status_path, self.handoff_path)
+
     def _start_observability(self, state):
         now = utc_now()
-        observations = state.observability
-        previous_runtime = observations.get("runtime")
-        previous_pid = observations.get("pid")
-        process_recovery = previous_pid and not process_is_alive(previous_pid)
-        observations.setdefault("started_at", now)
-        observations.setdefault("last_progress_at", now)
-        observations.update(
+        state.observability.update(
             {
-                "runtime": "LIVE" if state.terminal_state is None else "TERMINAL",
-                "pid": os.getpid(),
+                "runtime": "LIVE",
                 "stage": state.phase,
                 "action": "startup",
                 "heartbeat_at": now,
-                "human_input_required": state.pending_human_gate,
-                "observed_turn_count": state.turn_count,
+                "last_progress_at": state.observability.get("last_progress_at") or now,
+                "pid": os.getpid(),
+                "active_process": process_cpu_snapshot(os.getpid()),
             }
         )
-        if (previous_runtime in ("STOPPED", "STALLED") or process_recovery) and state.terminal_state is None:
-            observations["action"] = "watchdog_auto_recovery"
-            self.store.append_event(
-                "watchdog_auto_recovery",
-                {
-                    "previous_runtime": previous_runtime,
-                    "previous_pid": previous_pid,
-                    "stage": state.phase,
-                    "pid": os.getpid(),
-                },
-            )
-        self.store.save(state)
-        self._publish_runtime_status(state)
-
-    def _set_observation(self, state, **values):
-        observations = state.observability
-        observations.update(values)
-        observations["pid"] = os.getpid()
-        observations["stage"] = state.phase
-        observations["heartbeat_at"] = utc_now()
-        observations["active_process"] = self._active_process_info()
-        observations["human_input_required"] = state.pending_human_gate
-        self._publish_runtime_status(state)
-
-    def _mark_progress(self, state, reason):
-        observations = state.observability
-        now = utc_now()
-        observations["last_progress_at"] = now
-        observations["last_progress_reason"] = reason
-        observations["observed_turn_count"] = state.turn_count
-        observations["active_process"] = self._active_process_info()
-        observations["heartbeat_at"] = now
-        self.store.save(state)
-        self._publish_runtime_status(state)
-
-    def _publish_runtime_status(self, state):
         publish_runtime_status(state, self.status_path, self.handoff_path)
-
-    def _active_process_info(self):
-        getter = getattr(self.executor, "active_process_info", None)
-        if getter:
-            try:
-                return getter()
-            except Exception as exc:
-                return {"pid": None, "alive": False, "error": _exception_text(exc)}
-        return {"pid": None, "alive": False}
-
-    def _progress_root(self):
-        output_root = self.project_root / "output"
-        return output_root if output_root.exists() else self.store.root
-
-    def _health_payload(self, state, active_process, output_before, output_after, cpu_before, cpu_after):
-        output_delta = output_after.get("bytes", 0) - output_before.get("bytes", 0)
-        output_file_delta = output_after.get("files", 0) - output_before.get("files", 0)
-        cpu_delta = None if cpu_before is None or cpu_after is None else cpu_after - cpu_before
-        last_progress_at = state.observability.get("last_progress_at")
-        return {
-            "pid": os.getpid(),
-            "daemon_alive": process_is_alive(os.getpid()),
-            "stage": state.phase,
-            "runtime": state.observability.get("runtime"),
-            "action": state.observability.get("action"),
-            "heartbeat_at": state.observability.get("heartbeat_at"),
-            "last_progress_at": last_progress_at,
-            "last_progress_age_seconds": age_seconds(last_progress_at),
-            "active_process": active_process,
-            "active_process_alive": bool(active_process.get("alive")),
-            "output_delta_bytes": output_delta,
-            "output_delta_files": output_file_delta,
-            "cpu_delta_seconds": cpu_delta,
-            "long_running_work": state.phase in ("BUILD", "WAIT_DEVICE", "FLASH"),
-            "human_input_required": state.pending_human_gate,
-        }
+        self.store.save(state)
 
     async def _watchdog_loop(self, state):
-        output_before = output_snapshot(self._progress_root(), excluded_roots=(self.store.root,))
-        cpu_before = None
-        last_health_monotonic = asyncio.get_event_loop().time()
-        stall_reported = False
-        first_sample = True
+        last_health = 0.0
         while True:
-            if first_sample:
-                first_sample = False
-                await asyncio.sleep(0)
-            else:
-                await asyncio.sleep(max(0.01, min(self.heartbeat_interval, self.health_interval)))
-            active_process = self._active_process_info()
-            output_after = output_snapshot(self._progress_root(), excluded_roots=(self.store.root,))
-            cpu_after = process_cpu_snapshot(active_process.get("pid"))
-            output_delta = output_after.get("bytes", 0) - output_before.get("bytes", 0)
-            cpu_delta = None if cpu_before is None or cpu_after is None else cpu_after - cpu_before
-            turn_progressed = state.turn_count != state.observability.get("observed_turn_count", state.turn_count)
-            if turn_progressed or output_delta > 0 or (cpu_delta is not None and cpu_delta > 0):
-                self._mark_progress(state, "watchdog_activity")
-                stall_reported = False
+            await asyncio.sleep(self.heartbeat_interval)
             now = utc_now()
-            state.observability.update(
-                {
-                    "runtime": state.observability.get("runtime") or "LIVE",
-                    "pid": os.getpid(),
-                    "heartbeat_at": now,
-                    "stage": state.phase,
-                    "active_process": active_process,
-                    "output_snapshot": output_after,
-                }
-            )
-            self.store.append_event(
-                "heartbeat",
-                {
-                    "pid": os.getpid(),
+            state.observability["heartbeat_at"] = now
+            state.observability["pid"] = os.getpid()
+            active_pid = (state.observability.get("active_process") or {}).get("pid")
+            if active_pid:
+                state.observability["active_process"] = process_cpu_snapshot(active_pid)
+            progress_age = age_seconds(state.observability.get("last_progress_at"))
+            if progress_age is not None and progress_age >= self.stall_timeout:
+                state.observability["runtime"] = "STALLED"
+                state.observability["action"] = "diagnose_stall"
+                diagnostic = {
                     "stage": state.phase,
                     "action": state.observability.get("action"),
-                    "active_process": active_process,
-                    "last_progress_at": state.observability.get("last_progress_at"),
-                },
-            )
-            monotonic = asyncio.get_event_loop().time()
-            if monotonic - last_health_monotonic >= self.health_interval:
-                health = self._health_payload(state, active_process, output_before, output_after, cpu_before, cpu_after)
-                state.observability["last_health_at"] = now
-                state.observability["health"] = health
-                self.store.append_event("runtime_health", health)
-                last_health_monotonic = monotonic
-            progress_age = age_seconds(state.observability.get("last_progress_at"))
-            if progress_age is not None and progress_age >= self.stall_timeout and not stall_reported:
-                diagnosis = self._health_payload(state, active_process, output_before, output_after, cpu_before, cpu_after)
-                diagnosis.update({"reason": "no_actual_progress", "threshold_seconds": self.stall_timeout})
-                state.observability.update(
-                    {"runtime": "STALLED", "action": "STALL_DIAGNOSIS", "stall_diagnosis_at": now}
-                )
-                self.store.append_event("STALL_DIAGNOSIS", diagnosis)
-                self.store.save(state)
-                reset = getattr(self.executor, "reset_after_error", None)
-                if reset:
-                    try:
-                        await _with_timeout(reset(), 5.0)
-                        state.observability.update({"runtime": "RECOVERING", "action": "watchdog_auto_recovery"})
-                        self.store.append_event(
-                            "watchdog_auto_recovery",
-                            {"reason": "STALL_DIAGNOSIS", "stage": state.phase, "pid": os.getpid()},
-                        )
-                        self.store.save(state)
-                    except Exception as exc:
-                        self.store.append_event(
-                            "watchdog_recovery_error", {"stage": state.phase, "error": _exception_text(exc)}
-                        )
-                stall_reported = True
-            else:
-                self.store.save(state)
-            self._publish_runtime_status(state)
-            output_before = output_after
-            cpu_before = cpu_after
+                    "pid": os.getpid(),
+                    "process": process_cpu_snapshot(os.getpid()),
+                    "active_process": state.observability.get("active_process"),
+                    "output": output_snapshot(self.project_root),
+                    "progress_age_seconds": progress_age,
+                }
+                self.store.append_event("HEALTH_DIAGNOSIS", diagnostic)
+                recovery = state.observability.setdefault("recovery", {})
+                recovery["last_health_diagnosis"] = diagnostic
+                recovery["stall_count"] = int(recovery.get("stall_count", 0)) + 1
+                state.observability["runtime"] = "LIVE"
+                state.observability["action"] = "retry_after_stall"
+                state.observability["last_progress_at"] = now
+            if age_seconds(state.observability.get("health_at")) is None or age_seconds(state.observability.get("health_at")) >= self.health_interval:
+                state.observability["health_at"] = now
+            self.store.save(state)
+            publish_runtime_status(state, self.status_path, self.handoff_path)
 
 
 async def _maybe_await(value):
@@ -424,41 +317,27 @@ async def _maybe_await(value):
 
 
 async def _with_timeout(value, timeout):
-    awaitable = _maybe_await(value)
     if timeout is None:
-        return await awaitable
-    return await asyncio.wait_for(awaitable, timeout=timeout)
+        return await value
+    return await asyncio.wait_for(value, timeout=timeout)
 
 
-def _exception_text(exc):
-    text = str(exc).strip()
-    if text:
-        return "%s: %s" % (type(exc).__name__, text)
-    return type(exc).__name__
-
-
-def _reset_thread_after_error(adapter, state, role):
-    """Make the next automatic iteration start from a fresh SDK thread."""
-    if role == "executor":
-        state.executor_thread_id = None
-    else:
-        state.controller_thread_id = None
-    if hasattr(adapter, "thread"):
-        adapter.thread = None
+async def _close_with_timeout(close):
+    try:
+        await asyncio.wait_for(close(), timeout=5.0)
+    except Exception:
+        return
 
 
 async def _reset_adapter_after_error(adapter, state, role):
-    _reset_thread_after_error(adapter, state, role)
     reset = getattr(adapter, "reset_after_error", None)
-    if reset:
-        try:
-            await _with_timeout(reset(), 5.0)
-        except Exception:
-            return None
-
-
-async def _close_with_timeout(close, timeout=5.0):
+    if not reset:
+        return
     try:
-        await _with_timeout(close(), timeout)
+        await _maybe_await(reset(state, role))
     except Exception:
-        return None
+        return
+
+
+def _exception_text(exc):
+    return "%s: %s" % (exc.__class__.__name__, exc)
