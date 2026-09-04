@@ -5,6 +5,7 @@ on:
     branches:
       - codex/arthur-production-agent-clean
       - feat/real-device-baseline-v2
+      - feature/fast-safe-unattended-release-contract
   pull_request:
     branches:
       - main
