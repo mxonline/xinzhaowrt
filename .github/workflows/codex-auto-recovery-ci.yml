@@ -1,0 +1,32 @@
+name: Arthur Codex Auto-Recovery CI
+
+on:
+  push:
+    branches:
+      - codex/arthur-codex-auto-recovery
+    paths:
+      - 'ai_orchestrator/**'
+      - 'scripts/run-supervisor.py'
+      - 'tests/test_codex_auto_recovery.py'
+      - '.github/workflows/codex-auto-recovery-ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'ai_orchestrator/**'
+      - 'scripts/run-supervisor.py'
+      - 'tests/test_codex_auto_recovery.py'
+      - '.github/workflows/codex-auto-recovery-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile recovery runtime
+        run: python3 -m py_compile ai_orchestrator/models.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py scripts/run-supervisor.py
+      - name: Run controlled session-loss and recovery tests
+        run: python3 -m unittest -v tests.test_codex_auto_recovery
