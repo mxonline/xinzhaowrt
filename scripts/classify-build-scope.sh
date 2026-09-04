@@ -81,6 +81,7 @@ classify_release_impact() {
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
     scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|\
     scripts/feature-handoff-status.ps1|scripts/fast-safe-release-lib.ps1|scripts/fast-safe-convergence-lib.ps1|\
+    scripts/release-convergence-exec-lib.ps1|scripts/release-convergence-manager.ps1|\
     scripts/check-release-convergence.py|scripts/get-firmware-input-fingerprint.sh|scripts/publish-release-convergence-request.ps1|\
     scripts/bridge-runtime-status.ps1|scripts/recover-existing-bridge-context.ps1|scripts/run-supervisor.py|\
     scripts/repair-github-runner.ps1|scripts/bootstrap-arthur-host-key.ps1|\
@@ -124,6 +125,7 @@ while IFS= read -r path; do
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
     scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|scripts/feature-handoff-status.ps1|\
     scripts/fast-safe-release-lib.ps1|scripts/fast-safe-convergence-lib.ps1|\
+    scripts/release-convergence-exec-lib.ps1|scripts/release-convergence-manager.ps1|\
     scripts/check-release-convergence.py|scripts/get-firmware-input-fingerprint.sh|scripts/publish-release-convergence-request.ps1|\
     scripts/bridge-runtime-status.ps1|scripts/recover-existing-bridge-context.ps1|scripts/run-supervisor.py|\
     scripts/repair-github-runner.ps1|scripts/bootstrap-arthur-host-key.ps1|\
