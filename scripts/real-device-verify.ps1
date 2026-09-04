@@ -233,7 +233,7 @@ function Test-QuickstartHomepage([string]$Prefix,[string]$CookieFile = '') {
     $index = Invoke-AuthenticatedHttp '/luci-static/quickstart/index.js' $CookieFile
     $style = Invoke-AuthenticatedHttp '/luci-static/quickstart/style.css' $CookieFile
     $loginMarker = '(?i)x-luci-login-required|<body[^>]*\blogin-page\b|<input[^>]+\bname=["'']luci_(?:username|password)["'']'
-    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -notmatch $loginMarker) -and ($index.Output.Length -gt 10000)
+    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -match "window\.vue_lang\s*=\s*['\"]zh-cn['\"]") -and ($page.Output -match "window\.vue_lang_data\s*=\s*['\"]/luci-static/quickstart/i18n/zh-cn\.json['\"]") -and ($page.Output -notmatch $loginMarker) -and ($index.Output.Length -gt 10000)
     $r = [pscustomobject]@{ ExitCode=if ($ok) { 0 } else { 1 }; Output="PAGE`n$($page.Output)`nINDEX`n$($index.Output)`nSTYLE`n$($style.Output)" }
     Add-Check "$Prefix.quickstart_home_functional" $ok 'authenticated official QuickStart homepage and assets' $r 'The authenticated homepage must render the official QuickStart application.' | Out-Null
 }

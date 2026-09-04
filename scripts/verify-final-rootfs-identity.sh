@@ -24,6 +24,8 @@ require_file_text() {
 require_config 'CONFIG_VERSIONOPT=y'
 require_config 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 require_config "CONFIG_VERSION_NUMBER=\"$VERSION\""
+require_config 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y'
+require_config 'CONFIG_PACKAGE_luci-i18n-quickstart-zh-cn=y'
 require_file_text "$ROOTFS_DIR/etc/openwrt_release" 'XinZhaoWrt'
 require_file_text "$ROOTFS_DIR/etc/openwrt_release" "$VERSION"
 require_file_text "$ROOTFS_DIR/etc/os-release" 'XinZhaoWrt'
@@ -32,5 +34,13 @@ require_file_text "$ROOTFS_DIR/etc/os-release" "$VERSION"
   echo 'ERROR: final rootfs is missing /etc/uci-defaults/99-xinzhao-defaults' >&2
   exit 1
 }
+[[ -f "$ROOTFS_DIR/usr/lib/lua/luci/i18n/base.zh-cn.lmo" ]] || {
+  echo 'ERROR: final rootfs is missing the LuCI base Simplified Chinese translation' >&2
+  exit 1
+}
+[[ -f "$ROOTFS_DIR/usr/lib/lua/luci/i18n/quickstart.zh-cn.lmo" ]] || {
+  echo 'ERROR: final rootfs is missing the QuickStart Simplified Chinese translation' >&2
+  exit 1
+}
 
-echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity and first-boot defaults overlay."
+echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity, first-boot defaults, and required LuCI Chinese translations."
