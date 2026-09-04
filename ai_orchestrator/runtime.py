@@ -36,7 +36,7 @@ class ProductionRuntime:
     async def run(self, request_id=None, max_turns=None):
         state = self.store.load()
         if state is None:
-            state = self.pipeline.initial_state(request_id or "arthur-production")
+            state = self.pipeline.initial_state(request_id or self.pipeline.default_request_id)
             self.store.save(state)
             self.store.append_event("runtime_started", {"request_id": state.request_id})
         elif request_id and state.request_id != request_id:
