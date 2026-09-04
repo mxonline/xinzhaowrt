@@ -4,6 +4,9 @@ set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+REF="${1:-HEAD}"
+git rev-parse --verify "$REF^{commit}" >/dev/null
+
 classifier='./scripts/classify-build-scope.sh'
 [[ -x "$classifier" ]] || chmod +x "$classifier"
 
@@ -16,11 +19,11 @@ while IFS= read -r path; do
   impact="$(printf '%s\n' "$contract" | sed -n 's/^RELEASE_IMPACT_CLASS=//p')"
   case "$impact" in
     FIRMWARE_INPUT|PREVIEW_BYTES)
-      blob="$(git rev-parse "HEAD:$path")"
+      blob="$(git rev-parse "$REF:$path")"
       printf '%s\t%s\n' "$path" "$blob" >> "$tmp"
       ;;
   esac
-done < <(git ls-files | LC_ALL=C sort)
+done < <(git ls-tree -r --name-only "$REF" | LC_ALL=C sort)
 
 [[ -s "$tmp" ]] || { echo 'FIRMWARE_INPUT_FINGERPRINT_EMPTY' >&2; exit 2; }
 LC_ALL=C sort -o "$tmp" "$tmp"
