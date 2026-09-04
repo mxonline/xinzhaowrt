@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $WorkflowPath = Join-Path $Root '.github\workflows\arthur-control-plane.yml'
+$WakeupWorkflowPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
 $ScriptPath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $PipelinePath = Join-Path $Root 'ai_orchestrator\arthur.py'
 
@@ -18,11 +19,20 @@ function Assert-Contains {
     }
 }
 
+function Assert-NotContains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "TEST_FAIL: $Message (unexpected '$Needle')"
+    }
+}
+
 Assert-True (Test-Path $WorkflowPath) 'Arthur Control Plane workflow must exist'
+Assert-True (Test-Path $WakeupWorkflowPath) 'runner wakeup workflow must exist'
 Assert-True (Test-Path $ScriptPath) 'Arthur Control Plane script must exist'
 Assert-True (Test-Path $PipelinePath) 'Arthur pipeline must exist'
 
 $workflow = Get-Content -Raw $WorkflowPath
+$wakeup = Get-Content -Raw $WakeupWorkflowPath
 $script = Get-Content -Raw $ScriptPath
 $pipeline = Get-Content -Raw $PipelinePath
 
@@ -38,5 +48,15 @@ Assert-Contains $script 'RECOVERABLE_BUILD_INFO_PROVENANCE' 'build-info provenan
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
+
+# The only unattended wakeup path must be the already proven self-hosted runner schedule.
+Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must poll every five minutes'
+Assert-Contains $wakeup 'xinzhaowrt-controller' 'runner wakeup must execute on the dedicated self-hosted controller runner'
+Assert-Contains $wakeup 'scripts\arthur-control-plane.ps1' 'runner wakeup must invoke the Arthur Control Plane directly'
+Assert-NotContains $wakeup 'LogonType Interactive' 'runner wakeup must not depend on interactive Windows logon'
+Assert-NotContains $wakeup 'XinZhaoWrt-Arthur-v3-Controller' 'legacy v3 Scheduled Task must not remain in the unattended wakeup path'
+Assert-NotContains $wakeup 'install-production-agent.ps1' 'legacy Production Agent Scheduled Task installer must not remain in the unattended wakeup path'
+Assert-NotContains $wakeup 'recover-existing-bridge-context.ps1' 'cross-user GUI Codex recovery must not remain in the unattended wakeup path'
+Assert-NotContains $wakeup 'PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION' 'legacy ten-minute continuation loop must not remain in the unattended wakeup path'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_EXECUTOR_CONTRACT=PASS'
