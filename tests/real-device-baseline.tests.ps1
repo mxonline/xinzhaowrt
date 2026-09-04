@@ -25,8 +25,9 @@ $safetyPath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
+$autoTriggerPath = Join-Path $Root '.github/workflows/arthur-update-v3-auto.yml'
 
-foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath)) {
+foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath,$autoTriggerPath)) {
     Assert-True (Test-Path $required) "real-device baseline implementation file missing: $required"
 }
 
@@ -88,10 +89,17 @@ Assert-Contains $agent 'SSH_HOST_IDENTITY_MISMATCH' 'host-key anomaly must have 
 Assert-Contains $agent 'Request-CurrentSourceRebuild' 'legacy candidate rejection must explicitly request a current-source replacement build'
 Assert-Contains $agent 'REBUILD_REQUESTED' 'legacy candidate rejection must persist a durable rebuild request rather than resume the same successful old run'
 
-$deploy = Get-Content -Raw $deployPath
-Assert-Contains $deploy "'workflow','run'" 'authenticated deploy must own the actual replacement workflow dispatch'
-Assert-Contains $deploy 'arthur-update-v3.yml' 'replacement dispatch must target the Arthur v3 workflow'
-Assert-Contains $deploy 'CURRENT_SOURCE_REBUILD_DISPATCHED=YES' 'replacement dispatch must persist confirmed current-source run evidence'
+# Candidate replacement dispatch is owned by the existing v3 auto-trigger, not by the runner wakeup.
+# The auto-trigger must deduplicate the resolved source fingerprint before any workflow dispatch.
+$autoTrigger = Get-Content -Raw $autoTriggerPath
+Assert-Contains $autoTrigger 'resolve-candidate-dedup.sh' 'replacement Candidate path must resolve the source fingerprint through the mature dedup gate'
+Assert-Contains $autoTrigger 'WATCH_EXISTING_RUN' 'same fingerprint must watch an already-running Candidate instead of dispatching again'
+Assert-Contains $autoTrigger 'REUSE_ARTIFACT' 'same fingerprint must reuse a completed Candidate artifact'
+Assert-Contains $autoTrigger 'NO_NEW_CANDIDATE' 'no firmware-impact change must suppress a new Candidate'
+Assert-Contains $autoTrigger 'NEW_CANDIDATE' 'only a genuinely new fingerprint may reach Candidate dispatch'
+Assert-Contains $autoTrigger 'gh workflow run arthur-update-v3.yml' 'new Candidate dispatch must target the formal Arthur v3 workflow'
+Assert-Contains $autoTrigger 'V3_AUTO_TRIGGER_DISPATCHED=YES' 'Candidate dispatch must persist confirmed run evidence'
+Assert-Contains $autoTrigger 'CONFIRMED_RUN' 'Candidate dispatch must wait for a concrete GitHub run id acknowledgement'
 
 $safety = Get-Content -Raw $safetyPath
 Assert-Contains $safety '$Known.rollback.sha256' 'Safety Gate must verify the downloaded rollback against rollback.sha256'
