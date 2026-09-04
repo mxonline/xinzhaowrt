@@ -127,6 +127,9 @@ Assert-Contains $controlPlane 'STATE_RECONCILIATION_REQUIRED' 'control plane mus
 Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Codex/runtime dispatch on reconciled instruction permission'
 Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
 Assert-Contains $controlPlane 'Get-ArthurResumePhaseIndex $checkpoint.next_action' 'control plane must validate checkpoints against the canonical Arthur phase registry, not a stale hard-coded subset'
-Assert-Contains $controlPlane 'AllowBaselineFallbackForMissingLiveDevice' 'control plane must explicitly opt into the narrow missing-build-info fallback only after device identity is confirmed'
+
+$resumeHelper = Get-Content -Raw $ResumeScriptPath
+Assert-Contains $resumeHelper "phase -in @('ADH_MANAGEMENT','ADH_CHINESE')" 'missing live build-info fallback must remain restricted to the ADH preview phases'
+Assert-Contains $resumeHelper 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'fallback evidence must remain explicit and distinguishable from parsed live build-info'
 
 Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'
