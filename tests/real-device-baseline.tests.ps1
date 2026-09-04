@@ -25,8 +25,10 @@ $safetyPath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
+$pipelinePath = Join-Path $Root 'ai_orchestrator/arthur.py'
+$controlPlanePath = Join-Path $Root 'scripts/arthur-control-plane.ps1'
 
-foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath)) {
+foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath,$pipelinePath,$controlPlanePath)) {
     Assert-True (Test-Path $required) "real-device baseline implementation file missing: $required"
 }
 
@@ -88,10 +90,15 @@ Assert-Contains $agent 'SSH_HOST_IDENTITY_MISMATCH' 'host-key anomaly must have 
 Assert-Contains $agent 'Request-CurrentSourceRebuild' 'legacy candidate rejection must explicitly request a current-source replacement build'
 Assert-Contains $agent 'REBUILD_REQUESTED' 'legacy candidate rejection must persist a durable rebuild request rather than resume the same successful old run'
 
+# Candidate routing ownership moved from the legacy deploy loop to the single ai_orchestrator pipeline.
 $deploy = Get-Content -Raw $deployPath
-Assert-Contains $deploy "'workflow','run'" 'authenticated deploy must own the actual replacement workflow dispatch'
-Assert-Contains $deploy 'arthur-update-v3.yml' 'replacement dispatch must target the Arthur v3 workflow'
-Assert-Contains $deploy 'CURRENT_SOURCE_REBUILD_DISPATCHED=YES' 'replacement dispatch must persist confirmed current-source run evidence'
+$pipeline = Get-Content -Raw $pipelinePath
+$controlPlane = Get-Content -Raw $controlPlanePath
+Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must delegate release continuation to the Control Plane'
+Assert-Contains $controlPlane 'python -m ai_orchestrator resume' 'Control Plane must resume the single durable executor'
+Assert-Contains $pipeline '.github/workflows/arthur-update-v3.yml' 'production Candidate routing must remain bound to the Arthur v3 workflow'
+Assert-Contains $pipeline 'RECOVERABLE_ROUTE_MISMATCH' 'wrong Candidate route must remain recoverable and never become flash evidence'
+Assert-Contains $pipeline 'flash_allowed' 'pipeline must retain explicit Candidate flash eligibility'
 
 $safety = Get-Content -Raw $safetyPath
 Assert-Contains $safety '$Known.rollback.sha256' 'Safety Gate must verify the downloaded rollback against rollback.sha256'
@@ -108,7 +115,7 @@ Assert-True (@($config.human_stop_classes) -notcontains 'DEVICE_UNREACHABLE') 'd
 Assert-True (@($config.human_stop_classes) -notcontains 'SSH_AUTH_FAILED') 'SSH auth failure must be recoverable'
 
 $controller = Get-Content -Raw $controllerPath
-Assert-Contains $controller '$ProductionConfig.human_stop_classes' 'controller must consume Production Agent hard safety classes instead of hardcoding stale identity names'
+Assert-Contains $controller '$ProductionConfig.human_stop_classes' 'legacy controller must still consume Production Agent hard safety classes for forensic compatibility'
 
 $version = (Get-Content -Raw (Join-Path $Root 'VERSION')).Trim()
 $buildEnv = Get-Content -Raw (Join-Path $Root 'build.env')
