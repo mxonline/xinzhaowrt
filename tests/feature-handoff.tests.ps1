@@ -176,6 +176,7 @@ Assert-Contains $handoffText 'safe.directory' 'detached handoff must configure G
 Assert-Contains $handoffText 'GIT_CONFIG_KEY_0' 'detached handoff must carry its Git safety configuration without global mutation'
 Assert-Contains $handoffText 'dubious ownership' 'shared worktree Git ownership errors must be retried as recoverable runtime faults'
 Assert-Contains $controllerText 'safe.directory' 'detached controller must configure Git safe.directory for the shared worktree'
+Assert-Contains $controllerText "@('verified','frozen')" 'controller must accept the repository frozen Known-Good status when verified=true'
 Assert-Contains $installerText 'XinZhaoWrt-Arthur-Feature-Handoff' 'installer must create the persistent recovery task'
 Assert-Contains $installerText 'Register-ScheduledTask' 'installer must use Windows Scheduled Task recovery'
 Assert-True ($installerText -notmatch '(?i)NT AUTHORITY\\SYSTEM|LocalSystem|-UserId\s+["'']?SYSTEM') 'handoff task must not run as SYSTEM'

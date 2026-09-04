@@ -189,7 +189,7 @@ function Assert-KnownGoodBaseline {
     if (-not (Test-Path $RequiredFile)) { throw 'config/required-plugins.txt is missing.' }
 
     $known = Get-Content -Raw $KnownGoodFile | ConvertFrom-Json
-    if ($known.verified -ne $true -or [string]$known.status -ne 'verified') {
+    if ($known.verified -ne $true -or [string]$known.status -notin @('verified','frozen')) {
         throw 'BLOCKED: production/known-good.json is not verified.'
     }
     if ([string]$known.device -ne 'jdcloud_re-ss-01') {
