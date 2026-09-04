@@ -164,12 +164,19 @@ jobs:
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
           }
+
+          $actionsWorkspace = $env:GITHUB_WORKSPACE
+          $env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE
           Push-Location $env:ARTHUR_CONTROL_PLANE_WORKSPACE
           try {
+            Write-Host "CONTROL_PLANE_WORKSPACE_BOUND=PASS path=$env:GITHUB_WORKSPACE"
             & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          finally { Pop-Location }
+          finally {
+            Pop-Location
+            $env:GITHUB_WORKSPACE = $actionsWorkspace
+          }
 
       - name: Publish wakeup summary
         if: always()
