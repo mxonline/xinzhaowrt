@@ -26,7 +26,6 @@ Assert-Contains $handoff "'-Mode','Resume'" 'tag-based v3 run must be handed to 
 Assert-Contains $handoff "'-RunId'" 'controller resume must bind the discovered v3 run id'
 Assert-True ($handoff -notmatch "(?s)'workflow','run','arthur-update-v3\.yml'") 'handoff must not directly workflow_dispatch v3 after durable request integration'
 
-# Existing request ownership is preserved. The auto-trigger/publisher add the hard convergence lock before any expensive build.
 foreach ($field in @('failure_set_state','failure_set_fingerprint','verification_contract_fingerprint','rootfs_offline_passed','contract_gap_state','firmware_input_fingerprint')) {
     Assert-Contains $auto $field "v3 auto trigger must consume convergence field $field"
     Assert-Contains $publisher $field "publisher must persist convergence field $field into the durable request"
@@ -40,8 +39,9 @@ Assert-Contains $auto 'source_ref' 'v3 auto trigger must dispatch the immutable 
 Assert-Contains $auto 'headBranch' 'v3 auto trigger must detect an existing run by immutable source ref'
 Assert-Contains $auto 'V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES' 'auto trigger must expose duplicate-suppression evidence'
 Assert-Contains $auto 'V3_AUTO_TRIGGER_WAIT_CONVERGENCE=YES' 'unresolved/missing convergence must stop before build without creating another workflow owner'
-Assert-Contains $auto "'run','cancel'" 'auto trigger must cancel active invalid builds when convergence is unresolved'
-Assert-Contains $auto 'conclusion,cancelled' 'auto trigger must confirm cancellation instead of merely requesting it'
+Assert-Contains $auto 'gh run cancel' 'auto trigger must cancel active invalid builds when convergence is unresolved'
+Assert-Contains $auto 'gh run view' 'auto trigger must read back the run after cancellation request'
+Assert-Contains $auto 'cancelled' 'auto trigger must confirm cancelled conclusion instead of merely requesting cancellation'
 Assert-Contains $auto '--ref "$SOURCE_REF"' 'auto trigger must build from the immutable accepted source ref'
 Assert-True ($auto -notmatch '--ref main\s') 'handoff-triggered v3 production must not race against a moving main ref'
 Assert-Contains $auto '-f failure_set_state="$FAILURE_SET_STATE"' 'auto trigger must forward resolved failure-set state to production workflow'
