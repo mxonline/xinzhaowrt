@@ -41,6 +41,7 @@ class CodexAutoRecoveryContractTests(unittest.TestCase):
         recovered = supervisor.handle_transport_loss(
             "HTTP 404 response lost",
             RecoveryEvidence(
+                expected_fingerprint="arthur-build-v1:abc",
                 candidate_fingerprint="arthur-build-v1:abc",
                 candidate_run_id=33813232041,
                 candidate_status="in_progress",
@@ -99,6 +100,35 @@ class CodexAutoRecoveryContractTests(unittest.TestCase):
         self.assertEqual("executor-new", new.executor_id)
         self.assertEqual(state.release_task_id, supervisor.state.release_task_id)
 
+    def test_handoff_collects_github_artifact_device_evidence(self):
+        state = self.make_state()
+        state.observability.update({
+            "build_dedup": {
+                "expected_fingerprint": "arthur-build-v1:abc",
+                "candidate_fingerprint": "arthur-build-v1:abc",
+            },
+            "github_actions": {
+                "run_id": 33813232041,
+                "status": "completed",
+                "conclusion": "success",
+            },
+            "artifact": {
+                "sha256": state.candidate_sha256,
+                "build_fingerprint": "arthur-build-v1:abc",
+            },
+            "device": {
+                "status": "verified",
+                "sysupgrade_state": "completed",
+            },
+        })
+        evidence = RecoveryEvidence.from_handoff(state)
+        self.assertEqual("arthur-build-v1:abc", evidence.expected_fingerprint)
+        self.assertEqual("arthur-build-v1:abc", evidence.candidate_fingerprint)
+        self.assertEqual(33813232041, evidence.candidate_run_id)
+        self.assertEqual("success", evidence.candidate_conclusion)
+        self.assertEqual(state.candidate_sha256, evidence.candidate_sha256)
+        self.assertEqual("verified", evidence.device_evidence_status)
+
     def test_persistence_contains_durable_release_fields(self):
         state = self.make_state()
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,6 +150,11 @@ class CodexAutoRecoveryContractTests(unittest.TestCase):
             loaded = store.load()
             self.assertEqual(state.release_task_id, loaded.release_task_id)
             self.assertEqual(state.active_run_id, loaded.active_run_id)
+
+    def test_production_startup_shim_uses_recovery_supervisor(self):
+        root = Path(__file__).resolve().parents[1]
+        shim = (root / "scripts" / "run-supervisor.py").read_text(encoding="utf-8")
+        self.assertIn("ai_orchestrator.recovery_runtime", shim)
 
 
 if __name__ == "__main__":
