@@ -27,10 +27,7 @@ jobs:
           set -Eeuo pipefail
           chmod +x scripts/*.sh
           REQUEST='production/v3-request.json'
-          [[ -s "$REQUEST" ]] || {
-            echo 'BLOCKED: production/v3-request.json is missing or empty.'
-            exit 1
-          }
+          [[ -s "$REQUEST" ]] || { echo 'BLOCKED: production/v3-request.json is missing or empty.'; exit 1; }
 
           mapfile -t REQUEST_VALUES < <(python3 - <<'PY'
           import json, re
@@ -63,8 +60,7 @@ jobs:
             RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SOURCE_REF" --jq '.object.sha')"
             [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "BLOCKED: source_ref did not resolve to commit: $SOURCE_REF"; exit 1; }
             if [[ -n "$SOURCE_SHA" && "$RESOLVED_SHA" != "$SOURCE_SHA" ]]; then
-              echo "BLOCKED: source_ref SHA mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA"
-              exit 1
+              echo "BLOCKED: source_ref SHA mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA"; exit 1
             fi
             git fetch --quiet origin "$RESOLVED_SHA" || true
           elif [[ -n "$SOURCE_SHA" ]]; then
@@ -80,22 +76,20 @@ jobs:
           case "$ACTION" in
             WATCH_EXISTING_RUN)
               echo "V3_AUTO_TRIGGER=WATCH_EXISTING_RUN run_id=$EXISTING_RUN request_id=$REQUEST_ID fingerprint=$FINGERPRINT"
+              echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
               exit 0
               ;;
             REUSE_ARTIFACT)
               echo "V3_AUTO_TRIGGER=REUSE_ARTIFACT run_id=$EXISTING_RUN request_id=$REQUEST_ID fingerprint=$FINGERPRINT"
+              echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
               exit 0
               ;;
             NO_NEW_CANDIDATE)
               echo "V3_AUTO_TRIGGER=NO_NEW_CANDIDATE request_id=$REQUEST_ID fingerprint=$FINGERPRINT"
               exit 0
               ;;
-            NEW_CANDIDATE)
-              ;;
-            *)
-              echo "BLOCKED: unsupported dedup action: $ACTION"
-              exit 1
-              ;;
+            NEW_CANDIDATE) ;;
+            *) echo "BLOCKED: unsupported dedup action: $ACTION"; exit 1 ;;
           esac
 
           echo "Dispatching Arthur Known-Good Update v3 mode=$MODE request_id=$REQUEST_ID source_ref=$SOURCE_REF fingerprint=$FINGERPRINT"
@@ -103,12 +97,12 @@ jobs:
 
           CONFIRMED_RUN=''
           for _ in $(seq 1 24); do
-            RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headSha,status,conclusion)"
-            CONFIRMED_RUN="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
+            RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headBranch,headSha,status,conclusion)"
+            CONFIRMED_RUN="$(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
           import json, os
           runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
-          sha=os.environ['SOURCE_SHA']
-          matches=[r for r in runs if str(r.get('headSha') or '') == sha]
+          ref=os.environ['SOURCE_REF']; sha=os.environ['SOURCE_SHA']
+          matches=[r for r in runs if str(r.get('headSha') or '') == sha and (ref == 'main' or str(r.get('headBranch') or '') == ref)]
           matches.sort(key=lambda r: int(r.get('databaseId') or 0), reverse=True)
           print(matches[0].get('databaseId') if matches else '')
           PY
@@ -120,8 +114,7 @@ jobs:
           echo "V3_AUTO_TRIGGER_DISPATCHED=YES run_id=$CONFIRMED_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF fingerprint=$FINGERPRINT"
 
           {
-            echo '## Arthur v3 auto trigger'
-            echo
+            echo '## Arthur v3 auto trigger'; echo
             echo "- Request commit: \`${GITHUB_SHA}\`"
             echo "- Request ID: \`${REQUEST_ID}\`"
             echo "- Mode: \`${MODE}\`"
