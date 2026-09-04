@@ -19,6 +19,7 @@ $buildEnv = Get-Content -Raw (Join-Path $Root 'build.env')
 $defaults = Get-Content -Raw (Join-Path $Root 'files/etc/uci-defaults/99-xinzhao-defaults')
 $arthurConfig = Get-Content -Raw (Join-Path $Root 'config/arthur.config')
 $deploy = Get-Content -Raw (Join-Path $Root '.github/workflows/production-agent-deploy.yml')
+$controlPlaneGate = Get-Content -Raw (Join-Path $Root 'scripts/arthur-control-plane-gate.ps1')
 $controlPlane = Get-Content -Raw (Join-Path $Root 'scripts/arthur-control-plane.ps1')
 $themeLock = Get-Content -Raw (Join-Path $Root 'config/arthur-theme.lock')
 $requirementsPath = Join-Path $Root 'requirements-headless.txt'
@@ -46,17 +47,19 @@ foreach ($relative in @(
     Assert-True (Test-Path (Join-Path $Root $relative)) "existing GPT-Codex Bridge runtime file must be present: $relative"
 }
 
-# The active topology is runner wakeup -> persistent workspace -> Arthur Control Plane -> ai_orchestrator.
-# Bridge semantics now live behind the Control Plane instead of a second standalone supervisor/task.
+# The active topology is runner wakeup -> persistent workspace -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
+# Bridge semantics live behind the existing Control Plane; the intent gate only authorizes entry and does not replace orchestration.
 Assert-Contains $controlPlane 'python -m ai_orchestrator resume' 'Arthur Control Plane must invoke the existing GPT-Codex decision runtime'
 Assert-Contains $controlPlane 'HEADLESS_RUNTIME_STARTED=PASS' 'Control Plane must prove the headless decision runtime actually resumed'
-Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must hand off into the Arthur Control Plane'
+Assert-Contains $deploy 'scripts\arthur-control-plane-gate.ps1' 'runner wakeup must enter through the scoped operator-intent gate'
+Assert-Contains $controlPlaneGate 'scripts\arthur-control-plane.ps1' 'authorized intent gate must hand off into the existing Arthur Control Plane'
+Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'intent gate must explicitly stop unauthorized firmware execution before the Control Plane'
 Assert-True ($deploy -notmatch 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor') 'active unattended topology must not own a second standalone Bridge supervisor'
 Assert-Contains $deploy 'HEADLESS_RUNTIME=REUSE' 'runner wakeup must reuse the already-proven persistent Python/Codex SDK runtime before bootstrap'
 Assert-Contains $deploy 'python install 3.12' 'bootstrap fallback must install pinned Python 3.12 in user space'
 Assert-Contains $deploy 'HeadlessPython' 'deployment must keep the supported Bridge interpreter in a persistent user-space directory'
 Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path for Bridge decision calls'
-Assert-Contains $deploy 'HEADLESS_CODEX_RUNTIME=PASS' 'runner wakeup must verify the persistent headless Codex runtime before Control Plane execution'
+Assert-Contains $deploy 'HEADLESS_CODEX_RUNTIME=PASS' 'runner wakeup must verify the persistent headless Codex runtime before scoped Control Plane entry'
 Assert-True ($deploy -notmatch 'astral-sh/setup-uv@v6') 'deployment must not depend on the flaky setup-uv Node action on the self-hosted Windows runner'
 Assert-True (Test-Path $requirementsPath) 'deployment must retain the existing headless runtime dependency input'
 $requirements = Get-Content -Raw $requirementsPath
@@ -73,3 +76,4 @@ foreach ($asset in @(
 }
 
 Write-Host 'VERIFIED_BASELINE_INHERITANCE_CONTRACT=PASS'
+Write-Host 'SCOPED_OPERATOR_INTENT_TOPOLOGY_CONTRACT=PASS'
