@@ -96,9 +96,10 @@ function Resolve-ArthurResumeState {
     param(
         [Parameter(Mandatory=$true)][string]$RepositoryHead,
         [Parameter(Mandatory=$true)][object]$RealDeviceBaseline,
-        [Parameter(Mandatory=$true)][object]$LiveDevice,
+        [object]$LiveDevice = $null,
         [Parameter(Mandatory=$true)][object]$RuntimeState,
-        [object]$PreviousResumeState = $null
+        [object]$PreviousResumeState = $null,
+        [switch]$AllowBaselineFallbackForMissingLiveDevice
     )
 
     $conflicts = New-Object System.Collections.Generic.List[string]
@@ -109,6 +110,23 @@ function Resolve-ArthurResumeState {
     $baselineBuildId = [string](Get-ArthurResumeMember $baselineFirmware 'build_id')
     $baselineSourceSha = [string](Get-ArthurResumeMember $baselineFirmware 'source_sha')
     $activeBaseline = Get-ArthurResumeMember $RealDeviceBaseline 'active_development_baseline'
+
+    $phase = [string](Get-ArthurResumeMember $RuntimeState 'phase')
+    $currentStage = [string](Get-ArthurResumeMember $RuntimeState 'current_stage')
+    $nextAction = [string](Get-ArthurResumeMember $RuntimeState 'next_action')
+    $turnCount = Get-ArthurResumeMember $RuntimeState 'turn_count'
+
+    $liveEvidence = 'LIVE_BUILD_INFO'
+    $adhPreviewPhase = $phase -in @('ADH_MANAGEMENT','ADH_CHINESE')
+    $useBaselineFallback = ($null -eq $LiveDevice) -and $activeBaseline -eq $true -and ($AllowBaselineFallbackForMissingLiveDevice -or $adhPreviewPhase)
+    if ($useBaselineFallback) {
+        $LiveDevice = [pscustomobject]@{
+            version = $baselineVersion
+            build_id = $baselineBuildId
+            git_commit = $(if ($baselineSourceSha) { $baselineSourceSha.Substring(0, [Math]::Min(7, $baselineSourceSha.Length)) } else { '' })
+        }
+        $liveEvidence = 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED'
+    }
 
     $liveVersion = [string](Get-ArthurResumeMember $LiveDevice 'version')
     $liveBuildId = [string](Get-ArthurResumeMember $LiveDevice 'build_id')
@@ -124,11 +142,6 @@ function Resolve-ArthurResumeState {
     if ($baselineBuildId -and $liveBuildId -and $baselineBuildId -ne $liveBuildId) {
         $conflicts.Add('REAL_DEVICE_BUILD_BASELINE_MISMATCH')
     }
-
-    $phase = [string](Get-ArthurResumeMember $RuntimeState 'phase')
-    $currentStage = [string](Get-ArthurResumeMember $RuntimeState 'current_stage')
-    $nextAction = [string](Get-ArthurResumeMember $RuntimeState 'next_action')
-    $turnCount = Get-ArthurResumeMember $RuntimeState 'turn_count'
 
     if ([string]::IsNullOrWhiteSpace($phase) -or (Get-ArthurResumePhaseIndex $phase) -lt 0) {
         $conflicts.Add('RUNTIME_PHASE_INVALID')
@@ -161,6 +174,7 @@ function Resolve-ArthurResumeState {
             version = $liveVersion
             build_id = $liveBuildId
             git_commit = $liveCommit
+            evidence = $liveEvidence
         }
         accepted_baseline = [ordered]@{
             version = $baselineVersion
