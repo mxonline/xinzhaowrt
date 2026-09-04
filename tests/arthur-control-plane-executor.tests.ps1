@@ -52,6 +52,8 @@ Assert-Contains $script 'runtime-state.json' 'control plane must seed or resume 
 Assert-Contains $script 'RECOVERABLE_BUILD_INFO_PROVENANCE' 'build-info provenance mismatch must be recoverable rather than terminal watchdog-only BLOCKED'
 Assert-Contains $script 'Resolve-ArthurResumeState' 'control plane must preserve canonical resume-state reconciliation before runtime dispatch'
 Assert-Contains $script 'instruction_allowed' 'control plane must fail closed on an unsafe resume-state conflict'
+Assert-Contains $script "'tagName,isDraft,isPrerelease,publishedAt'" 'gh release list must request only fields supported by the release-list command'
+Assert-NotContains $script "'tagName,isDraft,isPrerelease,publishedAt,targetCommitish'" 'gh release list must not request targetCommitish; that field is only read from release view'
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
@@ -81,3 +83,4 @@ Assert-NotContains $wakeup 'PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION' 'legacy
 Write-Host 'ARTHUR_CONTROL_PLANE_EXECUTOR_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_WORKSPACE_CONTRACT=PASS'
 Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
+Write-Host 'ARTHUR_GH_RELEASE_LIST_SCHEMA_CONTRACT=PASS'
