@@ -198,7 +198,9 @@ try {
         $http = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri 'http://192.168.6.1/luci-static/xinzhao/build-info.json'
         $device.build_info_sources.http = if ($http.Content -match '@VERSION@|@BUILD_ID@') { 'STALE_TEMPLATE' } else { 'PRESENT_UNVERIFIED' }
     } catch { $device.build_info_sources.http = 'UNAVAILABLE_RETRY' }
-    $artifactBuildInfo = if ($candidateDetails) { @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }) } else { @() }
+    $artifactBuildInfo = @(
+        if ($candidateDetails) { @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }) }
+    )
     $device.build_info_sources.artifact = if ($artifactBuildInfo.Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
     $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'REAL_DEVICE_VERIFY'; next_action = 'REAL_DEVICE_VERIFY'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
