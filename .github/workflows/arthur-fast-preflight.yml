@@ -1,6 +1,9 @@
 name: Arthur Fast Preflight
 
 'on':
+  push:
+    branches:
+      - feature/fast-safe-unattended-release-contract
   pull_request:
     branches:
       - main
