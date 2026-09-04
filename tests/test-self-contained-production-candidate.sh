@@ -27,6 +27,7 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
 grep -Fq 'ADGUARD_LEGACY_MANAGER_PURGE=PASS' "$restore_adguard" || { echo 'FAIL: production AdGuard normalization must purge legacy manager paths.' >&2; exit 1; }
 grep -Fq 'mature AdGuard manager, zh_cn locale, themes, QuickStart, and preserved-upgrade LuCI convergence' "$rootfs_verifier" || { echo 'FAIL: final rootfs verifier is not bound to feature convergence.' >&2; exit 1; }
+grep -Fq 'reject_exact_child_name' "$rootfs_verifier" || { echo 'FAIL: final rootfs verifier must reject case-distinct legacy AdGuard aliases without Windows CI false positives.' >&2; exit 1; }
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 bash "$root/tests/test-preserved-upgrade-luci-convergence.sh"
