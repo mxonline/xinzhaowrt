@@ -42,6 +42,10 @@ jobs:
         shell: pwsh
         run: ./tests/fast-safe-release.tests.ps1
 
+      - name: Test release convergence contract
+        shell: pwsh
+        run: ./tests/fast-safe-convergence.tests.ps1
+
       - name: Test non-admin Feature Handoff task contract
         shell: pwsh
         run: ./tests/feature-handoff-task-privilege.tests.ps1
