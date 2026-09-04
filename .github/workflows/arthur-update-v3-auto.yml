@@ -52,10 +52,21 @@ jobs:
           source_sha = str(data.get('source_sha') or '')
           if source_sha and not re.fullmatch(r'[0-9a-f]{40}', source_sha):
               raise SystemExit('BLOCKED: source_sha must be a full lowercase SHA-1')
-          print(mode)
-          print(request_id)
-          print(source_ref)
-          print(source_sha)
+
+          values = [
+              mode,
+              request_id,
+              source_ref,
+              source_sha,
+              str(data.get('failure_set_state') or ''),
+              str(data.get('failure_set_fingerprint') or ''),
+              str(data.get('verification_contract_fingerprint') or ''),
+              str(data.get('rootfs_offline_passed') or '').lower(),
+              str(data.get('contract_gap_state') or ''),
+              str(data.get('firmware_input_fingerprint') or ''),
+          ]
+          for value in values:
+              print(value)
           PY
           )
 
@@ -63,9 +74,14 @@ jobs:
           REQUEST_ID="${REQUEST_VALUES[1]}"
           SOURCE_REF="${REQUEST_VALUES[2]}"
           SOURCE_SHA="${REQUEST_VALUES[3]}"
+          FAILURE_SET_STATE="${REQUEST_VALUES[4]}"
+          FAILURE_SET_FINGERPRINT="${REQUEST_VALUES[5]}"
+          VERIFICATION_CONTRACT_FINGERPRINT="${REQUEST_VALUES[6]}"
+          ROOTFS_OFFLINE_PASSED="${REQUEST_VALUES[7]}"
+          CONTRACT_GAP_STATE="${REQUEST_VALUES[8]}"
+          FIRMWARE_INPUT_FINGERPRINT="${REQUEST_VALUES[9]}"
 
-          # Feature Handoff requests use an immutable lightweight tag. Resolve it
-          # before dispatch so a moving main ref can never change the Candidate bytes.
+          RESOLVED_SHA="$SOURCE_SHA"
           if [[ "$SOURCE_REF" != 'main' ]]; then
             RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SOURCE_REF" --jq '.object.sha')"
             [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -76,28 +92,98 @@ jobs:
               echo "BLOCKED: source_ref SHA mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA"
               exit 1
             fi
+          fi
 
-            # Receiver-side idempotency: a retry of this auto-trigger first finds
-            # the v3 run already bound to the same immutable tag and becomes a no-op.
+          CONVERGED=true
+          [[ "$FAILURE_SET_STATE" == 'RESOLVED' ]] || CONVERGED=false
+          [[ "$FAILURE_SET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || CONVERGED=false
+          [[ "$VERIFICATION_CONTRACT_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || CONVERGED=false
+          [[ "$ROOTFS_OFFLINE_PASSED" == 'true' ]] || CONVERGED=false
+          [[ "$CONTRACT_GAP_STATE" == 'NONE' ]] || CONVERGED=false
+          [[ "$FIRMWARE_INPUT_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || CONVERGED=false
+
+          RUNS_JSON='[]'
+          if [[ "$SOURCE_REF" != 'main' ]]; then
             RUNS_JSON="$(gh run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow arthur-update-v3.yml \
               --event workflow_dispatch \
               --limit 100 \
               --json databaseId,headBranch,headSha,status,conclusion)"
-            EXISTING_RUN="$(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
+          fi
+
+          if [[ "$CONVERGED" != 'true' ]]; then
+            if [[ "$SOURCE_REF" != 'main' ]]; then
+              mapfile -t INVALID_ACTIVE_RUNS < <(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
           import json, os
+          active={'queued','in_progress','waiting','requested','pending'}
+          runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
+          ref=os.environ['SOURCE_REF']
+          sha=os.environ['SOURCE_SHA']
+          for run in runs:
+              if str(run.get('headBranch') or '') != ref or str(run.get('headSha') or '') != sha:
+                  continue
+              if str(run.get('status') or '') in active:
+                  print(int(run.get('databaseId') or 0))
+          PY
+              )
+              for RUN_ID in "${INVALID_ACTIVE_RUNS[@]:-}"; do
+                [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || continue
+                echo "CANCEL_INVALID_BUILD run_id=$RUN_ID reason=FINAL_FAILURE_SET_NOT_RESOLVED"
+                gh run cancel "$RUN_ID" --repo "$GITHUB_REPOSITORY"
+                cancelled=false
+                for _ in $(seq 1 30); do
+                  RUN_STATE="$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status,conclusion --jq '[.status,.conclusion] | @tsv')"
+                  RUN_STATUS="${RUN_STATE%%$'\t'*}"
+                  RUN_CONCLUSION="${RUN_STATE#*$'\t'}"
+                  if [[ "$RUN_STATUS" == 'completed' && "$RUN_CONCLUSION" == 'cancelled' ]]; then
+                    cancelled=true
+                    break
+                  fi
+                  sleep 2
+                done
+                [[ "$cancelled" == 'true' ]] || {
+                  echo "BLOCKED: cancellation not confirmed for run $RUN_ID"
+                  exit 1
+                }
+                echo "INVALID_BUILD_CANCELLED=YES run_id=$RUN_ID"
+              done
+            fi
+            echo "V3_AUTO_TRIGGER_WAIT_CONVERGENCE=YES request_id=$REQUEST_ID failure_set_state=${FAILURE_SET_STATE:-MISSING} rootfs_offline_passed=${ROOTFS_OFFLINE_PASSED:-MISSING} contract_gap_state=${CONTRACT_GAP_STATE:-MISSING}"
+            exit 0
+          fi
+
+          # Receiver-side idempotency: only a matching active or successful run is reusable.
+          # A failed/cancelled run is never silently re-run with the same immutable source.
+          if [[ "$SOURCE_REF" != 'main' ]]; then
+            EXISTING_DECISION="$(RUNS_JSON="$RUNS_JSON" SOURCE_REF="$SOURCE_REF" SOURCE_SHA="$RESOLVED_SHA" python3 - <<'PY'
+          import json, os
+          active={'queued','in_progress','waiting','requested','pending'}
           runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
           ref=os.environ['SOURCE_REF']
           sha=os.environ['SOURCE_SHA']
           matches=[r for r in runs if str(r.get('headBranch') or '') == ref and str(r.get('headSha') or '') == sha]
-          matches.sort(key=lambda r: int(r.get('databaseId') or 0))
-          print(matches[0].get('databaseId') if matches else '')
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0), reverse=True)
+          for run in matches:
+              rid=int(run.get('databaseId') or 0)
+              status=str(run.get('status') or '')
+              conclusion=str(run.get('conclusion') or '')
+              if status in active or (status == 'completed' and conclusion == 'success'):
+                  print(f'REUSE|{rid}|{status}|{conclusion}')
+                  raise SystemExit(0)
+          if matches:
+              run=matches[0]
+              print(f"BLOCKED|{int(run.get('databaseId') or 0)}|{run.get('status') or ''}|{run.get('conclusion') or ''}")
           PY
             )"
-            if [[ -n "$EXISTING_RUN" ]]; then
-              echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
+            if [[ "$EXISTING_DECISION" == REUSE\|* ]]; then
+              IFS='|' read -r _ EXISTING_RUN EXISTING_STATUS EXISTING_CONCLUSION <<<"$EXISTING_DECISION"
+              echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF status=$EXISTING_STATUS conclusion=$EXISTING_CONCLUSION"
               exit 0
+            fi
+            if [[ "$EXISTING_DECISION" == BLOCKED\|* ]]; then
+              echo "V3_AUTO_TRIGGER_REPEAT_BUILD_BLOCKED decision=$EXISTING_DECISION request_id=$REQUEST_ID source_ref=$SOURCE_REF"
+              exit 1
             fi
           fi
 
@@ -105,10 +191,14 @@ jobs:
           gh workflow run arthur-update-v3.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$SOURCE_REF" \
-            -f mode="$MODE"
+            -f mode="$MODE" \
+            -f failure_set_state="$FAILURE_SET_STATE" \
+            -f failure_set_fingerprint="$FAILURE_SET_FINGERPRINT" \
+            -f verification_contract_fingerprint="$VERIFICATION_CONTRACT_FINGERPRINT" \
+            -f rootfs_offline_passed="$ROOTFS_OFFLINE_PASSED" \
+            -f contract_gap_state="$CONTRACT_GAP_STATE" \
+            -f firmware_input_fingerprint="$FIRMWARE_INPUT_FINGERPRINT"
 
-          # A successful API response is not the final acknowledgement. Confirm a
-          # concrete run exists before marking this durable request dispatched.
           if [[ "$SOURCE_REF" != 'main' ]]; then
             CONFIRMED_RUN=''
             for _ in $(seq 1 24); do
@@ -124,7 +214,7 @@ jobs:
           ref=os.environ['SOURCE_REF']
           sha=os.environ['SOURCE_SHA']
           matches=[r for r in runs if str(r.get('headBranch') or '') == ref and str(r.get('headSha') or '') == sha]
-          matches.sort(key=lambda r: int(r.get('databaseId') or 0))
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0), reverse=True)
           print(matches[0].get('databaseId') if matches else '')
           PY
               )"
@@ -145,5 +235,9 @@ jobs:
             echo "- Request ID: \`${REQUEST_ID}\`"
             echo "- Mode: \`${MODE}\`"
             echo "- Source ref: \`${SOURCE_REF}\`"
+            echo "- Failure set: \`${FAILURE_SET_STATE}\` / \`${FAILURE_SET_FINGERPRINT}\`"
+            echo "- Rootfs offline acceptance: \`${ROOTFS_OFFLINE_PASSED}\`"
+            echo "- Contract gap: \`${CONTRACT_GAP_STATE}\`"
+            echo "- Firmware input fingerprint: \`${FIRMWARE_INPUT_FINGERPRINT}\`"
             echo '- Dispatched workflow: `Arthur Known-Good Update v3`'
           } >> "$GITHUB_STEP_SUMMARY"
