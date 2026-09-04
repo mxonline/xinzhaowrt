@@ -23,14 +23,34 @@ Assert-Contains $handoff "'-Mode','Resume'" 'tag-based v3 run must be handed to 
 Assert-Contains $handoff "'-RunId'" 'controller resume must bind the discovered v3 run id'
 Assert-True ($handoff -notmatch "(?s)'workflow','run','arthur-update-v3\.yml'") 'handoff must not directly workflow_dispatch v3 after durable request integration'
 
+# Build dispatch is now bound to durable convergence evidence. No evidence/no resolved set = no request.
+Assert-Contains $handoff 'release-convergence.json' 'handoff must read durable convergence evidence before writing a build request'
+Assert-Contains $handoff 'Load-ReleaseConvergenceEvidence' 'handoff must load machine convergence evidence'
+Assert-Contains $handoff 'Get-ConvergenceDispatchInputs' 'handoff must derive dispatch inputs only from resolved convergence evidence'
+Assert-Contains $handoff 'Get-ActiveBuildReconciliationDecision' 'handoff must reconcile an already-running build against convergence state'
+Assert-Contains $handoff "'run','cancel'" 'handoff must cancel an active build that was started before convergence'
+Assert-Contains $handoff 'conclusion,cancelled' 'handoff must confirm cancellation instead of merely requesting it'
+foreach ($field in @('failure_set_state','failure_set_fingerprint','verification_contract_fingerprint','rootfs_offline_passed','contract_gap_state','firmware_input_fingerprint')) {
+    Assert-Contains $handoff $field "durable v3 request must carry convergence field $field"
+    Assert-Contains $auto $field "v3 auto trigger must consume convergence field $field"
+}
+
 Assert-Contains $auto 'request_id' 'existing v3 auto trigger must consume request idempotency key'
 Assert-Contains $auto 'source_ref' 'v3 auto trigger must dispatch the immutable accepted source ref'
 Assert-Contains $auto 'headBranch' 'v3 auto trigger must detect an existing run by immutable source ref'
 Assert-Contains $auto 'V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES' 'auto trigger must expose duplicate-suppression evidence'
 Assert-Contains $auto '--ref "$SOURCE_REF"' 'auto trigger must build from the immutable accepted source ref'
 Assert-True ($auto -notmatch '--ref main\s') 'handoff-triggered v3 production must not race against a moving main ref'
+Assert-Contains $auto '-f failure_set_state="$FAILURE_SET_STATE"' 'auto trigger must forward resolved failure-set state to production workflow'
+Assert-Contains $auto '-f failure_set_fingerprint="$FAILURE_SET_FINGERPRINT"' 'auto trigger must forward failure-set fingerprint'
+Assert-Contains $auto '-f verification_contract_fingerprint="$VERIFICATION_CONTRACT_FINGERPRINT"' 'auto trigger must forward verification contract identity'
+Assert-Contains $auto '-f rootfs_offline_passed="$ROOTFS_OFFLINE_PASSED"' 'auto trigger must forward rootfs acceptance'
+Assert-Contains $auto '-f contract_gap_state="$CONTRACT_GAP_STATE"' 'auto trigger must forward contract-gap state'
+Assert-Contains $auto '-f firmware_input_fingerprint="$FIRMWARE_INPUT_FINGERPRINT"' 'auto trigger must bind build to accepted firmware inputs'
 
 Write-Host 'FEATURE_HANDOFF_DURABLE_REQUEST_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_GITHUB_IDEMPOTENCY_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_EXACT_MERGE_SOURCE_CONTRACT=PASS'
 Write-Host 'FEATURE_HANDOFF_RUNID_RESUME_CONTRACT=PASS'
+Write-Host 'FEATURE_HANDOFF_CONVERGENCE_BOUND_DISPATCH_CONTRACT=PASS'
+Write-Host 'FEATURE_HANDOFF_INVALID_BUILD_CANCEL_CONTRACT=PASS'
