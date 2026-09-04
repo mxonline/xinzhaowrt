@@ -1,0 +1,85 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$ResumeScriptPath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
+$ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
+
+function Assert-True {
+    param([bool]$Condition,[string]$Message)
+    if (-not $Condition) { throw "TEST_FAIL: $Message" }
+}
+
+function Assert-Equal {
+    param($Actual,$Expected,[string]$Message)
+    if ($Actual -ne $Expected) { throw "TEST_FAIL: $Message (actual='$Actual' expected='$Expected')" }
+}
+
+function Assert-Contains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "TEST_FAIL: $Message (missing '$Needle')"
+    }
+}
+
+Assert-True (Test-Path $ResumeScriptPath) 'canonical Arthur resume-state helper must exist'
+Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
+
+. $ResumeScriptPath
+
+$baseline = [pscustomobject]@{
+    active_development_baseline = $true
+    firmware = [pscustomobject]@{
+        version = '0.1.3'
+        build_id = '33462873812'
+        source_sha = 'e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9'
+    }
+}
+$live013 = [pscustomobject]@{
+    version = '0.1.3'
+    build_id = '33462873812'
+    git_commit = 'e27bafa'
+}
+$runtimeAdh = [pscustomobject]@{
+    phase = 'ADH_MANAGEMENT'
+    current_stage = 'ADH_MANAGEMENT'
+    next_action = 'ADH_MANAGEMENT'
+    turn_count = 9
+}
+
+$safe = Resolve-ArthurResumeState -RepositoryHead ('a' * 40) -RealDeviceBaseline $baseline -LiveDevice $live013 -RuntimeState $runtimeAdh
+Assert-Equal $safe.status 'RESUME_SAFE' 'matching live 0.1.3 baseline must be safe to resume'
+Assert-Equal $safe.instruction_allowed $true 'safe reconciled state must allow Codex instruction generation'
+Assert-Equal $safe.real_device.version '0.1.3' 'live 0.1.3 must remain the forward-development version'
+Assert-Equal $safe.checkpoint.current 'ADH_MANAGEMENT' 'runtime checkpoint must be canonical'
+Assert-Equal $safe.next_action 'ADH_MANAGEMENT' 'next action must come from runtime state'
+Assert-Equal $safe.legacy_source_policy 'AUXILIARY_ONLY' 'historical docs must never be authoritative for current progress'
+
+$olderLive = [pscustomobject]@{ version = '0.1.1'; build_id = '32943895389'; git_commit = '256b186' }
+$versionConflict = Resolve-ArthurResumeState -RepositoryHead ('b' * 40) -RealDeviceBaseline $baseline -LiveDevice $olderLive -RuntimeState $runtimeAdh
+Assert-Equal $versionConflict.status 'STATE_RECONCILIATION_REQUIRED' 'older live version must not silently replace the accepted 0.1.3 baseline'
+Assert-Equal $versionConflict.instruction_allowed $false 'version conflict must prohibit Codex instruction generation'
+Assert-True (@($versionConflict.conflicts) -contains 'REAL_DEVICE_VERSION_BASELINE_MISMATCH') 'version conflict must be explicit'
+
+$previous = [pscustomobject]@{
+    checkpoint = [pscustomobject]@{ current = 'ADH_CHINESE'; next_action = 'CHANGE_IMPACT' }
+}
+$regressedRuntime = [pscustomobject]@{
+    phase = 'ADH_MANAGEMENT'
+    current_stage = 'ADH_MANAGEMENT'
+    next_action = 'ADH_MANAGEMENT'
+    turn_count = 10
+}
+$checkpointConflict = Resolve-ArthurResumeState -RepositoryHead ('c' * 40) -RealDeviceBaseline $baseline -LiveDevice $live013 -RuntimeState $regressedRuntime -PreviousResumeState $previous
+Assert-Equal $checkpointConflict.status 'STATE_RECONCILIATION_REQUIRED' 'a runtime checkpoint may not regress behind the last published checkpoint'
+Assert-Equal $checkpointConflict.instruction_allowed $false 'checkpoint regression must prohibit Codex instruction generation'
+Assert-True (@($checkpointConflict.conflicts) -contains 'CHECKPOINT_REGRESSION') 'checkpoint regression must be explicit'
+
+$controlPlane = Get-Content -Raw $ControlPlanePath
+Assert-Contains $controlPlane 'production\resume-state.json' 'control plane must publish the canonical repository resume snapshot'
+Assert-Contains $controlPlane 'Resolve-ArthurResumeState' 'control plane must reconcile state before resuming runtime'
+Assert-Contains $controlPlane 'STATE_RECONCILIATION_REQUIRED' 'control plane must fail closed when current state conflicts'
+Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Codex/runtime dispatch on reconciled instruction permission'
+Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
+
+Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'
