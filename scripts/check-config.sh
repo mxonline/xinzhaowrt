@@ -15,6 +15,14 @@ while IFS= read -r pkg; do
   fi
 done < "$REQUIRED_FILE"
 
+# The default LuCI locale alone does not provide translations. Keep the
+# standard ImmortalWrt language package in the firmware configuration so a
+# Candidate cannot silently ship an English-only router admin interface.
+if ! grep -qxF 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' "$CFG"; then
+  echo 'MISSING: CONFIG_PACKAGE_luci-i18n-base-zh-cn=y'
+  missing=1
+fi
+
 if (( missing )); then
   echo
   echo "One or more mandatory packages did not survive make defconfig."

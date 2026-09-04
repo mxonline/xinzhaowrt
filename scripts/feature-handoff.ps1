@@ -15,6 +15,14 @@ Set-StrictMode -Version Latest
 $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'feature-handoff-lib.ps1')
 
+# Scheduled/Detached Task Scheduler launches do not inherit the interactive
+# Codex shell's temporary Git safety configuration. Keep this worktree
+# explicitly trusted for this process only; never mutate the user's global
+# Git config as part of production recovery.
+$env:GIT_CONFIG_COUNT='1'
+$env:GIT_CONFIG_KEY_0='safe.directory'
+$env:GIT_CONFIG_VALUE_0=$Root
+
 if (-not $RuntimeRoot) { $RuntimeRoot=Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\FeatureHandoff' }
 New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
 $StatePath=Join-Path $RuntimeRoot 'handoff.json'
@@ -47,7 +55,7 @@ function Invoke-Native([string]$File,[string[]]$Arguments,[switch]$AllowFailure)
 }
 
 function Test-Recoverable([string]$Message) {
-    return $Message -match '(?i)timeout|timed out|connection|HTTP 5\d\d|HTTP 409|conflict|rate limit|temporar|EOF|queued|runner|network|could not resolve|TLS|try again|AUTO_TRIGGER_WAIT|CONTROLLER_RESUME_START'
+    return $Message -match '(?i)timeout|timed out|connection|HTTP 5\d\d|HTTP 409|conflict|rate limit|temporar|EOF|queued|runner|network|could not resolve|TLS|try again|AUTO_TRIGGER_WAIT|CONTROLLER_RESUME_START|dubious ownership|safe\.directory'
 }
 
 function Ensure-StateField($State,[string]$Name,$Value) {
@@ -554,7 +562,7 @@ function Monitor-Production($State,[switch]$OneShot) {
     }
 }
 
-function Invoke-OneStage($State) {
+function Invoke-OneStage($State,[switch]$OneShot) {
     switch ([string]$State.current_stage) {
         'PREVIEW_ACCEPTED' { Capture-LocalChanges $State; return }
         'LOCAL_CHANGES_CAPTURED' { Run-StaticChecks $State; return }
@@ -562,8 +570,8 @@ function Invoke-OneStage($State) {
         'SOURCE_FROZEN' { Integrate-Remote $State; return }
         'REMOTE_INTEGRATED' { Dispatch-BuildOnce $State; return }
         'BUILD_DISPATCHED' { Ensure-ControllerRecovery -State $State | Out-Null; Set-FeatureHandoffStage -State $State -Stage 'CONTROLLER_ATTACHED' -Status 'LIVE' | Out-Null; Save-FeatureHandoffState -State $State -StatePath $StatePath; return }
-        'CONTROLLER_ATTACHED' { Monitor-Production -State $State -OneShot; return }
-        'PRODUCTION_RUNNING' { Monitor-Production -State $State -OneShot; return }
+        'CONTROLLER_ATTACHED' { Monitor-Production -State $State -OneShot:$OneShot; return }
+        'PRODUCTION_RUNNING' { Monitor-Production -State $State -OneShot:$OneShot; return }
         'PRODUCTION_RELEASED' { Write-Host 'PRODUCTION_RELEASED=YES'; return }
         default { throw "FEATURE_HANDOFF_UNKNOWN_STAGE=$($State.current_stage)" }
     }
@@ -602,7 +610,7 @@ try {
     $state=Load-OrAcceptState
     if (-not $state) { Write-Host 'FEATURE_HANDOFF=IDLE'; exit 0 }
     Ensure-RequestStateFields $state
-    if ($Mode -eq 'RunOnce') { Invoke-OneStage $state; exit 0 }
+    if ($Mode -eq 'RunOnce') { Invoke-OneStage $state -OneShot; exit 0 }
 
     while ($true) {
         try {

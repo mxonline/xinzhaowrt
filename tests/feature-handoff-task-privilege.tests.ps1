@@ -19,5 +19,8 @@ Assert-Contains $installer '-RunLevel Limited' 'Feature Handoff Scheduled Task m
 Assert-True ($installer -notmatch '(?i)-RunLevel\s+Highest') 'Feature Handoff installer must not force Highest privilege'
 Assert-Contains $installer 'FEATURE_HANDOFF_INSTALL=PASS' 'installer must retain explicit success evidence'
 Assert-Contains $installer 'Start-ScheduledTask' 'installer must immediately hand ownership to Task Scheduler'
+Assert-Contains $installer 'UnauthorizedAccessException' 'installer must classify task registration access denial as an elevation-retry condition'
+Assert-Contains $installer 'RunAs' 'installer must retry task registration through the existing Windows elevation mechanism'
+Assert-Contains $installer 'FEATURE_HANDOFF_ELEVATION_REQUIRED' 'installer must expose a recoverable elevation handoff instead of silently stopping'
 
 Write-Host 'FEATURE_HANDOFF_NONADMIN_TASK_CONTRACT=PASS'

@@ -39,6 +39,7 @@ foreach ($relative in $required) {
 
 foreach ($fn in @(
     'New-FeatureHandoffState','Load-FeatureHandoffState','Save-FeatureHandoffState','Set-FeatureHandoffStage',
+    'Normalize-FeatureHandoffState',
     'Get-FeatureHandoffKey','Test-ProductionWriteInProgress','Assert-FeatureChangedPathsSafe',
     'Get-WorktreeDiffSha256','Get-PreviewManifestIdentity','Freeze-PreviewManifestToOverlay',
     'Write-AcceptedPreviewRecord','Select-HandoffBuildPlan','Reconcile-ProductionState',
@@ -89,6 +90,22 @@ try {
     $withRun.dispatched_run_id = 555
     Assert-Equal (Get-HandoffDispatchAction -State $withRun -ProductionStage '') 'RECONCILE' 'known run id must attach/reconcile, never redispatch'
     Assert-Equal (Get-HandoffDispatchAction -State $state -ProductionStage 'WAIT_DEVICE') 'RECONCILE' 'router write/reboot stage must reconcile existing production only'
+
+    $markerTargets = @{
+        'HANDOFF' = 'PREVIEW_ACCEPTED'
+        'LIVE_PREVIEW_PASS' = 'PREVIEW_ACCEPTED'
+        'PREBUILD_PASS' = 'REMOTE_INTEGRATED'
+        'SOURCE_FROZEN' = 'SOURCE_FROZEN'
+        'CANDIDATE_READY' = 'BUILD_DISPATCHED'
+    }
+    foreach ($marker in $markerTargets.Keys) {
+        $legacy = (($state | ConvertTo-Json -Depth 20) | ConvertFrom-Json -Depth 20)
+        $legacy.current_stage = $marker
+        $legacy.stage_status = 'PASS'
+        Normalize-FeatureHandoffState -State $legacy | Out-Null
+        Assert-Equal $legacy.current_stage $markerTargets[$marker] "intermediate marker must normalize to a resumable stage: $marker"
+        Assert-True ($legacy.current_stage -ne 'PRODUCTION_RELEASED') "intermediate marker must never normalize to terminal release: $marker"
+    }
 
     foreach ($protected in @(
         'config/required-plugins.txt','config/arthur.config','config/arthur-known-good.lock',
@@ -142,10 +159,12 @@ finally {
 }
 
 $handoffText = Get-Content -Raw (Join-Path $Root 'scripts/feature-handoff.ps1')
+$handoffLibText = Get-Content -Raw (Join-Path $Root 'scripts/feature-handoff-lib.ps1')
 $installerText = Get-Content -Raw (Join-Path $Root 'scripts/install-feature-handoff.ps1')
 $statusText = Get-Content -Raw (Join-Path $Root 'scripts/feature-handoff-status.ps1')
 $safePreviewText = Get-Content -Raw (Join-Path $Root 'scripts/live-preview-mature-safe.ps1')
 $productionInstallerText = Get-Content -Raw (Join-Path $Root 'scripts/install-production-agent.ps1')
+$controllerText = Get-Content -Raw (Join-Path $Root 'scripts/ci-controller-v3.ps1')
 
 Assert-Contains $handoffText 'arthur-update-v3.yml' 'handoff must dispatch the existing v3 Candidate workflow'
 Assert-Contains $handoffText 'production-agent' 'handoff must attach to existing Production Agent state'
@@ -153,6 +172,10 @@ Assert-Contains $handoffText 'PRODUCTION_RELEASED' 'handoff must recognize sole 
 Assert-Contains $handoffText 'dispatched_run_id' 'handoff must persist one-time dispatch identity'
 Assert-Contains $handoffText 'AcceptPreview' 'handoff must support durable preview acceptance before background continuation'
 Assert-Contains $handoffText 'FileShare]::None' 'handoff must hold an exclusive runtime lock'
+Assert-Contains $handoffText 'safe.directory' 'detached handoff must configure Git safe.directory for the shared worktree'
+Assert-Contains $handoffText 'GIT_CONFIG_KEY_0' 'detached handoff must carry its Git safety configuration without global mutation'
+Assert-Contains $handoffText 'dubious ownership' 'shared worktree Git ownership errors must be retried as recoverable runtime faults'
+Assert-Contains $controllerText 'safe.directory' 'detached controller must configure Git safe.directory for the shared worktree'
 Assert-Contains $installerText 'XinZhaoWrt-Arthur-Feature-Handoff' 'installer must create the persistent recovery task'
 Assert-Contains $installerText 'Register-ScheduledTask' 'installer must use Windows Scheduled Task recovery'
 Assert-True ($installerText -notmatch '(?i)NT AUTHORITY\\SYSTEM|LocalSystem|-UserId\s+["'']?SYSTEM') 'handoff task must not run as SYSTEM'
@@ -165,6 +188,8 @@ Assert-Contains $safePreviewText 'PauseAfterLivePreview' 'pause after preview mu
 Assert-Contains $safePreviewText 'FEATURE_HANDOFF_STARTED=' 'successful preview must start the durable handoff by default'
 Assert-Contains $safePreviewText "'-Mode','AcceptPreview'" 'safe preview must persist accepted state before background continuation'
 Assert-Contains $safePreviewText 'Start-ScheduledTask' 'Task Scheduler must own immediate continuation after acceptance'
+Assert-Contains $handoffLibText 'Normalize-FeatureHandoffState' 'Resume state loading must normalize legacy progress markers before dispatching the next stage'
+Assert-Contains $handoffText '-OneShot:$OneShot' 'persistent Resume must monitor continuously; only explicit RunOnce may use one-shot monitoring'
 
 foreach ($danger in @('push --force','push -f','reset --hard','clean -fdx')) {
     Assert-True ($handoffText.IndexOf($danger,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) "handoff must not use destructive git operation: $danger"

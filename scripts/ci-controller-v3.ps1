@@ -18,6 +18,13 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# Controller instances launched by the existing Feature Handoff may be
+# detached from the interactive shell. Trust this shared worktree for this
+# process only so Git ownership checks do not turn recoverable continuation
+# into a false terminal block; do not mutate global Git configuration.
+$env:GIT_CONFIG_COUNT='1'
+$env:GIT_CONFIG_KEY_0='safe.directory'
+$env:GIT_CONFIG_VALUE_0=$RepoRoot
 $StateDir = Join-Path $RepoRoot 'state'
 $OutputRoot = Join-Path $RepoRoot 'output\controller-v3'
 $StateFile = Join-Path $StateDir 'ci-v3-state.json'

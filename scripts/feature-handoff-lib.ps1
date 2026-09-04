@@ -5,6 +5,14 @@ $script:FeatureHandoffStages = @(
     'REMOTE_INTEGRATED','BUILD_DISPATCHED','CONTROLLER_ATTACHED','PRODUCTION_RUNNING','PRODUCTION_RELEASED'
 )
 
+$script:FeatureHandoffProgressAliases = @{
+    'HANDOFF' = 'PREVIEW_ACCEPTED'
+    'LIVE_PREVIEW_PASS' = 'PREVIEW_ACCEPTED'
+    'PREBUILD_PASS' = 'REMOTE_INTEGRATED'
+    'SOURCE_FROZEN' = 'SOURCE_FROZEN'
+    'CANDIDATE_READY' = 'BUILD_DISPATCHED'
+}
+
 $script:FeatureHandoffProtectedExact = @(
     'config/required-plugins.txt','config/arthur.config','config/arthur-known-good.lock',
     'production/known-good.json','production/status.json','VERSION','build.env',
@@ -72,6 +80,18 @@ function Add-HandoffStateDefault($State,[string]$Name,$Value) {
     }
 }
 
+function Normalize-FeatureHandoffState {
+    param([Parameter(Mandatory)]$State)
+    $stage = [string]$State.current_stage
+    if ($script:FeatureHandoffProgressAliases.ContainsKey($stage)) {
+        $State.current_stage = [string]$script:FeatureHandoffProgressAliases[$stage]
+        if ([string]$State.stage_status -in @('PASS','VERIFIED','SUCCESS','COMPLETED','READY')) {
+            $State.stage_status = 'PENDING_CONTINUATION'
+        }
+    }
+    return $State
+}
+
 function Save-FeatureHandoffState {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$StatePath)
     $dir = Split-Path -Parent $StatePath
@@ -92,6 +112,7 @@ function Load-FeatureHandoffState {
     if ([int]$state.schema_version -ne 1) { throw "FEATURE_HANDOFF_STATE_SCHEMA_UNSUPPORTED=$($state.schema_version)" }
     Add-HandoffStateDefault $state 'dispatch_started_at' ''
     Add-HandoffStateDefault $state 'dispatch_accepted' $false
+    Normalize-FeatureHandoffState -State $state | Out-Null
     return $state
 }
 
@@ -126,6 +147,7 @@ function Set-FeatureHandoffStage {
 
 function Get-FirstIncompleteHandoffStage {
     param([Parameter(Mandatory)]$State)
+    Normalize-FeatureHandoffState -State $State | Out-Null
     $idx = [array]::IndexOf($script:FeatureHandoffStages,[string]$State.current_stage)
     if ($idx -lt 0) { throw "FEATURE_HANDOFF_UNKNOWN_STAGE=$($State.current_stage)" }
     if ([string]$State.current_stage -eq 'PRODUCTION_RELEASED') { return 'PRODUCTION_RELEASED' }

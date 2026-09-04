@@ -49,7 +49,7 @@ grep -Fq 'vendor.js' "$safe" || fail 'QuickStart vendor bundle completeness chec
 ! grep -Eq 'uci[[:space:]].*(dhcp|firewall)|iptables|ip6tables|nft[[:space:]]' "$safe" || fail 'safe preview must not mutate DNS/firewall runtime'
 ! grep -Eqi 'push[[:space:]]+--force|reset[[:space:]]+--hard|clean[[:space:]]+-fdx' "$handoff" || fail 'feature handoff contains destructive Git operation'
 
-python3 - "$policy" "$sources" <<'PY'
+python - "$policy" "$sources" <<'PY'
 import json, sys
 p=json.load(open(sys.argv[1], encoding='utf-8'))
 s=json.load(open(sys.argv[2], encoding='utf-8'))

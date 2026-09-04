@@ -40,6 +40,8 @@ fi
 missing_archive=0
 missing_manifest=0
 verified=0
+language_package='luci-i18n-base-zh-cn'
+language_resource='usr/lib/lua/luci/i18n/base.zh-cn.lmo'
 
 while IFS= read -r pkg; do
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
@@ -77,6 +79,42 @@ while IFS= read -r pkg; do
     verified=$((verified + 1))
   fi
 done < "$REQUIRED_FILE"
+
+language_archive=''
+while IFS= read -r candidate; do
+  language_archive="$candidate"
+  break
+done < <(
+  find "$SRC/bin" -type f -name "${language_package}_*.ipk" -print 2>/dev/null | sort
+)
+
+language_manifest=''
+for manifest in "${manifests[@]}"; do
+  if grep -Eq "^${language_package}([[:space:]]|[=-])" "$manifest"; then
+    language_manifest="$manifest"
+    break
+  fi
+done
+
+if [[ -z "$language_archive" ]]; then
+  echo "MISSING_BUILT_PACKAGE: $language_package" | tee -a "$REPORT"
+  missing_archive=1
+else
+  data_member="$(ar t "$language_archive" | awk '/^data\.tar/{print; exit}')"
+  if [[ -z "$data_member" ]] || ! ar p "$language_archive" "$data_member" | tar -tzf - | sed 's#^\./##' | grep -qxF "$language_resource"; then
+    echo "MISSING_TRANSLATION_RESOURCE: $language_resource in $language_package" | tee -a "$REPORT"
+    missing_archive=1
+  else
+    echo "PASS: $language_package contains $language_resource" >> "$REPORT"
+  fi
+fi
+
+if [[ -z "$language_manifest" ]]; then
+  echo "MISSING_FROM_FIRMWARE_MANIFEST: $language_package" | tee -a "$REPORT"
+  missing_manifest=1
+else
+  echo "PASS: $language_package | manifest=$language_manifest" >> "$REPORT"
+fi
 
 {
   echo
