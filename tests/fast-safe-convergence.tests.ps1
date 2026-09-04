@@ -54,6 +54,10 @@ Assert-Throws {
     Assert-RebuildAllowed -FailureSet $frozen -RootfsOfflinePassed $false -FirmwareInputChanged $true
 } 'REBUILD_DENIED_FAILURE_SET_UNRESOLVED' 'unresolved failure set must block rebuild'
 
+$cancelPremature = Get-ActiveBuildReconciliationDecision -FailureSetState 'FROZEN' -RunId 33833009848 -RunStatus 'in_progress'
+Assert-Equal $cancelPremature.action 'CANCEL_INVALID_BUILD' 'an active build started before convergence must be cancelled'
+Assert-Equal $cancelPremature.run_id 33833009848 'cancel decision preserves the exact active run id'
+
 Set-FinalFailureResolution -FailureSet $frozen `
     -CheckId 'after_reboot.adguard_page_functional' `
     -RootCause 'manager menu and ACL generation mismatch' `
@@ -80,6 +84,17 @@ Assert-Throws {
 
 Assert-True (Assert-RebuildAllowed -FailureSet $frozen -RootfsOfflinePassed $true -FirmwareInputChanged $true) 'one new Candidate is allowed only after convergence and offline acceptance'
 
+$watchResolved = Get-ActiveBuildReconciliationDecision -FailureSetState 'RESOLVED' -RunId 123 -RunStatus 'in_progress'
+Assert-Equal $watchResolved.action 'WATCH_EXISTING_RUN' 'a valid active build is watched instead of duplicated'
+
+Assert-Throws {
+    Assert-FlashAllowed -FailureSet $frozen -RootfsOfflinePassed $false -CandidateAcceptancePassed $true -ContractGapState 'NONE'
+} 'FLASH_DENIED_ROOTFS_OFFLINE_NOT_PASS' 'flash is denied when final rootfs acceptance is missing'
+Assert-Throws {
+    Assert-FlashAllowed -FailureSet $frozen -RootfsOfflinePassed $true -CandidateAcceptancePassed $false -ContractGapState 'NONE'
+} 'FLASH_DENIED_CANDIDATE_ACCEPTANCE_NOT_PASS' 'flash is denied when candidate acceptance is incomplete'
+Assert-True (Assert-FlashAllowed -FailureSet $frozen -RootfsOfflinePassed $true -CandidateAcceptancePassed $true -ContractGapState 'NONE') 'flash becomes eligible only after convergence and final candidate acceptance'
+
 # A post-flash hotpatch invalidates release evidence even if the device later looks healthy.
 $mutated = Get-PostFlashReleaseDecision -PostFlashMutationState 'MUTATED' -RealDeviceVerifyPassed $true -ContractGapState 'NONE'
 Assert-Equal $mutated.action 'DENY_PRODUCTION_RELEASED' 'post-flash mutation can never be promoted'
@@ -100,5 +115,7 @@ Assert-Equal $known.state 'KNOWN_FAILURE' 'a failure already in the frozen set i
 
 Write-Host 'FAST_SAFE_FINAL_FAILURE_SET_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_REBUILD_PERMISSION_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_INVALID_BUILD_CANCEL_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_FLASH_PERMISSION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_CLEAN_POSTFLASH_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_CONTRACT_GAP_CONTRACT=PASS'
