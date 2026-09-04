@@ -8,6 +8,7 @@ $GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
 $WakeupPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
+$AgentsPath = Join-Path $Root 'AGENTS.md'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -32,6 +33,7 @@ Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
 Assert-True (Test-Path $RulesPath) 'durable GPT firmware rules must exist'
 Assert-True (Test-Path $WakeupPath) 'runner wakeup workflow must exist'
+Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
 
 . $IntentHelperPath
 
@@ -82,11 +84,19 @@ $wakeup = Get-Content -Raw $WakeupPath
 Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
 
 $rules = Get-Content -Raw $RulesPath
-Assert-Contains $rules 'state statement is not execution authorization' 'GPT/Codex rules must distinguish state correction from execution authorization'
-Assert-Contains $rules 'authorization is scope-bound' 'GPT/Codex rules must prevent authorization leakage across tasks'
-Assert-Contains $rules 'operator-intent.json' 'GPT/Codex startup must read operator intent before choosing a firmware action'
+Assert-Contains $rules 'state statement is not execution authorization' 'durable GPT rules must distinguish state correction from execution authorization'
+Assert-Contains $rules 'authorization is scope-bound' 'durable GPT rules must prevent authorization leakage across tasks'
+Assert-Contains $rules 'operator-intent.json' 'durable GPT startup must read operator intent before choosing a firmware action'
 Assert-Contains $rules 'ADH_MANAGEMENT' 'rules must record the current user-corrected work start'
 Assert-Contains $rules 'ADH_CHINESE' 'rules must record the next ADH localization stage'
 Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve the only successful terminal state'
 
+$agents = Get-Content -Raw $AgentsPath
+Assert-Contains $agents 'production/operator-intent.json' 'Codex startup must read operator intent before resume-state or executable firmware action selection'
+Assert-Contains $agents 'state statement is not execution authorization' 'Codex project rules must distinguish state correction from execution authorization'
+Assert-Contains $agents 'authorization is scope-bound' 'Codex project rules must prevent authorization leakage across tasks'
+Assert-Contains $agents 'GOVERNANCE_RULES_ONLY' 'Codex must understand governance-only authorization cannot unlock firmware execution'
+Assert-Contains $agents 'EXECUTE_FIRMWARE' 'Codex must require explicit firmware execution intent before mutating the release task'
+
 Write-Host 'ARTHUR_OPERATOR_INTENT_GATE_CONTRACT=PASS'
+Write-Host 'ARTHUR_CODEX_STARTUP_INTENT_CONTRACT=PASS'
