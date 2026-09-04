@@ -175,13 +175,18 @@ try {
     $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; error = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
     if ($deviceProbe.ok) {
         $device.reachable = $true
-        $deviceLines = @($deviceProbe.output -split "`r?`n")
-        $boardJson = $deviceLines | Where-Object { $_ -match '^\s*\{.*\}\s*$' } | Select-Object -First 1
-        if ($boardJson) {
+        $probeParts = $deviceProbe.output -split '__BUILD_INFO_SCAN__', 2
+        $boardJson = $probeParts[0].Trim()
+        $scanText = if ($probeParts.Count -gt 1) { $probeParts[1] } else { '' }
+        $deviceLines = @($scanText -split "`r?`n")
+        if ($boardJson -match '^\s*\{') {
             try {
                 $board = $boardJson | ConvertFrom-Json
-                $device.identity = [ordered]@{ model = $board.model; board = $board.board; release = $board.release }
-                if ($board.model -match '(?i)RE-SS-01|JDCloud' -or $board.board -match '(?i)jdcloud|re-ss-01') { $device.classification = 'CURRENT' }
+                $model = if ($board.PSObject.Properties['model']) { [string]$board.model } else { '' }
+                $boardName = if ($board.PSObject.Properties['board_name']) { [string]$board.board_name } else { '' }
+                $release = if ($board.PSObject.Properties['release']) { $board.release } else { $null }
+                $device.identity = [ordered]@{ model = $model; board = $boardName; release = $release }
+                if ($model -match '(?i)RE-SS-01|JDCloud' -or $boardName -match '(?i)jdcloud|re-ss-01') { $device.classification = 'CURRENT' }
                 else { $device.classification = 'INVALID' }
             } catch { $device.classification = 'INVALID' }
         }
