@@ -52,6 +52,34 @@ function Get-ArthurResumePhaseIndex {
     return [Array]::IndexOf($script:ArthurResumePhaseOrder, $Phase)
 }
 
+function Resolve-ArthurControlPlaneCheckpoint {
+    [CmdletBinding()]
+    param([object]$ExistingCanonical = $null)
+
+    $default = [ordered]@{
+        current = 'ADH_MANAGEMENT'
+        next_action = 'ADH_MANAGEMENT'
+        status = 'CURRENT_RELEASE_CONTRACT'
+    }
+    if (-not $ExistingCanonical) { return [pscustomobject]$default }
+
+    $task = [string](Get-ArthurResumeMember $ExistingCanonical 'production_task')
+    $checkpoint = Get-ArthurResumeMember $ExistingCanonical 'checkpoint'
+    if ($task -ne 'arthur-adh-quickstart' -or -not $checkpoint) { return [pscustomobject]$default }
+
+    $current = [string](Get-ArthurResumeMember $checkpoint 'current')
+    $nextAction = [string](Get-ArthurResumeMember $checkpoint 'next_action')
+    if ((Get-ArthurResumePhaseIndex $current) -lt 0 -or (Get-ArthurResumePhaseIndex $nextAction) -lt 0) {
+        return [pscustomobject]$default
+    }
+
+    return [pscustomobject]@{
+        current = $current
+        next_action = $nextAction
+        status = [string](Get-ArthurResumeMember $checkpoint 'status')
+    }
+}
+
 function Get-ArthurResumeSemanticHash {
     param([object]$State)
     $json = $State | ConvertTo-Json -Depth 30 -Compress
