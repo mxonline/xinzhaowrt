@@ -4,8 +4,10 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IntentPath = Join-Path $Root 'production\operator-intent.json'
 $IntentHelperPath = Join-Path $Root 'scripts\arthur-operator-intent.ps1'
+$GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
-$AgentsPath = Join-Path $Root 'AGENTS.md'
+$RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
+$WakeupPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -26,8 +28,10 @@ function Assert-Contains {
 
 Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
 Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
+Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
-Assert-True (Test-Path $AgentsPath) 'AGENTS rules must exist'
+Assert-True (Test-Path $RulesPath) 'durable GPT firmware rules must exist'
+Assert-True (Test-Path $WakeupPath) 'runner wakeup workflow must exist'
 
 . $IntentHelperPath
 
@@ -67,14 +71,22 @@ $firmwareDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $firmw
 Assert-Equal $firmwareDecision.allowed $true 'explicit firmware-release authorization must allow the firmware runtime'
 Assert-Equal $firmwareDecision.reason 'FIRMWARE_EXECUTION_AUTHORIZED' 'authorized firmware decision must be explicit'
 
-$controlPlane = Get-Content -Raw $ControlPlanePath
-Assert-Contains $controlPlane 'production\operator-intent.json' 'control plane must read the durable operator intent before headless execution'
-Assert-Contains $controlPlane 'Get-ArthurFirmwareExecutionPermission' 'control plane must use the scoped firmware execution decision'
-Assert-Contains $controlPlane 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'control plane must stop before headless firmware execution when permission is absent'
+$gate = Get-Content -Raw $GatePath
+Assert-Contains $gate 'production\operator-intent.json' 'gate must read durable operator intent before the control plane'
+Assert-Contains $gate 'Get-ArthurFirmwareExecutionPermission' 'gate must use the scoped firmware execution decision'
+Assert-Contains $gate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'gate must stop before firmware execution when permission is absent'
+Assert-Contains $gate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
+Assert-Contains $gate 'arthur-control-plane.ps1' 'authorized gate must hand off to the existing control plane rather than replace it'
 
-$agents = Get-Content -Raw $AgentsPath
-Assert-Contains $agents 'state statement is not execution authorization' 'GPT/Codex rules must distinguish state correction from execution authorization'
-Assert-Contains $agents 'authorization is scope-bound' 'GPT/Codex rules must prevent authorization leakage across tasks'
-Assert-Contains $agents 'operator-intent.json' 'GPT/Codex startup must read operator intent before choosing a firmware action'
+$wakeup = Get-Content -Raw $WakeupPath
+Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
+
+$rules = Get-Content -Raw $RulesPath
+Assert-Contains $rules 'state statement is not execution authorization' 'GPT/Codex rules must distinguish state correction from execution authorization'
+Assert-Contains $rules 'authorization is scope-bound' 'GPT/Codex rules must prevent authorization leakage across tasks'
+Assert-Contains $rules 'operator-intent.json' 'GPT/Codex startup must read operator intent before choosing a firmware action'
+Assert-Contains $rules 'ADH_MANAGEMENT' 'rules must record the current user-corrected work start'
+Assert-Contains $rules 'ADH_CHINESE' 'rules must record the next ADH localization stage'
+Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve the only successful terminal state'
 
 Write-Host 'ARTHUR_OPERATOR_INTENT_GATE_CONTRACT=PASS'
