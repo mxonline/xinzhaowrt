@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "policy_id": "fast-safe-release",
-  "policy_version": "1.0.0",
+  "policy_version": "1.1.0",
   "success_terminal_state": "PRODUCTION_RELEASED",
   "recovery_law": "REUSE_RECONCILE_REPAIR_CONTINUE",
   "production_stage_model": "RELEASE_FIRST_V3",
@@ -44,6 +44,18 @@
     "FIRMWARE_INPUT",
     "DEVICE_WRITE_POLICY"
   ],
+  "convergence_contract": {
+    "failure_set_required_before_build": true,
+    "failure_set_required_state": "RESOLVED",
+    "rootfs_offline_acceptance_required_before_build": true,
+    "firmware_input_fingerprint_binding_required": true,
+    "cancel_active_build_if_failure_set_unresolved": true,
+    "candidate_acceptance_required_before_flash": true,
+    "single_flash_chain_required": true,
+    "clean_postflash_required_for_release": true,
+    "postflash_mutation_denies_release": true,
+    "new_postflash_failure_requires_contract_gap_closure_before_rebuild": true
+  },
   "circuit_breaker": {
     "same_failure_without_progress_max_attempts": 2
   }
