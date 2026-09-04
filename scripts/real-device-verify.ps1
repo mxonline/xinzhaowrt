@@ -160,6 +160,7 @@ function Invoke-AuthenticatedUbus([object]$Request,[string]$CookieFile = '') {
     [pscustomobject]@{ ExitCode=$code; Output=$text; Json=$parsed }
 }
 
+<<<<<<< HEAD
 function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
     $cookiePath = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $url = if ($Path -match '^https?://') { $Path } else { "http://$DeviceIp$Path" }
@@ -170,6 +171,14 @@ function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
     if ($text -match '(?m)HTTP_STATUS:(\d{3})$') {
         $status = [int]$Matches[1]
         $text = ($text -replace "(?m)`nHTTP_STATUS:\d{3}$", '').Trim()
+=======
+function Test-AdguardRpcFunctional([string]$Prefix) {
+    $command = 'HTTP /ubus session login + session access for mature AdGuard Home UCI read/write ACL'
+    if (-not $RootPassword) {
+        $r = [pscustomobject]@{ ExitCode = 1; Output = 'ARTHUR_ROOT_PASSWORD was not supplied; authenticated ACL verification is fail-closed.' }
+        Add-Check "$Prefix.adguard_rpc_functional" $false $command $r 'Authenticated rpcd ACL/RPC verification requires ARTHUR_ROOT_PASSWORD.' | Out-Null
+        return
+>>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
     }
     [pscustomobject]@{ ExitCode=if ($code -eq 0 -and $status -ge 200 -and $status -lt 300) { 0 } else { 1 }; Output="HTTP_STATUS=$status`n$text" }
 }
@@ -178,10 +187,15 @@ function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
     $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $sid = Get-LuciSessionId $path
     $probes = @(
+<<<<<<< HEAD
         @{ scope='ubus'; object='service'; function='list' },
         @{ scope='ubus'; object='uci'; function='get' },
         @{ scope='ubus'; object='network.interface.lan'; function='status' },
         @{ scope='file'; object='/usr/bin/AdGuardHome --version'; function='exec' }
+=======
+        @{ scope = 'uci'; object = 'AdGuardHome'; function = 'read' },
+        @{ scope = 'uci'; object = 'AdGuardHome'; function = 'write' }
+>>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
     )
     $failed = [System.Collections.Generic.List[string]]::new()
     $outputs = [System.Collections.Generic.List[string]]::new()
@@ -193,8 +207,16 @@ function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
         if (-not $allowed) { $failed.Add("$($probe.scope):$($probe.object):$($probe.function)") }
         $outputs.Add("$($probe.scope):$($probe.object):$($probe.function) access=$allowed")
     }
+<<<<<<< HEAD
     $r = [pscustomobject]@{ ExitCode=if ($failed.Count -eq 0) { 0 } else { 1 }; Output=(($outputs + $failed) -join "`n") }
     Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) 'authenticated /ubus session access checks' $r 'Authenticated rpcd access must cover the mature AdGuard Home manager dependencies.' | Out-Null
+=======
+    if ($sid) {
+        Invoke-Ubus ([ordered]@{ jsonrpc = '2.0'; id = 3; method = 'call'; params = @($sid, 'session', 'destroy', [ordered]@{}) }) | Out-Null
+    }
+    $r = [pscustomobject]@{ ExitCode = if ($failed.Count -eq 0) { 0 } else { 1 }; Output = (($outputs + $failed) -join "`n") }
+    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'Mature AdGuard Home LuCI must have authenticated rpcd UCI read/write ACL access.' | Out-Null
+>>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
 }
 
 function Test-AdguardPageFunctional([string]$Prefix,[string]$CookieFile = '') {
@@ -254,7 +276,7 @@ function Run-Phase([string]$Prefix) {
     Test-Remote "$Prefix.storage" 'uname -a; free -h; df -h; mount; lsblk 2>/dev/null || true; dmesg | tail -n 80' { param($o) $o -match 'Linux' -and $o -match 'overlay' -and $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|firmware crashed)' } 'Kernel, memory, overlay, eMMC, filesystem and mounts must be healthy.' | Out-Null
     Test-Remote "$Prefix.lan" 'ubus call network.interface.lan status; ip -4 addr; ip route' { param($o) $o -match '"up":\s*true' -and $o -match '192\.168\.6\.1' } 'LAN must be up at 192.168.6.1.' | Out-Null
     Test-Remote "$Prefix.wan" 'ubus call network.interface.wan status; ip route show default' { param($o) $o -match '"up":\s*true' -and $o -match '(?m)^default\s' } 'WAN must be up and have a default route.' | Out-Null
-    Test-Remote "$Prefix.internet" 'if command -v uclient-fetch >/dev/null 2>&1; then uclient-fetch -qO- --timeout=10 https://api.ipify.org; elif command -v wget >/dev/null 2>&1; then wget -qO- -T 10 https://api.ipify.org; else exit 1; fi' { param($o) $o -match '(\d{1,3}\.){3}\d{1,3}|:' } 'HTTPS egress must work; ICMP is not required because it is filtered on the accepted network.' | Out-Null
+    Test-Remote "$Prefix.internet" '(ping -c 2 -W 3 1.1.1.1 >/dev/null 2>&1 && echo INET=ICMP_PASS) || (curl -fsS --connect-timeout 8 --max-time 15 https://openwrt.org/ -o /dev/null && echo INET=HTTPS_PASS) || (uclient-fetch -q -T 15 -O /dev/null https://openwrt.org/ && echo INET=HTTPS_PASS) || (wget -q -T 15 -O /dev/null https://openwrt.org/ && echo INET=HTTPS_PASS) || echo INET=FAIL' { param($o) $o -match '(?m)^INET=(ICMP|HTTPS)_PASS$' } 'Public egress must work through ICMP or an independent HTTPS fetch; public-IP lookup alone is insufficient.' | Out-Null
     Test-Remote "$Prefix.dns" 'nslookup openwrt.org 2>&1 || busybox nslookup openwrt.org 2>&1' { param($o) $o -match 'Address|address' -and $o -match '\d+\.\d+\.\d+\.\d+' } 'DNS resolution must work.' | Out-Null
     Test-Remote "$Prefix.logread" 'logread -l 300' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in logread are a failure.' | Out-Null
     Test-Remote "$Prefix.dmesg" 'dmesg' { param($o) $o -notmatch '(?im)(kernel panic|I/O error|input/output error|filesystem error|EXT4-fs error|segfault|out of memory|oom-killer|watchdog.*(timeout|reset|bite|failed|crash|reboot)|wireless.*(crash|failed|firmware))' } 'Critical runtime errors in dmesg are a failure.' | Out-Null
