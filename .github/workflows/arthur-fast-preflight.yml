@@ -54,6 +54,10 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-resume-state.tests.ps1
 
+      - name: Test Arthur operator intent gate contract
+        shell: pwsh
+        run: ./tests/arthur-operator-intent.tests.ps1
+
       - name: Parse LIVE_PREVIEW and control-plane PowerShell
         shell: pwsh
         run: |
@@ -66,6 +70,7 @@ jobs:
             'scripts/install-feature-handoff.ps1',
             'scripts/feature-handoff-status.ps1',
             'scripts/arthur-resume-state.ps1',
+            'scripts/arthur-operator-intent.ps1',
             'scripts/arthur-control-plane.ps1'
           )) {
             if (-not (Test-Path $file)) {
@@ -91,6 +96,7 @@ jobs:
         run: |
           python3 -m json.tool production/live-preview-policy.json >/dev/null
           python3 -m json.tool production/mature-ui-sources.json >/dev/null
+          python3 -m json.tool production/operator-intent.json >/dev/null
 
       - name: Test v4 toolchain bootstrap gate
         run: ./tests/test-v4-toolchain-bootstrap.sh
