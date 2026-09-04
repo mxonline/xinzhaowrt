@@ -84,6 +84,9 @@ jobs:
       - name: Compile Arthur orchestrator Python
         run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py
 
+      - name: Test runtime checkpoint synchronization
+        run: python3 -m unittest tests.test_runtime_checkpoint_sync -v
+
       - name: Validate LIVE_PREVIEW JSON contracts
         run: |
           python3 -m json.tool production/live-preview-policy.json >/dev/null
