@@ -6,6 +6,7 @@ $WorkflowPath = Join-Path $Root '.github\workflows\arthur-control-plane.yml'
 $WakeupWorkflowPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
 $ScriptPath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $PipelinePath = Join-Path $Root 'ai_orchestrator\arthur.py'
+$RuntimePath = Join-Path $Root 'ai_orchestrator\runtime.py'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -30,11 +31,13 @@ Assert-True (Test-Path $WorkflowPath) 'Arthur Control Plane workflow must exist'
 Assert-True (Test-Path $WakeupWorkflowPath) 'runner wakeup workflow must exist'
 Assert-True (Test-Path $ScriptPath) 'Arthur Control Plane script must exist'
 Assert-True (Test-Path $PipelinePath) 'Arthur pipeline must exist'
+Assert-True (Test-Path $RuntimePath) 'ProductionRuntime must exist'
 
 $workflow = Get-Content -Raw $WorkflowPath
 $wakeup = Get-Content -Raw $WakeupWorkflowPath
 $script = Get-Content -Raw $ScriptPath
 $pipeline = Get-Content -Raw $PipelinePath
+$runtime = Get-Content -Raw $RuntimePath
 
 Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'schedule/workflow default must not pin the old runner feature branch'
 Assert-Contains $workflow "github.event_name == 'workflow_dispatch'" 'workflow must distinguish manual source_ref from scheduled main checkout'
@@ -48,6 +51,9 @@ Assert-Contains $script 'RECOVERABLE_BUILD_INFO_PROVENANCE' 'build-info provenan
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
+Assert-Contains $pipeline 'default_request_id = "arthur-adh-quickstart"' 'Arthur pipeline must own the durable current release task identity'
+Assert-Contains $runtime 'self.pipeline.default_request_id' 'ProductionRuntime resume must inherit the pipeline task identity when request_id is omitted'
+Assert-NotContains $runtime 'request_id or "arthur-production"' 'ProductionRuntime must not silently replace arthur-adh-quickstart with the obsolete generic task id'
 
 # The only unattended wakeup path must be the already proven self-hosted runner schedule.
 Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must poll every five minutes'
