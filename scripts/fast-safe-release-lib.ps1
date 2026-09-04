@@ -401,3 +401,7 @@ function Load-ReleaseTaskState {
     catch { throw "FAST_SAFE_RELEASE_STATE_INVALID: $($_.Exception.Message)" }
     return ConvertTo-ReleaseTaskStateV2 -State $state -DeviceId $DeviceId
 }
+
+$ConvergenceLib = Join-Path $PSScriptRoot 'fast-safe-convergence-lib.ps1'
+if (-not (Test-Path -LiteralPath $ConvergenceLib -PathType Leaf)) { throw "FAST_SAFE_CONVERGENCE_LIB_MISSING=$ConvergenceLib" }
+. $ConvergenceLib
