@@ -33,6 +33,7 @@ foreach ($mode in @('Freeze','Resolve','AcceptRootfs','IngestPostFlash','MarkMut
 Assert-True ($manager -notmatch '(?i)PreflashPassed') 'manager must never accept a caller-supplied PreflashPassed boolean'
 Assert-True ($manager -match 'real-device-verification\.json') 'Freeze/IngestPostFlash must consume the existing full real-device verification JSON'
 Assert-True ($manager -match 'get-firmware-input-fingerprint\.sh') 'rootfs acceptance must bind to exact firmware inputs'
+Assert-True ($manager -match 'Assert-ConvergenceCheckScriptTrusted') 'manager must reject external/untracked preflash and rootfs scripts'
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhao-convergence-manager-$PID-$([Guid]::NewGuid().ToString('N'))")
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -51,6 +52,15 @@ try {
         Invoke-ConvergenceEvidenceCheck -CheckId 'preflash.test.fail' -ScriptPath $fail
     } 'CONVERGENCE_CHECK_FAILED' 'non-zero preflash check must fail closed'
 
+    Assert-Throws {
+        Assert-ConvergenceCheckScriptTrusted -RepoRoot $Root -ScriptPath $pass -SourceRef 'HEAD' | Out-Null
+    } 'CONVERGENCE_CHECK_UNTRUSTED_PATH' 'manager-level evidence must reject a temporary script outside the repository'
+
+    $trustedPath = Join-Path $Root 'tests/production-agent-convergence.tests.ps1'
+    $trusted = Assert-ConvergenceCheckScriptTrusted -RepoRoot $Root -ScriptPath $trustedPath -SourceRef 'HEAD'
+    Assert-Equal $trusted.relative_path 'tests/production-agent-convergence.tests.ps1' 'trusted check records repository-relative path'
+    Assert-True ($trusted.blob_sha -match '^[0-9a-f]{40}$') 'trusted check binds to a committed Git blob'
+
     $failureSet = New-FinalFailureSet -Failures @(
         [pscustomobject][ordered]@{ check_id='after_reboot.test'; failure_fingerprint=('a' * 64); status='OPEN' }
     ) -VerificationContractFingerprint ('b' * 64)
@@ -61,7 +71,7 @@ try {
         -FirmwareSourceFix 'source fix applied' `
         -PreflashCheckId 'preflash.test.pass' `
         -PreflashScriptPath $pass | Out-Null
-    Assert-Equal $failureSet.state 'RESOLVED' 'failure can resolve only after executed preflash check passes'
+    Assert-Equal $failureSet.state 'RESOLVED' 'low-level helper resolves only after executed preflash check passes'
     Assert-Equal $failureSet.items[0].preflash_check_id 'preflash.test.pass' 'resolution stores executed preflash check id'
 
     Set-ConvergenceRootfsAcceptanceFromCheck -Evidence $failureSet `
@@ -75,4 +85,5 @@ try {
 
 Write-Host 'RELEASE_CONVERGENCE_MANAGER_EXECUTED_CHECK_CONTRACT=PASS'
 Write-Host 'RELEASE_CONVERGENCE_MANAGER_NO_BOOLEAN_BYPASS_CONTRACT=PASS'
+Write-Host 'RELEASE_CONVERGENCE_MANAGER_TRUSTED_SCRIPT_CONTRACT=PASS'
 Write-Host 'RELEASE_CONVERGENCE_MANAGER_ROOTFS_BINDING_CONTRACT=PASS'
