@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: 'Arthur source branch to resume'
+        description: 'Optional Arthur source branch for a manual recovery run; leave empty to use the current branch'
         required: false
-        default: 'codex/arthur-runner-control-plane-20260904'
+        default: ''
   schedule:
     - cron: '*/5 * * * *'
 
@@ -15,8 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  actions: read
+  contents: write
+  actions: write
+  pull-requests: write
 
 jobs:
   control-plane:
@@ -31,11 +32,11 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Checkout handoff source
+      - name: Checkout current control-plane source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.source_ref || 'codex/arthur-runner-control-plane-20260904' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref_name }}
 
       - name: Reconcile and resume Arthur checkpoint
         shell: powershell
@@ -60,4 +61,10 @@ jobs:
           if (Test-Path -LiteralPath $heartbeat) {
             $h = Get-Content -Raw -LiteralPath $heartbeat
             "- Heartbeat: ``$h``" >> $env:GITHUB_STEP_SUMMARY
+          }
+          $runtimeState = Join-Path $root 'state\runtime-state.json'
+          if (Test-Path -LiteralPath $runtimeState) {
+            $runtime = Get-Content -Raw -LiteralPath $runtimeState | ConvertFrom-Json
+            "- Runtime phase: ``$($runtime.phase)``" >> $env:GITHUB_STEP_SUMMARY
+            "- Runtime turn count: ``$($runtime.turn_count)``" >> $env:GITHUB_STEP_SUMMARY
           }
