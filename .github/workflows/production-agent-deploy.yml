@@ -1,108 +1,101 @@
-name: Arthur Production Agent Deploy
+name: Arthur Runner Control Plane Wakeup
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'production/production-agent.json'
-      - 'production/arthur-flash-profile.json'
-      - 'requirements-headless.txt'
-      - 'scripts/production-agent.ps1'
-      - 'scripts/fetch-production-artifact.ps1'
-      - 'scripts/auto-flash-safety-gate.ps1'
-      - 'scripts/ci-controller-v3.ps1'
-      - 'scripts/install-production-agent.ps1'
-      - 'scripts/uninstall-production-agent.ps1'
-      - 'scripts/start-production-agent.ps1'
-      - 'scripts/production-agent-status.ps1'
-      - 'scripts/bridge-runtime-status.ps1'
-      - 'scripts/recover-existing-bridge-context.ps1'
-      - 'scripts/run-supervisor.py'
-      - 'ai_orchestrator/**'
-      - 'tests/production-agent.tests.ps1'
-      - 'tests/verified-baseline-inheritance.tests.ps1'
-      - '.github/workflows/production-agent-deploy.yml'
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
   actions: write
+  pull-requests: write
 
 concurrency:
-  group: arthur-production-agent-deploy
+  group: arthur-runner-control-plane-wakeup
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  wakeup:
     runs-on:
       - self-hosted
       - windows
       - x64
       - xinzhaowrt-controller
-    timeout-minutes: 45
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Checkout deployment source
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Quiesce standalone GPT Codex Bridge phase machine
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          $stateDir = Join-Path $runtime 'output\headless-production'
-          $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
-          New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
-          Set-Content -Path (Join-Path $stateDir 'STOP') -Value 'dispatch-only' -Encoding ASCII -Force
-
-          if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-          }
-
-          $pidCandidates = New-Object System.Collections.Generic.HashSet[int]
-          foreach ($jsonName in @('supervisor-state.json','runtime-status.json')) {
-            $path = Join-Path $stateDir $jsonName
-            if (-not (Test-Path $path)) { continue }
-            try {
-              $data = Get-Content -Raw $path | ConvertFrom-Json
-              foreach ($field in @('child_pid','daemon_pid','supervisor_pid')) {
-                if ($data.PSObject.Properties.Name -contains $field -and $data.$field) {
-                  [void]$pidCandidates.Add([int]$data.$field)
-                }
-              }
-            } catch {}
-          }
-          foreach ($processId in $pidCandidates) {
-            try {
-              $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$processId" -ErrorAction Stop
-              $cmd = [string]$proc.CommandLine
-              if ($cmd -match '(?i)ai_orchestrator|run-supervisor\.py' -and $cmd -match '(?i)headless-production') {
-                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-                Write-Host "GPT_CODEX_BRIDGE_STANDALONE_STOPPED pid=$processId"
-              }
-            } catch {}
-          }
-          Write-Host 'GPT_CODEX_BRIDGE_DISPATCH_ONLY=PASS'
-          exit 0
-
-      - name: Validate deployment source
+      - name: Sync persistent Control Plane workspace
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          & ./tests/production-agent.tests.ps1
-          if (Test-Path ./tests/verified-baseline-inheritance.tests.ps1) {
-            & ./tests/verified-baseline-inheritance.tests.ps1
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          $workspace = Join-Path $root 'workspace'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to configure Git authentication for the runner Control Plane.' }
+
+          if (-not (Test-Path (Join-Path $workspace '.git'))) {
+            git clone --branch main --single-branch "https://github.com/$env:GITHUB_REPOSITORY.git" $workspace
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create persistent Control Plane workspace.' }
+            Write-Host 'CONTROL_PLANE_WORKSPACE_BOOTSTRAPPED=PASS'
+          }
+          else {
+            git -C $workspace remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize persistent workspace origin.' }
+            git -C $workspace fetch --prune origin main
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into persistent workspace.' }
+
+            $dirty = (& git -C $workspace status --porcelain | Out-String).Trim()
+            if ($dirty) {
+              Write-Host 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED'
+            }
+            else {
+              $head = (& git -C $workspace rev-parse HEAD).Trim()
+              $originMain = (& git -C $workspace rev-parse origin/main).Trim()
+              $branch = (& git -C $workspace branch --show-current).Trim()
+              if ($head -eq $originMain) {
+                Write-Host "CONTROL_PLANE_WORKSPACE_SYNCED=PASS branch=$branch sha=$head"
+              }
+              else {
+                git -C $workspace merge-base --is-ancestor $head $originMain 2>$null
+                $behind = ($LASTEXITCODE -eq 0)
+                git -C $workspace merge-base --is-ancestor $originMain $head 2>$null
+                $ahead = ($LASTEXITCODE -eq 0)
+
+                if ($behind -and $branch -eq 'main') {
+                  git -C $workspace merge --ff-only origin/main
+                  if ($LASTEXITCODE -ne 0) { throw 'Persistent main workspace could not fast-forward safely.' }
+                  Write-Host 'CONTROL_PLANE_WORKSPACE_FAST_FORWARD=PASS'
+                }
+                elseif ($ahead) {
+                  Write-Host "CONTROL_PLANE_WORKSPACE_AHEAD=PRESERVED branch=$branch sha=$head"
+                }
+                else {
+                  Write-Host "CONTROL_PLANE_WORKSPACE_DIVERGED=PRESERVED branch=$branch sha=$head origin_main=$originMain"
+                }
+              }
+            }
           }
 
-      - name: Reuse or bootstrap persistent Python 3.12 and GPT Codex dependencies
+          $sourceSha = (& git -C $workspace rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'Persistent workspace HEAD is invalid.' }
+          $sourceBranch = (& git -C $workspace branch --show-current).Trim()
+          if (-not $sourceBranch) { $sourceBranch = 'DETACHED' }
+
+          "ARTHUR_CONTROL_PLANE_WORKSPACE=$workspace" >> $env:GITHUB_ENV
+          "CONTROL_PLANE_WORKSPACE=$workspace" >> $env:GITHUB_ENV
+          "CONTROL_PLANE_SOURCE_SHA=$sourceSha" >> $env:GITHUB_ENV
+          "CONTROL_PLANE_SOURCE_BRANCH=$sourceBranch" >> $env:GITHUB_ENV
+          Write-Host "CONTROL_PLANE_WORKSPACE=PASS path=$workspace branch=$sourceBranch sha=$sourceSha"
+
+      - name: Ensure persistent headless Python and Codex runtime
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -111,14 +104,16 @@ jobs:
           $uvCache = Join-Path $pythonHome 'cache'
           $venv = Join-Path $pythonHome '.venv'
           $pythonExe = Join-Path $venv 'Scripts\python.exe'
+          $requirements = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'requirements-headless.txt'
           New-Item -ItemType Directory -Force -Path $pythonHome | Out-Null
+          if (-not (Test-Path $requirements)) { throw "Headless requirements missing from persistent workspace: $requirements" }
 
           $reuse = $false
           if (Test-Path $pythonExe) {
             & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
             if ($LASTEXITCODE -eq 0) {
               $reuse = $true
-              Write-Host "GPT_CODEX_BRIDGE_RUNTIME=REUSE interpreter=$pythonExe"
+              Write-Host "HEADLESS_RUNTIME=REUSE interpreter=$pythonExe"
             }
           }
 
@@ -130,9 +125,7 @@ jobs:
             if (-not (Test-Path $uvExe)) {
               $cachedUv = Get-ChildItem 'C:\actions-runner\_work\_tool\uv' -Recurse -Filter uv.exe -File -ErrorAction SilentlyContinue |
                 Sort-Object FullName -Descending | Select-Object -First 1
-              if ($cachedUv) {
-                Copy-Item -Force $cachedUv.FullName $uvExe
-              }
+              if ($cachedUv) { Copy-Item -Force $cachedUv.FullName $uvExe }
             }
 
             if (-not (Test-Path $uvExe)) {
@@ -152,377 +145,53 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'uv managed Python 3.12 install failed.' }
             & $uvExe venv $venv --python 3.12 --clear
             if ($LASTEXITCODE -ne 0) { throw 'uv persistent venv creation failed.' }
-            if (-not (Test-Path $pythonExe)) { throw "Persistent Python executable was not created: $pythonExe" }
-            & $uvExe pip install --python $pythonExe -r requirements-headless.txt
-            if ($LASTEXITCODE -ne 0) { throw 'GPT-Codex Bridge dependency installation failed.' }
-            & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
-            if ($LASTEXITCODE -ne 0) { throw 'Persistent Python/Codex SDK verification failed.' }
-            Write-Host "GPT_CODEX_BRIDGE_RUNTIME=BOOTSTRAPPED interpreter=$pythonExe"
+            & $uvExe pip install --python $pythonExe -r $requirements
+            if ($LASTEXITCODE -ne 0) { throw 'Headless Codex dependency installation failed.' }
           }
 
+          & $pythonExe -c "import sys; import openai_codex; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Persistent headless Python/Codex verification failed.' }
+
+          (Split-Path -Parent $pythonExe) >> $env:GITHUB_PATH
           "HEADLESS_PYTHON_EXE=$pythonExe" >> $env:GITHUB_ENV
-          Write-Host "GPT_CODEX_BRIDGE_PYTHON=PASS interpreter=$pythonExe"
-          Write-Host 'GPT_CODEX_SDK_IMPORT=PASS'
+          Write-Host "HEADLESS_CODEX_RUNTIME=PASS interpreter=$pythonExe"
 
-      - name: Inspect existing GPT Codex Bridge runtime
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          & ./scripts/bridge-runtime-status.ps1
-          exit 0
-
-      - name: Recover existing Bridge in original user context
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          & ./scripts/recover-existing-bridge-context.ps1
-          exit 0
-
-      - name: Sync stable Production Agent runtime
+      - name: Reconcile and resume Arthur Control Plane
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          $workspace = $env:GITHUB_WORKSPACE
-          $repo = 'https://github.com/mxonline/xinzhaowrt.git'
-          $sourceSha = (git -C $workspace rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
-            throw 'Unable to resolve the already checked-out deployment source SHA.'
+          $script = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'scripts\arthur-control-plane.ps1'
+          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+            throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
           }
-
-          New-Item -ItemType Directory -Force -Path $runtime | Out-Null
-          if (-not (Test-Path (Join-Path $runtime '.git'))) {
-            git -C $runtime init
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to initialize stable Production Agent runtime.' }
-            git -C $runtime remote add origin $repo
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to configure Production Agent origin.' }
-          } else {
-            git -C $runtime remote set-url origin $repo
-            if ($LASTEXITCODE -ne 0) { throw 'Failed to normalize Production Agent origin.' }
+          Push-Location $env:ARTHUR_CONTROL_PLANE_WORKSPACE
+          try {
+            & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          finally { Pop-Location }
 
-          git -C $runtime fetch --force $workspace 'refs/heads/main:refs/remotes/deploy/main'
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to import main from the local checked-out workspace.' }
-          git -C $runtime checkout -B main refs/remotes/deploy/main
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to checkout locally imported main in Production Agent runtime.' }
-          git -C $runtime reset --hard $sourceSha
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to synchronize Production Agent runtime to the checked-out source SHA.' }
-
-          $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
-          if ($runtimeSha -ne $sourceSha) { throw "Production Agent runtime SHA mismatch: source=$sourceSha runtime=$runtimeSha" }
-          if (-not (Test-Path (Join-Path $runtime 'ai_orchestrator\adapters.py'))) { throw 'Existing GPT-Codex Bridge adapters were not synchronized into the persistent runtime.' }
-          Write-Host "PRODUCTION_AGENT_RUNTIME=$runtime"
-          Write-Host "PRODUCTION_AGENT_RUNTIME_SHA=$runtimeSha"
-          Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC=PASS'
-          Write-Host 'GPT_CODEX_BRIDGE_RUNTIME_SYNC=PASS'
-
-      - name: Verify persistent GitHub machine credential
+      - name: Publish wakeup summary
+        if: always()
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Continue'
-          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
-          $probe = & gh api repos/mxonline/xinzhaowrt --jq .full_name 2>&1
-          if ($LASTEXITCODE -eq 0 -and (($probe -join "`n") -match 'mxonline/xinzhaowrt')) { Write-Host 'PERSISTENT_GITHUB_AUTH=PASS' }
-          else { Write-Warning "PERSISTENT_GITHUB_AUTH=RETRYING $($probe -join ' ')" }
-          exit 0
-
-      - name: Install and start persistent Production Agent
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\install-production-agent.ps1')
-          if ($LASTEXITCODE -ne 0) { throw "Production Agent install failed: $LASTEXITCODE" }
-          Start-Sleep -Seconds 5
-          $task = Get-ScheduledTask -TaskName 'XinZhaoWrt-Arthur-Production-Agent' -ErrorAction Stop
-          Write-Host "PRODUCTION_AGENT_TASK=$($task.State)"
-          if (Test-Path (Join-Path $runtime 'output\production-agent\state.json')) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $runtime 'scripts\production-agent-status.ps1')
-          } else { Write-Host 'PRODUCTION_AGENT_STATE=STARTING' }
-          Write-Host 'PRODUCTION_AGENT_DEPLOY=PASS'
-
-      - name: Confirm GPT Codex Bridge dispatch-only mode
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $taskName = 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor'
-          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-          if ($task) {
-            Write-Warning "Standalone Bridge supervisor still registered; removing it now. state=$($task.State)"
-            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          "## Arthur Runner Control Plane Wakeup" >> $env:GITHUB_STEP_SUMMARY
+          "- Runner identity: ``$(whoami)``" >> $env:GITHUB_STEP_SUMMARY
+          "- Canonical root: ``$root``" >> $env:GITHUB_STEP_SUMMARY
+          "- Persistent workspace: ``$env:ARTHUR_CONTROL_PLANE_WORKSPACE``" >> $env:GITHUB_STEP_SUMMARY
+          "- Source branch: ``$env:CONTROL_PLANE_SOURCE_BRANCH``" >> $env:GITHUB_STEP_SUMMARY
+          "- Source SHA: ``$env:CONTROL_PLANE_SOURCE_SHA``" >> $env:GITHUB_STEP_SUMMARY
+          $heartbeat = Join-Path $root 'heartbeat.json'
+          if (Test-Path -LiteralPath $heartbeat) {
+            $h = Get-Content -Raw -LiteralPath $heartbeat | ConvertFrom-Json
+            "- Heartbeat sequence: ``$($h.sequence)``" >> $env:GITHUB_STEP_SUMMARY
           }
-          Write-Host 'GPT_CODEX_BRIDGE_DISPATCH_ONLY=PASS'
-          exit 0
-
-      - name: Start persistent v3 controller
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          $controller = Join-Path $runtime 'scripts\ci-controller-v3.ps1'
-          if (-not (Test-Path $controller)) { throw "Controller missing from stable runtime: $controller" }
-
-          $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-          if ($pwsh) { $pwshPath = $pwsh.Source }
-          else { $pwshPath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe' }
-          if (-not (Test-Path $pwshPath)) { throw "PowerShell 7 unavailable for controller: $pwshPath" }
-
-          $taskName = 'XinZhaoWrt-Arthur-v3-Controller'
-          $currentUser = "$env:USERDOMAIN\$env:USERNAME"
-          $action = New-ScheduledTaskAction -Execute $pwshPath -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$controller`" -Mode Watch" -WorkingDirectory $runtime
-          $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
-          $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 50 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-          $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
-          $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'Existing Arthur v3 Codex repair/controller loop. Continues build -> repair -> Candidate -> Production Agent -> PRODUCTION_RELEASED.'
-          Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
-          Start-ScheduledTask -TaskName $taskName
-          Start-Sleep -Seconds 3
-          $registered = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-          Write-Host "V3_CONTROLLER_TASK=$($registered.State)"
-          Write-Host 'UNATTENDED_CODEX_CONTINUATION=STARTED'
-
-      - name: Continue current Arthur release on authenticated runner
-        shell: powershell
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $runtime = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ProductionAgent'
-          $configPath = Join-Path $runtime 'production\production-agent.json'
-          $agent = Join-Path $runtime 'scripts\production-agent.ps1'
-          $status = Join-Path $runtime 'scripts\production-agent-status.ps1'
-          $statePath = Join-Path $runtime 'output\production-agent\state.json'
-          $acceptedDispatchStatus = 'REBUILD_' + 'DISPATCH_ACCEPTED'
-          if (-not (Test-Path $configPath)) { throw "Production Agent config missing: $configPath" }
-          if (-not (Test-Path $agent)) { throw "Production Agent missing: $agent" }
-          $config = Get-Content -Raw $configPath | ConvertFrom-Json
-          $runId = [long]$config.bootstrap.run_id
-          if (Test-Path $statePath) {
-            try {
-              $persistedState = Get-Content -Raw $statePath | ConvertFrom-Json
-              if ($persistedState.PSObject.Properties.Name -contains 'replacement_run_id' -and [long]$persistedState.replacement_run_id -gt 0) {
-                $runId = [long]$persistedState.replacement_run_id
-                Write-Host "PRODUCTION_AGENT_RESUME_REPLACEMENT_RUN=$runId"
-              }
-              elseif ([long]$persistedState.run_id -gt 0 -and [long]$persistedState.run_id -ne [long]$config.bootstrap.run_id -and [string]$persistedState.status -ne 'PRODUCTION_RELEASED') {
-                $runId = [long]$persistedState.run_id
-                Write-Host "PRODUCTION_AGENT_RESUME_PERSISTED_RUN=$runId"
-              }
-            }
-            catch {
-              Write-Warning "PERSISTED_RUN_STATE_READ_RETRY: $($_.Exception.Message)"
-            }
+          $runtimeState = Join-Path $root 'state\runtime-state.json'
+          if (Test-Path -LiteralPath $runtimeState) {
+            $runtime = Get-Content -Raw -LiteralPath $runtimeState | ConvertFrom-Json
+            "- Release task: ``$($runtime.release_task_id)``" >> $env:GITHUB_STEP_SUMMARY
+            "- Runtime phase: ``$($runtime.phase)``" >> $env:GITHUB_STEP_SUMMARY
+            "- Runtime turn count: ``$($runtime.turn_count)``" >> $env:GITHUB_STEP_SUMMARY
+            "- Terminal state: ``$($runtime.terminal_state)``" >> $env:GITHUB_STEP_SUMMARY
           }
-          if ($runId -le 0) { throw 'Current Arthur production run_id is not configured.' }
-          $pwsh = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\PowerShell\current\pwsh.exe'
-          if (-not (Test-Path $pwsh)) {
-            $resolved = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-            if (-not $resolved) { throw 'PowerShell 7 unavailable for authenticated Production Agent continuation.' }
-            $pwsh = $resolved.Source
-          }
-
-          $deadline = (Get-Date).AddMinutes(10)
-          Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=START run=$runId deadline=$($deadline.ToString('o'))"
-          while ((Get-Date) -lt $deadline) {
-            $state = $null
-            if (Test-Path $statePath) {
-              try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
-            }
-
-            $skipAgentForAcceptedDispatch = $state -and [string]$state.status -eq $acceptedDispatchStatus
-            if (-not $skipAgentForAcceptedDispatch) {
-              $previousPreference = $ErrorActionPreference
-              try {
-                $ErrorActionPreference = 'Continue'
-                & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode RunOnce -RunId $runId
-                $agentExit = $LASTEXITCODE
-              }
-              finally {
-                $ErrorActionPreference = $previousPreference
-              }
-
-              $state = $null
-              if (Test-Path $statePath) {
-                try { $state = Get-Content -Raw $statePath | ConvertFrom-Json } catch {}
-              }
-            }
-            else {
-              $agentExit = 0
-              $acceptedSource = if ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha') { [string]$state.replacement_dispatch_source_sha } else { '' }
-              Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$acceptedSource reason=accepted-state"
-            }
-
-            if ($state -and [string]$state.status -in @('REBUILD_REQUESTED',$acceptedDispatchStatus)) {
-              $sourceSha = (git -C $runtime rev-parse HEAD).Trim()
-              if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') {
-                Write-Warning 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=source-sha-unavailable'
-                Start-Sleep -Seconds 30
-                continue
-              }
-
-              $dispatchAlreadyAccepted = [string]$state.status -eq $acceptedDispatchStatus
-              if ($dispatchAlreadyAccepted) {
-                $acceptedSourceSha = if ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha') { [string]$state.replacement_dispatch_source_sha } else { '' }
-                if ($acceptedSourceSha -ne $sourceSha) {
-                  Write-Warning "CURRENT_SOURCE_REBUILD_CONFIRMING source=$acceptedSourceSha current_source=$sourceSha reason=accepted-source-mismatch"
-                  Start-Sleep -Seconds 30
-                  continue
-                }
-              }
-
-              Write-Host "REBUILD_DISPATCHING source=$sourceSha old_run=$runId accepted=$dispatchAlreadyAccepted"
-              $replacementRun = $null
-              $discoverySucceeded = $false
-              $listArgs = @('run','list','--repo',[string]$config.repository,'--workflow','arthur-update-v3.yml','--branch','main','--event','workflow_dispatch','--limit','20','--json','databaseId,createdAt,status,conclusion,headSha')
-              $previousPreference = $ErrorActionPreference
-              try {
-                $ErrorActionPreference = 'Continue'
-                $listText = (& gh @listArgs 2>&1 | Out-String).Trim()
-                $listExit = $LASTEXITCODE
-              }
-              finally {
-                $ErrorActionPreference = $previousPreference
-              }
-              if ($listExit -eq 0 -and $listText) {
-                try {
-                  $runs = @($listText | ConvertFrom-Json)
-                  $replacementRun = $runs |
-                    Where-Object {
-                      [string]$_.headSha -eq $sourceSha -and
-                      ([string]$_.status -in @('queued','in_progress','waiting','requested','pending') -or [string]$_.conclusion -eq 'success')
-                    } |
-                    Sort-Object { [DateTime]$_.createdAt } -Descending |
-                    Select-Object -First 1
-                  $discoverySucceeded = $true
-                }
-                catch {
-                  Write-Warning "CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list-parse detail=$($_.Exception.Message)"
-                }
-              }
-              elseif ($listExit -ne 0) {
-                Write-Warning "CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list exit=$listExit detail=$listText"
-              }
-              else {
-                Write-Warning 'CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY reason=run-list-empty'
-              }
-
-              if (-not $discoverySucceeded) {
-                Start-Sleep -Seconds 30
-                continue
-              }
-
-              if (-not $replacementRun) {
-                if ($dispatchAlreadyAccepted) {
-                  Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=accepted-awaiting-run-id"
-                  Start-Sleep -Seconds 30
-                  continue
-                }
-
-                $started = [DateTime]::UtcNow
-                $dispatchArgs = @('workflow','run','arthur-update-v3.yml','--repo',[string]$config.repository,'--ref','main','-f','mode=rebuild_known_good')
-                $previousPreference = $ErrorActionPreference
-                try {
-                  $ErrorActionPreference = 'Continue'
-                  $dispatchText = (& gh @dispatchArgs 2>&1 | Out-String).Trim()
-                  $dispatchExit = $LASTEXITCODE
-                }
-                finally {
-                  $ErrorActionPreference = $previousPreference
-                }
-                if ($dispatchExit -ne 0) {
-                  Write-Warning "CURRENT_SOURCE_REBUILD_DISPATCH_RETRY reason=workflow-dispatch exit=$dispatchExit detail=$dispatchText"
-                  Start-Sleep -Seconds 30
-                  continue
-                }
-
-                $acceptedAt = (Get-Date).ToUniversalTime().ToString('o')
-                if (-not ($state.PSObject.Properties.Name -contains 'replacement_dispatch_accepted_at')) {
-                  $state | Add-Member -NotePropertyName replacement_dispatch_accepted_at -NotePropertyValue $acceptedAt
-                } else { $state.replacement_dispatch_accepted_at = $acceptedAt }
-                if (-not ($state.PSObject.Properties.Name -contains 'replacement_dispatch_source_sha')) {
-                  $state | Add-Member -NotePropertyName replacement_dispatch_source_sha -NotePropertyValue $sourceSha
-                } else { $state.replacement_dispatch_source_sha = $sourceSha }
-                $state.status = 'REBUILD_DISPATCH_ACCEPTED'
-                $state.last_error = ''
-                $state.updated_at = (Get-Date).ToString('o')
-                $state | ConvertTo-Json -Depth 10 | Set-Content -Path $statePath -Encoding UTF8
-                Write-Host "REBUILD_DISPATCH_ACCEPTED source=$sourceSha accepted_at=$acceptedAt"
-                Write-Host "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=dispatch-accepted-awaiting-run-id"
-
-                $confirmDeadline = (Get-Date).AddSeconds(60)
-                while ((Get-Date) -lt $confirmDeadline -and -not $replacementRun) {
-                  Start-Sleep -Seconds 5
-                  $previousPreference = $ErrorActionPreference
-                  try {
-                    $ErrorActionPreference = 'Continue'
-                    $confirmText = (& gh @listArgs 2>&1 | Out-String).Trim()
-                    $confirmExit = $LASTEXITCODE
-                  }
-                  finally {
-                    $ErrorActionPreference = $previousPreference
-                  }
-                  if ($confirmExit -ne 0 -or -not $confirmText) { continue }
-                  try {
-                    $runs = @($confirmText | ConvertFrom-Json)
-                    $replacementRun = $runs |
-                      Where-Object {
-                        [string]$_.headSha -eq $sourceSha -and
-                        ([DateTime]$_.createdAt).ToUniversalTime() -ge $started.AddSeconds(-3)
-                      } |
-                      Sort-Object { [DateTime]$_.createdAt } -Descending |
-                      Select-Object -First 1
-                  }
-                  catch {}
-                }
-              }
-
-              if (-not $replacementRun -or [long]$replacementRun.databaseId -le 0) {
-                Write-Warning "CURRENT_SOURCE_REBUILD_CONFIRMING source=$sourceSha reason=run-id-not-confirmed"
-                Start-Sleep -Seconds 30
-                continue
-              }
-
-              $replacementRunId = [long]$replacementRun.databaseId
-              if (-not ($state.PSObject.Properties.Name -contains 'replacement_run_id')) {
-                $state | Add-Member -NotePropertyName replacement_run_id -NotePropertyValue $replacementRunId
-              } else { $state.replacement_run_id = $replacementRunId }
-              if (-not ($state.PSObject.Properties.Name -contains 'replacement_source_sha')) {
-                $state | Add-Member -NotePropertyName replacement_source_sha -NotePropertyValue $sourceSha
-              } else { $state.replacement_source_sha = $sourceSha }
-              if (-not ($state.PSObject.Properties.Name -contains 'replacement_build_requested')) {
-                $state | Add-Member -NotePropertyName replacement_build_requested -NotePropertyValue $true
-              } else { $state.replacement_build_requested = $true }
-              $state.status = 'REBUILD_DISPATCHED'
-              $state.last_error = ''
-              $state.updated_at = (Get-Date).ToString('o')
-              $state | ConvertTo-Json -Depth 10 | Set-Content -Path $statePath -Encoding UTF8
-              Write-Host "REBUILD_DISPATCHED run=$replacementRunId source=$sourceSha"
-              Write-Host "CURRENT_SOURCE_REBUILD_DISPATCHED=YES run=$replacementRunId source=$sourceSha"
-              $runId = $replacementRunId
-              continue
-            }
-
-            if ($state -and [string]$state.stage -eq 'PRODUCTION_RELEASED') {
-              if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
-              Write-Host "PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION=PASS run=$runId"
-              exit 0
-            }
-
-            if ($state -and [string]$state.human_gate -in @($config.human_stop_classes)) {
-              if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
-              throw "Arthur release stopped at frozen flash-safety boundary: $($state.human_gate)"
-            }
-
-            $stage = if ($state) { [string]$state.stage } else { 'UNKNOWN' }
-            $stateStatus = if ($state) { [string]$state.status } else { 'UNKNOWN' }
-            Write-Host "PRODUCTION_AGENT_AUTHENTICATED_RETRY run=$runId exit=$agentExit stage=$stage status=$stateStatus"
-            Start-Sleep -Seconds 30
-          }
-
-          if (Test-Path $status) { & $pwsh -NoProfile -ExecutionPolicy Bypass -File $status }
-          Write-Warning "PRODUCTION_AGENT_AUTHENTICATED_RETRY_WINDOW_EXPIRED run=$runId; scheduled recovery will re-enter the same durable checkpoint."
-          exit 0
