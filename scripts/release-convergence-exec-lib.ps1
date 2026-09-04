@@ -14,6 +14,61 @@ function Add-ConvergenceNoteProperty {
     }
 }
 
+function Assert-ConvergenceCheckScriptTrusted {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [string]$SourceRef = 'HEAD'
+    )
+    if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) { throw "CONVERGENCE_CHECK_REPO_ROOT_MISSING=$RepoRoot" }
+    if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) { throw "CONVERGENCE_CHECK_SCRIPT_MISSING=$ScriptPath" }
+
+    $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+    $resolved = (Resolve-Path -LiteralPath $ScriptPath).Path
+    $prefix = $root + [IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($prefix,[System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "CONVERGENCE_CHECK_UNTRUSTED_PATH=$resolved"
+    }
+    $relative = $resolved.Substring($prefix.Length).Replace('\','/')
+    if (-not $relative -or $relative.StartsWith('../') -or $relative.Contains('/../')) {
+        throw "CONVERGENCE_CHECK_UNTRUSTED_PATH=$relative"
+    }
+
+    $rawCommit = @(& git -C $root rev-parse --verify "$SourceRef^{commit}" 2>&1)
+    $commitCode = $LASTEXITCODE
+    $commit = ($rawCommit | ForEach-Object { [string]$_ }) -join "`n"
+    $commit = $commit.Trim()
+    if ($commitCode -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') {
+        throw "CONVERGENCE_CHECK_SOURCE_REF_INVALID=$SourceRef"
+    }
+
+    $rawBlob = @(& git -C $root rev-parse "$SourceRef`:$relative" 2>&1)
+    $blobCode = $LASTEXITCODE
+    $blob = ($rawBlob | ForEach-Object { [string]$_ }) -join "`n"
+    $blob = $blob.Trim()
+    if ($blobCode -ne 0 -or $blob -notmatch '^[0-9a-f]{40}$') {
+        throw "CONVERGENCE_CHECK_UNTRACKED_AT_SOURCE path=$relative source=$commit"
+    }
+
+    $rawWorking = @(& git -C $root hash-object -- $resolved 2>&1)
+    $workingCode = $LASTEXITCODE
+    $workingBlob = ($rawWorking | ForEach-Object { [string]$_ }) -join "`n"
+    $workingBlob = $workingBlob.Trim()
+    if ($workingCode -ne 0 -or $workingBlob -notmatch '^[0-9a-f]{40}$') {
+        throw "CONVERGENCE_CHECK_WORKTREE_HASH_FAILED=$relative"
+    }
+    if ($workingBlob -ne $blob) {
+        throw "CONVERGENCE_CHECK_WORKTREE_MISMATCH path=$relative source=$commit expected_blob=$blob actual_blob=$workingBlob"
+    }
+
+    return [pscustomobject][ordered]@{
+        relative_path = $relative
+        resolved_path = $resolved
+        source_sha = $commit
+        blob_sha = $blob
+    }
+}
+
 function Invoke-ConvergenceEvidenceCheck {
     param(
         [Parameter(Mandatory)][string]$CheckId,
