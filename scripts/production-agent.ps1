@@ -19,6 +19,10 @@ $RealDeviceBaselinePath = Join-Path $Root $RealDeviceBaselineRelative
 $ExpectedDiffPath = Join-Path $Root $ExpectedDiffRelative
 $SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
 . (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
+. (Join-Path $PSScriptRoot 'fast-safe-release-lib.ps1')
+. (Join-Path $PSScriptRoot 'fast-safe-convergence-lib.ps1')
+. (Join-Path $PSScriptRoot 'release-convergence-exec-lib.ps1')
+. (Join-Path $PSScriptRoot 'production-agent-convergence-lib.ps1')
 $Out = Join-Path $Root 'output\production-agent'
 $StatePath = Join-Path $Out 'state.json'
 $HandoffPath = Join-Path $Out 'handoff.json'
@@ -53,13 +57,28 @@ function Log([string]$Message) {
     Write-Host $line
 }
 
+function Complete-AgentStateDefaults($State) {
+    foreach ($pair in @{
+        flash_chain_id = ''
+        postflash_mutation_state = 'CLEAN'
+        contract_gap_state = 'NONE'
+    }.GetEnumerator()) {
+        if ($State.PSObject.Properties.Name -notcontains $pair.Key) {
+            Add-Member -InputObject $State -NotePropertyName $pair.Key -NotePropertyValue $pair.Value
+        }
+    }
+    return $State
+}
+
 function New-State([long]$RequestedRunId) {
-    return [pscustomobject]@{
-        schema_version='1.1'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
+    $state = [pscustomobject]@{
+        schema_version='1.2'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
         artifact_id=[long]0; artifact_name=''; source_sha=''; candidate_sha256=''; candidate_path='';
         remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false; replacement_build_requested=$false;
+        flash_chain_id=''; postflash_mutation_state='CLEAN'; contract_gap_state='NONE';
         updated_at=(Get-Date).ToString('o')
     }
+    return (Complete-AgentStateDefaults $state)
 }
 
 function Reset-RunLocalEvidence([long]$RequestedRunId) {
@@ -79,7 +98,7 @@ function Load-State {
         Reset-RunLocalEvidence -RequestedRunId $RunId
         return (New-State -RequestedRunId $RunId)
     }
-    return $state
+    return (Complete-AgentStateDefaults $state)
 }
 
 function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Message='') {
@@ -300,12 +319,14 @@ function Invoke-SafetyGate($State,[string]$Target,[string]$Rollback,[string]$Rem
 }
 
 function Invoke-VerifiedSysupgrade($State,[string]$Target,[string]$Remote) {
+    Assert-ProductionConvergenceBeforeFlash -State $State | Out-Null
     $Profile = Get-Content -Raw (Join-Path $Root 'production\arthur-flash-profile.json') | ConvertFrom-Json
     if (-not $Profile.verified) {
         $State.human_gate = 'UNRECOVERABLE_IRREVERSIBLE_OPERATION'
         Save-State $State ([string]$State.stage) 'BLOCKED' 'Arthur sysupgrade profile is not historically verified.'
         throw 'UNRECOVERABLE_IRREVERSIBLE_OPERATION'
     }
+    Start-ProductionFlashChain -State $State | Out-Null
     $args = ([string]$Profile.argument_template).Replace('{remote_candidate}',$Remote)
     $command = "$( [string]$Profile.remote_upgrade_binary ) $args"
     Save-State $State 'FLASH_STARTED' 'LIVE'
@@ -348,18 +369,27 @@ function Invoke-RepairController($State) {
 
 function Invoke-RealDeviceVerify($State,[string]$Target) {
     $tag = "arthur-update-$($State.run_id)"
+    $report = Get-ProductionRealDeviceReportPath
     Log "Running full real-device verification candidate=$tag target=$Target"
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'real-device-verify-v3.ps1') -Candidate $tag -Commit ([string]$State.source_sha) -Target $Target | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device verification failed; existing Codex repair controller will process evidence while the Production Agent stays on this checkpoint.'
+    $verifyExit = $LASTEXITCODE
+
+    if (Test-Path $report) {
+        Ingest-ProductionPostFlashEvidence -State $State | Out-Null
+        Save-State $State 'REAL_DEVICE_VERIFY' ([string]$State.status)
+    }
+
+    if ($verifyExit -ne 0) {
+        Mark-ProductionPostFlashMutation -State $State
+        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device verification failed; clean PostFlash evidence is invalidated before the existing repair controller processes the full failure set.'
         Invoke-RepairController $State
         throw 'REAL_DEVICE_VERIFY_FAILED_REPAIR_STARTED'
     }
-    $report = Join-Path $Root 'output\real-device\real-device-verification.json'
     if (-not (Test-Path $report)) { throw 'Real-device verifier produced no JSON report.' }
     $result = Get-Content -Raw $report | ConvertFrom-Json
     if ([string]$result.result -ne 'PASS') {
-        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device report result != PASS; existing Codex repair controller will process evidence while the Production Agent stays on this checkpoint.'
+        Mark-ProductionPostFlashMutation -State $State
+        Save-State $State 'REAL_DEVICE_VERIFY' 'FAILED' 'Real-device report result != PASS; clean PostFlash evidence is invalidated before repair.'
         Invoke-RepairController $State
         throw 'REAL_DEVICE_VERIFY_FAILED_REPAIR_STARTED'
     }
@@ -368,6 +398,7 @@ function Invoke-RealDeviceVerify($State,[string]$Target) {
 }
 
 function Complete-Release($State) {
+    Assert-ProductionReleaseConvergence -State $State | Out-Null
     $tag = "arthur-production-$($State.run_id)"
     $existing = Invoke-Process 'gh' @('release','view',$tag,'--repo',[string]$Config.repository) -AllowFailure
     if ($existing.ExitCode -ne 0) {
@@ -398,6 +429,7 @@ function Run-ProductionOnce {
     }
 
     if (-not (At-Or-After $state 'AUTO_FLASH_SAFETY_GATE')) {
+        Assert-ProductionConvergenceBeforeFlash -State $state | Out-Null
         $rollback = Ensure-Rollback $state
         $target = if ([string]$state.target) { [string]$state.target } else { Get-DeviceTarget $state }
         $remote = Upload-Candidate $state $target
@@ -431,6 +463,7 @@ function Run-ProductionOnce {
     }
 
     if ([string]$state.stage -eq 'RELEASE_GATE') {
+        Assert-ProductionReleaseConvergence -State $state | Out-Null
         Complete-Release $state
     }
 }
