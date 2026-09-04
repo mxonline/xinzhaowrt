@@ -11,11 +11,14 @@ $ErrorActionPreference = 'Stop'
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $PolicyPath = Join-Path $Root 'production\live-preview-policy.json'
+$AcceptedPreviewRoot = Join-Path $Root 'production\accepted-preview'
 $DeployScript = Join-Path $Root 'scripts\live-preview.ps1'
 $HandoffScript = Join-Path $Root 'scripts\feature-handoff.ps1'
 $HandoffInstaller = Join-Path $Root 'scripts\install-feature-handoff.ps1'
 $HandoffTask = 'XinZhaoWrt-Arthur-Feature-Handoff'
 $RootPassword = $env:ARTHUR_ROOT_PASSWORD
+. (Join-Path $PSScriptRoot 'feature-handoff-lib.ps1')
+. (Join-Path $PSScriptRoot 'fast-safe-release-lib.ps1')
 
 function Get-Tool([string[]]$Candidates) {
     foreach ($candidate in $Candidates) {
@@ -191,7 +194,6 @@ function Start-FeatureHandoff([string]$ResolvedManifest) {
     $acceptedSha=(& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1).Trim()
     if ($LASTEXITCODE -ne 0 -or $acceptedSha -notmatch '^[0-9a-f]{40}$') { throw 'FEATURE_HANDOFF_ACCEPTED_SOURCE_SHA_UNAVAILABLE' }
 
-    # Persist the accepted source identity synchronously before starting any background continuation.
     $acceptArgs=@(
         '-NoProfile','-ExecutionPolicy','Bypass','-File',$HandoffScript,
         '-Mode','AcceptPreview','-FeatureId',$FeatureId,
@@ -202,14 +204,124 @@ function Start-FeatureHandoff([string]$ResolvedManifest) {
     $acceptRaw=@(& $pwsh @acceptArgs 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "FEATURE_HANDOFF_ACCEPT_FAILED=$($acceptRaw -join ' ')" }
 
-    # Register the durable current-user task only after acceptance exists; the installer starts it once.
     $installRaw=@(& $pwsh -NoProfile -ExecutionPolicy Bypass -File $HandoffInstaller 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "FEATURE_HANDOFF_INSTALL_FAILED=$($installRaw -join ' ')" }
-
-    # Explicit immediate ownership by Task Scheduler. IgnoreNew prevents a duplicate instance if installer already started it.
     Start-ScheduledTask -TaskName $HandoffTask -ErrorAction Stop
     Write-Host "FEATURE_HANDOFF_STARTED=TASK:$HandoffTask"
     Write-Host "FEATURE_HANDOFF_EVIDENCE=$evidencePath"
+}
+
+function Resume-AcceptedFeatureHandoff {
+    if ($PauseAfterLivePreview) { Write-Host 'FEATURE_HANDOFF=PAUSED_BY_USER'; return }
+    $task = Get-ScheduledTask -TaskName $HandoffTask -ErrorAction SilentlyContinue
+    if ($task) {
+        Start-ScheduledTask -TaskName $HandoffTask -ErrorAction SilentlyContinue
+        Write-Host "FEATURE_HANDOFF_STARTED=EXISTING_TASK:$HandoffTask"
+    } else {
+        Write-Host 'FEATURE_HANDOFF_STARTED=ACCEPTED_RECORD_REUSED_NO_DUPLICATE_ACCEPT'
+    }
+}
+
+function Get-AcceptedPreviewRecord([string]$ResolvedManifest) {
+    if ($FeatureId -notmatch '^[a-z0-9][a-z0-9._-]{2,80}$') { return $null }
+    $recordPath = Join-Path $AcceptedPreviewRoot "$FeatureId.json"
+    if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) { return $null }
+    try { $record = Get-Content -Raw -LiteralPath $recordPath | ConvertFrom-Json -Depth 40 }
+    catch { throw "ACCEPTED_PREVIEW_RECORD_INVALID path=$recordPath error=$($_.Exception.Message)" }
+    if ([string]$record.feature_id -ne $FeatureId) { return $null }
+    $currentManifest = Get-PreviewManifestIdentity -RepoRoot $Root -ManifestPath $ResolvedManifest
+    if ([string]$currentManifest.manifest_sha256 -ne [string]$record.preview_manifest_sha256) { return $null }
+    foreach ($file in @($record.frozen_files)) {
+        $overlay = Join-Path $Root (([string]$file.overlay) -replace '/','\')
+        if (-not (Test-Path -LiteralPath $overlay -PathType Leaf)) { return $null }
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
+        if ($actual -ne ([string]$file.sha256).ToLowerInvariant()) { return $null }
+    }
+    return $record
+}
+
+function Get-RemoteAcceptedHashes($AcceptedRecord) {
+    $hashes = @{}
+    foreach ($file in @($AcceptedRecord.frozen_files | Sort-Object { [string]$_.remote })) {
+        $remote = [string]$file.remote
+        if ($remote -notmatch '^/[A-Za-z0-9._+:/-]+$') {
+            throw "ACCEPTED_PREVIEW_REMOTE_PATH_INVALID=$remote"
+        }
+        $result = Invoke-Remote "if [ -f '$remote' ]; then sha256sum '$remote' | cut -d' ' -f1; else echo MISSING; fi"
+        $output = $result.Output.Trim()
+        if ($output -eq 'MISSING') {
+            $hashes[$remote] = ''
+            continue
+        }
+        if ($output -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "ACCEPTED_PREVIEW_HASH_OUTPUT_INVALID path=$remote output=$output"
+        }
+        $hashes[$remote] = $output.ToLowerInvariant()
+    }
+    return $hashes
+}
+
+function New-DriftOnlyManifest($AcceptedRecord,[string[]]$Paths) {
+    $entries = New-Object System.Collections.Generic.List[object]
+    foreach ($remote in $Paths) {
+        $file = @($AcceptedRecord.frozen_files | Where-Object { [string]$_.remote -eq $remote }) | Select-Object -First 1
+        if (-not $file) { throw "ACCEPTED_PREVIEW_DRIFT_PATH_UNRESOLVED=$remote" }
+        $overlay = [string]$file.overlay
+        $full = Join-Path $Root ($overlay -replace '/','\')
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "ACCEPTED_PREVIEW_FROZEN_BYTE_MISSING=$overlay" }
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
+        if ($actual -ne ([string]$file.sha256).ToLowerInvariant()) { throw "ACCEPTED_PREVIEW_FROZEN_BYTE_HASH_MISMATCH=$overlay" }
+        $entries.Add([ordered]@{ source=$overlay; remote=$remote; mode=[string]$file.mode })
+    }
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) "xinzhao-preview-drift-$PID-$([Guid]::NewGuid().ToString('N')).json"
+    [ordered]@{ schema_version=1; entries=@($entries) } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $path -Encoding UTF8
+    return $path
+}
+
+function Try-ReuseAcceptedPreview([string]$ResolvedManifest,$Policy) {
+    $record = Get-AcceptedPreviewRecord $ResolvedManifest
+    if (-not $record) { return $false }
+    $deviceHashes = Get-RemoteAcceptedHashes $record
+    $decision = Get-PreviewReuseDecision -AcceptedRecord $record -DeviceHashes $deviceHashes
+    Write-Host "PREVIEW_REUSE_ACTION=$($decision.action)"
+    Write-Host "ACCEPTED_PREVIEW_FINGERPRINT=$($decision.fingerprint)"
+
+    if ([string]$decision.action -eq 'REUSE_PREVIEW_ACCEPTED') {
+        Write-Host 'REUSE_PREVIEW_ACCEPTED=PASS'
+        Write-Host 'PREVIEW_FULL_DEPLOY_SKIPPED=true'
+        Write-Host 'LIVE_PREVIEW=PASS_REUSED_ACCEPTED'
+        Write-Host 'WIFI=VERIFIED_FROZEN'
+        Write-Host 'REAL_DEVICE_VERIFY=NOT_RUN'
+        Write-Host 'RELEASE_ALLOWED=false'
+        Resume-AcceptedFeatureHandoff
+        return $true
+    }
+    if ([string]$decision.action -ne 'RESTORE_DRIFTED_PREVIEW_FILES') { return $false }
+
+    $partialManifestPath = New-DriftOnlyManifest -AcceptedRecord $record -Paths @($decision.paths)
+    $partialManifest = $null
+    $backup = ''
+    try {
+        $partialManifest = Read-Manifest $partialManifestPath
+        $deploy = @(Invoke-GenericDeploy $partialManifestPath)
+        $backup = Get-BackupPath $deploy
+        if (-not $backup) { throw 'ACCEPTED_PREVIEW_DRIFT_BACKUP_MISSING' }
+        Test-AdGuardUiPreview $Policy
+        Test-QuickStartPreview $Policy
+        Write-Host "RESTORE_DRIFTED_PREVIEW_FILES=PASS count=$(@($decision.paths).Count)"
+        Write-Host 'PREVIEW_FULL_DEPLOY_SKIPPED=true'
+        Write-Host 'LIVE_PREVIEW=PASS'
+        Write-Host 'WIFI=VERIFIED_FROZEN'
+        Write-Host 'REAL_DEVICE_VERIFY=NOT_RUN'
+        Write-Host 'RELEASE_ALLOWED=false'
+        Resume-AcceptedFeatureHandoff
+        return $true
+    } catch {
+        if ($partialManifest -and $backup) { Restore-PreviewFiles $partialManifest $backup }
+        throw
+    } finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue $partialManifestPath
+    }
 }
 
 if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) { throw "LIVE_PREVIEW_POLICY_MISSING path=$PolicyPath" }
@@ -228,6 +340,8 @@ if ($ValidateOnly) {
     Write-Host 'RELEASE_ALLOWED=false'
     exit 0
 }
+
+if (Try-ReuseAcceptedPreview -ResolvedManifest $ResolvedManifest -Policy $Policy) { exit 0 }
 
 if (-not $RootPassword) { throw 'LIVE_PREVIEW_AUTH_REQUIRED: ARTHUR_ROOT_PASSWORD is not set.' }
 $DeployOutput = @(Invoke-GenericDeploy $ResolvedManifest)

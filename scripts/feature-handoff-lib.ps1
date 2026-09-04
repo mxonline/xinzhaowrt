@@ -1,5 +1,9 @@
 Set-StrictMode -Version Latest
 
+$FastSafeReleaseLib = Join-Path $PSScriptRoot 'fast-safe-release-lib.ps1'
+if (-not (Test-Path -LiteralPath $FastSafeReleaseLib -PathType Leaf)) { throw "FAST_SAFE_RELEASE_LIB_MISSING=$FastSafeReleaseLib" }
+. $FastSafeReleaseLib
+
 $script:FeatureHandoffStages = @(
     'PREVIEW_ACCEPTED','LOCAL_CHANGES_CAPTURED','STATIC_VERIFIED','SOURCE_FROZEN',
     'REMOTE_INTEGRATED','BUILD_DISPATCHED','CONTROLLER_ATTACHED','PRODUCTION_RUNNING','PRODUCTION_RELEASED'
@@ -34,8 +38,11 @@ function New-FeatureHandoffState {
     )
     if ($AcceptedDiffSha256 -notmatch '^[0-9a-f]{64}$') { throw 'FEATURE_HANDOFF_INVALID_DIFF_SHA256' }
     if ($PreviewManifestSha256 -notmatch '^[0-9a-f]{64}$') { throw 'FEATURE_HANDOFF_INVALID_MANIFEST_SHA256' }
+    $releaseTaskId = "arthur:${FeatureId}:$AcceptedPreviewSourceSha"
     [pscustomobject][ordered]@{
-        schema_version = 1
+        schema_version = 2
+        release_task_id = $releaseTaskId
+        device_id = 'jdcloud_re-ss-01'
         feature_id = $FeatureId
         dispatch_key = Get-FeatureHandoffKey -FeatureId $FeatureId -AcceptedPreviewSourceSha $AcceptedPreviewSourceSha
         accepted_preview_source_sha = $AcceptedPreviewSourceSha
@@ -43,6 +50,24 @@ function New-FeatureHandoffState {
         preview_manifest_sha256 = $PreviewManifestSha256
         preview_manifest_path = $PreviewManifestPath
         preview_evidence = $PreviewEvidence
+        accepted_preview_fingerprint = ''
+        build_fingerprint = ''
+        active_run_id = 0
+        artifact_sha256 = ''
+        artifact_identity = ''
+        flash_state = 'NOT_STARTED'
+        next_action = ''
+        invalidations = @()
+        last_progress_at = (Get-Date).ToUniversalTime().ToString('o')
+        last_progress_marker = 'PREVIEW_ACCEPTED'
+        failure_fingerprint = ''
+        terminal_state = 'ACTIVE'
+        last_verified_stage = 'PREVIEW_ACCEPTED'
+        executor_id = ''
+        executor_state = 'IDLE'
+        heartbeat_at = ''
+        current_action = ''
+        action_started_at = ''
         changed_paths = @()
         frozen_files = @()
         current_stage = 'PREVIEW_ACCEPTED'
@@ -72,26 +97,56 @@ function Add-HandoffStateDefault($State,[string]$Name,$Value) {
     }
 }
 
+function Complete-FeatureHandoffV2Defaults($State) {
+    Add-HandoffStateDefault $State 'release_task_id' "arthur:$([string]$State.feature_id):$([string]$State.accepted_preview_source_sha)"
+    Add-HandoffStateDefault $State 'device_id' 'jdcloud_re-ss-01'
+    Add-HandoffStateDefault $State 'terminal_state' $(if ([string]$State.current_stage -eq 'PRODUCTION_RELEASED') { 'PRODUCTION_RELEASED' } else { 'ACTIVE' })
+    Add-HandoffStateDefault $State 'last_verified_stage' $(if ([string]$State.stage_status -in @('VERIFIED','PASS')) { [string]$State.current_stage } else { 'PREVIEW_ACCEPTED' })
+    Add-HandoffStateDefault $State 'accepted_preview_fingerprint' ''
+    Add-HandoffStateDefault $State 'build_fingerprint' ''
+    $runId = 0
+    if ($State.PSObject.Properties.Name -contains 'dispatched_run_id') { $runId = [long]$State.dispatched_run_id }
+    Add-HandoffStateDefault $State 'active_run_id' $runId
+    Add-HandoffStateDefault $State 'artifact_sha256' ''
+    Add-HandoffStateDefault $State 'artifact_identity' ''
+    Add-HandoffStateDefault $State 'flash_state' 'NOT_STARTED'
+    Add-HandoffStateDefault $State 'next_action' ''
+    Add-HandoffStateDefault $State 'invalidations' @()
+    Add-HandoffStateDefault $State 'last_progress_at' (Get-Date).ToUniversalTime().ToString('o')
+    Add-HandoffStateDefault $State 'last_progress_marker' ([string]$State.current_stage)
+    Add-HandoffStateDefault $State 'failure_fingerprint' ''
+    Add-HandoffStateDefault $State 'executor_id' ''
+    Add-HandoffStateDefault $State 'executor_state' 'IDLE'
+    Add-HandoffStateDefault $State 'heartbeat_at' ''
+    Add-HandoffStateDefault $State 'current_action' ''
+    Add-HandoffStateDefault $State 'action_started_at' ''
+    Add-HandoffStateDefault $State 'dispatch_started_at' ''
+    Add-HandoffStateDefault $State 'dispatch_accepted' $false
+    return $State
+}
+
 function Save-FeatureHandoffState {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$StatePath)
     $dir = Split-Path -Parent $StatePath
     if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    Add-HandoffStateDefault $State 'dispatch_started_at' ''
-    Add-HandoffStateDefault $State 'dispatch_accepted' $false
+    if ([int]$State.schema_version -eq 1) { $State = ConvertTo-ReleaseTaskStateV2 -State $State -DeviceId 'jdcloud_re-ss-01' }
+    if ([int]$State.schema_version -ne 2) { throw "FEATURE_HANDOFF_STATE_SCHEMA_UNSUPPORTED=$($State.schema_version)" }
+    Complete-FeatureHandoffV2Defaults $State | Out-Null
     $State.updated_at = (Get-Date).ToString('o')
     $tmp = "$StatePath.tmp"
-    $State | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $tmp -Encoding UTF8
+    $State | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $tmp -Encoding UTF8
     Move-Item -Force -LiteralPath $tmp -Destination $StatePath
 }
 
 function Load-FeatureHandoffState {
     param([Parameter(Mandatory)][string]$StatePath)
     if (-not (Test-Path -LiteralPath $StatePath)) { return $null }
-    try { $state = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json -Depth 30 }
+    try { $state = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json -Depth 40 }
     catch { throw "FEATURE_HANDOFF_STATE_INVALID: $($_.Exception.Message)" }
-    if ([int]$state.schema_version -ne 1) { throw "FEATURE_HANDOFF_STATE_SCHEMA_UNSUPPORTED=$($state.schema_version)" }
-    Add-HandoffStateDefault $state 'dispatch_started_at' ''
-    Add-HandoffStateDefault $state 'dispatch_accepted' $false
+    $schema = [int]$state.schema_version
+    if ($schema -eq 1) { $state = ConvertTo-ReleaseTaskStateV2 -State $state -DeviceId 'jdcloud_re-ss-01' }
+    elseif ($schema -ne 2) { throw "FEATURE_HANDOFF_STATE_SCHEMA_UNSUPPORTED=$schema" }
+    Complete-FeatureHandoffV2Defaults $state | Out-Null
     return $state
 }
 
@@ -117,8 +172,16 @@ function Assert-HandoffResumeIdentity {
 function Set-FeatureHandoffStage {
     param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$Stage,[string]$Status='LIVE',[string]$Message='')
     if ($Stage -notin $script:FeatureHandoffStages) { throw "FEATURE_HANDOFF_UNKNOWN_STAGE=$Stage" }
+    Complete-FeatureHandoffV2Defaults $State | Out-Null
+    Assert-ReleaseStageTransition -State $State -NextStage $Stage | Out-Null
     $State.current_stage = $Stage
     $State.stage_status = $Status
+    if ($Status -in @('VERIFIED','PASS')) {
+        $State.last_verified_stage = $Stage
+        $State.last_progress_marker = $Stage
+        $State.last_progress_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    if ($Stage -eq 'PRODUCTION_RELEASED') { $State.terminal_state = 'PRODUCTION_RELEASED' }
     if ($Message) { $State.last_error = $Message }
     $State.updated_at = (Get-Date).ToString('o')
     return $State
@@ -141,11 +204,10 @@ function Test-ProductionWriteInProgress([string]$Stage) {
 
 function Get-HandoffDispatchAction {
     param([Parameter(Mandatory)]$State,[string]$ProductionStage='')
-    Add-HandoffStateDefault $State 'dispatch_started_at' ''
-    Add-HandoffStateDefault $State 'dispatch_accepted' $false
+    Complete-FeatureHandoffV2Defaults $State | Out-Null
     if (Test-ProductionWriteInProgress -Stage $ProductionStage) { return 'RECONCILE' }
     if ($ProductionStage -eq 'PRODUCTION_RELEASED') { return 'RECONCILE' }
-    if ([long]$State.dispatched_run_id -gt 0 -or $State.suppress_dispatch -eq $true) { return 'RECONCILE' }
+    if ([long]$State.dispatched_run_id -gt 0 -or [long]$State.active_run_id -gt 0 -or $State.suppress_dispatch -eq $true) { return 'RECONCILE' }
     if ([string]$State.dispatch_started_at -or $State.dispatch_accepted -eq $true) { return 'DISCOVER' }
     return 'DISPATCH'
 }
@@ -275,14 +337,20 @@ function Write-AcceptedPreviewRecord {
     $dir = Join-Path $RepoRoot 'production\accepted-preview'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $path = Join-Path $dir ("$($State.feature_id).json")
-    [ordered]@{
+    $record = [pscustomobject][ordered]@{
         schema_version=1; feature_id=[string]$State.feature_id;
         accepted_preview_source_sha=[string]$State.accepted_preview_source_sha;
         accepted_diff_sha256=[string]$State.accepted_diff_sha256;
         preview_manifest_sha256=[string]$State.preview_manifest_sha256;
         frozen_files=@($FrozenFiles); preview_evidence=$State.preview_evidence;
         deferred_acceptance=@($DeferredAcceptance); wifi_state='VERIFIED_FROZEN'; frozen_at=(Get-Date).ToString('o')
-    } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path -Encoding UTF8
+    }
+    $fingerprint = Get-AcceptedPreviewFingerprint -AcceptedRecord $record
+    Add-Member -InputObject $record -NotePropertyName accepted_preview_fingerprint -NotePropertyValue $fingerprint
+    Complete-FeatureHandoffV2Defaults $State | Out-Null
+    $State.accepted_preview_fingerprint = $fingerprint
+    $State.frozen_files = @($FrozenFiles)
+    $record | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $path -Encoding UTF8
     return $path
 }
 
@@ -294,17 +362,18 @@ function Select-HandoffBuildPlan {
     [pscustomobject]@{ selected_build_lane='V3_REBUILD_KNOWN_GOOD'; v3_mode='rebuild_known_good'; reason='source-lock-preserving accepted preview overlay; use existing production-integrated v3 Candidate lane' }
 }
 
-function Copy-HandoffStateObject($State) { return (($State | ConvertTo-Json -Depth 30) | ConvertFrom-Json -Depth 30) }
+function Copy-HandoffStateObject($State) { return (($State | ConvertTo-Json -Depth 40) | ConvertFrom-Json -Depth 40) }
 
 function Reconcile-ProductionState {
     param([Parameter(Mandatory)]$HandoffState,[Parameter(Mandatory)]$ProductionState)
     $state = Copy-HandoffStateObject $HandoffState
+    Complete-FeatureHandoffV2Defaults $state | Out-Null
     $stage = [string]$ProductionState.stage
     $state.production_stage = $stage
     if (Test-ProductionWriteInProgress -Stage $stage) {
-        $state.current_stage='PRODUCTION_RUNNING'; $state.stage_status='LIVE'; $state.suppress_dispatch=$true
+        $state.current_stage='PRODUCTION_RUNNING'; $state.stage_status='LIVE'; $state.suppress_dispatch=$true; $state.flash_state=$stage
     } elseif ($stage -eq 'PRODUCTION_RELEASED') {
-        $state.current_stage='PRODUCTION_RELEASED'; $state.stage_status='VERIFIED'; $state.suppress_dispatch=$true
+        $state.current_stage='PRODUCTION_RELEASED'; $state.last_verified_stage='PRODUCTION_RELEASED'; $state.stage_status='VERIFIED'; $state.terminal_state='PRODUCTION_RELEASED'; $state.suppress_dispatch=$true
     } elseif ($stage) {
         if ([array]::IndexOf($script:FeatureHandoffStages,[string]$state.current_stage) -lt [array]::IndexOf($script:FeatureHandoffStages,'CONTROLLER_ATTACHED')) { $state.current_stage='CONTROLLER_ATTACHED' }
         $state.stage_status='LIVE'

@@ -14,6 +14,39 @@ name: Arthur Known-Good Update v3
           - update_feeds
           - update_plugins
           - update_all
+      failure_set_state:
+        description: Frozen final failure-set state; only RESOLVED may build
+        required: true
+        default: UNSET
+        type: string
+      failure_set_fingerprint:
+        description: SHA256 of the frozen final failure set
+        required: true
+        default: ''
+        type: string
+      verification_contract_fingerprint:
+        description: SHA256 of the verification contract that produced the failure set
+        required: true
+        default: ''
+        type: string
+      rootfs_offline_passed:
+        description: Whether pre-build/rootfs offline acceptance is complete
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      contract_gap_state:
+        description: REAL_DEVICE_VERIFY contract-gap state; must be NONE
+        required: true
+        default: UNSET
+        type: string
+      firmware_input_fingerprint:
+        description: SHA256 binding convergence evidence to the exact firmware-affecting inputs
+        required: true
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -42,6 +75,19 @@ jobs:
           test -s config/arthur-known-good.lock
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
           echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
+
+      - name: Enforce release convergence before build
+        env:
+          FAILURE_SET_STATE: ${{ inputs.failure_set_state }}
+          FAILURE_SET_FINGERPRINT: ${{ inputs.failure_set_fingerprint }}
+          VERIFICATION_CONTRACT_FINGERPRINT: ${{ inputs.verification_contract_fingerprint }}
+          ROOTFS_OFFLINE_PASSED: ${{ inputs.rootfs_offline_passed }}
+          CONTRACT_GAP_STATE: ${{ inputs.contract_gap_state }}
+          FIRMWARE_INPUT_FINGERPRINT: ${{ inputs.firmware_input_fingerprint }}
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/get-firmware-input-fingerprint.sh scripts/classify-build-scope.sh
+          python3 scripts/check-release-convergence.py
 
       - name: Free runner disk space
         run: |
@@ -187,6 +233,10 @@ jobs:
             echo '- Device: `jdcloud_re-ss-01`'
             echo '- Required plugins: `22`'
             echo '- Large-upload OOM guard: required'
+            echo '- Release convergence: required before build'
+            echo '- Failure set state: `${{ inputs.failure_set_state }}`'
+            echo '- Failure set fingerprint: `${{ inputs.failure_set_fingerprint }}`'
+            echo '- Firmware input fingerprint: `${{ inputs.firmware_input_fingerprint }}`'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -s output/update-lock.diff ]; then
             echo '### Source lock delta' >> "$GITHUB_STEP_SUMMARY"
