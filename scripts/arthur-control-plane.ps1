@@ -131,7 +131,18 @@ try {
     $run = $null
     if ($candidateDetails -and $candidateDetails.targetCommitish) {
         $matchingRuns = Invoke-GhJson @('api', "repos/$Repository/actions/runs?head_sha=$($candidateDetails.targetCommitish)&per_page=100")
-        $run = @($matchingRuns.workflow_runs | Where-Object { $_.conclusion -eq 'success' }) | Sort-Object created_at -Descending | Select-Object -First 1
+        $matchedRun = @($matchingRuns.workflow_runs | Where-Object { $_.conclusion -eq 'success' }) | Sort-Object created_at -Descending | Select-Object -First 1
+        if ($matchedRun) {
+            $run = [pscustomobject]@{
+                databaseId = [long]$matchedRun.id
+                status = [string]$matchedRun.status
+                conclusion = [string]$matchedRun.conclusion
+                headSha = [string]$matchedRun.head_sha
+                headBranch = [string]$matchedRun.head_branch
+                workflowName = [string]$matchedRun.name
+                createdAt = [string]$matchedRun.created_at
+            }
+        }
     }
     if (-not $run) {
         $run = $successfulRuns | Sort-Object createdAt -Descending | Where-Object {
