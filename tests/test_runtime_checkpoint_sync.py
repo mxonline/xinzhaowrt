@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from ai_orchestrator.models import ActionKind, GPTDecision, PipelineState
 from ai_orchestrator.policy import PolicyOutcome, PolicyRoute
@@ -8,6 +9,7 @@ from ai_orchestrator.runtime import ProductionRuntime
 class _Store:
     def __init__(self):
         self.events = []
+        self.root = Path(".")
 
     def append_event(self, name, payload):
         self.events.append((name, payload))
