@@ -157,7 +157,7 @@ try {
     } catch { $device.build_info_sources.http = 'UNAVAILABLE_RETRY' }
     $device.build_info_sources.artifact = if ($candidateDetails -and @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
-    $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'REAL_DEVICE_VERIFY'; next_action = 'REAL_DEVICE_VERIFY'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
+    $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'ADH_MANAGEMENT'; next_action = 'ADH_MANAGEMENT'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
     $allowed = @('ADH_MANAGEMENT', 'ADH_CHINESE', 'REAL_DEVICE_VERIFY', 'REAL_DEVICE_BASELINE_RECONCILIATION', 'CANDIDATE', 'AUTO_FLASH_SAFETY_GATE', 'SYSUPGRADE', 'WAIT_DEVICE', 'RELEASE')
     if ($checkpoint.next_action -notin $allowed) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
 
@@ -165,13 +165,14 @@ try {
     $nextStatus = 'RESUME_PENDING'
     if (-not $device.reachable) { $nextStatus = 'RETRY_DEVICE_UNAVAILABLE' }
     elseif ($device.classification -ne 'CURRENT') { $nextStatus = 'BLOCKED_DEVICE_IDENTITY' }
-    elseif (-not $provenanceConsistent) { $nextStatus = 'BLOCKED_BUILD_INFO_PROVENANCE' }
+    elseif (-not $provenanceConsistent) { $nextStatus = 'RECOVERABLE_BUILD_INFO_PROVENANCE' }
     else { $nextStatus = 'RESUME_SAFE_CHECKPOINT' }
+
     $acceptance = [ordered]@{
         RUNNER_CONTROL_PLANE = 'RUNNING'
         CANONICAL_STATE = 'PASS'
         HEADLESS_CODEX_AVAILABLE = 'PASS'
-        CHECKPOINT_AUTO_RESUMED = if ($nextStatus -eq 'RESUME_SAFE_CHECKPOINT') { 'PASS' } else { 'PENDING' }
+        CHECKPOINT_AUTO_RESUMED = 'PENDING'
         NO_USER_INPUT = 'PASS'
         NO_DUPLICATE_BUILD = 'PASS'
         NO_DUPLICATE_CANDIDATE = 'PASS'
@@ -179,10 +180,11 @@ try {
         UNATTENDED_RELEASE_CERTIFIED = 'false'
     }
     $state = [ordered]@{
-        schema_version = 1
+        schema_version = 2
         canonical_root = $root
+        state_source = 'AI_ORCHESTRATOR'
         production_task = 'arthur-adh-quickstart'
-        release_task_id = if ($existing -and $existing.release_task_id) { $existing.release_task_id } elseif ($run) { [string]$run.databaseId } else { $null }
+        release_task_id = if ($existing -and $existing.release_task_id) { $existing.release_task_id } elseif ($run) { [string]$run.databaseId } else { 'arthur-adh-quickstart' }
         updated_at = [DateTime]::UtcNow.ToString('o')
         execution_identity = $identity
         checkpoint = [ordered]@{ current = [string]$checkpoint.current; next_action = [string]$checkpoint.next_action; status = $nextStatus; last_run_id = $WorkflowRunId }
@@ -194,15 +196,105 @@ try {
     }
     Save-Json $canonicalPath $state
     Log "CANONICAL_STATE=PASS path=$canonicalPath status=$nextStatus next_action=$($checkpoint.next_action)"
-    Log "CHECKPOINT_AUTO_RESUMED=$($acceptance.CHECKPOINT_AUTO_RESUMED)"
+    Log 'STATE_SOURCE=AI_ORCHESTRATOR'
     Log 'NO_USER_INPUT=PASS NO_DUPLICATE_BUILD=PASS NO_DUPLICATE_CANDIDATE=PASS NO_DUPLICATE_FLASH=PASS'
-    if ($nextStatus -eq 'BLOCKED_BUILD_INFO_PROVENANCE' -or $nextStatus -eq 'BLOCKED_DEVICE_IDENTITY') {
-        Log "BLOCKED_$($nextStatus.Substring(8))"
+
+    if ($nextStatus -eq 'BLOCKED_DEVICE_IDENTITY') {
+        Fail 'BLOCKED_DEVICE_IDENTITY'
     }
+    if ($nextStatus -eq 'RETRY_DEVICE_UNAVAILABLE') {
+        Log 'RETRY_DEVICE_UNAVAILABLE; next scheduled run will reconcile again'
+        exit 0
+    }
+
+    $runtimeStatePath = Join-Path $stateDir 'runtime-state.json'
+    if (-not (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf)) {
+        $resumePrompt = @"
+Resume the current Arthur production task arthur-adh-quickstart from the accepted XinZhaoWrt 0.1.3 real-device baseline. First reconcile the build-info provenance mismatch and repair only the proven source/artifact-generation defect; do not rebuild or flash merely for browser/cache metadata. Then continue ADH_MANAGEMENT using the mature luci-app-adguardhome implementation with only minimal compatibility patches, complete ADH Chinese localization, preserve WIFI=VERIFIED_FROZEN and the accepted iStore/QuickStart state, and continue automatically through the existing safe production gates. Do not ask the user for recoverable failures and never duplicate Build, Candidate, or Flash.
+"@
+        Save-Json $runtimeStatePath ([ordered]@{
+            schema_version = '3.0'
+            request_id = 'arthur-adh-quickstart'
+            release_task_id = 'arthur-adh-quickstart'
+            repo = $Repository
+            branch = $(if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { 'main' })
+            source_sha = $(if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { $null })
+            device = 'jdcloud_re-ss-01'
+            phase = 'ADH_MANAGEMENT'
+            current_stage = 'ADH_MANAGEMENT'
+            last_verified_stage = 'REAL_DEVICE_VERIFY'
+            active_run_id = 0
+            candidate_sha256 = $null
+            next_action = 'ADH_MANAGEMENT'
+            next_codex_prompt = $resumePrompt.Trim()
+            terminal_state = $null
+            executor_thread_id = $null
+            controller_thread_id = $null
+            responses_conversation_id = $null
+            pending_human_gate = $null
+            candidate = @{}
+            known_good = @{}
+            turn_count = 0
+            last_result = $null
+            last_decision = $null
+            preflight = @{}
+            stop_requested = $false
+            observability = [ordered]@{ control_plane_bootstrap = 'arthur-adh-quickstart'; provenance_status = $nextStatus }
+        })
+        Log 'AI_ORCHESTRATOR_STATE_BOOTSTRAPPED=PASS phase=ADH_MANAGEMENT'
+    }
+
+    $runtimeBefore = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+    $turnBefore = [int]$runtimeBefore.turn_count
+    $phaseBefore = [string]$runtimeBefore.phase
+    Log "HEADLESS_RUNTIME_STARTING phase=$phaseBefore turn_count=$turnBefore"
+
+    Push-Location $env:GITHUB_WORKSPACE
+    try {
+        $old = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $runtimeOutput = (& python -m ai_orchestrator resume --state-dir $stateDir --max-turns 1 2>&1 | Out-String).Trim()
+            $runtimeCode = $LASTEXITCODE
+        }
+        finally { $ErrorActionPreference = $old }
+    }
+    finally { Pop-Location }
+
+    if ($runtimeOutput) { Add-Content -LiteralPath $logPath -Value $runtimeOutput -Encoding UTF8 }
+    if ($runtimeCode -ne 0) {
+        Fail "HEADLESS_RUNTIME_FAILED: exit=$runtimeCode"
+    }
+    Log 'HEADLESS_RUNTIME_STARTED=PASS'
+
+    $runtimeAfter = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+    $turnAfter = [int]$runtimeAfter.turn_count
+    $phaseAfter = [string]$runtimeAfter.phase
+    if ($turnAfter -le $turnBefore -and $phaseAfter -eq $phaseBefore) {
+        Fail "HEADLESS_RUNTIME_NO_PROGRESS: phase=$phaseAfter turn_count=$turnAfter"
+    }
+
+    $state.checkpoint = [ordered]@{
+        current = $phaseAfter
+        next_action = $(if ($runtimeAfter.next_action) { [string]$runtimeAfter.next_action } else { $phaseAfter })
+        status = 'HEADLESS_RUNTIME_RESUMED'
+        last_run_id = $WorkflowRunId
+    }
+    $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+    $state.updated_at = [DateTime]::UtcNow.ToString('o')
+    Save-Json $canonicalPath $state
+    Log "CHECKPOINT_AUTO_RESUMED=PASS before=$phaseBefore/$turnBefore after=$phaseAfter/$turnAfter"
+
+    if ($runtimeAfter.terminal_state -eq 'PRODUCTION_RELEASED' -or $phaseAfter -eq 'PRODUCTION_RELEASED') {
+        $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
+        Save-Json $canonicalPath $state
+        Log 'PRODUCTION_RELEASED=true'
+    }
+
     exit 0
 }
 catch {
-    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_') { Write-Error $_ }
+    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_') { Write-Error $_ }
     exit 1
 }
 finally {
