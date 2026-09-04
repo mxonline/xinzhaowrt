@@ -77,7 +77,7 @@ classify_release_impact() {
     .gitignore|AGENTS.md|.github/*|tests/*|requirements-headless.txt|ai_orchestrator/*|\
     scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|\
     scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|\
-    scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
+    scripts/production-agent.ps1|scripts/production-agent-convergence-lib.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
     scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|\
     scripts/feature-handoff-status.ps1|scripts/fast-safe-release-lib.ps1|scripts/fast-safe-convergence-lib.ps1|\
@@ -121,7 +121,7 @@ while IFS= read -r path; do
     .gitignore|AGENTS.md|.github/*|tests/*|requirements-headless.txt|ai_orchestrator/*|\
     scripts/classify-build-scope.sh|scripts/analyze-error.sh|scripts/verify-project.sh|\
     scripts/check-defaults.sh|scripts/check-upload-oom-fix.sh|scripts/real-device-verify*.ps1|\
-    scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
+    scripts/production-agent.ps1|scripts/production-agent-convergence-lib.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|\
     scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|scripts/feature-handoff-status.ps1|\
     scripts/fast-safe-release-lib.ps1|scripts/fast-safe-convergence-lib.ps1|\
