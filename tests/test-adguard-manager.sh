@@ -9,7 +9,16 @@ overlay_view="$root/files/www/luci-static/resources/view/adguardhome/config.js"
 overlay_acl="$root/files/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 
 [[ ! -e "$overlay_view" ]] || { echo 'FAIL: project overlay must not replace the mature AdGuard Home manager.' >&2; exit 1; }
-[[ ! -e "$overlay_acl" ]] || { echo 'FAIL: project overlay must not replace the upstream AdGuard Home ACL.' >&2; exit 1; }
+if [[ -e "$overlay_acl" ]]; then
+  grep -Fq 'files/usr/share/rpcd/acl.d/luci-app-adguardhome.json' "$root/production/accepted-preview/arthur-adh-quickstart.json" || {
+    echo 'FAIL: legacy AdGuard ACL overlay is not part of the accepted bundle.' >&2
+    exit 1
+  }
+  grep -Fq 'restore-pinned-adguard-manager.sh' "$root/scripts/build.sh" || {
+    echo 'FAIL: accepted legacy ACL must be superseded by the pinned mature manager during build.' >&2
+    exit 1
+  }
+fi
 [[ -s "$view" ]] || { echo 'FAIL: mature AdGuard Home manager view is missing from the pinned feed.' >&2; exit 1; }
 [[ -s "$acl" ]] || { echo 'FAIL: mature AdGuard Home rpcd ACL is missing from the pinned feed.' >&2; exit 1; }
 
