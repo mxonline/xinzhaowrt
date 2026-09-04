@@ -28,7 +28,13 @@ done < config/required-plugins.txt
 ./scripts/check-upload-oom-fix.sh
 ./scripts/acceptance-contract-gate.sh
 
-for test_script in tests/test-first-boot-defaults.sh tests/test-version-identity.sh tests/test-final-rootfs-identity.sh tests/test-functional-acceptance.sh; do
+for test_script in \
+  tests/test-first-boot-defaults.sh \
+  tests/test-preserved-upgrade-luci-convergence.sh \
+  tests/test-adguard-overlay-precedence.sh \
+  tests/test-version-identity.sh \
+  tests/test-final-rootfs-identity.sh \
+  tests/test-functional-acceptance.sh; do
   bash "$test_script"
 done
 
