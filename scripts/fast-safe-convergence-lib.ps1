@@ -240,3 +240,149 @@ function Get-ContractGapDecision {
         failure_fingerprint = $fingerprint
     }
 }
+
+function Get-RealDeviceFailureFingerprint {
+    param([Parameter(Mandatory)]$Failure)
+    foreach ($name in @('name','command','reason')) {
+        if ($Failure.PSObject.Properties.Name -notcontains $name) {
+            throw "REAL_DEVICE_FAILURE_FIELD_MISSING=$name"
+        }
+    }
+    $checkId = [string]$Failure.name
+    if (-not $checkId.Trim()) { throw 'REAL_DEVICE_FAILURE_NAME_EMPTY' }
+    $canonical = @(
+        "check_id=$($checkId.Trim())",
+        "command=$(([string]$Failure.command).Trim())",
+        "reason=$(([string]$Failure.reason).Trim())"
+    ) -join "`n"
+    return Get-Sha256HexFromText -Text $canonical
+}
+
+function Add-ConvergenceEvidenceMetadata {
+    param(
+        [Parameter(Mandatory)]$Evidence,
+        [Parameter(Mandatory)]$Report,
+        [Parameter(Mandatory)][string]$VerificationReportSha256
+    )
+    Add-ReleaseStateDefault $Evidence 'schema_version' 1
+    Add-ReleaseStateDefault $Evidence 'verification_report_sha256' $VerificationReportSha256.ToLowerInvariant()
+    Add-ReleaseStateDefault $Evidence 'verification_result' ([string]$Report.result).ToUpperInvariant()
+    Add-ReleaseStateDefault $Evidence 'candidate' ([string]$Report.candidate)
+    Add-ReleaseStateDefault $Evidence 'commit' ([string]$Report.commit)
+    Add-ReleaseStateDefault $Evidence 'rootfs_offline_passed' $false
+    Add-ReleaseStateDefault $Evidence 'resolved_firmware_input_fingerprint' ''
+    Add-ReleaseStateDefault $Evidence 'contract_gap_state' 'NONE'
+    Add-ReleaseStateDefault $Evidence 'postflash_mutation_state' 'CLEAN'
+    Add-ReleaseStateDefault $Evidence 'updated_at' (Get-Date).ToUniversalTime().ToString('o')
+    return $Evidence
+}
+
+function Convert-RealDeviceVerificationToFailureSet {
+    param(
+        [Parameter(Mandatory)]$Report,
+        [Parameter(Mandatory)][string]$VerificationContractFingerprint,
+        [Parameter(Mandatory)][string]$VerificationReportSha256
+    )
+    if ($VerificationContractFingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'FINAL_FAILURE_SET_VERIFICATION_CONTRACT_FINGERPRINT_INVALID' }
+    if ($VerificationReportSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'REAL_DEVICE_VERIFICATION_REPORT_SHA256_INVALID' }
+    foreach ($name in @('candidate','commit','result','failures')) {
+        if ($Report.PSObject.Properties.Name -notcontains $name) { throw "REAL_DEVICE_VERIFICATION_FIELD_MISSING=$name" }
+    }
+    $result = ([string]$Report.result).ToUpperInvariant()
+    if ($result -notin @('PASS','FAIL')) { throw "REAL_DEVICE_VERIFICATION_RESULT_INVALID=$result" }
+    $rawFailures = @($Report.failures)
+    if ($rawFailures.Count -eq 0) {
+        if ($result -ne 'PASS') { throw 'REAL_DEVICE_VERIFICATION_FAIL_WITHOUT_FAILURES' }
+        $verification = $VerificationContractFingerprint.ToLowerInvariant()
+        $cleanFingerprint = Get-Sha256HexFromText -Text "verification=$verification`nclean=PASS"
+        $clean = [pscustomobject][ordered]@{
+            state = 'RESOLVED'
+            verification_contract_fingerprint = $verification
+            failure_set_fingerprint = $cleanFingerprint
+            items = @()
+            frozen_at = (Get-Date).ToUniversalTime().ToString('o')
+            resolved_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        return Add-ConvergenceEvidenceMetadata -Evidence $clean -Report $Report -VerificationReportSha256 $VerificationReportSha256
+    }
+
+    $prepared = New-Object System.Collections.Generic.List[object]
+    foreach ($failure in $rawFailures) {
+        $prepared.Add([pscustomobject][ordered]@{
+            check_id = ([string]$failure.name).Trim()
+            failure_fingerprint = Get-RealDeviceFailureFingerprint -Failure $failure
+            status = 'OPEN'
+        })
+    }
+    $evidence = New-FinalFailureSet -Failures @($prepared.ToArray()) -VerificationContractFingerprint $VerificationContractFingerprint
+    return Add-ConvergenceEvidenceMetadata -Evidence $evidence -Report $Report -VerificationReportSha256 $VerificationReportSha256
+}
+
+function Set-ConvergenceRootfsAcceptance {
+    param(
+        [Parameter(Mandatory)]$Evidence,
+        [Parameter(Mandatory)][bool]$Passed,
+        [Parameter(Mandatory)][string]$FirmwareInputFingerprint
+    )
+    if ([string]$Evidence.state -ne 'RESOLVED') { throw 'BUILD_DENIED_FAILURE_SET_UNRESOLVED' }
+    if ($FirmwareInputFingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'FIRMWARE_INPUT_FINGERPRINT_INVALID' }
+    Add-ReleaseStateDefault $Evidence 'rootfs_offline_passed' $false
+    Add-ReleaseStateDefault $Evidence 'resolved_firmware_input_fingerprint' ''
+    $Evidence.rootfs_offline_passed = $Passed
+    $Evidence.resolved_firmware_input_fingerprint = if ($Passed) { $FirmwareInputFingerprint.ToLowerInvariant() } else { '' }
+    $Evidence.updated_at = (Get-Date).ToUniversalTime().ToString('o')
+    return $Evidence
+}
+
+function Get-ConvergenceDispatchInputs {
+    param(
+        [Parameter(Mandatory)]$Evidence,
+        [Parameter(Mandatory)][string]$CurrentFirmwareInputFingerprint
+    )
+    if ($CurrentFirmwareInputFingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'FIRMWARE_INPUT_FINGERPRINT_INVALID' }
+    if ([string]$Evidence.state -ne 'RESOLVED') { throw 'BUILD_DENIED_FAILURE_SET_UNRESOLVED' }
+    if ($Evidence.PSObject.Properties.Name -notcontains 'rootfs_offline_passed' -or $Evidence.rootfs_offline_passed -ne $true) {
+        throw 'BUILD_DENIED_ROOTFS_OFFLINE_NOT_PASS'
+    }
+    if ($Evidence.PSObject.Properties.Name -notcontains 'contract_gap_state' -or [string]$Evidence.contract_gap_state -ne 'NONE') {
+        throw "BUILD_DENIED_CONTRACT_GAP=$([string]$Evidence.contract_gap_state)"
+    }
+    if ($Evidence.PSObject.Properties.Name -notcontains 'resolved_firmware_input_fingerprint') { throw 'BUILD_DENIED_FIRMWARE_INPUT_BINDING_MISSING' }
+    $expected = ([string]$Evidence.resolved_firmware_input_fingerprint).ToLowerInvariant()
+    $actual = $CurrentFirmwareInputFingerprint.ToLowerInvariant()
+    if ($expected -notmatch '^[0-9a-f]{64}$') { throw 'BUILD_DENIED_FIRMWARE_INPUT_BINDING_MISSING' }
+    if ($expected -ne $actual) { throw "BUILD_DENIED_FIRMWARE_INPUT_DRIFT expected=$expected actual=$actual" }
+    return [pscustomobject][ordered]@{
+        failure_set_state = [string]$Evidence.state
+        failure_set_fingerprint = ([string]$Evidence.failure_set_fingerprint).ToLowerInvariant()
+        verification_contract_fingerprint = ([string]$Evidence.verification_contract_fingerprint).ToLowerInvariant()
+        rootfs_offline_passed = 'true'
+        contract_gap_state = [string]$Evidence.contract_gap_state
+        firmware_input_fingerprint = $actual
+    }
+}
+
+function Save-ReleaseConvergenceEvidence {
+    param([Parameter(Mandatory)]$Evidence,[Parameter(Mandatory)][string]$Path)
+    if ([string]$Evidence.failure_set_fingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'CONVERGENCE_EVIDENCE_FAILURE_SET_FINGERPRINT_INVALID' }
+    $dir = Split-Path -Parent $Path
+    if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    Add-ReleaseStateDefault $Evidence 'updated_at' (Get-Date).ToUniversalTime().ToString('o')
+    $Evidence.updated_at = (Get-Date).ToUniversalTime().ToString('o')
+    $tmp = "$Path.tmp"
+    $Evidence | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $tmp -Encoding UTF8
+    Move-Item -Force -LiteralPath $tmp -Destination $Path
+    return $Evidence
+}
+
+function Load-ReleaseConvergenceEvidence {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { $evidence = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json -Depth 40 }
+    catch { throw "CONVERGENCE_EVIDENCE_INVALID: $($_.Exception.Message)" }
+    foreach ($name in @('state','failure_set_fingerprint','verification_contract_fingerprint','items','rootfs_offline_passed','resolved_firmware_input_fingerprint','contract_gap_state')) {
+        if ($evidence.PSObject.Properties.Name -notcontains $name) { throw "CONVERGENCE_EVIDENCE_FIELD_MISSING=$name" }
+    }
+    if ([string]$evidence.failure_set_fingerprint -notmatch '^[0-9a-f]{64}$') { throw 'CONVERGENCE_EVIDENCE_FAILURE_SET_FINGERPRINT_INVALID' }
+    return $evidence
+}
