@@ -25,6 +25,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           foreach ($file in @(
             'tests/production-agent.tests.ps1',
+            'tests/production-agent-convergence.tests.ps1',
             'tests/verified-baseline-inheritance.tests.ps1',
             'tests/real-device-baseline.tests.ps1',
             'tests/runner-self-heal.tests.ps1',
@@ -32,6 +33,10 @@ jobs:
             'tests/rebuild-dispatch-ack.tests.ps1',
             'tests/rebuild-dispatch-at-most-once.tests.ps1',
             'scripts/production-agent.ps1',
+            'scripts/fast-safe-release-lib.ps1',
+            'scripts/fast-safe-convergence-lib.ps1',
+            'scripts/release-convergence-exec-lib.ps1',
+            'scripts/release-convergence-manager.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
             'scripts/real-device-baseline-lib.ps1',
@@ -53,6 +58,7 @@ jobs:
             }
           }
           & ./tests/production-agent.tests.ps1
+          & ./tests/production-agent-convergence.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
           & ./tests/real-device-baseline.tests.ps1
           & ./tests/runner-self-heal.tests.ps1
