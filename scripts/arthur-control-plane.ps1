@@ -81,6 +81,45 @@ try {
         return [pscustomobject]@{ ok = ($code -eq 0); output = $output }
     }
 
+    function Publish-ResumeState([object]$ResumeState, [string]$ResumeStatePath) {
+        $existingPublished = $null
+        if (Test-Path -LiteralPath $ResumeStatePath -PathType Leaf) {
+            try { $existingPublished = Get-Content -Raw -LiteralPath $ResumeStatePath | ConvertFrom-Json }
+            catch { $existingPublished = $null }
+        }
+        $existingHash = if ($existingPublished -and $existingPublished.semantic_sha256) { [string]$existingPublished.semantic_sha256 } else { '' }
+        if ($existingHash -eq [string]$ResumeState.semantic_sha256) {
+            Log "RESUME_STATE_PUBLISHED=UNCHANGED semantic_sha256=$existingHash"
+            return
+        }
+
+        $ResumeState | Add-Member -NotePropertyName evidence_timestamp -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+        Save-Json $ResumeStatePath $ResumeState
+
+        if ([string]$env:GITHUB_REF_NAME -ne 'main') {
+            Log "RESUME_STATE_PUBLISHED=LOCAL_ONLY ref=$($env:GITHUB_REF_NAME) semantic_sha256=$($ResumeState.semantic_sha256)"
+            return
+        }
+
+        Push-Location $env:GITHUB_WORKSPACE
+        try {
+            & git config user.name 'github-actions[bot]'
+            & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            & git add -- 'production/resume-state.json'
+            & git diff --cached --quiet
+            if ($LASTEXITCODE -eq 0) {
+                Log 'RESUME_STATE_PUBLISHED=UNCHANGED_GIT'
+                return
+            }
+            & git commit -m 'chore(state): update Arthur resume snapshot [skip ci]'
+            if ($LASTEXITCODE -ne 0) { Fail 'RESUME_STATE_PUBLICATION_FAILED: git commit failed' }
+            & git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { Fail 'RESUME_STATE_PUBLICATION_FAILED: non-fast-forward or push rejected; retry from fresh main' }
+        }
+        finally { Pop-Location }
+        Log "RESUME_STATE_PUBLISHED=PASS semantic_sha256=$($ResumeState.semantic_sha256)"
+    }
+
     $canonicalPath = Join-Path $root 'canonical-state.json'
     $heartbeatPath = Join-Path $root 'heartbeat.json'
     $existing = $null
@@ -108,6 +147,10 @@ try {
     foreach ($tool in @('git', 'gh', 'python')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "CONTROL_PLANE_TOOL_MISSING: $tool" }
     }
+    $resumeHelperPath = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-resume-state.ps1'
+    if (-not (Test-Path -LiteralPath $resumeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RESUME_HELPER_MISSING' }
+    . $resumeHelperPath
+
     $headless = $false
     if (Get-Command codex -ErrorAction SilentlyContinue) { $headless = $true }
     $pythonProbe = (& python -c "import importlib.util; print('PASS' if (importlib.util.find_spec('openai_codex') or importlib.util.find_spec('codex')) else 'MISSING')" 2>&1 | Out-String).Trim()
@@ -132,7 +175,7 @@ try {
 
     $knownHosts = Join-Path $sshDir 'known_hosts'
     $deviceProbe = Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
-    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
+    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; live_build_info = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
     if ($deviceProbe.ok) {
         $device.reachable = $true
         $deviceLines = @($deviceProbe.output -split "`r?`n")
@@ -153,7 +196,21 @@ try {
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
     try {
         $http = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri 'http://192.168.6.1/luci-static/xinzhao/build-info.json'
-        $device.build_info_sources.http = if ($http.Content -match '@VERSION@|@BUILD_ID@') { 'STALE_TEMPLATE' } else { 'PRESENT_UNVERIFIED' }
+        if ($http.Content -match '@VERSION@|@BUILD_ID@') {
+            $device.build_info_sources.http = 'STALE_TEMPLATE'
+        }
+        else {
+            try {
+                $liveBuild = $http.Content | ConvertFrom-Json
+                $device.live_build_info = [ordered]@{
+                    version = [string]$liveBuild.Version
+                    build_id = [string]$liveBuild.'Build ID'
+                    git_commit = [string]$liveBuild.'Git Commit'
+                }
+                $device.build_info_sources.http = 'PRESENT_PARSED'
+            }
+            catch { $device.build_info_sources.http = 'INVALID_JSON' }
+        }
     } catch { $device.build_info_sources.http = 'UNAVAILABLE_RETRY' }
     $device.build_info_sources.artifact = if ($candidateDetails -and @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
@@ -161,7 +218,7 @@ try {
     $allowed = @('ADH_MANAGEMENT', 'ADH_CHINESE', 'REAL_DEVICE_VERIFY', 'REAL_DEVICE_BASELINE_RECONCILIATION', 'CANDIDATE', 'AUTO_FLASH_SAFETY_GATE', 'SYSUPGRADE', 'WAIT_DEVICE', 'RELEASE')
     if ($checkpoint.next_action -notin $allowed) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
 
-    $provenanceConsistent = ($candidate -and $production -and $run -and $device.classification -eq 'CURRENT' -and $device.build_info_sources.rom -notin @('MISSING','UNAVAILABLE_RETRY') -and $device.build_info_sources.http -notin @('STALE_TEMPLATE','UNAVAILABLE_RETRY'))
+    $provenanceConsistent = ($candidate -and $production -and $run -and $device.classification -eq 'CURRENT' -and $device.build_info_sources.rom -notin @('MISSING','UNAVAILABLE_RETRY') -and $device.build_info_sources.http -eq 'PRESENT_PARSED')
     $nextStatus = 'RESUME_PENDING'
     if (-not $device.reachable) { $nextStatus = 'RETRY_DEVICE_UNAVAILABLE' }
     elseif ($device.classification -ne 'CURRENT') { $nextStatus = 'BLOCKED_DEVICE_IDENTITY' }
@@ -244,7 +301,33 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Log 'AI_ORCHESTRATOR_STATE_BOOTSTRAPPED=PASS phase=ADH_MANAGEMENT'
     }
 
+    $baselinePath = Join-Path $env:GITHUB_WORKSPACE 'production\real-device-baseline.json'
+    if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) { Fail 'STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_MISSING' }
+    try { $realDeviceBaseline = Get-Content -Raw -LiteralPath $baselinePath | ConvertFrom-Json }
+    catch { Fail "STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_INVALID $($_.Exception.Message)" }
+
+    $resumeStatePath = Join-Path $env:GITHUB_WORKSPACE 'production\resume-state.json'
+    $previousResumeState = $null
+    if (Test-Path -LiteralPath $resumeStatePath -PathType Leaf) {
+        try { $previousResumeState = Get-Content -Raw -LiteralPath $resumeStatePath | ConvertFrom-Json }
+        catch { Fail "STATE_RECONCILIATION_REQUIRED: RESUME_STATE_INVALID $($_.Exception.Message)" }
+    }
+
+    Push-Location $env:GITHUB_WORKSPACE
+    try {
+        $repositoryHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' | Out-String).Trim()
+    }
+    finally { Pop-Location }
+    if ([string]::IsNullOrWhiteSpace($repositoryHead)) { $repositoryHead = [string]$env:GITHUB_SHA }
+
     $runtimeBefore = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState
+    Publish-ResumeState $resumeState $resumeStatePath
+    if (-not $resumeState.instruction_allowed) {
+        Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($resumeState.conflicts) -join ','))
+    }
+    Log "RESUME_STATE_RECONCILED=PASS version=$($resumeState.real_device.version) checkpoint=$($resumeState.checkpoint.current) next_action=$($resumeState.next_action)"
+
     $turnBefore = [int]$runtimeBefore.turn_count
     $phaseBefore = [string]$runtimeBefore.phase
     Log "HEADLESS_RUNTIME_STARTING phase=$phaseBefore turn_count=$turnBefore"
@@ -274,6 +357,12 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Fail "HEADLESS_RUNTIME_NO_PROGRESS: phase=$phaseAfter turn_count=$turnAfter"
     }
 
+    $postResumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeAfter -PreviousResumeState $resumeState
+    Publish-ResumeState $postResumeState $resumeStatePath
+    if (-not $postResumeState.instruction_allowed) {
+        Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($postResumeState.conflicts) -join ','))
+    }
+
     $state.checkpoint = [ordered]@{
         current = $phaseAfter
         next_action = $(if ($runtimeAfter.next_action) { [string]$runtimeAfter.next_action } else { $phaseAfter })
@@ -294,7 +383,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     exit 0
 }
 catch {
-    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_') { Write-Error $_ }
+    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_|^STATE_RECONCILIATION_|^RESUME_STATE_') { Write-Error $_ }
     exit 1
 }
 finally {
