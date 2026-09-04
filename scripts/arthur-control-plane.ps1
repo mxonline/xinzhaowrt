@@ -9,6 +9,7 @@ Set-StrictMode -Version Latest
 $lock = $null
 
 function Fail([string]$Message) {
+    Write-Host "CONTROL_PLANE_FAIL=$Message"
     Write-Error $Message
     exit 1
 }
@@ -160,7 +161,7 @@ try {
 
     $runList = Invoke-GhJson @('run', 'list', '--repo', $Repository, '--limit', '50', '--json', 'databaseId,status,conclusion,headSha,headBranch,workflowName,createdAt')
     $successfulRuns = @($runList | Where-Object { $_.conclusion -eq 'success' -and $_.headSha })
-    $releases = Invoke-GhJson @('release', 'list', '--repo', $Repository, '--limit', '100', '--json', 'tagName,isDraft,isPrerelease,publishedAt,targetCommitish')
+    $releases = Invoke-GhJson @('release', 'list', '--repo', $Repository, '--limit', '100', '--json', 'tagName,isDraft,isPrerelease,publishedAt')
     $candidateReleases = @($releases | Where-Object { $_.tagName -like 'arthur-update-*' -and -not $_.isDraft })
     $productionReleases = @($releases | Where-Object { $_.tagName -like 'arthur-production-*' -and -not $_.isDraft })
     $candidate = $candidateReleases | Sort-Object publishedAt -Descending | Select-Object -First 1
