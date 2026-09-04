@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# This test intentionally exercises executable evidence gates instead of caller-supplied pass booleans.
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $Root 'scripts/fast-safe-release-lib.ps1')
 . (Join-Path $Root 'scripts/fast-safe-convergence-lib.ps1')
