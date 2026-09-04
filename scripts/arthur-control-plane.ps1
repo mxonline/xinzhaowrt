@@ -130,7 +130,8 @@ try {
     else { $candidateDetails = $null }
     $run = $null
     if ($candidateDetails -and $candidateDetails.targetCommitish) {
-        $run = $successfulRuns | Where-Object { $_.headSha -eq $candidateDetails.targetCommitish } | Sort-Object createdAt -Descending | Select-Object -First 1
+        $matchingRuns = Invoke-GhJson @('api', "repos/$Repository/actions/runs?head_sha=$($candidateDetails.targetCommitish)&per_page=100")
+        $run = @($matchingRuns.workflow_runs | Where-Object { $_.conclusion -eq 'success' }) | Sort-Object created_at -Descending | Select-Object -First 1
     }
     if (-not $run) {
         $run = $successfulRuns | Sort-Object createdAt -Descending | Where-Object {
@@ -141,7 +142,7 @@ try {
 
     $knownHosts = Join-Path $sshDir 'known_hosts'
     $deviceProbe = Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
-    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
+    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; error = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
     if ($deviceProbe.ok) {
         $device.reachable = $true
         $deviceLines = @($deviceProbe.output -split "`r?`n")
@@ -157,7 +158,8 @@ try {
         $device.build_info_sources.rom = if (($deviceLines | Where-Object { $_ -match 'build-info\.json' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
     }
     else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY'; $device.error = $deviceProbe.output }
-    Log ("DEVICE_PROBE reachable={0} classification={1} detail={2}" -f $device.reachable, $device.classification, $device.build_info_sources.rom)
+    $deviceDetail = if ($device.error) { ([string]$device.error -replace "\s+", ' ').Trim() } else { $device.build_info_sources.rom }
+    Log ("DEVICE_PROBE reachable={0} classification={1} detail={2}" -f $device.reachable, $device.classification, $deviceDetail)
 
     $overlayPath = Join-Path $env:GITHUB_WORKSPACE 'files\www\luci-static\xinzhao\build-info.json'
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
