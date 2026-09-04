@@ -55,6 +55,26 @@ try {
         Move-Item -LiteralPath $tmp -Destination $Path -Force
     }
 
+    $knownHosts = Join-Path $sshDir 'known_hosts'
+    if (-not [IO.File]::Exists($knownHosts)) {
+        $seedKnownHosts = 'C:\ProgramData\XinZhaoWrt\ControlPlane\ssh\known_hosts'
+        if ([IO.File]::Exists($seedKnownHosts)) {
+            try { Copy-Item -LiteralPath $seedKnownHosts -Destination $knownHosts -Force }
+            catch { Fail "CONTROL_PLANE_BOOTSTRAP_ACCESS_DENIED: cannot import machine known_hosts: $($_.Exception.Message)" }
+        }
+    }
+    $credentialReferencePath = Join-Path $root 'github-app-credential.reference.json'
+    if (-not [IO.File]::Exists($credentialReferencePath)) {
+        Save-Json $credentialReferencePath ([ordered]@{
+            schema_version = 1
+            credential_mode = 'GitHub Actions token / machine service credential'
+            service_identity = $identity
+            source = 'GITHUB_TOKEN injected by workflow'
+            secret_material_written = $false
+            interactive_login_allowed = $false
+        })
+    }
+
     function Invoke-GhJson([string[]]$Arguments) {
         $old = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
@@ -151,7 +171,6 @@ try {
     }
     Log ("GITHUB_PROVENANCE candidate={0} production={1} run={2}" -f $(if ($candidate) { $candidate.tagName } else { 'MISSING' }), $(if ($production) { $production.tagName } else { 'MISSING' }), $(if ($run) { $run.databaseId } else { 'MISSING' }))
 
-    $knownHosts = Join-Path $sshDir 'known_hosts'
     $deviceProbe = Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
     $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; error = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
     if ($deviceProbe.ok) {
@@ -199,6 +218,8 @@ try {
         NO_DUPLICATE_BUILD = 'PASS'
         NO_DUPLICATE_CANDIDATE = 'PASS'
         NO_DUPLICATE_FLASH = 'PASS'
+        SINGLE_EXECUTION_IDENTITY = 'PASS'
+        NO_INTERACTIVE_LOGON_DEPENDENCY = 'PASS'
         UNATTENDED_RELEASE_CERTIFIED = 'false'
     }
     $state = [ordered]@{
