@@ -114,7 +114,7 @@ function Resolve-ArthurResumeState {
         $previousStatus = [string](Get-ArthurResumeMember $PreviousResumeState 'status')
         $previousCheckpoint = Get-ArthurResumeMember $PreviousResumeState 'checkpoint'
         $previousCurrent = [string](Get-ArthurResumeMember $previousCheckpoint 'current')
-        if ($previousStatus -eq 'RESUME_SAFE' -and -not [string]::IsNullOrWhiteSpace($previousCurrent)) {
+        if ($previousStatus -ne 'STATE_RECONCILIATION_REQUIRED' -and -not [string]::IsNullOrWhiteSpace($previousCurrent)) {
             $previousIndex = Get-ArthurResumePhaseIndex $previousCurrent
             $currentIndex = Get-ArthurResumePhaseIndex $phase
             if ($previousIndex -ge 0 -and $currentIndex -ge 0 -and $currentIndex -lt $previousIndex) {
