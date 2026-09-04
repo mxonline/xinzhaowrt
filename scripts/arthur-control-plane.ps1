@@ -104,6 +104,8 @@ try {
         workflow_run_id = $WorkflowRunId
     })
     Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity"
+    Log 'CONTROL_PLANE_PROCESS_ALIVE=true HEARTBEAT_ADVANCING=true NO_INTERACTIVE_LOGIN=PASS'
+    Log "CANONICAL_STATE_PATH=$canonicalPath"
 
     foreach ($tool in @('git', 'gh', 'python')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "CONTROL_PLANE_TOOL_MISSING: $tool" }
@@ -122,12 +124,19 @@ try {
     $productionReleases = @($releases | Where-Object { $_.tagName -like 'arthur-production-*' -and -not $_.isDraft })
     $candidate = $candidateReleases | Sort-Object publishedAt -Descending | Select-Object -First 1
     $production = $productionReleases | Sort-Object publishedAt -Descending | Select-Object -First 1
-    $run = $successfulRuns | Sort-Object createdAt -Descending | Where-Object { $_.workflowName -match '(?i)Arthur|Known|Update' } | Select-Object -First 1
-    if (-not $run) { $run = $successfulRuns | Sort-Object createdAt -Descending | Select-Object -First 1 }
     if ($candidate) {
         $candidateDetails = Invoke-GhJson @('release', 'view', $candidate.tagName, '--repo', $Repository, '--json', 'tagName,targetCommitish,assets,isPrerelease,isDraft,publishedAt')
     }
     else { $candidateDetails = $null }
+    $run = $null
+    if ($candidateDetails -and $candidateDetails.targetCommitish) {
+        $run = $successfulRuns | Where-Object { $_.headSha -eq $candidateDetails.targetCommitish } | Sort-Object createdAt -Descending | Select-Object -First 1
+    }
+    if (-not $run) {
+        $run = $successfulRuns | Sort-Object createdAt -Descending | Where-Object {
+            $_.workflowName -match '(?i)Known.?Good|Arthur.*Update.?v3|Fast.*Candidate'
+        } | Select-Object -First 1
+    }
     Log ("GITHUB_PROVENANCE candidate={0} production={1} run={2}" -f $(if ($candidate) { $candidate.tagName } else { 'MISSING' }), $(if ($production) { $production.tagName } else { 'MISSING' }), $(if ($run) { $run.databaseId } else { 'MISSING' }))
 
     $knownHosts = Join-Path $sshDir 'known_hosts'
@@ -147,7 +156,8 @@ try {
         }
         $device.build_info_sources.rom = if (($deviceLines | Where-Object { $_ -match 'build-info\.json' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
     }
-    else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY' }
+    else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY'; $device.error = $deviceProbe.output }
+    Log ("DEVICE_PROBE reachable={0} classification={1} detail={2}" -f $device.reachable, $device.classification, $device.build_info_sources.rom)
 
     $overlayPath = Join-Path $env:GITHUB_WORKSPACE 'files\www\luci-static\xinzhao\build-info.json'
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
