@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+/etc/init.d/xinzhao-luci-migrate enable
+/etc/init.d/xinzhao-luci-migrate start
+
+logger -t xinzhaowrt 'LUCI_UPGRADE_MIGRATION_SERVICE=ENABLED' 2>/dev/null || true
+exit 0
