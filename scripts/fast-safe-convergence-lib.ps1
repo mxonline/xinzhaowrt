@@ -152,6 +152,45 @@ function Assert-RebuildAllowed {
     return $true
 }
 
+function Get-ActiveBuildReconciliationDecision {
+    param(
+        [Parameter(Mandatory)][ValidateSet('COLLECTING','FROZEN','RESOLVED')][string]$FailureSetState,
+        [Parameter(Mandatory)][long]$RunId,
+        [Parameter(Mandatory)][string]$RunStatus
+    )
+    if ($RunId -le 0) { throw 'ACTIVE_BUILD_RUN_ID_INVALID' }
+    $activeStatuses = @('queued','in_progress','waiting','requested','pending')
+    if ($RunStatus -notin $activeStatuses) {
+        return [pscustomobject][ordered]@{ action='NO_ACTIVE_BUILD'; run_id=$RunId; reason='RUN_NOT_ACTIVE' }
+    }
+    if ($FailureSetState -ne 'RESOLVED') {
+        return [pscustomobject][ordered]@{ action='CANCEL_INVALID_BUILD'; run_id=$RunId; reason='FINAL_FAILURE_SET_NOT_RESOLVED' }
+    }
+    return [pscustomobject][ordered]@{ action='WATCH_EXISTING_RUN'; run_id=$RunId; reason='ACTIVE_BUILD_VALID' }
+}
+
+function Assert-FlashAllowed {
+    param(
+        [Parameter(Mandatory)]$FailureSet,
+        [Parameter(Mandatory)][bool]$RootfsOfflinePassed,
+        [Parameter(Mandatory)][bool]$CandidateAcceptancePassed,
+        [Parameter(Mandatory)][string]$ContractGapState
+    )
+    if ([string]$FailureSet.state -ne 'RESOLVED') {
+        throw 'FLASH_DENIED_FAILURE_SET_UNRESOLVED'
+    }
+    if (-not $RootfsOfflinePassed) {
+        throw 'FLASH_DENIED_ROOTFS_OFFLINE_NOT_PASS'
+    }
+    if (-not $CandidateAcceptancePassed) {
+        throw 'FLASH_DENIED_CANDIDATE_ACCEPTANCE_NOT_PASS'
+    }
+    if ($ContractGapState -ne 'NONE') {
+        throw 'FLASH_DENIED_CONTRACT_GAP'
+    }
+    return $true
+}
+
 function Get-PostFlashReleaseDecision {
     param(
         [Parameter(Mandatory)][ValidateSet('CLEAN','MUTATED')][string]$PostFlashMutationState,
