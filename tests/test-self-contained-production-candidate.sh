@@ -21,5 +21,6 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
+bash "$root/tests/test-preserved-upgrade-luci-convergence.sh"
 
 echo 'SELF_CONTAINED_PRODUCTION_CANDIDATE=PASS'
