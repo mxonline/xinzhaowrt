@@ -62,7 +62,8 @@ Assert-NotContains $runtime 'request_id or "arthur-production"' 'ProductionRunti
 # Persistent source + single scheduler are required for session-loss survival.
 Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $wakeup 'xinzhaowrt-controller' 'runner wakeup must execute on the dedicated self-hosted controller runner'
-Assert-Contains $wakeup "ControlPlane\workspace" 'headless source changes must live in a persistent workspace across scheduled jobs'
+Assert-Contains $wakeup 'XinZhaoWrt\ControlPlane' 'headless source changes must use the canonical Control Plane root'
+Assert-Contains $wakeup 'Join-Path $root ''workspace''' 'headless source changes must live in a persistent workspace across scheduled jobs'
 Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_WORKSPACE' 'wakeup must pass the persistent workspace explicitly'
 Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must be preserved rather than cleaned'
 Assert-Contains $wakeup 'merge --ff-only' 'a clean persistent workspace may only fast-forward to origin/main'
