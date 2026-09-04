@@ -46,6 +46,10 @@ jobs:
         shell: pwsh
         run: ./tests/fast-safe-convergence.tests.ps1
 
+      - name: Test release convergence evidence manager
+        shell: pwsh
+        run: ./tests/release-convergence-manager.tests.ps1
+
       - name: Test release convergence workflow wiring
         run: ./tests/test-release-convergence-workflow.sh
 
@@ -67,7 +71,8 @@ jobs:
             'scripts/feature-handoff-lib.ps1',
             'scripts/feature-handoff.ps1',
             'scripts/install-feature-handoff.ps1',
-            'scripts/feature-handoff-status.ps1'
+            'scripts/feature-handoff-status.ps1',
+            'scripts/release-convergence-manager.ps1'
           )) {
             if (-not (Test-Path $file)) {
               Write-Error "Required PowerShell file missing: $file"
