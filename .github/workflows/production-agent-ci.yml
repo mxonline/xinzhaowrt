@@ -37,6 +37,7 @@ jobs:
             'scripts/fast-safe-convergence-lib.ps1',
             'scripts/release-convergence-exec-lib.ps1',
             'scripts/release-convergence-manager.ps1',
+            'scripts/production-agent-convergence-lib.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
             'scripts/real-device-baseline-lib.ps1',
