@@ -22,7 +22,11 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $PSScriptRoot 'release-convergence-exec-lib.ps1')
 
 if (-not $EvidencePath) {
-    $EvidencePath = Join-Path $Root 'output/release-convergence/release-convergence.json'
+    if ($env:LOCALAPPDATA) {
+        $EvidencePath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\FeatureHandoff\release-convergence.json'
+    } else {
+        $EvidencePath = Join-Path $Root 'output/release-convergence/release-convergence.json'
+    }
 }
 if (-not $VerificationReportPath) {
     $VerificationReportPath = Join-Path $Root 'output/real-device/real-device-verification.json'
