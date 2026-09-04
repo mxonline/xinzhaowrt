@@ -160,7 +160,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $script = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'scripts\arthur-control-plane.ps1'
+          $script = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'scripts\arthur-control-plane-gate.ps1'
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
           }
