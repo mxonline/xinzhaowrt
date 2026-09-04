@@ -17,7 +17,7 @@
     "checkpoint":  {
                        "current":  "ADH_MANAGEMENT",
                        "next_action":  "ADH_MANAGEMENT",
-                       "turn_count":  0
+                       "turn_count":  1
                    },
     "verified":  {
                      "real_device_baseline":  "MATCHED",
@@ -43,6 +43,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "9a0dc5548ef3f4f3023fd55a02361055f10147f554788fa9ac9fdfa2ae32b536",
-    "evidence_timestamp":  "2026-09-04T12:31:26.8313320Z"
+    "semantic_sha256":  "3ede811f0308802ae3ccc0403174315bd1a1aa2652cf4bef12a1d4068adf7395",
+    "evidence_timestamp":  "2026-09-04T12:36:52.8140000Z"
 }
