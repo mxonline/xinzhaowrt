@@ -781,6 +781,17 @@ function Process-V3Run {
         $conclusion = [string]$run.conclusion
 
         if ($conclusion -eq 'success') {
+            $currentHead = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
+            $runHead = [string]$run.headSha
+            if ($currentHead -and $runHead -and $currentHead -ne $runHead) {
+                Write-ControllerLog "STALE_SUCCESS_SOURCE: Run $currentRunId succeeded on $runHead but current source is $currentHead; dispatching exactly one current-source Candidate."
+                $currentRunId = Start-V3Run -RequestedMode $RequestedMode
+                $round = 0
+                continue
+            }
+        }
+
+        if ($conclusion -eq 'success') {
             Set-ControllerState -Status 'verifying' -Stage 'candidate-verification' -Conclusion 'success' `
                 -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
                 -Message 'GitHub build succeeded; verifying firmware, 22/22 plugins, SHA256, Candidate lock and Release.'
