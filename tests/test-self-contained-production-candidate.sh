@@ -28,5 +28,6 @@ grep -Fq 'ADGUARD_LEGACY_MANAGER_PURGE=PASS' "$restore_adguard" || { echo 'FAIL:
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 bash "$root/tests/test-preserved-upgrade-luci-convergence.sh"
+bash "$root/tests/test-final-rootfs-identity.sh"
 
 echo 'SELF_CONTAINED_PRODUCTION_CANDIDATE=PASS'
