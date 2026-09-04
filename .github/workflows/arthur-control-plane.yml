@@ -4,14 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: 'Optional Arthur source branch for a manual recovery run; leave empty to use the current branch'
+        description: 'Optional Arthur source branch for a manual recovery run; leave empty to use main'
         required: false
         default: ''
-  schedule:
-    - cron: '*/5 * * * *'
 
 concurrency:
-  group: arthur-control-plane
+  group: arthur-control-plane-manual
   cancel-in-progress: false
 
 permissions:
@@ -32,16 +30,17 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Checkout current control-plane source
+      - name: Checkout manual recovery source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref_name }}
+          ref: ${{ inputs.source_ref || 'main' }}
 
       - name: Reconcile and resume Arthur checkpoint
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          $env:ARTHUR_CONTROL_PLANE_WORKSPACE = $env:GITHUB_WORKSPACE
           $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-control-plane.ps1'
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_INSTALL_FAILED: missing $script"
@@ -54,7 +53,7 @@ jobs:
         shell: powershell
         run: |
           $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
-          "## Arthur Control Plane" >> $env:GITHUB_STEP_SUMMARY
+          "## Arthur Control Plane Manual Recovery" >> $env:GITHUB_STEP_SUMMARY
           "- Runner: $(whoami)" >> $env:GITHUB_STEP_SUMMARY
           "- Canonical root: ``$root``" >> $env:GITHUB_STEP_SUMMARY
           $heartbeat = Join-Path $root 'heartbeat.json'

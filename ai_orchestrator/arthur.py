@@ -2,6 +2,7 @@ from .models import ActionKind, PipelineState
 
 
 class ArthurPipeline:
+    default_request_id = "arthur-adh-quickstart"
     production_candidate_workflow = ".github/workflows/arthur-update-v3.yml"
     non_production_candidate_workflows = frozenset(
         {
@@ -50,9 +51,9 @@ class ArthurPipeline:
         "PRODUCTION_RELEASED",
     )
 
-    def initial_state(self, request_id="arthur-production", next_prompt=None):
+    def initial_state(self, request_id=None, next_prompt=None):
         return PipelineState(
-            request_id=request_id,
+            request_id=request_id or self.default_request_id,
             device="jdcloud_re-ss-01",
             phase=self.phases[0],
             next_codex_prompt=next_prompt or self.prompt_for(self.phases[0]),
