@@ -130,7 +130,6 @@ foreach ($forbidden in @(' mtd ', 'mtd write', ' nandwrite', 'uboot', 'u-boot wr
 }
 Assert-True ($automaticPath -notmatch '(?m)(^|[;&|]\s*)dd\s+if=') 'automatic path must not execute dd raw writes'
 
-# Legacy task tooling remains available only as rollback/forensic evidence; it is not the active unattended path.
 Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain parseable for rollback/forensics'
 Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
@@ -138,7 +137,8 @@ Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer cr
 # Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> Arthur Control Plane -> ai_orchestrator.
 Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
-Assert-Contains $deploy "ControlPlane\workspace" 'runner wakeup must preserve a persistent source workspace'
+Assert-Contains $deploy "XinZhaoWrt\ControlPlane" 'runner wakeup must use the canonical Control Plane root'
+Assert-Contains $deploy "Join-Path $root 'workspace'" 'runner wakeup must preserve a persistent source workspace under the canonical root'
 Assert-Contains $deploy 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must survive the next schedule'
 Assert-Contains $deploy 'merge --ff-only' 'clean persistent main may only fast-forward'
 Assert-Contains $deploy '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE' 'resume-state, baseline and Headless Codex must execute against the persistent workspace'
