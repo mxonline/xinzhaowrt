@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "checkpoint": "ADGUARD_FULL_MANAGER",
+  "status": "LIVE_BROWSER_VERIFIED",
+  "captured_date": "2026-09-05",
+  "device": {
+    "address": "192.168.6.1",
+    "firmware_version": "0.1.3",
+    "board": "jdcloud,re-ss-01",
+    "target": "qualcommax/ipq60xx"
+  },
+  "source_head": "393c8a06a0ce952061dd57bcfd24d5a0cd86967a",
+  "authenticated_browser_routes": {
+    "overview": "PASS",
+    "base": "PASS",
+    "tools": "PASS",
+    "log": "PASS",
+    "manual": "PASS"
+  },
+  "browser_page_evidence": {
+    "overview": [
+      "service status: stopped",
+      "redirect mode: none",
+      "core version: v0.107.79"
+    ],
+    "base": [
+      "enable control",
+      "web management port",
+      "update channel",
+      "5553 redirect modes"
+    ],
+    "tools": [
+      "web password management",
+      "sysupgrade preservation choices",
+      "scheduled tasks",
+      "core download source"
+    ],
+    "log": [
+      "reverse order control",
+      "local time control"
+    ],
+    "manual": [
+      "rendered YAML editor",
+      "bind_host",
+      "DNS port 5553"
+    ]
+  },
+  "status_endpoint": {
+    "browser_navigation": "BLOCKED_BY_BROWSER_CONTENT_EXTENSION",
+    "authenticated_luci_http": "PASS",
+    "http_status": 200,
+    "body": {
+      "redirect": false,
+      "running": false
+    }
+  },
+  "runtime_invariants": {
+    "init": "PRESENT",
+    "uci_enabled": "0",
+    "uci_redirect": "none",
+    "yaml": "PRESENT",
+    "core_version": "v0.107.79",
+    "process": "STOPPED"
+  },
+  "gates": {
+    "ADGUARD_FULL_MANAGER": "PASS",
+    "ADGUARD_UI_PREVIEW": "PASS",
+    "ADGUARD_PREVIEW": "PASS",
+    "WIFI": "VERIFIED_FROZEN",
+    "REAL_DEVICE_VERIFY": "NOT_RUN",
+    "RELEASE_ALLOWED": false
+  },
+  "prohibited_actions": [
+    "Candidate",
+    "Build",
+    "Flash",
+    "Release"
+  ]
+}
