@@ -20,15 +20,18 @@ For every non-trivial firmware task, do not begin by re-deriving the project fro
 
 Required startup sequence:
 
-1. read `knowledge/PROJECT-STATE.md`;
-2. verify live Git branch/HEAD and relevant GitHub workflow/release state;
-3. read `knowledge/INDEX.md` and route the task to only the relevant knowledge/documents;
-4. for device/target work, read `knowledge/DEVICE-PROFILE.md`;
-5. for baseline/update work, read `knowledge/KNOWN-GOOD.md` and `knowledge/SOURCE-LOCK.md`;
-6. on a failure, classify the first causal error and consult `knowledge/KNOWN-FAILURES.md` before inventing a repair;
-7. before changing an upstream/feed/package source, adopting a fork, or creating a new compatibility patch/build component, execute `knowledge/REUSE-GATE.md` and record `USE / REUSE / FORK / BUILD`.
+1. read `production/resume-state.json` first. It is the only repository snapshot allowed to name the **current execution checkpoint and next action**. If `status != RESUME_SAFE` or `instruction_allowed != true`, do not invent or emit a Codex next-action instruction; run/retry Arthur control-plane reconciliation and preserve the conflict evidence;
+2. verify live Git branch/HEAD and relevant GitHub workflow/release state, and confirm they are compatible with the resume snapshot;
+3. read `knowledge/PROJECT-STATE.md` only as project/routing context; its historical version/Candidate sections are auxiliary and may not override `production/resume-state.json`;
+4. read `knowledge/INDEX.md` and route the task to only the relevant knowledge/documents;
+5. for device/target work, read `knowledge/DEVICE-PROFILE.md`;
+6. for baseline/update work, read `production/real-device-baseline.json`, `knowledge/KNOWN-GOOD.md` and `knowledge/SOURCE-LOCK.md`;
+7. on a failure, classify the first causal error and consult `knowledge/KNOWN-FAILURES.md` before inventing a repair;
+8. before changing an upstream/feed/package source, adopting a fork, or creating a new compatibility patch/build component, execute `knowledge/REUSE-GATE.md` and record `USE / REUSE / FORK / BUILD`.
 
-Live GitHub/build/device evidence overrides stale documentation. `production/known-good.json` remains the machine-readable authority for the last promoted real-device-confirmed Stable. `config/arthur-known-good.lock` remains the authority for pinned source/feed/plugin refs.
+Current-state precedence is fixed: **live device/build evidence → `production/resume-state.json` structured reconciliation → AI Orchestrator runtime checkpoint → current GitHub HEAD/workflow evidence → HANDOFF/project docs → chat/model narrative**. `production/v4-state.json`, old Candidate text, historical `knowledge/PROJECT-STATE.md` sections and prior chat messages must never downgrade the accepted 0.1.3 physical development baseline or roll a verified checkpoint backward.
+
+`production/known-good.json` remains the machine-readable authority for the last promoted real-device-confirmed Stable/rollback reference. `config/arthur-known-good.lock` remains the authority for pinned source/feed/plugin refs. These Stable/lock authorities do not replace the current execution pointer in `production/resume-state.json`.
 
 After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAILURES.md`. After a Candidate is promoted, update the project state/known-good knowledge to match the new machine-readable Stable record.
 
@@ -52,8 +55,8 @@ This section is a frozen project-level development rule. Do not rename, replace,
 - The only primary workflow is `RELEASE-FIRST AUTOMATION MODE`.
 - The only successful terminal state is `PRODUCTION_RELEASED`.
 - The frozen production order is: recover current release state → determine minimum change scope → `CHANGE_IMPACT_GATE` → `BASELINE_INHERITANCE_GATE` → `EXPECTED_DIFF_GATE` → choose the fastest reliable build path (`ImageBuilder` / `SDK` / `Full Build`) → Build → artifact/SHA256/flash-manifest/config/plugin/theme checks → `AUTO_FLASH_SAFETY_GATE` → Windows PowerShell → OpenSSH `ssh.exe` upload → remote SHA256 → previously verified Arthur `/sbin/sysupgrade` → `WAIT_DEVICE` → `REAL_DEVICE_VERIFY` → Release Gate → GitHub Release → `PRODUCTION_RELEASED`.
-- Do not invent, insert, rename, reorder or promote a new Gate, Agent, Controller, Runtime stage or workflow stage inside that frozen production order unless the user explicitly changes the development standard. Ideas for future improvement must remain non-blocking suggestions and must not alter an active release.
-- Before proposing or executing a next action, reconcile three things: the live current stage, the next stage permitted by this frozen order, and the proposed action. If they do not match, do not execute the action.
+- Do not invent, insert, rename, reorder or promote a new Gate, Agent, Controller, Runtime stage or workflow stage inside that frozen production order unless the user explicitly changes the development standard. The resume-state reconciliation is a pre-action state integrity check, not a new production stage. Ideas for future improvement must remain non-blocking suggestions and must not alter an active release.
+- Before proposing or executing a next action, `production/resume-state.json` must be `RESUME_SAFE` with `instruction_allowed=true`, then reconcile three things: the live current stage, the next stage permitted by this frozen order, and the proposed action. If they do not match, do not execute the action.
 - If repository documents or defaults conflict with current machine-readable/product targets, do not guess. Reconcile the conflicting source of truth before starting a new Candidate build; live verified device/build evidence and explicit current product requirements override stale text.
 - The automation control plane must keep one Arthur release task as a single, continuous and recoverable execution chain. It must not spend extended time recovering or optimizing Codex, Bridge, Runtime, Supervisor or Skill while the real firmware release is stalled.
 - GPT, Codex, Bridge, Runtime, Supervisor and Skill are supporting components only. None of them may become the release workflow owner.
