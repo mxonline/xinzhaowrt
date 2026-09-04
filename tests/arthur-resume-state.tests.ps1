@@ -64,6 +64,33 @@ $runtimeChangeImpact = [pscustomobject]@{
 $changeImpact = Resolve-ArthurResumeState -RepositoryHead ('d' * 40) -RealDeviceBaseline $baseline -LiveDevice $live013 -RuntimeState $runtimeChangeImpact
 Assert-Equal $changeImpact.status 'RESUME_SAFE' 'later normal Arthur phases must remain resumable rather than being rejected by a legacy checkpoint allowlist'
 
+# A legacy canonical checkpoint from the old control plane must not override the current release contract.
+$staleCanonical = [pscustomobject]@{
+    production_task = 'arthur-adh-quickstart'
+    checkpoint = [pscustomobject]@{
+        current = 'REAL_DEVICE_VERIFY'
+        next_action = 'REAL_DEVICE_VERIFY'
+        status = 'BLOCKED_BUILD_INFO_PROVENANCE'
+    }
+}
+$staleCheckpoint = Resolve-ArthurControlPlaneCheckpoint -ExistingCanonical $staleCanonical
+Assert-Equal $staleCheckpoint.current 'ADH_MANAGEMENT' 'legacy REAL_DEVICE_VERIFY checkpoint must be superseded by the current ADH management start'
+Assert-Equal $staleCheckpoint.next_action 'ADH_MANAGEMENT' 'legacy REAL_DEVICE_VERIFY next action must not block ADH_MANAGEMENT'
+Assert-Equal $staleCheckpoint.status 'CURRENT_RELEASE_CONTRACT' 'superseded legacy checkpoint must be identified as the current release contract'
+
+# A checkpoint already expressed in the current phase registry remains valid and must not be regressed.
+$currentCanonical = [pscustomobject]@{
+    production_task = 'arthur-adh-quickstart'
+    checkpoint = [pscustomobject]@{
+        current = 'ADH_CHINESE'
+        next_action = 'ADH_CHINESE'
+        status = 'HEADLESS_RUNTIME_RESUMED'
+    }
+}
+$currentCheckpoint = Resolve-ArthurControlPlaneCheckpoint -ExistingCanonical $currentCanonical
+Assert-Equal $currentCheckpoint.current 'ADH_CHINESE' 'valid current-task checkpoint must be preserved'
+Assert-Equal $currentCheckpoint.next_action 'ADH_CHINESE' 'valid later ADH checkpoint must not regress to management'
+
 $olderLive = [pscustomobject]@{ version = '0.1.1'; build_id = '32943895389'; git_commit = '256b186' }
 $versionConflict = Resolve-ArthurResumeState -RepositoryHead ('b' * 40) -RealDeviceBaseline $baseline -LiveDevice $olderLive -RuntimeState $runtimeAdh
 Assert-Equal $versionConflict.status 'STATE_RECONCILIATION_REQUIRED' 'older live version must not silently replace the accepted 0.1.3 baseline'
@@ -87,6 +114,7 @@ Assert-True (@($checkpointConflict.conflicts) -contains 'CHECKPOINT_REGRESSION')
 $controlPlane = Get-Content -Raw $ControlPlanePath
 Assert-Contains $controlPlane 'production\resume-state.json' 'control plane must publish the canonical repository resume snapshot'
 Assert-Contains $controlPlane 'Resolve-ArthurResumeState' 'control plane must reconcile state before resuming runtime'
+Assert-Contains $controlPlane 'Resolve-ArthurControlPlaneCheckpoint' 'control plane must normalize stale canonical checkpoints before validating the current release phase'
 Assert-Contains $controlPlane 'STATE_RECONCILIATION_REQUIRED' 'control plane must fail closed when current state conflicts'
 Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Codex/runtime dispatch on reconciled instruction permission'
 Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
