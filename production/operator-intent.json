@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "project": "Arthur",
+  "intent_type": "PROCESS_GOVERNANCE",
+  "authorization_scope": "GOVERNANCE_RULES_ONLY",
+  "firmware_execution_authorized": false,
+  "firmware_state": {
+    "current_stage": "ADH_MANAGEMENT",
+    "next_stage": "ADH_CHINESE",
+    "verified_frozen": [
+      "WIFI"
+    ],
+    "preserve": [
+      "iStore/QuickStart"
+    ],
+    "source": "USER_EXPLICIT_CORRECTION"
+  },
+  "guardrails": {
+    "state_statement_is_not_execution_authorization": true,
+    "authorization_is_scope_bound": true,
+    "ambiguity_fails_closed": true,
+    "resume_before_action": true,
+    "no_codex_instruction_without_firmware_authorization": true
+  },
+  "governance_task": {
+    "authorized": true,
+    "scope": "GOVERNANCE_RULES_ONLY",
+    "goal": "Make GPT/Codex recover the full Arthur workflow and current state before proposing or executing firmware actions."
+  }
+}
