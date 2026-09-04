@@ -1,0 +1,62 @@
+name: One-shot Arthur Control Plane null Count hotfix
+
+on:
+  push:
+    branches:
+      - fix/arthur-control-plane-null-count-20260904
+    paths:
+      - '.github/workflows/arthur-control-plane-null-count-hotfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/arthur-control-plane-null-count-20260904
+          fetch-depth: 0
+
+      - name: Prove old behavior is RED
+        shell: bash
+        run: |
+          set +e
+          pwsh -NoProfile -File ./tests/arthur-control-plane-null-count.tests.ps1
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo 'TDD_RED_MISSING: old Control Plane unexpectedly satisfied null Count contract' >&2
+            exit 1
+          fi
+          echo 'ARTHUR_NULL_COUNT_TDD_RED=PASS'
+
+      - name: Apply exact one-line fix
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('scripts/arthur-control-plane.ps1')
+          text = path.read_text(encoding='utf-8')
+          old = "if (($deviceLines | Where-Object { $_ -match 'build-info\\.json' }).Count -gt 0)"
+          new = "if (@($deviceLines | Where-Object { $_ -match 'build-info\\.json' }).Count -gt 0)"
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one unsafe device build-info Count expression, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+
+      - name: Prove fixed behavior is GREEN
+        shell: pwsh
+        run: ./tests/arthur-control-plane-null-count.tests.ps1
+
+      - name: Commit verified hotfix and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/arthur-control-plane-null-count-hotfix.yml
+          git add scripts/arthur-control-plane.ps1 tests/arthur-control-plane-null-count.tests.ps1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: handle empty Arthur build-info scan under StrictMode'
+          git push origin HEAD:fix/arthur-control-plane-null-count-20260904
