@@ -1,0 +1,61 @@
+name: Arthur Build Dedup CI
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/build-fingerprint.sh'
+      - 'scripts/source-impact-gate.sh'
+      - 'scripts/resolve-candidate-dedup.sh'
+      - 'scripts/ci-controller-v3*.ps1'
+      - 'scripts/classify-build-scope.sh'
+      - 'tests/test-build-dedup-contract.sh'
+      - '.github/workflows/arthur-update-v3-auto.yml'
+      - '.github/workflows/build-dedup-ci.yml'
+  push:
+    branches:
+      - 'codex/arthur-build-dedup-source-impact'
+    paths:
+      - 'scripts/build-fingerprint.sh'
+      - 'scripts/source-impact-gate.sh'
+      - 'scripts/resolve-candidate-dedup.sh'
+      - 'scripts/ci-controller-v3*.ps1'
+      - 'scripts/classify-build-scope.sh'
+      - 'tests/test-build-dedup-contract.sh'
+      - '.github/workflows/arthur-update-v3-auto.yml'
+      - '.github/workflows/build-dedup-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dedup-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Shell contract tests
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh tests/*.sh
+          ./tests/test-classify-build-scope.sh
+          ./tests/test-build-dedup-contract.sh
+
+      - name: Parse PowerShell controller wrapper and preserved core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @('scripts/ci-controller-v3.ps1','scripts/ci-controller-v3-core.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parse failed: $path"
+            }
+          }
+          Write-Host 'PASS: PowerShell controller wrapper/core parse cleanly.'
+
+      - name: Verify project static gates
+        run: ./scripts/verify-project.sh
