@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $Root 'scripts/fast-safe-release-lib.ps1')
+. (Join-Path $Root 'scripts/fast-safe-convergence-lib.ps1')
 
 function Assert-True([bool]$Condition,[string]$Message) {
     if (-not $Condition) { throw "TEST_FAIL: $Message" }
