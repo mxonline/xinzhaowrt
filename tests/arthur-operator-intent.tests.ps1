@@ -39,9 +39,14 @@ Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
 
 $current = Get-Content -Raw $IntentPath | ConvertFrom-Json
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
-Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'current user authorization is for governance-rule implementation, not firmware repair'
-Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'current authorization scope must stay bound to governance work'
-Assert-Equal $current.firmware_execution_authorized $false 'firmware execution must remain unauthorized while governance rules are being implemented'
+if ($current.firmware_execution_authorized -eq $true) {
+    Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'authorized firmware execution must use EXECUTE_FIRMWARE intent'
+    Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'authorized firmware execution must stay scoped to FIRMWARE_RELEASE'
+}
+else {
+    Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'non-firmware operator intent must remain process governance'
+    Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'non-firmware operator intent must remain governance-only'
+}
 Assert-Equal $current.firmware_state.current_stage 'ADH_MANAGEMENT' 'user-corrected firmware work start must be ADH_MANAGEMENT'
 Assert-Equal $current.firmware_state.next_stage 'ADH_CHINESE' 'ADH_CHINESE must be the next firmware stage'
 Assert-True (@($current.firmware_state.verified_frozen) -contains 'WIFI') 'Wi-Fi must remain VERIFIED_FROZEN'

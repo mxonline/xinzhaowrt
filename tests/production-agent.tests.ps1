@@ -153,8 +153,14 @@ Assert-Contains $deploy 'scripts\arthur-control-plane-gate.ps1' 'runner wakeup m
 Assert-Contains $controlPlaneGate 'scripts\arthur-control-plane.ps1' 'authorized intent gate must delegate to the existing Arthur Control Plane'
 Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'unauthorized firmware execution must stop before the Control Plane'
 Assert-Contains $controlPlaneGate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
-Assert-True ([string]$operatorIntent.authorization_scope -eq 'GOVERNANCE_RULES_ONLY') 'current operator authorization must stay scoped to governance rules'
-Assert-True ($operatorIntent.firmware_execution_authorized -eq $false) 'current operator intent must not authorize firmware execution'
+if ($operatorIntent.firmware_execution_authorized -eq $true) {
+    Assert-True ([string]$operatorIntent.intent_type -eq 'EXECUTE_FIRMWARE') 'authorized operator intent must use EXECUTE_FIRMWARE'
+    Assert-True ([string]$operatorIntent.authorization_scope -eq 'FIRMWARE_RELEASE') 'authorized operator intent must use FIRMWARE_RELEASE scope'
+}
+else {
+    Assert-True ([string]$operatorIntent.intent_type -eq 'PROCESS_GOVERNANCE') 'non-firmware operator intent must remain PROCESS_GOVERNANCE'
+    Assert-True ([string]$operatorIntent.authorization_scope -eq 'GOVERNANCE_RULES_ONLY') 'non-firmware operator intent must remain governance-only'
+}
 Assert-True ($deploy -notmatch '(?i)actions/checkout@v4') 'active unattended wakeup must not replace the persistent source with an ephemeral checkout'
 Assert-True ($deploy -notmatch '(?i)reset --hard') 'active wakeup must not destroy unfinished Headless Codex changes'
 Assert-True ($deploy -notmatch '(?i)git clean') 'active wakeup must not clean unfinished Headless Codex changes'
