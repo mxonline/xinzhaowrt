@@ -18,6 +18,8 @@ class ArthurPipeline:
     )
     phases = (
         "FORENSICS",
+        "ADH_MANAGEMENT",
+        "ADH_CHINESE",
         "CHANGE_IMPACT",
         "BASELINE_INHERITANCE",
         "EXPECTED_DIFF",
@@ -65,6 +67,17 @@ class ArthurPipeline:
             "standard sysupgrade is automatic only after AUTO_FLASH_SAFETY_GATE; never perform raw MTD/U-Boot/dd/eMMC writes. "
             "Return a concise result with evidence paths."
         ) % phase
+        if phase == "ADH_MANAGEMENT":
+            prompt += (
+                " Resume the accepted arthur-adh-quickstart work on the running XinZhaoWrt 0.1.3 device. "
+                "Reuse the mature luci-app-adguardhome implementation first and permit only minimal compatibility patches; "
+                "do not rebuild the manager from scratch. Preserve WIFI=VERIFIED_FROZEN and the accepted iStore/QuickStart state."
+            )
+        elif phase == "ADH_CHINESE":
+            prompt += (
+                " Complete and verify Chinese localization for the accepted ADH management implementation without replacing "
+                "the mature upstream management structure. Preserve all previously verified firmware behavior."
+            )
         if phase in {"BUILD", "ARTIFACT", "PRE_FLASH"}:
             prompt += (
                 " Production candidates must come from .github/workflows/arthur-update-v3.yml and include the complete "
