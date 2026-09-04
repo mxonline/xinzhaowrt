@@ -96,6 +96,7 @@ switch ($Mode) {
         }.GetEnumerator()) {
             if (-not ([string]$pair.Value).Trim()) { throw "RELEASE_CONVERGENCE_RESOLVE_ARGUMENT_REQUIRED=$($pair.Key)" }
         }
+        $trusted = Assert-ConvergenceCheckScriptTrusted -RepoRoot $Root -ScriptPath $PreflashScriptPath -SourceRef $SourceRef
         $evidence = Load-RequiredEvidence
         $item = Resolve-ConvergenceFailureWithCheck `
             -Evidence $evidence `
@@ -103,23 +104,31 @@ switch ($Mode) {
             -RootCause $RootCause `
             -FirmwareSourceFix $FirmwareSourceFix `
             -PreflashCheckId $PreflashCheckId `
-            -PreflashScriptPath $PreflashScriptPath
+            -PreflashScriptPath ([string]$trusted.resolved_path)
+        Add-ConvergenceNoteProperty -Object $item -Name 'preflash_source_sha' -Value ([string]$trusted.source_sha)
+        Add-ConvergenceNoteProperty -Object $item -Name 'preflash_script_relative_path' -Value ([string]$trusted.relative_path)
+        Add-ConvergenceNoteProperty -Object $item -Name 'preflash_script_blob_sha' -Value ([string]$trusted.blob_sha)
         Save-Evidence $evidence
-        Write-Host "FAILURE_RESOLUTION=PASS check_id=$($item.check_id) preflash_check_id=$($item.preflash_check_id)"
+        Write-Host "FAILURE_RESOLUTION=PASS check_id=$($item.check_id) preflash_check_id=$($item.preflash_check_id) source=$($trusted.source_sha) blob=$($trusted.blob_sha)"
         Write-Host "FINAL_FAILURE_SET=$($evidence.state)"
         exit 0
     }
 
     'AcceptRootfs' {
         if (-not $RootfsScriptPath.Trim()) { throw 'ROOTFS_ACCEPTANCE_SCRIPT_REQUIRED' }
+        $trusted = Assert-ConvergenceCheckScriptTrusted -RepoRoot $Root -ScriptPath $RootfsScriptPath -SourceRef $SourceRef
         $evidence = Load-RequiredEvidence
         $fingerprint = Get-CurrentFirmwareInputFingerprint
         Set-ConvergenceRootfsAcceptanceFromCheck `
             -Evidence $evidence `
-            -RootfsScriptPath $RootfsScriptPath `
+            -RootfsScriptPath ([string]$trusted.resolved_path) `
             -FirmwareInputFingerprint $fingerprint | Out-Null
+        Add-ConvergenceNoteProperty -Object $evidence -Name 'rootfs_source_sha' -Value ([string]$trusted.source_sha)
+        Add-ConvergenceNoteProperty -Object $evidence -Name 'rootfs_script_relative_path' -Value ([string]$trusted.relative_path)
+        Add-ConvergenceNoteProperty -Object $evidence -Name 'rootfs_script_blob_sha' -Value ([string]$trusted.blob_sha)
         Save-Evidence $evidence
         Write-Host 'ROOTFS_OFFLINE_ACCEPTANCE=PASS'
+        Write-Host "ROOTFS_CHECK_SOURCE=$($trusted.source_sha) ROOTFS_CHECK_BLOB=$($trusted.blob_sha)"
         Write-Host "FIRMWARE_INPUT_FINGERPRINT=$fingerprint"
         exit 0
     }
