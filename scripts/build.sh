@@ -81,6 +81,10 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
+python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
+  --root "$PROJECT_ROOT" \
+  --manifest production/accepted-preview/arthur-adh-quickstart.json \
+  --dest "$SRC/files"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 bash "$PROJECT_ROOT/tests/test-version-identity-defconfig.sh" "$SRC"
