@@ -58,7 +58,7 @@ def main() -> int:
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument(
         "--manifest",
-        default="production/accepted-preview/arthur-adh-quickstart.json",
+        default="production/accepted-preview/arthur-quickstart.json",
     )
     parser.add_argument("--dest", help="Image rootfs files directory to materialize into")
     parser.add_argument("--check", action="store_true", help="Validate only")

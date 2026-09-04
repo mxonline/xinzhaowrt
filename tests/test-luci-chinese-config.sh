@@ -52,12 +52,12 @@ grep -qF 'quickstart.zh-cn.lmo' "$VERIFY" || {
 }
 
 REAL_DEVICE="$ROOT/scripts/real-device-verify.ps1"
-grep -qF "window.vue_lang" "$REAL_DEVICE" || {
+grep -qF "window\\.vue_lang" "$REAL_DEVICE" || {
   echo 'FAIL: real-device verification must inspect rendered QuickStart window.vue_lang' >&2
   exit 1
 }
 
-grep -qF "/luci-static/quickstart/i18n/zh-cn.json" "$REAL_DEVICE" || {
+grep -qF "/luci-static/quickstart/i18n/zh-cn\\.json" "$REAL_DEVICE" || {
   echo 'FAIL: real-device verification must require rendered QuickStart zh-cn translation data' >&2
   exit 1
 }

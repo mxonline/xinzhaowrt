@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "feature_id": "arthur-quickstart",
+  "frozen_files": [
+    {"source":"sources/live-preview-mature/quickstart/htdocs/luci-static/quickstart/i18n/en.json","remote":"/www/luci-static/quickstart/i18n/en.json","overlay":"files/www/luci-static/quickstart/i18n/en.json","sha256":"797543011b0dc4b2bb49162ac3b5605c2c019cc4d2933a5baada4f5ca2a171a1","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/htdocs/luci-static/quickstart/i18n/zh-cn.json","remote":"/www/luci-static/quickstart/i18n/zh-cn.json","overlay":"files/www/luci-static/quickstart/i18n/zh-cn.json","sha256":"799a23b2c098bf689311a3cb54dead69d472234861cc84c1ecb2f116f5bea1f3","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/htdocs/luci-static/quickstart/index.js","remote":"/www/luci-static/quickstart/index.js","overlay":"files/www/luci-static/quickstart/index.js","sha256":"5ea4bc51ebe5b574f4aff417f134f383b5deb510e25e0f2fe8ffcb218d4a206f","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/htdocs/luci-static/quickstart/style.css","remote":"/www/luci-static/quickstart/style.css","overlay":"files/www/luci-static/quickstart/style.css","sha256":"2f2a7944f448fbb9b61e2d60b4014b350253a7ef6c2279708fa52402053203d0","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/htdocs/luci-static/quickstart/vendor.js","remote":"/www/luci-static/quickstart/vendor.js","overlay":"files/www/luci-static/quickstart/vendor.js","sha256":"db266589cc660653cd377220f7630898d71f0bbc865e2177d0b9e66efbd2b688","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/luasrc/controller/quickstart.lua","remote":"/usr/lib/lua/luci/controller/quickstart.lua","overlay":"files/usr/lib/lua/luci/controller/quickstart.lua","sha256":"f37c78d28fe6bf30e1b6d7689862f2b7891732b5fb0a42b56fd28d078ea4b748","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/luasrc/view/quickstart/home.htm","remote":"/usr/lib/lua/luci/view/quickstart/home.htm","overlay":"files/usr/lib/lua/luci/view/quickstart/home.htm","sha256":"eb0cbda01ef7ea1dba2d4ac5968c6c6fb67133ada00718b97f52f460ceca8f3c","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/luasrc/view/quickstart/main.htm","remote":"/usr/lib/lua/luci/view/quickstart/main.htm","overlay":"files/usr/lib/lua/luci/view/quickstart/main.htm","sha256":"c120bcaf75d4ce85f8119abd0c4a429829f23ed129588ef63986f63f3858dd1b","mode":"0644"},
+    {"source":"sources/live-preview-mature/quickstart/root/usr/libexec/quickstart/auto_setup.sh","remote":"/usr/libexec/quickstart/auto_setup.sh","overlay":"files/usr/libexec/quickstart/auto_setup.sh","sha256":"340bd9a0b7ecac7821ed2c67c6ac484abeb1dbcd1062588114081dd92f65afe9","mode":"0755"},
+    {"source":"sources/live-preview-mature/quickstart/root/usr/share/luci/menu.d/luci-app-quickstart.json","remote":"/usr/share/luci/menu.d/luci-app-quickstart.json","overlay":"files/usr/share/luci/menu.d/luci-app-quickstart.json","sha256":"8e1058f39b910371498c77c196fa80972a3bf389c518fd55775a68cc651627bf","mode":"0644"}
+  ],
+  "preview_evidence": {"QUICKSTART_PREVIEW":"PASS","WIFI":"VERIFIED_FROZEN"}
+}

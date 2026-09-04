@@ -160,7 +160,6 @@ function Invoke-AuthenticatedUbus([object]$Request,[string]$CookieFile = '') {
     [pscustomobject]@{ ExitCode=$code; Output=$text; Json=$parsed }
 }
 
-<<<<<<< HEAD
 function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
     $cookiePath = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $url = if ($Path -match '^https?://') { $Path } else { "http://$DeviceIp$Path" }
@@ -171,31 +170,17 @@ function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
     if ($text -match '(?m)HTTP_STATUS:(\d{3})$') {
         $status = [int]$Matches[1]
         $text = ($text -replace "(?m)`nHTTP_STATUS:\d{3}$", '').Trim()
-=======
-function Test-AdguardRpcFunctional([string]$Prefix) {
-    $command = 'HTTP /ubus session login + session access for mature AdGuard Home UCI read/write ACL'
-    if (-not $RootPassword) {
-        $r = [pscustomobject]@{ ExitCode = 1; Output = 'ARTHUR_ROOT_PASSWORD was not supplied; authenticated ACL verification is fail-closed.' }
-        Add-Check "$Prefix.adguard_rpc_functional" $false $command $r 'Authenticated rpcd ACL/RPC verification requires ARTHUR_ROOT_PASSWORD.' | Out-Null
-        return
->>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
     }
     [pscustomobject]@{ ExitCode=if ($code -eq 0 -and $status -ge 200 -and $status -lt 300) { 0 } else { 1 }; Output="HTTP_STATUS=$status`n$text" }
 }
 
 function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
+    $command = 'authenticated /ubus session access checks for mature AdGuard Home UCI read/write'
     $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $sid = Get-LuciSessionId $path
     $probes = @(
-<<<<<<< HEAD
-        @{ scope='ubus'; object='service'; function='list' },
-        @{ scope='ubus'; object='uci'; function='get' },
-        @{ scope='ubus'; object='network.interface.lan'; function='status' },
-        @{ scope='file'; object='/usr/bin/AdGuardHome --version'; function='exec' }
-=======
         @{ scope = 'uci'; object = 'AdGuardHome'; function = 'read' },
         @{ scope = 'uci'; object = 'AdGuardHome'; function = 'write' }
->>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
     )
     $failed = [System.Collections.Generic.List[string]]::new()
     $outputs = [System.Collections.Generic.List[string]]::new()
@@ -207,16 +192,8 @@ function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
         if (-not $allowed) { $failed.Add("$($probe.scope):$($probe.object):$($probe.function)") }
         $outputs.Add("$($probe.scope):$($probe.object):$($probe.function) access=$allowed")
     }
-<<<<<<< HEAD
     $r = [pscustomobject]@{ ExitCode=if ($failed.Count -eq 0) { 0 } else { 1 }; Output=(($outputs + $failed) -join "`n") }
-    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) 'authenticated /ubus session access checks' $r 'Authenticated rpcd access must cover the mature AdGuard Home manager dependencies.' | Out-Null
-=======
-    if ($sid) {
-        Invoke-Ubus ([ordered]@{ jsonrpc = '2.0'; id = 3; method = 'call'; params = @($sid, 'session', 'destroy', [ordered]@{}) }) | Out-Null
-    }
-    $r = [pscustomobject]@{ ExitCode = if ($failed.Count -eq 0) { 0 } else { 1 }; Output = (($outputs + $failed) -join "`n") }
     Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'Mature AdGuard Home LuCI must have authenticated rpcd UCI read/write ACL access.' | Out-Null
->>>>>>> ccb2da3 (fix: align Arthur device verification with mature runtime)
 }
 
 function Test-AdguardPageFunctional([string]$Prefix,[string]$CookieFile = '') {
@@ -255,7 +232,7 @@ function Test-QuickstartHomepage([string]$Prefix,[string]$CookieFile = '') {
     $index = Invoke-AuthenticatedHttp '/luci-static/quickstart/index.js' $CookieFile
     $style = Invoke-AuthenticatedHttp '/luci-static/quickstart/style.css' $CookieFile
     $loginMarker = '(?i)x-luci-login-required|<body[^>]*\blogin-page\b|<input[^>]+\bname=["'']luci_(?:username|password)["'']'
-    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -match "window\.vue_lang\s*=\s*['\"]zh-cn['\"]") -and ($page.Output -match "window\.vue_lang_data\s*=\s*['\"]/luci-static/quickstart/i18n/zh-cn\.json['\"]") -and ($page.Output -notmatch $loginMarker) -and ($index.Output.Length -gt 10000)
+    $ok = ($page.ExitCode -eq 0) -and ($index.ExitCode -eq 0) -and ($style.ExitCode -eq 0) -and ($page.Output -match '(?i)luci-static/quickstart/index\.js') -and ($page.Output -match '(?i)<div[^>]+id=["'']app["'']') -and ($page.Output -match '(?i)vue_base|quickstart_features') -and ($page.Output -match 'window\.vue_lang\s*=\s*[''""]zh-cn[''""]') -and ($page.Output -match 'window\.vue_lang_data\s*=\s*[''"]/luci-static/quickstart/i18n/zh-cn\.json[''""]') -and ($page.Output -notmatch $loginMarker) -and ($index.Output.Length -gt 10000)
     $r = [pscustomobject]@{ ExitCode=if ($ok) { 0 } else { 1 }; Output="PAGE`n$($page.Output)`nINDEX`n$($index.Output)`nSTYLE`n$($style.Output)" }
     Add-Check "$Prefix.quickstart_home_functional" $ok 'authenticated official QuickStart homepage and assets' $r 'The authenticated homepage must render the official QuickStart application.' | Out-Null
 }

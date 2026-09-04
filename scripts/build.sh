@@ -83,9 +83,8 @@ mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
   --root "$PROJECT_ROOT" \
-  --manifest production/accepted-preview/arthur-adh-quickstart.json \
+  --manifest production/accepted-preview/arthur-quickstart.json \
   --dest "$SRC/files"
-bash "$PROJECT_ROOT/scripts/restore-pinned-adguard-manager.sh" "$SRC"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 bash "$PROJECT_ROOT/tests/test-version-identity-defconfig.sh" "$SRC"

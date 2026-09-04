@@ -5,7 +5,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 config="$root/config/arthur.config"
 packages="$root/scripts/add-custom-packages.sh"
 build="$root/scripts/build.sh"
-manifest="$root/production/accepted-preview/arthur-adh-quickstart.json"
+manifest="$root/production/accepted-preview/arthur-quickstart.json"
 materializer="$root/scripts/materialize-accepted-overlay.py"
 
 grep -Fxq 'CONFIG_PACKAGE_luci-theme-argon=y' "$config" || { echo 'FAIL: production config must embed Argon.' >&2; exit 1; }
@@ -19,7 +19,6 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 [[ -s "$manifest" ]] || { echo 'FAIL: accepted arthur-adh-quickstart manifest is missing from the production source.' >&2; exit 1; }
 [[ -x "$materializer" || -f "$materializer" ]] || { echo 'FAIL: accepted overlay materializer is missing.' >&2; exit 1; }
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
-python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
-bash "$root/tests/test-adguard-overlay-precedence.sh"
+python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-quickstart.json" --check
 
 echo 'SELF_CONTAINED_PRODUCTION_CANDIDATE=PASS'
