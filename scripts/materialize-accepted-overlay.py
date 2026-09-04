@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Validate/materialize the frozen Arthur accepted-preview overlay byte-for-byte.
 
-Git stores some accepted text assets with LF while the frozen preview manifest was
-captured from CRLF bytes. Content is accepted only when either the repository bytes
-or the canonical CRLF/LF representation hashes exactly to the frozen manifest.
-When --dest is supplied, the exact representation matching the frozen SHA256 is
-written into the image rootfs overlay. The manifest itself is never rewritten.
+The accepted preview manifest is immutable evidence. Repository text blobs may use
+LF while the accepted runtime bytes used CRLF, so the materializer reads the exact
+Git blob for the current HEAD and selects only a byte representation whose SHA256
+matches the frozen manifest. Checkout line-ending conversion is therefore irrelevant.
 """
 from __future__ import annotations
 
@@ -14,12 +13,25 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
+import subprocess
 import sys
 
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def git_blob(root: Path, path: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-C", str(root), "show", f"HEAD:{path}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise SystemExit(f"FAIL: cannot read accepted overlay from HEAD: {path}: {detail}")
+    return result.stdout
 
 
 def accepted_payload(data: bytes, expected: str) -> tuple[bytes, str] | None:
@@ -65,7 +77,6 @@ def main() -> int:
     if dest_root is not None:
         dest_root.mkdir(parents=True, exist_ok=True)
 
-    modes: dict[str, int] = {}
     representations: dict[str, int] = {}
     for item in entries:
         overlay = item.get("overlay")
@@ -78,16 +89,17 @@ def main() -> int:
         source = root / overlay
         if not source.is_file():
             raise SystemExit(f"FAIL: accepted overlay missing from firmware input: {overlay}")
-        match = accepted_payload(source.read_bytes(), expected)
+
+        data = git_blob(root, overlay)
+        match = accepted_payload(data, expected)
         if match is None:
             raise SystemExit(
                 f"FAIL: accepted overlay content drift: {overlay} expected={expected} "
-                f"repo={digest(source.read_bytes())}"
+                f"git_blob={digest(data)}"
             )
         payload, representation = match
         representations[representation] = representations.get(representation, 0) + 1
         mode = int(mode_text, 8)
-        modes[overlay] = mode
 
         if dest_root is not None:
             relative = Path(overlay).relative_to("files")
