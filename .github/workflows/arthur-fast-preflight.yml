@@ -46,7 +46,11 @@ jobs:
         shell: pwsh
         run: ./tests/feature-handoff-auto-trigger.tests.ps1
 
-      - name: Parse LIVE_PREVIEW and handoff PowerShell
+      - name: Test Arthur control-plane executor contract
+        shell: pwsh
+        run: ./tests/arthur-control-plane-executor.tests.ps1
+
+      - name: Parse LIVE_PREVIEW and control-plane PowerShell
         shell: pwsh
         run: |
           foreach ($file in @(
@@ -56,7 +60,8 @@ jobs:
             'scripts/feature-handoff-lib.ps1',
             'scripts/feature-handoff.ps1',
             'scripts/install-feature-handoff.ps1',
-            'scripts/feature-handoff-status.ps1'
+            'scripts/feature-handoff-status.ps1',
+            'scripts/arthur-control-plane.ps1'
           )) {
             if (-not (Test-Path $file)) {
               Write-Error "Required PowerShell file missing: $file"
@@ -70,6 +75,9 @@ jobs:
               exit 1
             }
           }
+
+      - name: Compile Arthur orchestrator Python
+        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py
 
       - name: Validate LIVE_PREVIEW JSON contracts
         run: |
