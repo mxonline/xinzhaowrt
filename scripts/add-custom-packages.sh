@@ -17,6 +17,13 @@ if [[ -f "$QUICKSTART_LOCK_FILE" ]]; then
   source "$QUICKSTART_LOCK_FILE"
   echo "ISTORE_QUICKSTART_LOCK: $QUICKSTART_LOCK_FILE"
 fi
+THEME_LOCK_FILE="${ARTHUR_THEME_LOCK:-$PROJECT_ROOT/config/arthur-theme.lock}"
+[[ -f "$THEME_LOCK_FILE" ]] || { echo "ERROR: Arthur theme lock missing: $THEME_LOCK_FILE" >&2; exit 1; }
+# shellcheck disable=SC1090
+source "$THEME_LOCK_FILE"
+: "${ARGON_REF:?ARGON_REF is required}"
+: "${KUCAT_REF:?KUCAT_REF is required}"
+echo "ARTHUR_THEME_LOCK: $THEME_LOCK_FILE"
 
 SOURCES="$SRC/.xinzhao-sources"
 FEED="$SRC/.xinzhao-feed"
@@ -50,6 +57,53 @@ link_pkg() {
   }
   ln -s "$src" "$FEED/$pkg"
 }
+
+# Frozen themes are production inputs. Apply the same accepted transformations
+# that passed Arthur Theme Candidate 33790155987 before exposing them to feeds.
+clone_or_update \
+  luci-theme-argon \
+  https://github.com/jerrykuku/luci-theme-argon.git \
+  "$ARGON_REF"
+clone_or_update \
+  luci-theme-kucat \
+  https://github.com/sirpdboy/luci-theme-kucat.git \
+  "$KUCAT_REF"
+ARGON="$SOURCES/luci-theme-argon"
+KUCAT="$SOURCES/luci-theme-kucat"
+rm -f \
+  "$KUCAT/root/etc/uci-defaults/30_luci-kuacat" \
+  "$KUCAT/root/etc/uci-defaults/30_luci-kucat" \
+  "$KUCAT/root/usr/libexec/rpcd/luci.kucatget" \
+  "$KUCAT/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json"
+sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' "$KUCAT/Makefile"
+for theme_dir in "$ARGON" "$KUCAT"; do
+  while IFS= read -r -d '' template; do
+    sed -i \
+      -e 's#/luci-static/argon/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+      -e 's#/luci-static/argon/icon/favicon-32x32.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+      -e 's#/luci-static/argon/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#/luci-static/argon/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+      -e 's#/luci-static/argon/img/argon.svg#/luci-static/xinzhao/logo.png#g' \
+      -e 's#/luci-static/kucat/logo.svg#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+      -e 's#{{ media }}/icon/favicon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+      -e 's#{{ media }}/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#{{ media }}/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+      -e 's#{{ media }}/icon/ms-icon-144x144.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#{{ media }}/logo.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/img/logo[0-9]*.png#/luci-static/xinzhao/logo.png#g' \
+      -e "s#const hostname = striptags(boardinfo?.hostname ?? '?');#const hostname = 'XinZhaoWrt';#g" \
+      -e 's#{{ media }}/img/logo180.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/img/logo150.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img class="xz-brand-logo" src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt"><span class="xz-brand-label">XinZhaoWrt</span></a>|g' \
+      -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
+      -e 's#ImmortalWRT#XinZhaoWrt#g' \
+      -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' \
+      "$template"
+  done < <(find "$theme_dir" -type f \( -name '*.htm' -o -name '*.html' -o -name '*.ut' \) -print0)
+done
+link_pkg luci-theme-argon "$ARGON"
+link_pkg luci-theme-kucat "$KUCAT"
 
 # iStoreX ecosystem + Lucky + QuickFile. QuickStart itself is sourced from
 # the official iStoreOS LinkEase repositories below.
@@ -213,6 +267,7 @@ printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 ./scripts/feeds update xinzhao
 
 CUSTOM_PKGS=(
+  luci-theme-argon luci-theme-kucat
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall
@@ -230,6 +285,7 @@ for pkg in "${CUSTOM_PKGS[@]}"; do
 done
 
 ./scripts/feeds install -f -p xinzhao \
+  luci-theme-argon luci-theme-kucat \
   luci-app-istorex luci-app-quickstart quickstart \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
