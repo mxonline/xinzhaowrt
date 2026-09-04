@@ -235,7 +235,11 @@ try {
     )
     $device.build_info_sources.artifact = if ($artifactBuildInfo.Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
-    $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'ADH_MANAGEMENT'; next_action = 'ADH_MANAGEMENT'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
+    $previousCheckpoint = if ($existing -and $existing.checkpoint) { [string]$existing.checkpoint.next_action } else { '' }
+    $checkpoint = Resolve-ArthurControlPlaneCheckpoint -ExistingCanonical $existing
+    if ($previousCheckpoint -and $previousCheckpoint -ne $checkpoint.next_action) {
+        Log "STALE_CANONICAL_CHECKPOINT_SUPERSEDED=PASS old_next_action=$previousCheckpoint new_next_action=$($checkpoint.next_action)"
+    }
     if ((Get-ArthurResumePhaseIndex $checkpoint.next_action) -lt 0) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
 
     $provenanceConsistent = ($candidate -and $production -and $run -and $device.classification -eq 'CURRENT' -and $device.build_info_sources.rom -notin @('MISSING','UNAVAILABLE_RETRY') -and $device.build_info_sources.http -eq 'PRESENT_PARSED')
