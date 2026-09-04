@@ -6,6 +6,7 @@ config="$root/config/arthur.config"
 packages="$root/scripts/add-custom-packages.sh"
 build="$root/scripts/build.sh"
 restore_adguard="$root/scripts/restore-pinned-adguard-manager.sh"
+rootfs_verifier="$root/scripts/verify-final-rootfs-identity.sh"
 manifest="$root/production/accepted-preview/arthur-adh-quickstart.json"
 materializer="$root/scripts/materialize-accepted-overlay.py"
 luci_converge="$root/files/usr/libexec/xinzhao/luci-upgrade-converge.sh"
@@ -25,6 +26,7 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 [[ -f "$luci_hotplug" ]] || { echo 'FAIL: production overlay must contain the LAN hotplug convergence trigger.' >&2; exit 1; }
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
 grep -Fq 'ADGUARD_LEGACY_MANAGER_PURGE=PASS' "$restore_adguard" || { echo 'FAIL: production AdGuard normalization must purge legacy manager paths.' >&2; exit 1; }
+grep -Fq 'mature AdGuard manager, zh_cn locale, themes, QuickStart, and preserved-upgrade LuCI convergence' "$rootfs_verifier" || { echo 'FAIL: final rootfs verifier is not bound to feature convergence.' >&2; exit 1; }
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 bash "$root/tests/test-preserved-upgrade-luci-convergence.sh"
