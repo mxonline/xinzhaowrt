@@ -39,15 +39,18 @@ $script = Get-Content -Raw $ScriptPath
 $pipeline = Get-Content -Raw $PipelinePath
 $runtime = Get-Content -Raw $RuntimePath
 
-Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'schedule/workflow default must not pin the old runner feature branch'
-Assert-Contains $workflow "github.event_name == 'workflow_dispatch'" 'workflow must distinguish manual source_ref from scheduled main checkout'
-Assert-Contains $workflow "github.ref_name" 'scheduled control-plane runs must follow the repository branch/main instead of a stale feature branch'
+# Arthur Control Plane itself is manual recovery/diagnostics only. The proven runner wakeup owns the sole schedule.
+Assert-Contains $workflow 'workflow_dispatch:' 'manual Arthur Control Plane workflow must remain available for explicit recovery'
+Assert-NotContains $workflow 'schedule:' 'manual Arthur Control Plane workflow must not own a second schedule'
+Assert-NotContains $workflow "cron: '*/5 * * * *'" 'manual Arthur Control Plane workflow must not duplicate the runner wakeup cron'
+Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'manual workflow default must not pin the old runner feature branch'
 
 Assert-Contains $script 'HEADLESS_RUNTIME_STARTED=PASS' 'recoverable control-plane state must start the existing headless ProductionRuntime'
 Assert-Contains $script 'STATE_SOURCE=AI_ORCHESTRATOR' 'ai_orchestrator StateStore must be the execution checkpoint source'
 Assert-Contains $script 'python -m ai_orchestrator resume' 'control plane must reuse the existing ai_orchestrator resume entrypoint'
 Assert-Contains $script 'runtime-state.json' 'control plane must seed or resume the durable ai_orchestrator runtime state'
 Assert-Contains $script 'RECOVERABLE_BUILD_INFO_PROVENANCE' 'build-info provenance mismatch must be classified recoverable instead of terminal watchdog-only BLOCKED'
+Assert-Contains $script 'ARTHUR_CONTROL_PLANE_WORKSPACE' 'Control Plane must consume the persistent runner workspace instead of assuming an ephemeral Actions checkout'
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
@@ -55,10 +58,18 @@ Assert-Contains $pipeline 'default_request_id = "arthur-adh-quickstart"' 'Arthur
 Assert-Contains $runtime 'self.pipeline.default_request_id' 'ProductionRuntime resume must inherit the pipeline task identity when request_id is omitted'
 Assert-NotContains $runtime 'request_id or "arthur-production"' 'ProductionRuntime must not silently replace arthur-adh-quickstart with the obsolete generic task id'
 
-# The only unattended wakeup path must be the already proven self-hosted runner schedule.
+# The only unattended wakeup path is the already-proven self-hosted runner schedule.
 Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must poll every five minutes'
 Assert-Contains $wakeup 'xinzhaowrt-controller' 'runner wakeup must execute on the dedicated self-hosted controller runner'
 Assert-Contains $wakeup 'scripts\arthur-control-plane.ps1' 'runner wakeup must invoke the Arthur Control Plane directly'
+Assert-Contains $wakeup "XinZhaoWrt\ControlPlane" 'runner wakeup must own a persistent machine-local Control Plane root'
+Assert-Contains $wakeup "ControlPlane\workspace" 'headless source changes must live in a persistent workspace across scheduled jobs'
+Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_WORKSPACE' 'wakeup must pass the persistent workspace explicitly to the Control Plane'
+Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must be preserved rather than cleaned on the next schedule'
+Assert-Contains $wakeup 'merge --ff-only' 'a clean persistent workspace may only fast-forward to origin/main'
+Assert-NotContains $wakeup 'reset --hard' 'runner wakeup must never destroy persistent headless source changes'
+Assert-NotContains $wakeup 'git clean' 'runner wakeup must never clean persistent headless source changes'
+Assert-NotContains $wakeup 'actions/checkout@v4' 'active headless workspace must not be replaced by the ephemeral checkout action'
 Assert-NotContains $wakeup 'LogonType Interactive' 'runner wakeup must not depend on interactive Windows logon'
 Assert-NotContains $wakeup 'XinZhaoWrt-Arthur-v3-Controller' 'legacy v3 Scheduled Task must not remain in the unattended wakeup path'
 Assert-NotContains $wakeup 'install-production-agent.ps1' 'legacy Production Agent Scheduled Task installer must not remain in the unattended wakeup path'
@@ -66,3 +77,5 @@ Assert-NotContains $wakeup 'recover-existing-bridge-context.ps1' 'cross-user GUI
 Assert-NotContains $wakeup 'PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION' 'legacy ten-minute continuation loop must not remain in the unattended wakeup path'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_EXECUTOR_CONTRACT=PASS'
+Write-Host 'ARTHUR_PERSISTENT_WORKSPACE_CONTRACT=PASS'
+Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
