@@ -36,6 +36,19 @@ reject_path() {
   [[ ! -e "$path" ]] || { echo "ERROR: obsolete production path survived final rootfs assembly: $path" >&2; exit 1; }
 }
 
+# CI may execute this verifier on a case-insensitive Windows filesystem while
+# production rootfs is Linux.  Use find's case-sensitive basename comparison
+# for legacy aliases that differ from the valid package path only by case.
+reject_exact_child_name() {
+  local dir="$1"
+  local name="$2"
+  [[ -d "$dir" ]] || return 0
+  if find "$dir" -mindepth 1 -maxdepth 1 -name "$name" -print -quit | grep -q .; then
+    echo "ERROR: obsolete production entry survived final rootfs assembly: $dir/$name" >&2
+    exit 1
+  fi
+}
+
 require_config 'CONFIG_VERSIONOPT=y'
 require_config 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 require_config "CONFIG_VERSION_NUMBER=\"$VERSION\""
@@ -51,8 +64,8 @@ require_file_text "$ROOTFS_DIR/etc/os-release" 'XinZhaoWrt'
 require_file_text "$ROOTFS_DIR/etc/os-release" "$VERSION"
 require_file "$ROOTFS_DIR/etc/uci-defaults/99-xinzhao-defaults"
 
-# Preserved-config sysupgrade convergence.  These rootfs files must survive even
-# when an older /etc/config/luci and old uci-default deletion state are kept.
+# Preserved-config sysupgrade convergence. These files exist in the new rootfs
+# even when an older /etc/config/luci and old uci-default deletion state remain.
 require_file "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh"
 require_file_text "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh" "luci.main.lang='zh_cn'"
 require_file_text "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh" "luci.main.mediaurlbase='/luci-static/argon'"
@@ -71,7 +84,7 @@ require_dir "$ROOTFS_DIR/www/luci-static/kucat"
 require_file "$ROOTFS_DIR/www/luci-static/quickstart/index.js"
 
 # Mature AdGuard Home manager must be the only manager implementation in the
-# production rootfs.  Lowercase package paths are authoritative.
+# production rootfs. Lowercase package paths are authoritative.
 require_file "$ROOTFS_DIR/usr/share/luci/menu.d/luci-app-adguardhome.json"
 require_file "$ROOTFS_DIR/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 require_file "$ROOTFS_DIR/www/luci-static/resources/view/adguardhome/config.js"
@@ -88,11 +101,11 @@ for obsolete in \
   "$ROOTFS_DIR/usr/lib/lua/luci/controller/AdGuardHome.lua" \
   "$ROOTFS_DIR/usr/lib/lua/luci/model/cbi/AdGuardHome" \
   "$ROOTFS_DIR/usr/lib/lua/luci/view/AdGuardHome" \
-  "$ROOTFS_DIR/etc/config/AdGuardHome" \
-  "$ROOTFS_DIR/etc/init.d/AdGuardHome" \
   "$ROOTFS_DIR/www/luci-static/resources/view/luci-app-adguardhome/index.js"; do
   reject_path "$obsolete"
 done
+reject_exact_child_name "$ROOTFS_DIR/etc/config" 'AdGuardHome'
+reject_exact_child_name "$ROOTFS_DIR/etc/init.d" 'AdGuardHome'
 
 if grep -Fq 'admin/services/AdGuardHome' "$ROOTFS_DIR/usr/share/luci/menu.d/luci-app-adguardhome.json"; then
   echo 'ERROR: final AdGuard menu still registers the obsolete uppercase service namespace.' >&2
