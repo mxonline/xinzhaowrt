@@ -55,6 +55,14 @@ Assert-Equal $safe.checkpoint.current 'ADH_MANAGEMENT' 'runtime checkpoint must 
 Assert-Equal $safe.next_action 'ADH_MANAGEMENT' 'next action must come from runtime state'
 Assert-Equal $safe.legacy_source_policy 'AUXILIARY_ONLY' 'historical docs must never be authoritative for current progress'
 
+# The current Arthur can be positively identified even when its generated build-info file is missing.
+# That is a recoverable metadata/provenance defect, not a reason to crash before Codex can repair it.
+$missingLive = Resolve-ArthurResumeState -RepositoryHead ('e' * 40) -RealDeviceBaseline $baseline -LiveDevice $null -RuntimeState $runtimeAdh -AllowBaselineFallbackForMissingLiveDevice
+Assert-Equal $missingLive.status 'RESUME_SAFE' 'identified current Arthur with missing build-info must remain resumable for provenance repair'
+Assert-Equal $missingLive.instruction_allowed $true 'recoverable missing build-info must allow the existing ADH repair runtime to start'
+Assert-Equal $missingLive.real_device.version '0.1.3' 'fallback must retain the accepted physical 0.1.3 baseline version'
+Assert-Equal $missingLive.real_device.evidence 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'fallback must be explicit and must not masquerade as parsed live build-info'
+
 $runtimeChangeImpact = [pscustomobject]@{
     phase = 'CHANGE_IMPACT'
     current_stage = 'CHANGE_IMPACT'
@@ -119,5 +127,6 @@ Assert-Contains $controlPlane 'STATE_RECONCILIATION_REQUIRED' 'control plane mus
 Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Codex/runtime dispatch on reconciled instruction permission'
 Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
 Assert-Contains $controlPlane 'Get-ArthurResumePhaseIndex $checkpoint.next_action' 'control plane must validate checkpoints against the canonical Arthur phase registry, not a stale hard-coded subset'
+Assert-Contains $controlPlane 'AllowBaselineFallbackForMissingLiveDevice' 'control plane must explicitly opt into the narrow missing-build-info fallback only after device identity is confirmed'
 
 Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'
