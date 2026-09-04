@@ -5,12 +5,16 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $agentPath = Join-Path $Root 'scripts/production-agent.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
-if (-not (Test-Path $deployPath)) { throw 'TEST_FAIL: production-agent deploy workflow is missing' }
-if (-not (Test-Path $agentPath)) { throw 'TEST_FAIL: production-agent script is missing' }
-if (-not (Test-Path $installPath)) { throw 'TEST_FAIL: production-agent installer is missing' }
+$pipelinePath = Join-Path $Root 'ai_orchestrator/arthur.py'
+$controlPlanePath = Join-Path $Root 'scripts/arthur-control-plane.ps1'
+foreach ($path in @($deployPath,$agentPath,$installPath,$pipelinePath,$controlPlanePath)) {
+    if (-not (Test-Path $path)) { throw "TEST_FAIL: required rebuild routing file is missing: $path" }
+}
 $deploy = Get-Content -Raw $deployPath
 $agent = Get-Content -Raw $agentPath
 $install = Get-Content -Raw $installPath
+$pipeline = Get-Content -Raw $pipelinePath
+$controlPlane = Get-Content -Raw $controlPlanePath
 
 function Assert-Contains {
     param([string]$Text,[string]$Needle,[string]$Message)
@@ -24,52 +28,36 @@ function Assert-True {
     if (-not $Condition) { throw "TEST_FAIL: $Message" }
 }
 
-Assert-Contains $deploy 'actions: write' 'authenticated deploy must be allowed to dispatch the replacement Arthur build'
-Assert-Contains $deploy 'REBUILD_DISPATCHING' 'rebuild request must enter an explicit dispatching state before acknowledgement'
-Assert-Contains $deploy 'REBUILD_DISPATCHED' 'rebuild may only be acknowledged after GitHub returns a replacement run id'
-Assert-Contains $deploy 'replacement_run_id' 'replacement run id must be persisted for later scheduled recovery'
-Assert-Contains $deploy 'arthur-update-v3.yml' 'authenticated deploy must dispatch the current Arthur v3 build directly'
-Assert-Contains $deploy "'workflow','run'" 'authenticated deploy must perform a real workflow_dispatch call'
-Assert-Contains $deploy "'run','list'" 'authenticated deploy must confirm the replacement run exists before acknowledgement'
-Assert-Contains $deploy 'headSha' 'replacement run confirmation must bind to the current source SHA'
-Assert-Contains $deploy 'CURRENT_SOURCE_REBUILD_DISPATCHED=YES' 'deploy must expose confirmed rebuild dispatch evidence'
-Assert-Contains $deploy 'CURRENT_SOURCE_REBUILD_DISPATCH_RETRY' 'dispatch failure must remain retryable rather than becoming a false acknowledgement'
+# Active topology owns rebuild routing in the durable ai_orchestrator pipeline, not in a second deployment loop.
+Assert-Contains $deploy 'actions: write' 'runner wakeup must retain Actions permission needed by the headless release executor'
+Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must delegate to the single Control Plane'
+Assert-Contains $controlPlane 'python -m ai_orchestrator resume' 'Control Plane must resume the durable executor instead of dispatching independently'
+Assert-Contains $pipeline '.github/workflows/arthur-update-v3.yml' 'formal production Candidate route must remain Arthur v3'
+Assert-Contains $pipeline 'RECOVERABLE_ROUTE_MISMATCH' 'non-production Candidate evidence must be rejected as recoverable route mismatch'
+Assert-Contains $pipeline 'flash_allowed' 'Candidate route classification must explicitly control flash eligibility'
+Assert-True ($deploy -notmatch 'REBUILD_DISPATCHING') 'wakeup workflow must not own a second rebuild-dispatch state machine'
+Assert-True ($deploy -notmatch "'workflow','run'") 'wakeup workflow must not independently dispatch Candidate builds'
 
-# Discovery is a read-side safety gate. A failed/blank/unparseable run list must never be interpreted as "no matching run" and followed by another workflow_dispatch.
-$listExitIndex = $deploy.IndexOf('$listExit = $LASTEXITCODE',[System.StringComparison]::OrdinalIgnoreCase)
-$dispatchIndex = $deploy.IndexOf('if (-not $replacementRun) {',[System.StringComparison]::OrdinalIgnoreCase)
-Assert-True ($listExitIndex -ge 0) 'deploy must capture the replacement-run discovery exit code'
-Assert-True ($dispatchIndex -gt $listExitIndex) 'replacement workflow dispatch must occur only after discovery'
-$preDispatch = $deploy.Substring($listExitIndex, $dispatchIndex - $listExitIndex)
-Assert-Contains $preDispatch '$discoverySucceeded' 'replacement-run discovery must track whether the read completed and parsed successfully'
-Assert-Contains $preDispatch 'CURRENT_SOURCE_REBUILD_DISCOVERY_RETRY' 'failed replacement-run discovery must be explicitly retryable'
-Assert-Contains $preDispatch 'continue' 'failed replacement-run discovery must fail closed before workflow_dispatch'
-Assert-True ($preDispatch -match 'if\s*\(-not\s+\$discoverySucceeded\)') 'workflow_dispatch must be guarded by a fail-closed discovery success check'
-
-# REBUILD_REQUESTED must have one writer. Production Agent may persist the request, but it must not launch a second Rebuild controller that can independently workflow_dispatch.
+# REBUILD_REQUESTED still has one legacy writer for compatibility. It may persist intent, but it may not launch another controller.
 $rebuildMatch = [regex]::Match($agent,'(?s)function\s+Request-CurrentSourceRebuild\b.*?(?=function\s+Invoke-RealDeviceBaselineGate\b)')
 Assert-True $rebuildMatch.Success 'Request-CurrentSourceRebuild function must be present'
 $rebuildFunction = $rebuildMatch.Value
-Assert-Contains $rebuildFunction "Save-State `$State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED'" 'Production Agent must durably persist the rebuild request'
-Assert-Contains $rebuildFunction 'CURRENT_SOURCE_REBUILD_REQUESTED=YES' 'Production Agent must expose the rebuild request marker'
-Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Production Agent must not launch an independent Rebuild controller; authenticated deploy is the sole replacement-build dispatcher'
+Assert-Contains $rebuildFunction "Save-State `$State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED'" 'legacy Production Agent must still durably persist a rebuild request when inspected'
+Assert-Contains $rebuildFunction 'CURRENT_SOURCE_REBUILD_REQUESTED=YES' 'legacy Production Agent must expose the rebuild request marker'
+Assert-True ($rebuildFunction -notmatch 'Start-Process') 'legacy Production Agent must not launch an independent Rebuild controller'
 $modeRebuildNeedle = "'-Mode','Rebuild'"
-Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
+Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy Production Agent must not invoke ci-controller-v3 in Rebuild mode'
 
-# Runtime migration must remove legacy Rebuild-mode controller processes that were started before the single-dispatcher fix. The existing installer runs before Watch mode, so cleanup belongs there and must be precise.
-$installInvokeIndex = $deploy.IndexOf('install-production-agent.ps1',[System.StringComparison]::OrdinalIgnoreCase)
-$watchIndex = $deploy.IndexOf('- name: Start persistent v3 controller',[System.StringComparison]::OrdinalIgnoreCase)
-Assert-True ($installInvokeIndex -ge 0) 'deploy must invoke the Production Agent installer'
-Assert-True ($watchIndex -gt $installInvokeIndex) 'Production Agent installer must run before the persistent Watch controller starts'
-Assert-Contains $install 'Get-CimInstance Win32_Process' 'installer must inspect process command lines to find legacy Rebuild controllers'
-$controllerRegexNeedle = "ci-controller-v3\.ps1"
-$rebuildRegexNeedle = "-Mode\s+Rebuild"
-Assert-Contains $install $controllerRegexNeedle 'legacy cleanup must match only the Arthur v3 controller command line'
-Assert-Contains $install $rebuildRegexNeedle 'legacy cleanup must match only Rebuild mode'
-Assert-Contains $install 'Stop-Process -Id' 'legacy Rebuild controller processes must be terminated by verified PID'
-Assert-Contains $install 'LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS' 'installer must expose evidence that legacy Rebuild writers were drained'
+# Old runtime cleanup remains precise for rollback/forensics, but the active wakeup never installs or starts that topology.
+Assert-True ($deploy -notmatch 'install-production-agent\.ps1') 'active runner wakeup must not reinstall the legacy Production Agent task'
+Assert-True ($deploy -notmatch 'Start persistent v3 controller') 'active runner wakeup must not start the legacy v3 controller'
+Assert-Contains $install 'Get-CimInstance Win32_Process' 'legacy installer must inspect process command lines before cleaning stale Rebuild controllers'
+Assert-Contains $install 'ci-controller-v3\.ps1' 'legacy cleanup must match the Arthur v3 controller command line'
+Assert-Contains $install '-Mode\s+Rebuild' 'legacy cleanup must match only Rebuild mode'
+Assert-Contains $install 'Stop-Process -Id' 'legacy Rebuild controller cleanup must terminate only a verified PID'
+Assert-Contains $install 'LEGACY_REBUILD_CONTROLLER_QUIESCED=PASS' 'legacy installer must expose cleanup evidence'
 Assert-True ($install -notmatch '(?i)Stop-Process\s+-Name\s+(pwsh|powershell)') 'legacy cleanup must never blanket-stop PowerShell processes'
 
-Write-Host 'REBUILD_DISPATCH_ACK_CONTRACT=PASS'
+Write-Host 'REBUILD_ROUTE_OWNERSHIP_CONTRACT=PASS'
 Write-Host 'SINGLE_REBUILD_DISPATCHER_CONTRACT=PASS'
 Write-Host 'LEGACY_REBUILD_CONTROLLER_QUIESCE_CONTRACT=PASS'
