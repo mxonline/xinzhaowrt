@@ -12,19 +12,13 @@ function Assert-True {
     param([bool]$Condition,[string]$Message)
     if (-not $Condition) { throw "TEST_FAIL: $Message" }
 }
-
 function Assert-Contains {
     param([string]$Text,[string]$Needle,[string]$Message)
-    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
-        throw "TEST_FAIL: $Message (missing '$Needle')"
-    }
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) { throw "TEST_FAIL: $Message (missing '$Needle')" }
 }
-
 function Assert-NotContains {
     param([string]$Text,[string]$Needle,[string]$Message)
-    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        throw "TEST_FAIL: $Message (unexpected '$Needle')"
-    }
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) { throw "TEST_FAIL: $Message (unexpected '$Needle')" }
 }
 
 Assert-True (Test-Path $WorkflowPath) 'Arthur Control Plane workflow must exist'
@@ -39,7 +33,6 @@ $script = Get-Content -Raw $ScriptPath
 $pipeline = Get-Content -Raw $PipelinePath
 $runtime = Get-Content -Raw $RuntimePath
 
-# Only the proven runner wakeup owns unattended scheduling. Arthur Control Plane remains manual recovery only.
 Assert-Contains $workflow 'workflow_dispatch:' 'manual Arthur Control Plane workflow must remain available for explicit recovery'
 Assert-NotContains $workflow 'schedule:' 'manual Arthur Control Plane workflow must not own a second schedule'
 Assert-NotContains $workflow "cron: '*/5 * * * *'" 'manual Arthur Control Plane workflow must not duplicate the runner wakeup cron'
@@ -55,6 +48,9 @@ Assert-Contains $script 'instruction_allowed' 'control plane must fail closed on
 Assert-Contains $script "'tagName,isDraft,isPrerelease,publishedAt'" 'gh release list must request only fields supported by the release-list command'
 Assert-NotContains $script "'tagName,isDraft,isPrerelease,publishedAt,targetCommitish'" 'gh release list must not request targetCommitish; that field is only read from release view'
 Assert-Contains $script "@(`$deviceLines | Where-Object { `$_ -match 'build-info\.json' }).Count" 'single build-info match must be normalized to an array before Count under StrictMode'
+Assert-Contains $script "-split '__BUILD_INFO_SCAN__', 2" 'device probe must preserve the complete multiline ubus board JSON before the build-info scan marker'
+Assert-Contains $script "PSObject.Properties['board_name']" 'device identity must read OpenWrt system board_name defensively under StrictMode'
+Assert-Contains $script 'DEVICE_PROBE reachable=' 'live device classification must emit explicit evidence before a safety decision'
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
@@ -62,7 +58,6 @@ Assert-Contains $pipeline 'default_request_id = "arthur-adh-quickstart"' 'Arthur
 Assert-Contains $runtime 'self.pipeline.default_request_id' 'ProductionRuntime resume must inherit the pipeline task identity when request_id is omitted'
 Assert-NotContains $runtime 'request_id or "arthur-production"' 'ProductionRuntime must not silently replace arthur-adh-quickstart with the obsolete generic task id'
 
-# Persistent source + single scheduler are required for session-loss survival.
 Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $wakeup 'xinzhaowrt-controller' 'runner wakeup must execute on the dedicated self-hosted controller runner'
 Assert-Contains $wakeup 'XinZhaoWrt\ControlPlane' 'headless source changes must use the canonical Control Plane root'
@@ -86,3 +81,4 @@ Write-Host 'ARTHUR_PERSISTENT_WORKSPACE_CONTRACT=PASS'
 Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
 Write-Host 'ARTHUR_GH_RELEASE_LIST_SCHEMA_CONTRACT=PASS'
 Write-Host 'ARTHUR_SCALAR_COUNT_NORMALIZATION_CONTRACT=PASS'
+Write-Host 'ARTHUR_DEVICE_PROBE_REGRESSION_CONTRACT=PASS'
