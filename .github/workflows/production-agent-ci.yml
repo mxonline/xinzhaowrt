@@ -27,6 +27,7 @@ jobs:
           foreach ($file in @(
             'tests/production-agent.tests.ps1',
             'tests/production-agent-convergence.tests.ps1',
+            'tests/production-agent-convergence-behavior.tests.ps1',
             'tests/verified-baseline-inheritance.tests.ps1',
             'tests/real-device-baseline.tests.ps1',
             'tests/runner-self-heal.tests.ps1',
@@ -61,6 +62,7 @@ jobs:
           }
           & ./tests/production-agent.tests.ps1
           & ./tests/production-agent-convergence.tests.ps1
+          & ./tests/production-agent-convergence-behavior.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
           & ./tests/real-device-baseline.tests.ps1
           & ./tests/runner-self-heal.tests.ps1
