@@ -179,6 +179,8 @@ Assert-Contains $controllerText 'safe.directory' 'detached controller must confi
 Assert-Contains $controllerText "@('verified','frozen')" 'controller must accept the repository frozen Known-Good status when verified=true'
 Assert-Contains $controllerText 'STALE_SUCCESS_SOURCE' 'successful old runs must not be promoted after the accepted source changes'
 Assert-Contains $controllerText 'run.headSha' 'candidate verification must bind the artifact to the current source SHA'
+Assert-Contains $controllerText 'Find-V3Run' 'controller must discover an existing same-source run before dispatching again'
+Assert-Contains $controllerText 'DateTime]::Parse' 'controller run discovery must parse timestamps without array conversion errors'
 Assert-Contains $installerText 'XinZhaoWrt-Arthur-Feature-Handoff' 'installer must create the persistent recovery task'
 Assert-Contains $installerText 'Register-ScheduledTask' 'installer must use Windows Scheduled Task recovery'
 Assert-True ($installerText -notmatch '(?i)NT AUTHORITY\\SYSTEM|LocalSystem|-UserId\s+["'']?SYSTEM') 'handoff task must not run as SYSTEM'

@@ -252,11 +252,44 @@ function Get-RequestUpdateMode {
     return $Fallback
 }
 
+function Find-V3Run {
+    param([string]$Head,[DateTime]$CreatedAfter)
+
+    $raw = Invoke-GhWithBackoff -Arguments @(
+        'run','list','--repo',$Repository,'--workflow',$Workflow,'--branch',$Branch,
+        '--event','workflow_dispatch','--limit','20',
+        '--json','databaseId,createdAt,status,conclusion,headSha,event'
+    )
+    $runs = @($raw | ConvertFrom-Json)
+    $matches = New-Object System.Collections.Generic.List[object]
+    foreach ($entry in $runs) {
+        if ([string]$entry.headSha -ne $Head) { continue }
+        try { $createdAt = [DateTime]::Parse([string]$entry.createdAt).ToUniversalTime() }
+        catch { continue }
+        if ($createdAt -lt $CreatedAfter.ToUniversalTime().AddSeconds(-3)) { continue }
+
+        $status = [string]$entry.status
+        $conclusion = [string]$entry.conclusion
+        if ($status -in @('queued','in_progress','waiting','requested','pending') -or
+            ($status -eq 'completed' -and $conclusion -eq 'success')) {
+            $matches.Add($entry)
+        }
+    }
+
+    return ($matches | Sort-Object { [DateTime]::Parse([string]$_.createdAt) } -Descending | Select-Object -First 1)
+}
+
 function Start-V3Run {
     param([string]$RequestedMode)
 
     $head = (Invoke-Captured -FilePath 'git' -Arguments @('-C',$RepoRoot,'rev-parse','HEAD')).Output.Trim()
     $started = [DateTime]::UtcNow
+
+    $existing = Find-V3Run -Head $head -CreatedAfter ([DateTime]::UtcNow.AddHours(-24))
+    if ($existing) {
+        Write-ControllerLog "Existing same-source Arthur v3 Run ID: $($existing.databaseId); reusing without dispatch."
+        return [long]$existing.databaseId
+    }
 
     Invoke-GhWithBackoff -Arguments @(
         'workflow','run',$Workflow,
@@ -269,19 +302,7 @@ function Start-V3Run {
 
     while ($true) {
         Start-Sleep 5
-        $raw = Invoke-GhWithBackoff -Arguments @(
-            'run','list','--repo',$Repository,'--workflow',$Workflow,'--branch',$Branch,
-            '--event','workflow_dispatch','--limit','10',
-            '--json','databaseId,createdAt,status,headSha,event'
-        )
-        $runs = @($raw | ConvertFrom-Json)
-        $candidate = $runs |
-            Where-Object {
-                ([DateTime]$_.createdAt).ToUniversalTime() -ge $started.AddSeconds(-3) -and
-                [string]$_.headSha -eq $head
-            } |
-            Sort-Object { [DateTime]$_.createdAt } -Descending |
-            Select-Object -First 1
+        $candidate = Find-V3Run -Head $head -CreatedAfter $started
 
         if ($candidate) {
             Write-ControllerLog "New Arthur v3 Run ID: $($candidate.databaseId)"
