@@ -18,6 +18,8 @@ grep -Fq 'VERIFIED_FROZEN' "$gate" || { echo 'FAIL: prebuild gate must require W
 
 grep -Fq 'Ensure-ArthurUnattendedAccess' "$verify" || { echo 'FAIL: verifier must recover the Arthur control plane before SSH checks.' >&2; exit 1; }
 grep -Fq 'New-LuciSessionFromSsh' "$verify" || { echo 'FAIL: verifier must be able to create an authenticated LuCI session from verified root SSH without an operator cookie.' >&2; exit 1; }
+grep -Fq 'access-group' "$verify" || { echo 'FAIL: verifier must grant LuCI access groups for ACL-backed pages.' >&2; exit 1; }
+grep -Fq 'luci-app-adguardhome' "$verify" || { echo 'FAIL: verifier must grant the mature AdGuard manager ACL group.' >&2; exit 1; }
 ! grep -Fq 'No existing authenticated LuCI cookie was supplied' "$verify" || { echo 'FAIL: verifier must not stop merely because an operator did not supply a cookie.' >&2; exit 1; }
 grep -Fq 'WIFI_STATE' "$verify" || { echo 'FAIL: verifier must emit durable frozen Wi-Fi state.' >&2; exit 1; }
 grep -Fq 'VERIFIED_FROZEN' "$verify" || { echo 'FAIL: verifier must inherit the accepted Wi-Fi baseline.' >&2; exit 1; }

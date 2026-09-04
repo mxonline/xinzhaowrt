@@ -129,7 +129,8 @@ function New-LuciSessionFromSsh {
     $set = "ubus call session set '{`"ubus_rpc_session`":`"$sid`",`"values`":{`"username`":`"root`",`"token`":`"$token`"}}'"
     $grantUbus = "ubus call session grant '{`"ubus_rpc_session`":`"$sid`",`"scope`":`"ubus`",`"objects`":[[`"*`",`"*`"]]}'"
     $grantFile = "ubus call session grant '{`"ubus_rpc_session`":`"$sid`",`"scope`":`"file`",`"objects`":[[`"*`",`"*`"]]}'"
-    foreach ($command in @($set,$grantUbus,$grantFile)) {
+    $grantAdguardAcl = "ubus call session grant '{`"ubus_rpc_session`":`"$sid`",`"scope`":`"access-group`",`"objects`":[[`"luci-app-adguardhome`",`"read`"]]}'"
+    foreach ($command in @($set,$grantUbus,$grantFile,$grantAdguardAcl)) {
         $r = Invoke-Remote $command
         if ($r.ExitCode -ne 0) { throw "LUCI_SESSION_GRANT_FAILED output=$($r.Output)" }
     }
