@@ -76,6 +76,23 @@ jobs:
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
           echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
 
+      - name: Validate durable v3 convergence request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_MODE: ${{ inputs.mode }}
+          FAILURE_SET_STATE: ${{ inputs.failure_set_state }}
+          FAILURE_SET_FINGERPRINT: ${{ inputs.failure_set_fingerprint }}
+          VERIFICATION_CONTRACT_FINGERPRINT: ${{ inputs.verification_contract_fingerprint }}
+          ROOTFS_OFFLINE_PASSED: ${{ inputs.rootfs_offline_passed }}
+          CONTRACT_GAP_STATE: ${{ inputs.contract_gap_state }}
+          FIRMWARE_INPUT_FINGERPRINT: ${{ inputs.firmware_input_fingerprint }}
+        run: |
+          set -Eeuo pipefail
+          REQUEST_JSON="$RUNNER_TEMP/v3-request.json"
+          gh api "repos/$GITHUB_REPOSITORY/contents/production/v3-request.json?ref=main" \
+            -H 'Accept: application/vnd.github.raw+json' > "$REQUEST_JSON"
+          python3 scripts/check-v3-request-binding.py "$REQUEST_JSON"
+
       - name: Enforce release convergence before build
         env:
           FAILURE_SET_STATE: ${{ inputs.failure_set_state }}
@@ -234,6 +251,7 @@ jobs:
             echo '- Required plugins: `22`'
             echo '- Large-upload OOM guard: required'
             echo '- Release convergence: required before build'
+            echo '- Durable v3 request binding: required'
             echo '- Failure set state: `${{ inputs.failure_set_state }}`'
             echo '- Failure set fingerprint: `${{ inputs.failure_set_fingerprint }}`'
             echo '- Firmware input fingerprint: `${{ inputs.firmware_input_fingerprint }}`'
