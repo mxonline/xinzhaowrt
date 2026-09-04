@@ -135,11 +135,16 @@ Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain 
 Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
 
-# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> Arthur Control Plane -> ai_orchestrator.
+# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> Arthur Control Plane -> ai_orchestrator.
 Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
 Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must invoke the Arthur Control Plane directly'
-Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'wakeup must execute the checked-out main source'
+Assert-Contains $deploy 'ControlPlane\workspace' 'wakeup must preserve the headless source workspace across scheduled jobs'
+Assert-Contains $deploy 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must survive the next wakeup'
+Assert-Contains $deploy 'merge --ff-only' 'clean persistent main may only update by fast-forward'
+Assert-True ($deploy -notmatch '(?i)actions/checkout@v4') 'active wakeup must not clean/replace the persistent executor workspace'
+Assert-True ($deploy -notmatch '(?i)reset\s+--hard') 'active wakeup must not destroy persistent source changes'
+Assert-True ($deploy -notmatch '(?i)git\s+clean') 'active wakeup must not clean persistent source changes'
 Assert-True ($deploy -notmatch '(?i)LogonType\s+Interactive') 'active wakeup must not depend on interactive Windows logon'
 Assert-True ($deploy -notmatch '(?i)XinZhaoWrt-Arthur-v3-Controller') 'active wakeup must not launch the legacy v3 Scheduled Task'
 Assert-True ($deploy -notmatch '(?i)install-production-agent\.ps1') 'active wakeup must not install the legacy Production Agent Scheduled Task'
@@ -151,3 +156,4 @@ Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_LEGACY_SAFETY_CONTRACT=PASS'
 Write-Host 'RUNNER_CONTROL_PLANE_WAKEUP_CONTRACT=PASS'
+Write-Host 'RUNNER_PERSISTENT_WORKSPACE_CONTRACT=PASS'
