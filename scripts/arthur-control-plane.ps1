@@ -215,8 +215,7 @@ try {
     $device.build_info_sources.artifact = if ($candidateDetails -and @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
     $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'ADH_MANAGEMENT'; next_action = 'ADH_MANAGEMENT'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
-    $allowed = @('ADH_MANAGEMENT', 'ADH_CHINESE', 'REAL_DEVICE_VERIFY', 'REAL_DEVICE_BASELINE_RECONCILIATION', 'CANDIDATE', 'AUTO_FLASH_SAFETY_GATE', 'SYSUPGRADE', 'WAIT_DEVICE', 'RELEASE')
-    if ($checkpoint.next_action -notin $allowed) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
+    if ((Get-ArthurResumePhaseIndex $checkpoint.next_action) -lt 0) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
 
     $provenanceConsistent = ($candidate -and $production -and $run -and $device.classification -eq 'CURRENT' -and $device.build_info_sources.rom -notin @('MISSING','UNAVAILABLE_RETRY') -and $device.build_info_sources.http -eq 'PRESENT_PARSED')
     $nextStatus = 'RESUME_PENDING'
