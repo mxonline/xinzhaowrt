@@ -121,6 +121,15 @@ class PipelineState:
     device: str
     phase: str
     next_codex_prompt: Optional[str]
+    release_task_id: Optional[str] = None
+    repo: Optional[str] = None
+    branch: Optional[str] = None
+    source_sha: Optional[str] = None
+    current_stage: Optional[str] = None
+    last_verified_stage: Optional[str] = None
+    active_run_id: int = 0
+    candidate_sha256: Optional[str] = None
+    next_action: Optional[str] = None
     terminal_state: Optional[str] = None
     executor_thread_id: Optional[str] = None
     controller_thread_id: Optional[str] = None
@@ -135,12 +144,31 @@ class PipelineState:
     stop_requested: bool = False
     observability: Dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        # request_id is retained for compatibility, but task identity is durable
+        # release_task_id. Thread/response/session identifiers are diagnostics only.
+        if not self.release_task_id:
+            self.release_task_id = self.request_id
+        if not self.current_stage:
+            self.current_stage = self.phase
+        if self.next_action is None:
+            self.next_action = self.phase
+
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "schema_version": "2.0",
+            "schema_version": "3.0",
             "request_id": self.request_id,
+            "release_task_id": self.release_task_id,
+            "repo": self.repo,
+            "branch": self.branch,
+            "source_sha": self.source_sha,
             "device": self.device,
             "phase": self.phase,
+            "current_stage": self.current_stage,
+            "last_verified_stage": self.last_verified_stage,
+            "active_run_id": int(self.active_run_id or 0),
+            "candidate_sha256": self.candidate_sha256,
+            "next_action": self.next_action,
             "next_codex_prompt": self.next_codex_prompt,
             "terminal_state": self.terminal_state,
             "executor_thread_id": self.executor_thread_id,
@@ -161,10 +189,20 @@ class PipelineState:
     def from_dict(cls, raw: Dict[str, Any]) -> "PipelineState":
         values = dict(raw)
         values.pop("schema_version", None)
+        request_id = values["request_id"]
         return cls(
-            request_id=values["request_id"],
+            request_id=request_id,
+            release_task_id=values.get("release_task_id") or request_id,
+            repo=values.get("repo"),
+            branch=values.get("branch"),
+            source_sha=values.get("source_sha"),
             device=values["device"],
             phase=values["phase"],
+            current_stage=values.get("current_stage") or values["phase"],
+            last_verified_stage=values.get("last_verified_stage"),
+            active_run_id=int(values.get("active_run_id", 0) or 0),
+            candidate_sha256=values.get("candidate_sha256"),
+            next_action=values.get("next_action") or values["phase"],
             next_codex_prompt=values.get("next_codex_prompt"),
             terminal_state=values.get("terminal_state"),
             executor_thread_id=values.get("executor_thread_id"),
