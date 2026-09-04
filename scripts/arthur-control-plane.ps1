@@ -124,7 +124,8 @@ try {
         workflow_run_id = $WorkflowRunId
     })
     Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity"
-    Log 'CONTROL_PLANE_PROCESS_ALIVE=true HEARTBEAT_ADVANCING=true NO_INTERACTIVE_LOGIN=PASS'
+    Log 'CONTROL_PLANE_PROCESS_ALIVE=true HEARTBEAT_ADVANCING=true SINGLE_EXECUTION_IDENTITY=true NO_INTERACTIVE_LOGON_DEPENDENCY=true'
+    Log 'NO_USER_INPUT=true NO_SCREENSHOT=true NO_BRANCH_PATH=true NO_INTERACTIVE_LOGIN=true'
     Log "CANONICAL_STATE_PATH=$canonicalPath"
 
     foreach ($tool in @('git', 'gh', 'python')) {
