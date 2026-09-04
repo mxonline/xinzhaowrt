@@ -7,8 +7,7 @@ for file in \
   scripts/build-fingerprint.sh \
   scripts/source-impact-gate.sh \
   scripts/resolve-candidate-dedup.sh \
-  scripts/ci-controller-v3.ps1 \
-  scripts/ci-controller-v3-core.ps1; do
+  scripts/ci-controller-v3.ps1; do
   [[ -s "$ROOT/$file" ]] || { echo "FAIL: missing $file" >&2; exit 1; }
 done
 
@@ -16,15 +15,15 @@ grep -Fq 'WATCH_EXISTING_RUN' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'REUSE_ARTIFACT' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'NO_NEW_CANDIDATE' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'NEW_CANDIDATE' "$ROOT/scripts/resolve-candidate-dedup.sh"
-grep -Fq 'BUILD_DEDUP=WATCH_EXISTING_RUN' "$ROOT/scripts/ci-controller-v3.ps1"
-grep -Fq 'BUILD_DEDUP=REUSE_ARTIFACT' "$ROOT/scripts/ci-controller-v3.ps1"
 grep -Fq 'resolve-candidate-dedup.sh' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
+grep -Fq 'V3_AUTO_TRIGGER=WATCH_EXISTING_RUN' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
+grep -Fq 'V3_AUTO_TRIGGER=REUSE_ARTIFACT' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
+grep -Fq 'V3_AUTO_TRIGGER=NO_NEW_CANDIDATE' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
 
 scope="$(printf '%s\n' \
   scripts/build-fingerprint.sh \
   scripts/source-impact-gate.sh \
   scripts/resolve-candidate-dedup.sh \
-  scripts/ci-controller-v3-core.ps1 \
   tests/test-build-dedup-contract.sh | bash "$ROOT/scripts/classify-build-scope.sh")"
 [[ "$scope" == FAST_GATE ]] || { echo "FAIL: dedup control plane classified as $scope" >&2; exit 1; }
 
