@@ -1,0 +1,68 @@
+name: One-shot Arthur Control Plane gh CLI hotfix
+
+on:
+  push:
+    branches:
+      - fix/arthur-control-plane-gh-release-json-20260904
+    paths:
+      - '.github/workflows/arthur-control-plane-gh-cli-hotfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/arthur-control-plane-gh-release-json-20260904
+          fetch-depth: 0
+
+      - name: Prove old behavior is RED
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & ./tests/arthur-control-plane-gh-cli.tests.ps1
+          if ($LASTEXITCODE -eq 0 -and $?) {
+            throw 'TDD_RED_MISSING: old Control Plane unexpectedly satisfied the new gh CLI contract'
+          }
+          Write-Host 'ARTHUR_GH_CLI_TDD_RED=PASS'
+          exit 0
+
+      - name: Apply exact two-line Control Plane fix
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('scripts/arthur-control-plane.ps1')
+          text = path.read_text(encoding='utf-8')
+
+          bad_fields = "'tagName,isDraft,isPrerelease,publishedAt,targetCommitish'"
+          good_fields = "'tagName,isDraft,isPrerelease,publishedAt'"
+          if text.count(bad_fields) != 1:
+              raise SystemExit(f'expected exactly one unsupported release-list field set, found {text.count(bad_fields)}')
+          text = text.replace(bad_fields, good_fields, 1)
+
+          old_fail = "function Fail([string]$Message) {\n    Write-Error $Message\n    exit 1\n}"
+          new_fail = "function Fail([string]$Message) {\n    Write-Host \"CONTROL_PLANE_FAIL=$Message\"\n    Write-Error $Message\n    exit 1\n}"
+          if text.count(old_fail) != 1:
+              raise SystemExit(f'expected exactly one Fail function body, found {text.count(old_fail)}')
+          text = text.replace(old_fail, new_fail, 1)
+
+          path.write_text(text, encoding='utf-8', newline='\n')
+
+      - name: Prove fixed behavior is GREEN
+        shell: pwsh
+        run: ./tests/arthur-control-plane-gh-cli.tests.ps1
+
+      - name: Commit only the verified hotfix and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/arthur-control-plane-gh-cli-hotfix.yml
+          git add scripts/arthur-control-plane.ps1 tests/arthur-control-plane-gh-cli.tests.ps1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: use supported gh release list JSON fields'
+          git push origin HEAD:fix/arthur-control-plane-gh-release-json-20260904
