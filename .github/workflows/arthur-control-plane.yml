@@ -1,0 +1,57 @@
+name: Arthur Control Plane
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+concurrency:
+  group: arthur-control-plane
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  control-plane:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout handoff source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconcile and resume Arthur checkpoint
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-control-plane.ps1'
+          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
+            throw "CONTROL_PLANE_INSTALL_FAILED: missing $script"
+          }
+          & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish control-plane summary
+        if: always()
+        shell: powershell
+        run: |
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          "## Arthur Control Plane" >> $env:GITHUB_STEP_SUMMARY
+          "- Runner: $(whoami)" >> $env:GITHUB_STEP_SUMMARY
+          "- Canonical root: ``$root``" >> $env:GITHUB_STEP_SUMMARY
+          $heartbeat = Join-Path $root 'heartbeat.json'
+          if (Test-Path -LiteralPath $heartbeat) {
+            $h = Get-Content -Raw -LiteralPath $heartbeat
+            "- Heartbeat: ``$h``" >> $env:GITHUB_STEP_SUMMARY
+          }
