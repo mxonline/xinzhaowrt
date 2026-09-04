@@ -55,6 +55,15 @@ Assert-Equal $safe.checkpoint.current 'ADH_MANAGEMENT' 'runtime checkpoint must 
 Assert-Equal $safe.next_action 'ADH_MANAGEMENT' 'next action must come from runtime state'
 Assert-Equal $safe.legacy_source_policy 'AUXILIARY_ONLY' 'historical docs must never be authoritative for current progress'
 
+$runtimeChangeImpact = [pscustomobject]@{
+    phase = 'CHANGE_IMPACT'
+    current_stage = 'CHANGE_IMPACT'
+    next_action = 'CHANGE_IMPACT'
+    turn_count = 11
+}
+$changeImpact = Resolve-ArthurResumeState -RepositoryHead ('d' * 40) -RealDeviceBaseline $baseline -LiveDevice $live013 -RuntimeState $runtimeChangeImpact
+Assert-Equal $changeImpact.status 'RESUME_SAFE' 'later normal Arthur phases must remain resumable rather than being rejected by a legacy checkpoint allowlist'
+
 $olderLive = [pscustomobject]@{ version = '0.1.1'; build_id = '32943895389'; git_commit = '256b186' }
 $versionConflict = Resolve-ArthurResumeState -RepositoryHead ('b' * 40) -RealDeviceBaseline $baseline -LiveDevice $olderLive -RuntimeState $runtimeAdh
 Assert-Equal $versionConflict.status 'STATE_RECONCILIATION_REQUIRED' 'older live version must not silently replace the accepted 0.1.3 baseline'
@@ -81,5 +90,6 @@ Assert-Contains $controlPlane 'Resolve-ArthurResumeState' 'control plane must re
 Assert-Contains $controlPlane 'STATE_RECONCILIATION_REQUIRED' 'control plane must fail closed when current state conflicts'
 Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Codex/runtime dispatch on reconciled instruction permission'
 Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
+Assert-Contains $controlPlane 'Get-ArthurResumePhaseIndex $checkpoint.next_action' 'control plane must validate checkpoints against the canonical Arthur phase registry, not a stale hard-coded subset'
 
 Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'
