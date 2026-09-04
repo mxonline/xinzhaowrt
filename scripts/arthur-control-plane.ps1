@@ -188,7 +188,7 @@ try {
                 else { $device.classification = 'INVALID' }
             } catch { $device.classification = 'INVALID' }
         }
-        $device.build_info_sources.rom = if (($deviceLines | Where-Object { $_ -match 'build-info\.json' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
+        $device.build_info_sources.rom = if (@($deviceLines | Where-Object { $_ -match 'build-info\.json' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
     }
     else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY' }
 
