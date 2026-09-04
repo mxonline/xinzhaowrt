@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from ai_orchestrator.models import ActionKind, GPTDecision, PipelineState
+from ai_orchestrator.models import ActionKind, GPTDecision, HumanGate, PipelineState
 from ai_orchestrator.policy import PolicyOutcome, PolicyRoute
 from ai_orchestrator.runtime import ProductionRuntime
 
@@ -46,6 +46,34 @@ class RuntimeCheckpointSyncTests(unittest.TestCase):
         self.assertEqual(state.current_stage, "ADH_CHINESE")
         self.assertEqual(state.next_action, "ADH_CHINESE")
         self.assertEqual(state.next_codex_prompt, "continue Chinese localization")
+
+    def test_human_gate_keeps_canonical_phase_as_next_action(self):
+        store = _Store()
+        runtime = ProductionRuntime(store, None, None, _Pipeline())
+        state = PipelineState(
+            request_id="arthur-adh-quickstart",
+            device="jdcloud_re-ss-01",
+            phase="AUTO_FLASH_SAFETY_GATE",
+            current_stage="AUTO_FLASH_SAFETY_GATE",
+            next_action="AUTO_FLASH_SAFETY_GATE",
+            next_codex_prompt="verify flash safety",
+        )
+        decision = GPTDecision(
+            action=ActionKind.HUMAN_GATE,
+            reason_code="NO_SAFE_ROLLBACK",
+            summary="human safety gate",
+            human_gate=HumanGate.NO_SAFE_ROLLBACK,
+        )
+        runtime._apply_outcome(
+            state,
+            PolicyOutcome(PolicyRoute.HUMAN_GATE, decision, HumanGate.NO_SAFE_ROLLBACK),
+        )
+
+        self.assertEqual(state.phase, "AUTO_FLASH_SAFETY_GATE")
+        self.assertEqual(state.current_stage, "AUTO_FLASH_SAFETY_GATE")
+        self.assertEqual(state.next_action, "AUTO_FLASH_SAFETY_GATE")
+        self.assertEqual(state.pending_human_gate, "NO_SAFE_ROLLBACK")
+        self.assertIsNone(state.next_codex_prompt)
 
 
 if __name__ == "__main__":
