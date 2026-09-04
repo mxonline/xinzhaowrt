@@ -19,4 +19,14 @@ done
 [[ -s "$package_root/root/etc/init.d/AdGuardHome" ]] || { echo 'FAIL: mature AdGuard init script is missing.' >&2; exit 1; }
 grep -Fq '"AdGuardHome"' "$acl" || { echo 'FAIL: mature ACL must be scoped to AdGuardHome UCI.' >&2; exit 1; }
 
+verifier="$root/scripts/real-device-verify.ps1"
+grep -Fq "@{ scope = 'access-group'; object = 'luci-app-adguardhome'; function = 'read' }" "$verifier" || {
+  echo 'FAIL: verifier must test the mature manager ACL group through the authenticated LuCI session.' >&2
+  exit 1
+}
+grep -Fq 'adguard_acl_contract' "$verifier" || {
+  echo 'FAIL: verifier must read-check the deployed mature AdGuard ACL contract.' >&2
+  exit 1
+}
+
 echo 'PASS: AdGuard Home uses the pinned mature CBI manager and ACL.'

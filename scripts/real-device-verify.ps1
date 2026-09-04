@@ -175,12 +175,11 @@ function Invoke-AuthenticatedHttp([string]$Path,[string]$CookieFile = '') {
 }
 
 function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
-    $command = 'authenticated /ubus session access checks for mature AdGuard Home UCI read/write'
+    $command = 'authenticated /ubus session access check for the mature AdGuard Home ACL group'
     $path = if ([string]::IsNullOrWhiteSpace($CookieFile)) { $script:EffectiveLuciCookieFile } else { $CookieFile }
     $sid = Get-LuciSessionId $path
     $probes = @(
-        @{ scope = 'uci'; object = 'AdGuardHome'; function = 'read' },
-        @{ scope = 'uci'; object = 'AdGuardHome'; function = 'write' }
+        @{ scope = 'access-group'; object = 'luci-app-adguardhome'; function = 'read' }
     )
     $failed = [System.Collections.Generic.List[string]]::new()
     $outputs = [System.Collections.Generic.List[string]]::new()
@@ -193,7 +192,7 @@ function Test-AdguardRpcFunctional([string]$Prefix,[string]$CookieFile = '') {
         $outputs.Add("$($probe.scope):$($probe.object):$($probe.function) access=$allowed")
     }
     $r = [pscustomobject]@{ ExitCode=if ($failed.Count -eq 0) { 0 } else { 1 }; Output=(($outputs + $failed) -join "`n") }
-    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'Mature AdGuard Home LuCI must have authenticated rpcd UCI read/write ACL access.' | Out-Null
+    Add-Check "$Prefix.adguard_rpc_functional" ($failed.Count -eq 0) $command $r 'Mature AdGuard Home LuCI must have authenticated access to its rpcd ACL group.' | Out-Null
 }
 
 function Test-AdguardPageFunctional([string]$Prefix,[string]$CookieFile = '') {
@@ -276,6 +275,7 @@ function Run-Phase([string]$Prefix) {
     Test-Remote "$Prefix.kucat_theme" "test -d /www/luci-static/kucat; grep -R -F '/luci-static/kucat' /etc/config /etc/uci-defaults 2>/dev/null" { param($o) $o -match '/luci-static/kucat' } 'KuCat must remain selectable.' | Out-Null
     Test-Remote "$Prefix.branding" 'test -s /www/luci-static/xinzhao/logo.png && test -s /www/luci-static/xinzhao/favicon.ico && test -s /www/luci-static/xinzhao/branding.js && grep -R -F XinZhaoWrt /etc/xinzhao-build-info /www/luci-static/xinzhao/build-info.json 2>/dev/null' { param($o) $o -match 'XinZhaoWrt' } 'XinZhaoWrt branding/build information must be present.' | Out-Null
     Test-Remote "$Prefix.adguard_manager" 'test -s /www/luci-static/resources/view/adguardhome/config.js && test -s /etc/config/adguardhome && test -x /etc/init.d/adguardhome' { param($o) $true } 'Complete AdGuard Home manager, config and service must be present.' | Out-Null
+    Test-Remote "$Prefix.adguard_acl_contract" 'acl=/usr/share/rpcd/acl.d/luci-app-adguardhome.json; test -s "$acl" && grep -Fq "\"AdGuardHome\"" "$acl" && grep -Fq "\"read\"" "$acl" && grep -Fq "\"write\"" "$acl"' { param($o) $true } 'The deployed mature AdGuard ACL must expose the AdGuardHome UCI read/write contract.' | Out-Null
     Test-Remote "$Prefix.adguard_default_off" 'printf "enabled=%s\n" "$(uci -q get adguardhome.config.enabled 2>/dev/null || true)"; ! pidof AdGuardHome >/dev/null 2>&1; ! ls /etc/rc.d/S*adguardhome >/dev/null 2>&1' { param($o) $o -match '(?m)^enabled=0$' } 'AdGuard Home must remain disabled by default.' | Out-Null
     Test-Remote "$Prefix.adguard_dns_53" '! pidof AdGuardHome >/dev/null 2>&1; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true)' { param($o) $o -notmatch '(?i)AdGuardHome.*:53' } 'AdGuard Home must not claim DNS port 53 while default-disabled.' | Out-Null
     Test-Remote "$Prefix.quickstart_page" 'test -s /usr/share/luci/menu.d/luci-app-quickstart.json; test -s /www/luci-static/quickstart/index.js; test -s /www/luci-static/quickstart/style.css' { param($o) $true } 'Official QuickStart route/assets must be present.' | Out-Null
@@ -333,7 +333,7 @@ try {
     }
 
     $phase = if ($Mode -eq 'PostFlash') { 'after_reboot' } else { 'before_reboot' }
-    $adguardLive = [bool]$script:Checks["$phase.adguard_page_functional"].passed -and [bool]$script:Checks["$phase.adguard_rpc_functional"].passed
+    $adguardLive = [bool]$script:Checks["$phase.adguard_page_functional"].passed -and [bool]$script:Checks["$phase.adguard_rpc_functional"].passed -and [bool]$script:Checks["$phase.adguard_acl_contract"].passed
     $quickstartLive = [bool]$script:Checks["$phase.quickstart_home_functional"].passed
     $wifiFrozen = [bool]$script:Checks['wifi.frozen_baseline'].passed
     $plugins = @($script:Checks["$phase.required_plugins"].items)
