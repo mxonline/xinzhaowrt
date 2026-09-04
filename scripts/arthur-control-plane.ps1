@@ -175,22 +175,30 @@ try {
 
     $knownHosts = Join-Path $sshDir 'known_hosts'
     $deviceProbe = Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
-    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; live_build_info = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
+    $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; error = $null; live_build_info = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
     if ($deviceProbe.ok) {
         $device.reachable = $true
-        $deviceLines = @($deviceProbe.output -split "`r?`n")
-        $boardJson = $deviceLines | Where-Object { $_ -match '^\s*\{.*\}\s*$' } | Select-Object -First 1
-        if ($boardJson) {
+        $probeParts = @($deviceProbe.output -split '__BUILD_INFO_SCAN__', 2)
+        $boardJson = if ($probeParts.Count -gt 0) { [string]$probeParts[0] } else { '' }
+        $boardJson = $boardJson.Trim()
+        $scanText = if ($probeParts.Count -gt 1) { [string]$probeParts[1] } else { '' }
+        $deviceLines = @($scanText -split "`r?`n")
+        if ($boardJson -match '^\s*\{') {
             try {
                 $board = $boardJson | ConvertFrom-Json
-                $device.identity = [ordered]@{ model = $board.model; board = $board.board; release = $board.release }
-                if ($board.model -match '(?i)RE-SS-01|JDCloud' -or $board.board -match '(?i)jdcloud|re-ss-01') { $device.classification = 'CURRENT' }
+                $model = if ($board.PSObject.Properties['model']) { [string]$board.model } else { '' }
+                $boardName = if ($board.PSObject.Properties['board_name']) { [string]$board.board_name } else { '' }
+                $release = if ($board.PSObject.Properties['release']) { $board.release } else { $null }
+                $device.identity = [ordered]@{ model = $model; board = $boardName; release = $release }
+                if ($model -match '(?i)RE-SS-01|JDCloud' -or $boardName -match '(?i)jdcloud|re-ss-01') { $device.classification = 'CURRENT' }
                 else { $device.classification = 'INVALID' }
-            } catch { $device.classification = 'INVALID' }
+            } catch { $device.classification = 'INVALID'; $device.error = $_.Exception.Message }
         }
         $device.build_info_sources.rom = if (@($deviceLines | Where-Object { $_ -match 'build-info\.json' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
     }
-    else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY' }
+    else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY'; $device.error = $deviceProbe.output }
+    $deviceDetail = if ($device.error) { ([string]$device.error -replace "\s+", ' ').Trim() } else { $device.build_info_sources.rom }
+    Log ("DEVICE_PROBE reachable={0} classification={1} detail={2}" -f $device.reachable, $device.classification, $deviceDetail)
 
     $overlayPath = Join-Path $env:GITHUB_WORKSPACE 'files\www\luci-static\xinzhao\build-info.json'
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
@@ -212,7 +220,10 @@ try {
             catch { $device.build_info_sources.http = 'INVALID_JSON' }
         }
     } catch { $device.build_info_sources.http = 'UNAVAILABLE_RETRY' }
-    $device.build_info_sources.artifact = if ($candidateDetails -and @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }).Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
+    $artifactBuildInfo = @(
+        if ($candidateDetails) { @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }) }
+    )
+    $device.build_info_sources.artifact = if ($artifactBuildInfo.Count -gt 0) { 'PRESENT_UNVERIFIED' } else { 'MISSING' }
 
     $checkpoint = if ($existing -and $existing.checkpoint) { $existing.checkpoint } else { [ordered]@{ current = 'ADH_MANAGEMENT'; next_action = 'ADH_MANAGEMENT'; status = 'RESUMED_FROM_GITHUB_PROVENANCE' } }
     if ((Get-ArthurResumePhaseIndex $checkpoint.next_action) -lt 0) { Fail "CHECKPOINT_INVALID: $($checkpoint.next_action)" }
