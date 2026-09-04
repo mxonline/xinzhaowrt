@@ -21,15 +21,17 @@ jobs:
           fetch-depth: 0
 
       - name: Prove old behavior is RED
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Continue'
-          & ./tests/arthur-control-plane-gh-cli.tests.ps1
-          if ($LASTEXITCODE -eq 0 -and $?) {
-            throw 'TDD_RED_MISSING: old Control Plane unexpectedly satisfied the new gh CLI contract'
-          }
-          Write-Host 'ARTHUR_GH_CLI_TDD_RED=PASS'
-          exit 0
+          set +e
+          pwsh -NoProfile -File ./tests/arthur-control-plane-gh-cli.tests.ps1
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo 'TDD_RED_MISSING: old Control Plane unexpectedly satisfied the new gh CLI contract' >&2
+            exit 1
+          fi
+          echo 'ARTHUR_GH_CLI_TDD_RED=PASS'
 
       - name: Apply exact two-line Control Plane fix
         shell: python
