@@ -113,9 +113,80 @@ Assert-True ([bool]$gap.requires_preflash_contract) 'contract gap requires a new
 $known = Get-ContractGapDecision -FailureSet $frozen -ObservedFailureFingerprint ('a' * 64) -PreflashTestPresent $true -PreflashTestPassed $true
 Assert-Equal $known.state 'KNOWN_FAILURE' 'a failure already in the frozen set is not mislabeled as a new contract gap'
 
+# The existing real-device verifier is the source of truth for the full current failure set.
+$report = [pscustomobject][ordered]@{
+    candidate = 'arthur-update-123'
+    commit = ('1' * 40)
+    result = 'FAIL'
+    failures = @(
+        [pscustomobject][ordered]@{ name='after_reboot.adguard_page_functional'; command='authenticated GET AdGuard'; output='HTTP 403'; reason='AdGuard manager must render.' },
+        [pscustomobject][ordered]@{ name='after_reboot.luci_locale_theme'; command='uci get luci.main.lang'; output='en'; reason='zh_cn and theme resources must be present.' }
+    )
+}
+$evidence = Convert-RealDeviceVerificationToFailureSet -Report $report -VerificationContractFingerprint ('2' * 64) -VerificationReportSha256 ('3' * 64)
+Assert-Equal $evidence.state 'FROZEN' 'failed real-device report freezes the complete failure set'
+Assert-Equal @($evidence.items).Count 2 'converter consumes every failures[] entry, not only the first Markdown failure'
+Assert-Equal $evidence.items[0].check_id 'after_reboot.adguard_page_functional' 'real-device failure name becomes stable check id'
+Assert-True ([string]$evidence.items[0].failure_fingerprint -match '^[0-9a-f]{64}$') 'real-device failure gets a stable fingerprint'
+Assert-Equal $evidence.verification_report_sha256 ('3' * 64) 'convergence evidence binds to the exact verification report'
+Assert-Equal $evidence.rootfs_offline_passed $false 'rootfs acceptance is not invented during forensic collection'
+
+$cleanReport = [pscustomobject][ordered]@{
+    candidate = 'known-good-baseline'
+    commit = ('4' * 40)
+    result = 'PASS'
+    failures = @()
+}
+$cleanEvidence = Convert-RealDeviceVerificationToFailureSet -Report $cleanReport -VerificationContractFingerprint ('5' * 64) -VerificationReportSha256 ('6' * 64)
+Assert-Equal $cleanEvidence.state 'RESOLVED' 'a complete clean real-device verification is a resolved zero-failure set'
+Assert-Equal @($cleanEvidence.items).Count 0 'clean baseline keeps an explicit zero-failure set'
+Assert-True ($cleanEvidence.failure_set_fingerprint -match '^[0-9a-f]{64}$') 'clean zero-failure set still has a deterministic fingerprint'
+
+# Dispatch inputs are emitted only after all failures are resolved and the final rootfs is accepted.
+Set-FinalFailureResolution -FailureSet $evidence `
+    -CheckId 'after_reboot.adguard_page_functional' `
+    -RootCause 'route ACL mismatch' `
+    -FirmwareSourceFix 'use one matching menu/ACL generation' `
+    -PreflashCheckId 'preflash.adguard.route_acl' `
+    -PreflashPassed $true | Out-Null
+Set-FinalFailureResolution -FailureSet $evidence `
+    -CheckId 'after_reboot.luci_locale_theme' `
+    -RootCause 'preserved locale overrides default' `
+    -FirmwareSourceFix 'upgrade-safe locale migration' `
+    -PreflashCheckId 'preflash.locale.preserved_config' `
+    -PreflashPassed $true | Out-Null
+
+Assert-Throws {
+    Get-ConvergenceDispatchInputs -Evidence $evidence -CurrentFirmwareInputFingerprint ('7' * 64)
+} 'BUILD_DENIED_ROOTFS_OFFLINE_NOT_PASS' 'resolved failures alone cannot dispatch before rootfs acceptance'
+
+Set-ConvergenceRootfsAcceptance -Evidence $evidence -Passed $true -FirmwareInputFingerprint ('7' * 64) | Out-Null
+$dispatch = Get-ConvergenceDispatchInputs -Evidence $evidence -CurrentFirmwareInputFingerprint ('7' * 64)
+Assert-Equal $dispatch.failure_set_state 'RESOLVED' 'dispatch carries resolved failure-set state'
+Assert-Equal $dispatch.rootfs_offline_passed 'true' 'dispatch carries rootfs acceptance evidence'
+Assert-Equal $dispatch.contract_gap_state 'NONE' 'dispatch is denied unless contract gap is closed'
+Assert-Equal $dispatch.firmware_input_fingerprint ('7' * 64) 'dispatch is bound to the exact accepted firmware input fingerprint'
+
+Assert-Throws {
+    Get-ConvergenceDispatchInputs -Evidence $evidence -CurrentFirmwareInputFingerprint ('8' * 64)
+} 'BUILD_DENIED_FIRMWARE_INPUT_DRIFT' 'any source change after rootfs acceptance invalidates dispatch permission'
+
+$tempEvidence = Join-Path ([System.IO.Path]::GetTempPath()) "xinzhao-convergence-$PID-$([Guid]::NewGuid().ToString('N')).json"
+try {
+    Save-ReleaseConvergenceEvidence -Evidence $evidence -Path $tempEvidence | Out-Null
+    $roundTrip = Load-ReleaseConvergenceEvidence -Path $tempEvidence
+    Assert-Equal $roundTrip.failure_set_fingerprint $evidence.failure_set_fingerprint 'durable convergence evidence preserves frozen failure identity'
+    Assert-Equal $roundTrip.resolved_firmware_input_fingerprint ('7' * 64) 'durable convergence evidence preserves final rootfs/input binding'
+} finally {
+    Remove-Item -Force -ErrorAction SilentlyContinue $tempEvidence
+}
+
 Write-Host 'FAST_SAFE_FINAL_FAILURE_SET_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_REBUILD_PERMISSION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_INVALID_BUILD_CANCEL_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_FLASH_PERMISSION_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_CLEAN_POSTFLASH_CONTRACT=PASS'
 Write-Host 'FAST_SAFE_CONTRACT_GAP_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_REAL_DEVICE_FAILURE_INGEST_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_CONVERGENCE_EVIDENCE_PERSISTENCE_CONTRACT=PASS'
+Write-Host 'FAST_SAFE_DISPATCH_EVIDENCE_BINDING_CONTRACT=PASS'
