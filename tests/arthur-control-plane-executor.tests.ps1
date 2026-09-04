@@ -54,6 +54,7 @@ Assert-Contains $script 'Resolve-ArthurResumeState' 'control plane must preserve
 Assert-Contains $script 'instruction_allowed' 'control plane must fail closed on an unsafe resume-state conflict'
 Assert-Contains $script "'tagName,isDraft,isPrerelease,publishedAt'" 'gh release list must request only fields supported by the release-list command'
 Assert-NotContains $script "'tagName,isDraft,isPrerelease,publishedAt,targetCommitish'" 'gh release list must not request targetCommitish; that field is only read from release view'
+Assert-Contains $script "@(`$deviceLines | Where-Object { `$_ -match 'build-info\.json' }).Count" 'single build-info match must be normalized to an array before Count under StrictMode'
 
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
@@ -84,3 +85,4 @@ Write-Host 'ARTHUR_CONTROL_PLANE_EXECUTOR_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_WORKSPACE_CONTRACT=PASS'
 Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
 Write-Host 'ARTHUR_GH_RELEASE_LIST_SCHEMA_CONTRACT=PASS'
+Write-Host 'ARTHUR_SCALAR_COUNT_NORMALIZATION_CONTRACT=PASS'
