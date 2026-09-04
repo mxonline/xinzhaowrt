@@ -226,16 +226,18 @@ class ProductionRuntime:
             state.pending_human_gate = None
         elif outcome.route == PolicyRoute.HUMAN_GATE:
             state.current_stage = state.phase
-            state.next_action = "WAIT_HUMAN_GATE"
+            state.next_action = state.phase
             state.pending_human_gate = outcome.human_gate.value
             state.next_codex_prompt = None
         elif outcome.route == PolicyRoute.TERMINAL:
             state.terminal_state = decision.terminal_state.value
+            state.current_stage = state.phase
+            state.next_action = state.phase
+            state.next_codex_prompt = None
             if state.terminal_state == TerminalState.PRODUCTION_RELEASED.value:
                 state.phase = "PRODUCTION_RELEASED"
                 state.current_stage = "PRODUCTION_RELEASED"
                 state.next_action = "PRODUCTION_RELEASED"
-                state.next_codex_prompt = None
 
     def _approval_exists(self, gate):
         return getattr(self.store, "approval_path", self.store.root / ("approval-%s.json" % gate)).exists()
