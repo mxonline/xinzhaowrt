@@ -42,5 +42,6 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
+  "semantic_sha256": "",
   "note": "Bootstrap fail-closed snapshot. The Arthur Control Plane replaces this with live reconciled evidence before Codex/runtime instruction generation is allowed."
 }
