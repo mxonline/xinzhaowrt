@@ -5,6 +5,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 config="$root/config/arthur.config"
 packages="$root/scripts/add-custom-packages.sh"
 build="$root/scripts/build.sh"
+restore_adguard="$root/scripts/restore-pinned-adguard-manager.sh"
 manifest="$root/production/accepted-preview/arthur-adh-quickstart.json"
 materializer="$root/scripts/materialize-accepted-overlay.py"
 
@@ -19,6 +20,7 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 [[ -s "$manifest" ]] || { echo 'FAIL: accepted arthur-adh-quickstart manifest is missing from the production source.' >&2; exit 1; }
 [[ -x "$materializer" || -f "$materializer" ]] || { echo 'FAIL: accepted overlay materializer is missing.' >&2; exit 1; }
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
+grep -Fq 'ADGUARD_LEGACY_MANAGER_PURGE=PASS' "$restore_adguard" || { echo 'FAIL: production AdGuard normalization must purge legacy manager paths.' >&2; exit 1; }
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 bash "$root/tests/test-preserved-upgrade-luci-convergence.sh"
