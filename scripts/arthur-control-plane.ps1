@@ -27,6 +27,21 @@ try {
         Fail "CONTROL_PLANE_ROOT_FORBIDDEN: $root"
     }
 
+    $workspaceInput = if (-not [string]::IsNullOrWhiteSpace($env:ARTHUR_CONTROL_PLANE_WORKSPACE)) {
+        $env:ARTHUR_CONTROL_PLANE_WORKSPACE
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) {
+        $env:GITHUB_WORKSPACE
+    }
+    else { $null }
+    if ([string]::IsNullOrWhiteSpace($workspaceInput)) {
+        Fail 'CONTROL_PLANE_WORKSPACE_MISSING: ARTHUR_CONTROL_PLANE_WORKSPACE/GITHUB_WORKSPACE is not set'
+    }
+    $workspace = [IO.Path]::GetFullPath($workspaceInput)
+    if (-not (Test-Path -LiteralPath (Join-Path $workspace '.git'))) {
+        Fail "CONTROL_PLANE_WORKSPACE_INVALID: git workspace missing at $workspace"
+    }
+
     $stateDir = Join-Path $root 'state'
     $logDir = Join-Path $root 'logs'
     $lockDir = Join-Path $root 'locks'
@@ -102,12 +117,19 @@ try {
         pid = $PID
         identity = $identity
         workflow_run_id = $WorkflowRunId
+        workspace = $workspace
     })
-    Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity"
+    Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity workspace=$workspace"
 
     foreach ($tool in @('git', 'gh', 'python')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "CONTROL_PLANE_TOOL_MISSING: $tool" }
     }
+    $workspaceSourceSha = (& git -C $workspace rev-parse HEAD 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $workspaceSourceSha -notmatch '^[0-9a-f]{40}$') { Fail 'CONTROL_PLANE_WORKSPACE_HEAD_INVALID' }
+    $workspaceBranch = (& git -C $workspace branch --show-current 2>&1 | Out-String).Trim()
+    if (-not $workspaceBranch) { $workspaceBranch = 'DETACHED' }
+    Log "CONTROL_PLANE_SOURCE=PASS branch=$workspaceBranch sha=$workspaceSourceSha"
+
     $headless = $false
     if (Get-Command codex -ErrorAction SilentlyContinue) { $headless = $true }
     $pythonProbe = (& python -c "import importlib.util; print('PASS' if (importlib.util.find_spec('openai_codex') or importlib.util.find_spec('codex')) else 'MISSING')" 2>&1 | Out-String).Trim()
@@ -149,7 +171,7 @@ try {
     }
     else { $device.build_info_sources.rom = 'UNAVAILABLE_RETRY' }
 
-    $overlayPath = Join-Path $env:GITHUB_WORKSPACE 'files\www\luci-static\xinzhao\build-info.json'
+    $overlayPath = Join-Path $workspace 'files\www\luci-static\xinzhao\build-info.json'
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
     try {
         $http = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri 'http://192.168.6.1/luci-static/xinzhao/build-info.json'
@@ -187,6 +209,7 @@ try {
         release_task_id = if ($existing -and $existing.release_task_id) { $existing.release_task_id } elseif ($run) { [string]$run.databaseId } else { 'arthur-adh-quickstart' }
         updated_at = [DateTime]::UtcNow.ToString('o')
         execution_identity = $identity
+        workspace = [ordered]@{ path = $workspace; branch = $workspaceBranch; source_sha = $workspaceSourceSha }
         checkpoint = [ordered]@{ current = [string]$checkpoint.current; next_action = [string]$checkpoint.next_action; status = $nextStatus; last_run_id = $WorkflowRunId }
         github = [ordered]@{ candidate = $candidate; production = $production; successful_run = $run; candidate_details = $candidateDetails }
         device = $device
@@ -210,15 +233,15 @@ try {
     $runtimeStatePath = Join-Path $stateDir 'runtime-state.json'
     if (-not (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf)) {
         $resumePrompt = @"
-Resume the current Arthur production task arthur-adh-quickstart from the accepted XinZhaoWrt 0.1.3 real-device baseline. First reconcile the build-info provenance mismatch and repair only the proven source/artifact-generation defect; do not rebuild or flash merely for browser/cache metadata. Then continue ADH_MANAGEMENT using the mature luci-app-adguardhome implementation with only minimal compatibility patches, complete ADH Chinese localization, preserve WIFI=VERIFIED_FROZEN and the accepted iStore/QuickStart state, and continue automatically through the existing safe production gates. Do not ask the user for recoverable failures and never duplicate Build, Candidate, or Flash.
+Resume the current Arthur production task arthur-adh-quickstart from the accepted XinZhaoWrt 0.1.3 real-device baseline. First reconcile the build-info provenance mismatch and repair only the proven source/artifact-generation defect; do not rebuild or flash merely for browser/cache metadata. Then continue ADH_MANAGEMENT using the mature luci-app-adguardhome implementation with only minimal compatibility patches, complete ADH Chinese localization, preserve WIFI=VERIFIED_FROZEN and the accepted iStore/QuickStart state, and continue automatically through the existing safe production gates. Preserve all source edits in the persistent Control Plane workspace. Before advancing from a source-changing phase, run the relevant tests and commit/push the exact source; if push is temporarily unavailable, classify it RECOVERABLE and leave the workspace intact. Use the existing fingerprint Candidate dedup path and never duplicate Build, Candidate, or Flash. Do not ask the user for recoverable failures.
 "@
         Save-Json $runtimeStatePath ([ordered]@{
             schema_version = '3.0'
             request_id = 'arthur-adh-quickstart'
             release_task_id = 'arthur-adh-quickstart'
             repo = $Repository
-            branch = $(if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { 'main' })
-            source_sha = $(if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { $null })
+            branch = $workspaceBranch
+            source_sha = $workspaceSourceSha
             device = 'jdcloud_re-ss-01'
             phase = 'ADH_MANAGEMENT'
             current_stage = 'ADH_MANAGEMENT'
@@ -239,7 +262,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
             last_decision = $null
             preflight = @{}
             stop_requested = $false
-            observability = [ordered]@{ control_plane_bootstrap = 'arthur-adh-quickstart'; provenance_status = $nextStatus }
+            observability = [ordered]@{ control_plane_bootstrap = 'arthur-adh-quickstart'; provenance_status = $nextStatus; workspace = $workspace }
         })
         Log 'AI_ORCHESTRATOR_STATE_BOOTSTRAPPED=PASS phase=ADH_MANAGEMENT'
     }
@@ -249,7 +272,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     $phaseBefore = [string]$runtimeBefore.phase
     Log "HEADLESS_RUNTIME_STARTING phase=$phaseBefore turn_count=$turnBefore"
 
-    Push-Location $env:GITHUB_WORKSPACE
+    Push-Location $workspace
     try {
         $old = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
