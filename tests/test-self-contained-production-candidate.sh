@@ -8,6 +8,8 @@ build="$root/scripts/build.sh"
 restore_adguard="$root/scripts/restore-pinned-adguard-manager.sh"
 manifest="$root/production/accepted-preview/arthur-adh-quickstart.json"
 materializer="$root/scripts/materialize-accepted-overlay.py"
+luci_converge="$root/files/usr/libexec/xinzhao/luci-upgrade-converge.sh"
+luci_hotplug="$root/files/etc/hotplug.d/iface/95-xinzhao-luci-converge"
 
 grep -Fxq 'CONFIG_PACKAGE_luci-theme-argon=y' "$config" || { echo 'FAIL: production config must embed Argon.' >&2; exit 1; }
 grep -Fxq 'CONFIG_PACKAGE_luci-theme-kucat=y' "$config" || { echo 'FAIL: production config must embed KuCat.' >&2; exit 1; }
@@ -19,6 +21,8 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 
 [[ -s "$manifest" ]] || { echo 'FAIL: accepted arthur-adh-quickstart manifest is missing from the production source.' >&2; exit 1; }
 [[ -x "$materializer" || -f "$materializer" ]] || { echo 'FAIL: accepted overlay materializer is missing.' >&2; exit 1; }
+[[ -f "$luci_converge" ]] || { echo 'FAIL: production overlay must contain preserved-upgrade LuCI convergence.' >&2; exit 1; }
+[[ -f "$luci_hotplug" ]] || { echo 'FAIL: production overlay must contain the LAN hotplug convergence trigger.' >&2; exit 1; }
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
 grep -Fq 'ADGUARD_LEGACY_MANAGER_PURGE=PASS' "$restore_adguard" || { echo 'FAIL: production AdGuard normalization must purge legacy manager paths.' >&2; exit 1; }
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
