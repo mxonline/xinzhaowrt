@@ -210,6 +210,8 @@ class ProductionRuntime:
         if outcome.route == PolicyRoute.SAFE_AUTO:
             previous_phase = state.phase
             state.phase = decision.metadata.get("next_phase") or self.pipeline.next_phase(state.phase, decision.action)
+            state.current_stage = state.phase
+            state.next_action = state.phase
             state.next_codex_prompt = decision.next_codex_prompt
             state.pending_human_gate = None
             if state.phase != previous_phase:
@@ -218,15 +220,21 @@ class ProductionRuntime:
                     {"from": previous_phase, "to": state.phase, "source": "controller", "turn_count": state.turn_count},
                 )
         elif outcome.route == PolicyRoute.RECOVERABLE:
+            state.current_stage = state.phase
+            state.next_action = state.phase
             state.next_codex_prompt = decision.next_codex_prompt
             state.pending_human_gate = None
         elif outcome.route == PolicyRoute.HUMAN_GATE:
+            state.current_stage = state.phase
+            state.next_action = "WAIT_HUMAN_GATE"
             state.pending_human_gate = outcome.human_gate.value
             state.next_codex_prompt = None
         elif outcome.route == PolicyRoute.TERMINAL:
             state.terminal_state = decision.terminal_state.value
             if state.terminal_state == TerminalState.PRODUCTION_RELEASED.value:
                 state.phase = "PRODUCTION_RELEASED"
+                state.current_stage = "PRODUCTION_RELEASED"
+                state.next_action = "PRODUCTION_RELEASED"
                 state.next_codex_prompt = None
 
     def _approval_exists(self, gate):
@@ -241,6 +249,8 @@ class ProductionRuntime:
         except FileNotFoundError:
             return
         state.pending_human_gate = None
+        state.current_stage = state.phase
+        state.next_action = state.phase
         state.next_codex_prompt = self.pipeline.prompt_for(state.phase)
         self.store.save(state)
 
