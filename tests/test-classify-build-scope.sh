@@ -78,11 +78,14 @@ run_case FAST_GATE \
 run_case FAST_GATE \
   scripts/fast-safe-release-lib.ps1 \
   scripts/fast-safe-convergence-lib.ps1 \
+  scripts/release-convergence-exec-lib.ps1 \
+  scripts/release-convergence-manager.ps1 \
   scripts/check-release-convergence.py \
   scripts/get-firmware-input-fingerprint.sh \
   scripts/publish-release-convergence-request.ps1 \
   production/fast-safe-release-policy.json \
   tests/fast-safe-convergence.tests.ps1 \
+  tests/release-convergence-manager.tests.ps1 \
   tests/test-release-convergence-workflow.sh
 
 run_case FAST_GATE \
@@ -164,7 +167,7 @@ run_case FULL_BUILD \
 
 run_contract_case DOC_ONLY NONE false HANDOFF.md knowledge/PROJECT-STATE.md
 run_contract_case CONTROL_PLANE_ONLY CONTROL_EVIDENCE_ONLY false scripts/feature-handoff-status.ps1 scripts/ci-controller-v3.ps1
-run_contract_case CONTROL_PLANE_ONLY CONTROL_EVIDENCE_ONLY false scripts/fast-safe-convergence-lib.ps1 scripts/check-release-convergence.py scripts/get-firmware-input-fingerprint.sh scripts/publish-release-convergence-request.ps1
+run_contract_case CONTROL_PLANE_ONLY CONTROL_EVIDENCE_ONLY false scripts/fast-safe-convergence-lib.ps1 scripts/release-convergence-exec-lib.ps1 scripts/release-convergence-manager.ps1 scripts/check-release-convergence.py scripts/get-firmware-input-fingerprint.sh scripts/publish-release-convergence-request.ps1
 run_contract_case PREVIEW_BYTES PREVIEW_AND_DOWNSTREAM true production/accepted-preview/arthur-adh-quickstart.json
 run_contract_case FIRMWARE_INPUT BUILD_AND_DOWNSTREAM true files/etc/config/xinzhao config/arthur.config
 run_contract_case DEVICE_WRITE_POLICY PREFLASH_AND_DOWNSTREAM false production/known-good.json
