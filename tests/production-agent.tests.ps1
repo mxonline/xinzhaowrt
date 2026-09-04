@@ -24,6 +24,9 @@ $requiredFiles = @(
     'scripts/uninstall-production-agent.ps1',
     'scripts/start-production-agent.ps1',
     'scripts/production-agent-status.ps1',
+    'scripts/arthur-control-plane-gate.ps1',
+    'scripts/arthur-operator-intent.ps1',
+    'production/operator-intent.json',
     'production/production-agent.json',
     'production/arthur-flash-profile.json',
     '.github/workflows/production-agent-deploy.yml'
@@ -39,6 +42,8 @@ $gatePath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
+$controlPlaneGatePath = Join-Path $Root 'scripts/arthur-control-plane-gate.ps1'
+$operatorIntentPath = Join-Path $Root 'production/operator-intent.json'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
 
@@ -48,6 +53,8 @@ $gate = Get-Content -Raw $gatePath
 $controller = Get-Content -Raw $controllerPath
 $install = Get-Content -Raw $installPath
 $deploy = Get-Content -Raw $deployPath
+$controlPlaneGate = Get-Content -Raw $controlPlaneGatePath
+$operatorIntent = Get-Content -Raw $operatorIntentPath | ConvertFrom-Json
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
 $flashProfile = Get-Content -Raw $flashProfilePath | ConvertFrom-Json
 
@@ -134,7 +141,7 @@ Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain 
 Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
 
-# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> Arthur Control Plane -> ai_orchestrator.
+# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
 Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
 Assert-Contains $deploy "XinZhaoWrt\ControlPlane" 'runner wakeup must use the canonical Control Plane root'
@@ -142,7 +149,12 @@ Assert-Contains $deploy "Join-Path `$root 'workspace'" 'runner wakeup must prese
 Assert-Contains $deploy 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must survive the next schedule'
 Assert-Contains $deploy 'merge --ff-only' 'clean persistent main may only fast-forward'
 Assert-Contains $deploy '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE' 'resume-state, baseline and Headless Codex must execute against the persistent workspace'
-Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must invoke the Arthur Control Plane directly'
+Assert-Contains $deploy 'scripts\arthur-control-plane-gate.ps1' 'runner wakeup must enter through the scoped operator-intent gate'
+Assert-Contains $controlPlaneGate 'scripts\arthur-control-plane.ps1' 'authorized intent gate must delegate to the existing Arthur Control Plane'
+Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'unauthorized firmware execution must stop before the Control Plane'
+Assert-Contains $controlPlaneGate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
+Assert-True ([string]$operatorIntent.authorization_scope -eq 'GOVERNANCE_RULES_ONLY') 'current operator authorization must stay scoped to governance rules'
+Assert-True ($operatorIntent.firmware_execution_authorized -eq $false) 'current operator intent must not authorize firmware execution'
 Assert-True ($deploy -notmatch '(?i)actions/checkout@v4') 'active unattended wakeup must not replace the persistent source with an ephemeral checkout'
 Assert-True ($deploy -notmatch '(?i)reset --hard') 'active wakeup must not destroy unfinished Headless Codex changes'
 Assert-True ($deploy -notmatch '(?i)git clean') 'active wakeup must not clean unfinished Headless Codex changes'
@@ -157,3 +169,4 @@ Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_LEGACY_SAFETY_CONTRACT=PASS'
 Write-Host 'RUNNER_CONTROL_PLANE_WAKEUP_CONTRACT=PASS'
+Write-Host 'OPERATOR_INTENT_SCOPE_CONTRACT=PASS'
