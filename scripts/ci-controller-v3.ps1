@@ -17,6 +17,11 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# The preserved core remains authoritative for production-agent.ps1 handoff,
+# PRODUCTION_RELEASED terminal handling, and RECOVERABLE_CODEX_TIMEOUT recovery.
+# This wrapper only decides whether a Candidate dispatch is allowed or an existing
+# Candidate must be watched/reused; it does not add or replace a release stage.
+
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Core = Join-Path $PSScriptRoot 'ci-controller-v3-core.ps1'
 $Resolver = Join-Path $PSScriptRoot 'resolve-candidate-dedup.sh'
@@ -59,8 +64,6 @@ function Save-DedupDecision {
 if (-not (Test-Path $Core)) { throw "BLOCKED: preserved v3 controller core is missing: $Core" }
 if (-not (Test-Path $Resolver)) { throw "BLOCKED: Candidate dedup resolver is missing: $Resolver" }
 
-# Explicit Run IDs are immutable resume requests. Watch is read-only. Neither path may
-# dispatch a replacement Candidate, so they bypass source-impact resolution safely.
 if ($Mode -eq 'Watch' -or ($Mode -eq 'Resume' -and $RunId -gt 0)) {
     Invoke-CoreController -EffectiveMode $Mode -EffectiveRunId $RunId
 }
