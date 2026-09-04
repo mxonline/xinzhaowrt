@@ -74,7 +74,7 @@ Assert-Contains $fetch 'ARTIFACT_BYTES_VERIFIED' 'artifact fetch must persist ve
 Assert-Contains $fetch 'Arthur-v3-Candidate-' 'artifact fetch must discover the production Candidate artifact from the live run instead of a stale bootstrap artifact'
 Assert-Contains $fetch 'headSha' 'artifact fetch must derive source SHA from the live GitHub run'
 
-Assert-Contains $agent 'ci-controller-v3.ps1' 'failed builds must reuse the existing Codex repair controller'
+Assert-Contains $agent 'ci-controller-v3.ps1' 'legacy production agent repair code must remain available for forensic compatibility'
 Assert-Contains $agent 'AUTO_FLASH_SAFETY_GATE=PASS' 'agent must require safety gate before flash'
 Assert-Contains $agent 'real-device-verify' 'agent must reuse existing real-device verification'
 Assert-Contains $agent 'PRODUCTION_RELEASED=YES' 'agent must expose the sole production terminal state'
@@ -82,23 +82,20 @@ Assert-Contains $agent "Invoke-Process 'gh' @('api'" 'production agent must veri
 Assert-Contains $agent 'repos/$([string]$Config.repository)' 'production agent GitHub API probe must target the configured repository'
 Assert-True ($agent -notmatch "(?m)Invoke-Process\s+'gh'\s+@\('auth','status'") 'production agent must not hard-stop on gh auth status when a machine credential can still perform API calls'
 
-# Native command argument forwarding must not use PowerShell's automatic $args variable as a named parameter.
 Assert-True ($agent -notmatch 'function\s+Invoke-Process\(\[string\]\$File,\[string\[\]\]\$Args') 'Invoke-Process must not bind native arguments through automatic variable $args'
 Assert-Contains $agent '[string[]]$ProcessArgs' 'Invoke-Process must use an explicit non-automatic argument parameter'
 Assert-Contains $agent '@ProcessArgs' 'Invoke-Process must splat the explicit process argument array'
 
-# Rollback safety must follow the explicit rollback object, not assume the current frozen stable tag is a GitHub Release.
 Assert-Contains $agent '$Known.rollback.target' 'rollback download must use production/known-good.json rollback.target'
 Assert-Contains $agent '$Known.rollback.firmware' 'rollback download must use production/known-good.json rollback.firmware'
 Assert-Contains $agent '$Known.rollback.sha256' 'rollback integrity check must use production/known-good.json rollback.sha256'
 
-# Device reachability is recoverable unless there is positive evidence of a wrong/unsafe identity.
 Assert-Contains $agent 'DEVICE_IDENTITY_RETRYABLE' 'temporary SSH/device unreachability must re-enter the unattended loop'
 Assert-Contains $agent 'DEVICE_PROBE_RETRY' 'device probe failures must preserve diagnostic evidence for automatic retries'
 Assert-Contains $agent 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'host-key identity anomalies must remain a hard safety stop'
 Assert-True ($agent -notmatch 'Save-State\s+\$State\s+\(\[string\]\$State\.stage\)\s+''BLOCKED''\s+''No verified Arthur device found at expected/recovery addresses\.''') 'mere device unreachability must not be promoted directly to BLOCKED'
 
-Assert-Contains $controller 'production-agent.ps1' 'successful Candidate verification must hand off into the existing Production Agent automatically'
+Assert-Contains $controller 'production-agent.ps1' 'legacy controller compatibility path must still be internally coherent'
 Assert-Contains $controller 'PRODUCTION_RELEASED' 'controller must follow the release chain to the sole terminal state'
 Assert-Contains $controller 'RECOVERABLE_CODEX_TIMEOUT' 'Codex timeout must be classified as recoverable and re-enter the loop'
 Assert-True ($controller -notmatch 'Next hard gate is manual flash plus real-device verification') 'controller must not stop at Candidate publication waiting for manual flash'
@@ -133,32 +130,30 @@ foreach ($forbidden in @(' mtd ', 'mtd write', ' nandwrite', 'uboot', 'u-boot wr
 }
 Assert-True ($automaticPath -notmatch '(?m)(^|[;&|]\s*)dd\s+if=') 'automatic path must not execute dd raw writes'
 
-Assert-Contains $install 'Register-ScheduledTask' 'installation must create a Scheduled Task'
-Assert-Contains $install 'LogonTrigger' 'Scheduled Task must start in current-user logon context'
-Assert-Contains $install '$env:USERDOMAIN' 'Scheduled Task principal must come from current interactive user'
-Assert-Contains $install 'PowerShell/PowerShell' 'installer must be able to bootstrap official portable PowerShell when pwsh is absent'
-Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'installer must probe a real repository API request instead of gh auth status'
-Assert-True ($install -notmatch '(?im)^\s*&?\s*gh(?:\.exe)?\s+auth\s+status\b') 'installer must not reject a valid GitHub App/machine credential based on stale gh auth status'
-Assert-True ($install -notmatch '(?i)-UserId\s+["'']?(SYSTEM|LocalSystem)["'']?') 'authenticated production agent must not run as SYSTEM/LocalSystem'
-Assert-True ($install -notmatch '(?i)NT AUTHORITY\\SYSTEM') 'authenticated production agent must not run as NT AUTHORITY\SYSTEM'
+# Legacy task tooling remains available only as rollback/forensic evidence; it is not the active unattended path.
+Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain parseable for rollback/forensics'
+Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
+Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
 
-Assert-Contains $deploy '$env:GITHUB_WORKSPACE' 'deploy must source the persistent runtime from the already checked-out workspace'
-Assert-True ($deploy -notmatch '(?im)^\s*git\s+clone\b') 'deploy must not perform a second network git clone'
-Assert-True ($deploy -notmatch '(?im)^\s*git\s+-C\s+\$runtime\s+fetch\s+origin\b') 'deploy must not perform a second network git fetch during runtime sync'
-Assert-Contains $deploy "'scripts/ci-controller-v3.ps1'" 'controller changes must redeploy the persistent Windows runtime'
-Assert-Contains $deploy "gh api repos/mxonline/xinzhaowrt" 'deploy must verify the machine credential by a real GitHub API request'
-Assert-True ($deploy -notmatch '(?im)^\s*gh(?:\.exe)?\s+auth\s+status\b') 'deploy must not reject a usable GitHub App/machine credential because gh auth status is stale'
-Assert-Contains $deploy 'Start persistent v3 controller' 'deployment must ensure the existing v3 controller loop is running'
-
-# GitHub Actions is the authenticated recovery driver; it must keep re-entering the same durable release after failures.
-Assert-Contains $deploy "cron: '*/15 * * * *'" 'existing Production Agent deploy workflow must self-resume unfinished releases every 15 minutes'
-Assert-Contains $deploy 'PRODUCTION_AGENT_AUTHENTICATED_RETRY' 'authenticated continuation must retry the same release checkpoint after recoverable failures'
-Assert-Contains $deploy 'PRODUCTION_AGENT_AUTHENTICATED_RETRY_WINDOW_EXPIRED' 'a scheduled run may yield to the next scheduled recovery without converting a recoverable state into a permanent failure'
-Assert-True ($deploy -notmatch 'if \(\$LASTEXITCODE -ne 0\) \{ throw "Authenticated Production Agent continuation failed') 'one failed RunOnce must not terminate the entire unattended release chain'
+# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> Arthur Control Plane -> ai_orchestrator.
+Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
+Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
+Assert-Contains $deploy "ControlPlane\workspace" 'runner wakeup must preserve a persistent source workspace'
+Assert-Contains $deploy 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must survive the next schedule'
+Assert-Contains $deploy 'merge --ff-only' 'clean persistent main may only fast-forward'
+Assert-Contains $deploy '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE' 'resume-state, baseline and Headless Codex must execute against the persistent workspace'
+Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must invoke the Arthur Control Plane directly'
+Assert-True ($deploy -notmatch '(?i)actions/checkout@v4') 'active unattended wakeup must not replace the persistent source with an ephemeral checkout'
+Assert-True ($deploy -notmatch '(?i)reset --hard') 'active wakeup must not destroy unfinished Headless Codex changes'
+Assert-True ($deploy -notmatch '(?i)git clean') 'active wakeup must not clean unfinished Headless Codex changes'
+Assert-True ($deploy -notmatch '(?i)LogonType\s+Interactive') 'active wakeup must not depend on interactive Windows logon'
+Assert-True ($deploy -notmatch '(?i)XinZhaoWrt-Arthur-v3-Controller') 'active wakeup must not launch the legacy v3 Scheduled Task'
+Assert-True ($deploy -notmatch '(?i)install-production-agent\.ps1') 'active wakeup must not install the legacy Production Agent Scheduled Task'
+Assert-True ($deploy -notmatch '(?i)recover-existing-bridge-context\.ps1') 'active wakeup must not recover the GUI Codex user context'
+Assert-True ($deploy -notmatch '(?i)PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION') 'active wakeup must not contain the legacy ten-minute continuation loop'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
-Write-Host 'PRODUCTION_AGENT_RESUME_CONTRACT=PASS'
-Write-Host 'PRODUCTION_AGENT_LOCAL_SYNC_CONTRACT=PASS'
-Write-Host 'UNATTENDED_CODEX_CONTINUATION_CONTRACT=PASS'
+Write-Host 'PRODUCTION_AGENT_LEGACY_SAFETY_CONTRACT=PASS'
+Write-Host 'RUNNER_CONTROL_PLANE_WAKEUP_CONTRACT=PASS'
