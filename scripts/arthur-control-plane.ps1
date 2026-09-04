@@ -158,9 +158,13 @@ try {
     if (-not $headless) { Fail 'HEADLESS_CODEX_UNAVAILABLE' }
     Log 'HEADLESS_CODEX_AVAILABLE=PASS'
 
+    Log 'GITHUB_PROVENANCE_RUN_LIST=BEGIN'
     $runList = Invoke-GhJson @('run', 'list', '--repo', $Repository, '--limit', '50', '--json', 'databaseId,status,conclusion,headSha,headBranch,workflowName,createdAt')
+    Log 'GITHUB_PROVENANCE_RUN_LIST=PASS'
     $successfulRuns = @($runList | Where-Object { $_.conclusion -eq 'success' -and $_.headSha })
+    Log 'GITHUB_PROVENANCE_RELEASE_LIST=BEGIN'
     $releases = Invoke-GhJson @('release', 'list', '--repo', $Repository, '--limit', '100', '--json', 'tagName,isDraft,isPrerelease,publishedAt')
+    Log 'GITHUB_PROVENANCE_RELEASE_LIST=PASS'
     $candidateReleases = @($releases | Where-Object { $_.tagName -like 'arthur-update-*' -and -not $_.isDraft })
     $productionReleases = @($releases | Where-Object { $_.tagName -like 'arthur-production-*' -and -not $_.isDraft })
     $candidate = $candidateReleases | Sort-Object publishedAt -Descending | Select-Object -First 1
@@ -168,9 +172,15 @@ try {
     $run = $successfulRuns | Sort-Object createdAt -Descending | Where-Object { $_.workflowName -match '(?i)Arthur|Known|Update' } | Select-Object -First 1
     if (-not $run) { $run = $successfulRuns | Sort-Object createdAt -Descending | Select-Object -First 1 }
     if ($candidate) {
+        Log 'GITHUB_PROVENANCE_CANDIDATE_VIEW=BEGIN'
         $candidateDetails = Invoke-GhJson @('release', 'view', $candidate.tagName, '--repo', $Repository, '--json', 'tagName,targetCommitish,assets,isPrerelease,isDraft,publishedAt')
+        Log 'GITHUB_PROVENANCE_CANDIDATE_VIEW=PASS'
     }
-    else { $candidateDetails = $null }
+    else {
+        $candidateDetails = $null
+        Log 'GITHUB_PROVENANCE_CANDIDATE_VIEW=BEGIN'
+        Log 'GITHUB_PROVENANCE_CANDIDATE_VIEW=PASS candidate=MISSING'
+    }
     Log ("GITHUB_PROVENANCE candidate={0} production={1} run={2}" -f $(if ($candidate) { $candidate.tagName } else { 'MISSING' }), $(if ($production) { $production.tagName } else { 'MISSING' }), $(if ($run) { $run.databaseId } else { 'MISSING' }))
 
     $knownHosts = Join-Path $sshDir 'known_hosts'

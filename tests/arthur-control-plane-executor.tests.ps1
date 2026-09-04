@@ -52,6 +52,24 @@ Assert-Contains $script "-split '__BUILD_INFO_SCAN__', 2" 'device probe must pre
 Assert-Contains $script "PSObject.Properties['board_name']" 'device identity must read OpenWrt system board_name defensively under StrictMode'
 Assert-Contains $script 'DEVICE_PROBE reachable=' 'live device classification must emit explicit evidence before a safety decision'
 
+# Current release checkpoint is ADH management first, then Chinese localization.
+Assert-Contains $script "request_id = 'arthur-adh-quickstart'" 'control-plane bootstrap must bind to the current Arthur ADH release task'
+Assert-Contains $script "phase = 'ADH_MANAGEMENT'" 'control-plane bootstrap must resume from ADH_MANAGEMENT'
+Assert-Contains $script "current_stage = 'ADH_MANAGEMENT'" 'control-plane current stage must start at ADH_MANAGEMENT'
+Assert-Contains $script "next_action = 'ADH_MANAGEMENT'" 'control-plane next action must start at ADH_MANAGEMENT'
+Assert-Contains $pipeline 'Preserve WIFI=VERIFIED_FROZEN and the accepted iStore/QuickStart state.' 'ADH management recovery must not redo Wi-Fi or discard accepted iStore/QuickStart state'
+$adhManagementIndex = $pipeline.IndexOf('"ADH_MANAGEMENT"',[System.StringComparison]::Ordinal)
+$adhChineseIndex = $pipeline.IndexOf('"ADH_CHINESE"',[System.StringComparison]::Ordinal)
+Assert-True ($adhManagementIndex -ge 0 -and $adhChineseIndex -gt $adhManagementIndex) 'ADH_CHINESE must follow ADH_MANAGEMENT in the durable Arthur phase order'
+
+# Multi-component debugging: every provenance query boundary must identify BEGIN/PASS in the live runner log.
+Assert-Contains $script 'GITHUB_PROVENANCE_RUN_LIST=BEGIN' 'run-list provenance boundary must log BEGIN'
+Assert-Contains $script 'GITHUB_PROVENANCE_RUN_LIST=PASS' 'run-list provenance boundary must log PASS'
+Assert-Contains $script 'GITHUB_PROVENANCE_RELEASE_LIST=BEGIN' 'release-list provenance boundary must log BEGIN'
+Assert-Contains $script 'GITHUB_PROVENANCE_RELEASE_LIST=PASS' 'release-list provenance boundary must log PASS'
+Assert-Contains $script 'GITHUB_PROVENANCE_CANDIDATE_VIEW=BEGIN' 'candidate-view provenance boundary must log BEGIN'
+Assert-Contains $script 'GITHUB_PROVENANCE_CANDIDATE_VIEW=PASS' 'candidate-view provenance boundary must log PASS'
+
 Assert-Contains $pipeline 'ADH_MANAGEMENT' 'Arthur pipeline must carry the current ADH management checkpoint'
 Assert-Contains $pipeline 'ADH_CHINESE' 'Arthur pipeline must carry the current Chinese localization checkpoint'
 Assert-Contains $pipeline 'default_request_id = "arthur-adh-quickstart"' 'Arthur pipeline must own the durable current release task identity'
@@ -77,6 +95,8 @@ Assert-NotContains $wakeup 'recover-existing-bridge-context.ps1' 'cross-user GUI
 Assert-NotContains $wakeup 'PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION' 'legacy ten-minute continuation loop must not remain in the unattended wakeup path'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_EXECUTOR_CONTRACT=PASS'
+Write-Host 'ARTHUR_CURRENT_ADH_RESUME_CONTRACT=PASS'
+Write-Host 'ARTHUR_PROVENANCE_BOUNDARY_EVIDENCE_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_WORKSPACE_CONTRACT=PASS'
 Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
 Write-Host 'ARTHUR_GH_RELEASE_LIST_SCHEMA_CONTRACT=PASS'
