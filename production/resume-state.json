@@ -1,47 +1,48 @@
 {
-  "schema_version": 1,
-  "status": "STATE_RECONCILIATION_REQUIRED",
-  "instruction_allowed": false,
-  "repository_head": null,
-  "real_device": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "git_commit": "e27bafa"
-  },
-  "accepted_baseline": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
-  },
-  "checkpoint": {
-    "current": null,
-    "next_action": "RUN_CONTROL_PLANE_RECONCILIATION",
-    "turn_count": null
-  },
-  "verified": {
-    "real_device_baseline": "RECONCILE_REQUIRED",
-    "wifi": "VERIFIED_FROZEN"
-  },
-  "pending": [
-    "RUN_CONTROL_PLANE_RECONCILIATION"
-  ],
-  "next_action": "RUN_CONTROL_PLANE_RECONCILIATION",
-  "conflicts": [
-    "AWAITING_FIRST_CONTROL_PLANE_RECONCILIATION"
-  ],
-  "source_precedence": [
-    "LIVE_DEVICE",
-    "REAL_DEVICE_BASELINE",
-    "AI_ORCHESTRATOR_RUNTIME",
-    "GITHUB_HEAD",
-    "HISTORICAL_DOCS_AUXILIARY_ONLY"
-  ],
-  "legacy_source_policy": "AUXILIARY_ONLY",
-  "ignored_current_state_sources": [
-    "knowledge/PROJECT-STATE.md historical sections",
-    "production/v4-state.json historical controller snapshot",
-    "chat/model narrative"
-  ],
-  "semantic_sha256": "",
-  "note": "Bootstrap fail-closed snapshot. The Arthur Control Plane replaces this with live reconciled evidence before Codex/runtime instruction generation is allowed."
+    "schema_version":  1,
+    "status":  "RESUME_SAFE",
+    "instruction_allowed":  true,
+    "repository_head":  "268204ef944b3c34697b3a7b15b0cf8896a4efa9",
+    "real_device":  {
+                        "version":  "0.1.3",
+                        "build_id":  "33462873812",
+                        "git_commit":  "e27bafa",
+                        "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+                    },
+    "accepted_baseline":  {
+                              "version":  "0.1.3",
+                              "build_id":  "33462873812",
+                              "source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
+                          },
+    "checkpoint":  {
+                       "current":  "ADH_MANAGEMENT",
+                       "next_action":  "ADH_MANAGEMENT",
+                       "turn_count":  0
+                   },
+    "verified":  {
+                     "real_device_baseline":  "MATCHED",
+                     "wifi":  "VERIFIED_FROZEN"
+                 },
+    "pending":  [
+                    "ADH_MANAGEMENT"
+                ],
+    "next_action":  "ADH_MANAGEMENT",
+    "conflicts":  [
+
+                  ],
+    "source_precedence":  [
+                              "LIVE_DEVICE",
+                              "REAL_DEVICE_BASELINE",
+                              "AI_ORCHESTRATOR_RUNTIME",
+                              "GITHUB_HEAD",
+                              "HISTORICAL_DOCS_AUXILIARY_ONLY"
+                          ],
+    "legacy_source_policy":  "AUXILIARY_ONLY",
+    "ignored_current_state_sources":  [
+                                          "knowledge/PROJECT-STATE.md historical sections",
+                                          "production/v4-state.json historical controller snapshot",
+                                          "chat/model narrative"
+                                      ],
+    "semantic_sha256":  "9a0dc5548ef3f4f3023fd55a02361055f10147f554788fa9ac9fdfa2ae32b536",
+    "evidence_timestamp":  "2026-09-04T12:31:26.8313320Z"
 }
