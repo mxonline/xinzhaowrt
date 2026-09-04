@@ -19,6 +19,7 @@ $buildEnv = Get-Content -Raw (Join-Path $Root 'build.env')
 $defaults = Get-Content -Raw (Join-Path $Root 'files/etc/uci-defaults/99-xinzhao-defaults')
 $arthurConfig = Get-Content -Raw (Join-Path $Root 'config/arthur.config')
 $deploy = Get-Content -Raw (Join-Path $Root '.github/workflows/production-agent-deploy.yml')
+$controlPlane = Get-Content -Raw (Join-Path $Root 'scripts/arthur-control-plane.ps1')
 $themeLock = Get-Content -Raw (Join-Path $Root 'config/arthur-theme.lock')
 $requirementsPath = Join-Path $Root 'requirements-headless.txt'
 
@@ -45,15 +46,16 @@ foreach ($relative in @(
     Assert-True (Test-Path (Join-Path $Root $relative)) "existing GPT-Codex Bridge runtime file must be present: $relative"
 }
 
-Assert-Contains $deploy 'ai_orchestrator' 'deployment must include the existing GPT-Codex Bridge decision runtime'
-Assert-Contains $deploy 'GPT_CODEX_BRIDGE_DISPATCH_ONLY' 'deployment must explicitly keep the Bridge as a dispatch/decision layer only'
-Assert-True ($deploy -notmatch 'Start existing GPT Codex Bridge supervisor') 'standalone Bridge supervisor must not own a second Arthur phase machine'
-Assert-Contains $deploy 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor' 'deployment must quiesce any previously installed standalone Bridge supervisor'
-Assert-Contains $deploy 'GPT_CODEX_BRIDGE_RUNTIME=REUSE' 'deployment must reuse the already-proven persistent Python/Codex SDK runtime before any bootstrap'
+# The active deployment path now wakes the one runner-owned Control Plane; that script owns the ai_orchestrator resume call.
+Assert-Contains $deploy 'scripts\arthur-control-plane.ps1' 'runner wakeup must delegate to the existing Arthur Control Plane'
+Assert-Contains $controlPlane 'python -m ai_orchestrator resume' 'Control Plane must invoke the existing GPT-Codex decision runtime'
+Assert-Contains $deploy 'HEADLESS_RUNTIME=REUSE' 'deployment must reuse the already-proven persistent Python/Codex SDK runtime before bootstrap'
 Assert-Contains $deploy 'python install 3.12' 'bootstrap fallback must install pinned Python 3.12 in user space'
 Assert-Contains $deploy 'HeadlessPython' 'deployment must keep the supported Bridge interpreter in a persistent user-space directory'
-Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path for Bridge decision calls'
+Assert-Contains $deploy 'HEADLESS_PYTHON_EXE' 'deployment must carry the pinned Python path for headless decision calls'
 Assert-True ($deploy -notmatch 'astral-sh/setup-uv@v6') 'deployment must not depend on the flaky setup-uv Node action on the self-hosted Windows runner'
+Assert-True ($deploy -notmatch 'XinZhaoWrt-GPT-Codex-Bridge-Supervisor') 'active wakeup must not revive the obsolete standalone Bridge supervisor'
+Assert-True ($deploy -notmatch 'LogonType\s+Interactive') 'active wakeup must not depend on an interactive Windows session'
 Assert-True (Test-Path $requirementsPath) 'deployment must retain the existing headless runtime dependency input'
 $requirements = Get-Content -Raw $requirementsPath
 Assert-Contains $requirements 'openai-codex' 'headless runtime must install the existing Codex SDK dependency'
