@@ -13,11 +13,13 @@ done
 
 grep -Fq 'WATCH_EXISTING_RUN' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'REUSE_ARTIFACT' "$ROOT/scripts/resolve-candidate-dedup.sh"
+grep -Fq 'REPAIR_FAILED_RUN' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'NO_NEW_CANDIDATE' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'NEW_CANDIDATE' "$ROOT/scripts/resolve-candidate-dedup.sh"
 grep -Fq 'resolve-candidate-dedup.sh' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
 grep -Fq 'V3_AUTO_TRIGGER=WATCH_EXISTING_RUN' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
 grep -Fq 'V3_AUTO_TRIGGER=REUSE_ARTIFACT' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
+grep -Fq 'V3_AUTO_TRIGGER=REPAIR_FAILED_RUN' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
 grep -Fq 'V3_AUTO_TRIGGER=NO_NEW_CANDIDATE' "$ROOT/.github/workflows/arthur-update-v3-auto.yml"
 
 scope="$(printf '%s\n' \
@@ -58,5 +60,23 @@ git commit -qm 'test firmware input'
 firmware_head="$(git rev-parse HEAD)"
 [[ "$(bash scripts/source-impact-gate.sh "$handoff_head" "$firmware_head")" == $'FIRMWARE_IMPACT\tIMAGEBUILDER' ]]
 [[ "$(bash scripts/build-fingerprint.sh "$firmware_head")" != "$fp_base" ]]
+
+mkdir -p "$work/bin"
+cat > "$work/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-} ${2:-}" == "run list" ]]; then
+  printf '[{"databaseId":33969443771,"headSha":"%s","headBranch":"main","status":"completed","conclusion":"failure","createdAt":"2026-09-05T14:00:00Z"}]\n' "$MOCK_HEAD"
+  exit 0
+fi
+echo "unexpected gh call: $*" >&2
+exit 2
+EOF
+chmod +x "$work/bin/gh"
+failed_out="$(PATH="$work/bin:$PATH" MOCK_HEAD="$firmware_head" bash scripts/resolve-candidate-dedup.sh mxonline/xinzhaowrt arthur-update-v3.yml HEAD)"
+printf '%s\n' "$failed_out"
+grep -qx 'ACTION=REPAIR_FAILED_RUN' <<<"$failed_out"
+grep -qx 'RUN_ID=33969443771' <<<"$failed_out"
+grep -qx "SOURCE_SHA=$firmware_head" <<<"$failed_out"
 
 echo 'PASS: Arthur Candidate build dedup/source-impact contract is correct.'

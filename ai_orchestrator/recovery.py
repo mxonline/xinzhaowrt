@@ -208,6 +208,20 @@ class RecoverySupervisor:
             }
             return self.state
 
+        if fingerprint_matches and status == "completed" and conclusion and conclusion != "success":
+            self.state.active_run_id = int(evidence.candidate_run_id or self.state.active_run_id or 0)
+            self.state.next_action = "AUTO_REPAIR_FAILED_CANDIDATE"
+            self.state.current_stage = "CANDIDATE_REPAIR"
+            self.state.phase = "CANDIDATE_REPAIR"
+            self.state.observability["recovery_decision"] = {
+                "action": "AUTO_REPAIR_FAILED_CANDIDATE",
+                "run_id": self.state.active_run_id,
+                "conclusion": conclusion,
+                "reason": "same-fingerprint Candidate completed unsuccessfully; route diagnostics to existing repair controller",
+                "at": _utc_now(),
+            }
+            return self.state
+
         # If no side-effect ambiguity exists, resume from the durable checkpoint.
         self.state.next_action = self.state.next_action or self.state.current_stage or self.state.phase
         self.state.observability["recovery_decision"] = {

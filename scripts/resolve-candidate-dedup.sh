@@ -69,6 +69,11 @@ for line in "${runs[@]:-}"; do
         printf 'ACTION=REUSE_ARTIFACT\nRUN_ID=%s\nBUILD_FINGERPRINT=%s\nSOURCE_SHA=%s\n' "$run_id" "$current_fp" "$current_sha"
         exit 0
       fi
+      if [[ -n "$conclusion" ]]; then
+        printf 'ACTION=REPAIR_FAILED_RUN\nRUN_ID=%s\nBUILD_FINGERPRINT=%s\nSOURCE_SHA=%s\nRUN_CONCLUSION=%s\n' \
+          "$run_id" "$current_fp" "$current_sha" "$conclusion"
+        exit 0
+      fi
       ;;
   esac
 done
