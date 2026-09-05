@@ -26,7 +26,18 @@ function Get-ArthurFirmwareEvents {
     $events = @()
     foreach ($line in @(Get-Content -LiteralPath $Path)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        try { $events += ($line | ConvertFrom-Json) }
+        try {
+            $entry = $line | ConvertFrom-Json
+            # PowerShell 7 may auto-convert ISO 8601 JSON strings to DateTime and lose
+            # the original offset when later stringified. Preserve the exact wire value
+            # used by the hash chain so validation is stable across PS 5.1/7.x.
+            $timeMatch = [regex]::Match($line, '"time"\s*:\s*"(?<time>[^"\\]*(?:\\.[^"\\]*)*)"')
+            if (-not $timeMatch.Success) { throw 'missing time string' }
+            $timeLiteral = $timeMatch.Groups['time'].Value
+            $timeLiteral = '"' + $timeLiteral + '"' | ConvertFrom-Json
+            $entry.time = [string]$timeLiteral
+            $events += $entry
+        }
         catch { throw "FIRMWARE_EVENT_LEDGER_INVALID_JSON: $($_.Exception.Message)" }
     }
     return @($events)
