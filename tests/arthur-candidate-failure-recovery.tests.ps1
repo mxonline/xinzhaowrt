@@ -21,6 +21,11 @@ Assert-Contains $helperText 'REPAIR_FAILED_RUN' 'helper must consume the authori
 Assert-Contains $helperText 'ci-controller-v3.ps1' 'helper must reuse the existing v3 Codex repair controller'
 Assert-Contains $helperText "'-Mode','Resume'" 'helper must resume the failed formal Candidate instead of creating a new controller'
 Assert-Contains $helperText 'candidate-repair.json' 'helper must persist repair run/PID identity for idempotency'
+Assert-Contains $helperText 'function Resolve-BashExecutable' 'helper must resolve Bash even when Git for Windows bash is not on PATH'
+Assert-Contains $helperText "'bin\\bash.exe'" 'helper must probe the Git for Windows bin/bash.exe sibling path'
+Assert-Contains $helperText "'usr\\bin\\bash.exe'" 'helper must probe the Git for Windows usr/bin/bash.exe sibling path'
+Assert-Contains $helperText '$bashExe = Resolve-BashExecutable' 'resolver execution must use the resolved Bash executable'
+Assert-Contains $helperText '& $bashExe $resolver' 'resolver must invoke the resolved Bash path rather than assuming bash is on PATH'
 Assert-Contains $gateText 'arthur-candidate-failure-recovery.ps1' 'control-plane gate must invoke failed Candidate recovery'
 Assert-Contains $gateText 'CONTROL_PLANE_REPAIR_ROUTED=PASS' 'control-plane gate must stop competing mutation when repair owns the wakeup'
 

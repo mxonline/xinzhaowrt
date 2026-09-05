@@ -28,6 +28,48 @@ function Parse-Resolver([string]$Text) {
     return $values
 }
 
+function Resolve-BashExecutable {
+    foreach ($commandName in @('bash.exe','bash')) {
+        $command = Get-Command $commandName -ErrorAction SilentlyContinue
+        if ($command -and $command.Source -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) {
+            return $command.Source
+        }
+    }
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
+    if (-not $gitCommand) { $gitCommand = Get-Command git -ErrorAction SilentlyContinue }
+    if ($gitCommand -and $gitCommand.Source) {
+        $gitCommandDir = Split-Path -Parent $gitCommand.Source
+        $gitRoot = Split-Path -Parent $gitCommandDir
+        if ($gitRoot) {
+            # Git for Windows normally exposes Bash at 'bin\\bash.exe' or 'usr\\bin\\bash.exe'.
+            $candidates.Add((Join-Path $gitRoot 'bin\\bash.exe'))
+            $candidates.Add((Join-Path $gitRoot 'usr\\bin\\bash.exe'))
+        }
+    }
+
+    if ($env:ProgramFiles) {
+        $candidates.Add((Join-Path $env:ProgramFiles 'Git\bin\bash.exe'))
+        $candidates.Add((Join-Path $env:ProgramFiles 'Git\usr\bin\bash.exe'))
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $candidates.Add((Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe'))
+        $candidates.Add((Join-Path ${env:ProgramFiles(x86)} 'Git\usr\bin\bash.exe'))
+    }
+    if ($env:LOCALAPPDATA) {
+        $candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe'))
+        $candidates.Add((Join-Path $env:LOCALAPPDATA 'Programs\Git\usr\bin\bash.exe'))
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return [IO.Path]::GetFullPath($candidate)
+        }
+    }
+    return ''
+}
+
 if ([string]::IsNullOrWhiteSpace($Workspace)) {
     throw 'CANDIDATE_FAILURE_REPAIR_WORKSPACE_MISSING'
 }
@@ -52,15 +94,17 @@ if ([string]::IsNullOrWhiteSpace($ResolverOutput)) {
     if (-not (Test-Path -LiteralPath $resolver -PathType Leaf)) {
         throw "CANDIDATE_FAILURE_REPAIR_RESOLVER_MISSING: $resolver"
     }
-    if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+    $bashExe = Resolve-BashExecutable
+    if ([string]::IsNullOrWhiteSpace($bashExe)) {
         throw 'CANDIDATE_FAILURE_REPAIR_BASH_MISSING'
     }
+    Write-Host "CANDIDATE_FAILURE_REPAIR_BASH=$bashExe"
     Push-Location $Workspace
     try {
         $old = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $ResolverOutput = (& bash $resolver $Repository 'arthur-update-v3.yml' 'HEAD' 2>&1 | Out-String).Trim()
+            $ResolverOutput = (& $bashExe $resolver $Repository 'arthur-update-v3.yml' 'HEAD' 2>&1 | Out-String).Trim()
             $resolverCode = $LASTEXITCODE
         }
         finally { $ErrorActionPreference = $old }
