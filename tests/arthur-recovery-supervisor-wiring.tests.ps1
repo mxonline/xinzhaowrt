@@ -47,8 +47,8 @@ Assert-Contains $wakeup 'CONTROL_PLANE_CODE=PASS' 'runner wakeup must emit the e
 Assert-Contains $wakeup '$env:ARTHUR_CONTROL_PLANE_CODE_ROOT' 'the scoped gate must execute from the clean control-code root'
 Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty task changes must still be preserved without blocking control-code updates'
 Assert-Contains $controlPlane '$codeRoot' 'Control Plane must distinguish clean control code from the mutable task workspace'
-Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\\arthur-resume-state.ps1'" 'resume-state helper must come from clean control code'
-Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\\run-supervisor.py'" 'recovery supervisor shim must come from clean control code'
+Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\arthur-resume-state.ps1'" 'resume-state helper must come from clean control code'
+Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\run-supervisor.py'" 'recovery supervisor shim must come from clean control code'
 
 # Reuse the already-tested recovery architecture; do not invent another controller.
 Assert-Contains $shim 'ai_orchestrator.recovery_runtime' 'production supervisor shim must use RecoveryRuntimeSupervisor'
