@@ -6,6 +6,7 @@ $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $WakeupPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
 $RecoveryRuntimePath = Join-Path $Root 'ai_orchestrator\recovery_runtime.py'
 $SupervisorPath = Join-Path $Root 'ai_orchestrator\supervisor.py'
+$WindowsProcessPath = Join-Path $Root 'ai_orchestrator\windows_process.py'
 $ShimPath = Join-Path $Root 'scripts\run-supervisor.py'
 
 function Assert-Contains {
@@ -25,6 +26,7 @@ $controlPlane = Get-Content -Raw $ControlPlanePath
 $wakeup = Get-Content -Raw $WakeupPath
 $recoveryRuntime = Get-Content -Raw $RecoveryRuntimePath
 $supervisor = Get-Content -Raw $SupervisorPath
+$windowsProcess = Get-Content -Raw $WindowsProcessPath
 $shim = Get-Content -Raw $ShimPath
 
 # The five-minute runner wakeup must no longer own a single ProductionRuntime turn.
@@ -35,8 +37,8 @@ Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane m
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
-Assert-Contains $wakeup 'XINZHAO_RUNTIME_PYTHON' 'runner wakeup must export the verified persistent Python interpreter for supervisor child processes'
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
+Assert-Contains $windowsProcess 'HEADLESS_PYTHON_EXE' 'supervisor child interpreter selection must reuse the verified persistent headless Python when available'
 
 # Reuse the already-tested recovery architecture; do not invent another controller.
 Assert-Contains $shim 'ai_orchestrator.recovery_runtime' 'production supervisor shim must use RecoveryRuntimeSupervisor'
