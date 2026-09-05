@@ -21,100 +21,114 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Read-only principal and Codex evidence
+      - name: Read-only runner Codex baseline
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          Set-StrictMode -Version Latest
-          Write-Host ("DIAG_IDENTITY={0}" -f (whoami))
-          Write-Host ("DIAG_MACHINE={0}" -f $env:COMPUTERNAME)
-
-          Write-Host '=== VISIBLE XINZHAOWRT TASK PRINCIPALS ==='
-          try {
-            $tasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -like 'XinZhaoWrt*' })
-            foreach ($task in $tasks) {
-              Write-Host ("TASK={0}:STATE={1}:USER={2}:LOGON={3}:RUNLEVEL={4}" -f `
-                $task.TaskName,[string]$task.State,[string]$task.Principal.UserId,[string]$task.Principal.LogonType,[string]$task.Principal.RunLevel)
-            }
-          }
-          catch {
-            Write-Host ("VISIBLE_TASK_ENUM_ERROR={0}" -f $_.Exception.Message)
-          }
-
-          Write-Host '=== RESTRICTED SUPERVISOR CONFIRMATION ==='
-          $supervisorTask = 'XinZhaoWrt-Arthur-Persistent-Supervisor'
-          try {
-            $task = Get-ScheduledTask -TaskName $supervisorTask -ErrorAction Stop
-            Write-Host ("SUPERVISOR_TASK_VISIBLE=YES:USER={0}:LOGON={1}" -f [string]$task.Principal.UserId,[string]$task.Principal.LogonType)
-          }
-          catch {
-            Write-Host ("SUPERVISOR_TASK_VISIBLE=NO:{0}" -f $_.Exception.Message)
-          }
-          $xml = & schtasks.exe /Query /TN $supervisorTask /XML 2>&1
-          $schCode = $LASTEXITCODE
-          Write-Host ("SUPERVISOR_SCHTASKS_EXIT={0}" -f $schCode)
-          $xml | ForEach-Object { Write-Host ([string]$_) }
-
-          Write-Host '=== RUNNER-SERVICE CODEX PROBE ==='
           $controlRoot = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\control-runtime'
           $pythonExe = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe'
           $probe = Join-Path $controlRoot 'scripts\arthur-codex-runtime-probe.py'
-          Write-Host ("CODEX_PROBE_CONTROL_ROOT_EXISTS={0}" -f (Test-Path -LiteralPath $controlRoot -PathType Container))
-          Write-Host ("CODEX_PROBE_PYTHON_EXISTS={0}" -f (Test-Path -LiteralPath $pythonExe -PathType Leaf))
-          Write-Host ("CODEX_PROBE_SCRIPT_EXISTS={0}" -f (Test-Path -LiteralPath $probe -PathType Leaf))
-          if ((Test-Path -LiteralPath $pythonExe -PathType Leaf) -and (Test-Path -LiteralPath $probe -PathType Leaf)) {
-            $oldRoot = $env:ARTHUR_CONTROL_PLANE_CODE_ROOT
-            $oldModel = $env:HEADLESS_CODEX_MODEL
-            $oldBytecode = $env:PYTHONDONTWRITEBYTECODE
-            try {
-              $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $controlRoot
-              $env:HEADLESS_CODEX_MODEL = 'gpt-5.6-terra'
-              $env:PYTHONDONTWRITEBYTECODE = '1'
-              $raw = (& $pythonExe $probe 2>&1 | Out-String).Trim()
-              $probeExit = $LASTEXITCODE
-              Write-Host ("CODEX_PROBE_EXIT={0}" -f $probeExit)
-              try {
-                $payload = $raw | ConvertFrom-Json
-                Write-Host ("CODEX_PROBE_EXIT_CLASS={0}" -f [string]$payload.exit_class)
-                Write-Host ("CODEX_PROBE_ACCOUNT_PREFLIGHT_OK={0}" -f [string]$payload.account_preflight_ok)
-                Write-Host ("CODEX_PROBE_MODEL_CATALOG_SKIPPED={0}" -f [string]$payload.model_catalog_skipped)
-                Write-Host ("CODEX_PROBE_EFFECTIVE_MODEL={0}" -f [string]$payload.effective_model)
-                Write-Host ("CODEX_PROBE_MODULE={0}" -f [string]$payload.ai_orchestrator_file)
-              }
-              catch {
-                Write-Host ("CODEX_PROBE_JSON_ERROR={0}" -f $_.Exception.Message)
-                Write-Host 'CODEX_PROBE_RAW_BEGIN'
-                Write-Host $raw
-                Write-Host 'CODEX_PROBE_RAW_END'
-              }
-            }
-            finally {
-              $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $oldRoot
-              $env:HEADLESS_CODEX_MODEL = $oldModel
-              $env:PYTHONDONTWRITEBYTECODE = $oldBytecode
-            }
+          Write-Host ("DIAG_IDENTITY={0}" -f (whoami))
+          Write-Host '=== VISIBLE TASK PRINCIPALS ==='
+          foreach ($task in @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like 'XinZhaoWrt*' })) {
+            Write-Host ("TASK={0}:USER={1}:LOGON={2}:RUNLEVEL={3}:STATE={4}" -f $task.TaskName,[string]$task.Principal.UserId,[string]$task.Principal.LogonType,[string]$task.Principal.RunLevel,[string]$task.State)
           }
-
-          Write-Host '=== CURRENT RUNTIME PROCESS VISIBILITY ==='
-          $stateDir = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\state'
+          Write-Host '=== DIRECT SERVICE-ACCOUNT CODEX PROBE ==='
+          $oldRoot = $env:ARTHUR_CONTROL_PLANE_CODE_ROOT
+          $oldModel = $env:HEADLESS_CODEX_MODEL
           try {
-            foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
-              $command = [string]$process.CommandLine
-              if ([string]::IsNullOrWhiteSpace($command)) { continue }
-              if ($command.IndexOf($stateDir,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-              if ($command -notmatch 'run-supervisor\.py|ai_orchestrator') { continue }
-              $ownerText = 'UNAVAILABLE'
-              try {
-                $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -ErrorAction Stop
-                $ownerText = ("RETURN={0};DOMAIN={1};USER={2}" -f $owner.ReturnValue,[string]$owner.Domain,[string]$owner.User)
-              }
-              catch { $ownerText = ("ERROR={0}" -f $_.Exception.Message) }
-              Write-Host ("RUNTIME_PROCESS_PID={0}:SESSION={1}:OWNER={2}:COMMAND={3}" -f $process.ProcessId,$process.SessionId,$ownerText,$command)
+            $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $controlRoot
+            $env:HEADLESS_CODEX_MODEL = 'gpt-5.6-terra'
+            $env:PYTHONDONTWRITEBYTECODE = '1'
+            $raw = (& $pythonExe $probe 2>&1 | Out-String).Trim()
+            $exitCode = $LASTEXITCODE
+            try {
+              $payload = $raw | ConvertFrom-Json
+              Write-Host ("DIRECT_PROBE_EXIT={0}:CLASS={1}:ACCOUNT_OK={2}:CATALOG_SKIPPED={3}:MODEL={4}" -f $exitCode,[string]$payload.exit_class,[string]$payload.account_preflight_ok,[string]$payload.model_catalog_skipped,[string]$payload.effective_model)
+            }
+            catch {
+              Write-Host ("DIRECT_PROBE_PARSE_ERROR={0}" -f $_.Exception.Message)
             }
           }
-          catch {
-            Write-Host ("RUNTIME_PROCESS_ENUM_ERROR={0}" -f $_.Exception.Message)
+          finally {
+            $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $oldRoot
+            $env:HEADLESS_CODEX_MODEL = $oldModel
           }
-
-          Write-Host 'RUNNER_CODEX_PRINCIPAL_DIAGNOSTIC=PASS'
           exit 0
+
+      - name: Disposable S4U Codex probe task
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $taskName = 'XinZhaoWrt-Arthur-S4U-Probe-Test'
+          $identity = (whoami).Trim()
+          $diagRoot = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\S4UProbe'
+          $launcher = Join-Path $diagRoot 'run-s4u-probe.ps1'
+          $result = Join-Path $diagRoot 'result.json'
+          $controlRoot = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\control-runtime'
+          $pythonExe = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe'
+          $probe = Join-Path $controlRoot 'scripts\arthur-codex-runtime-probe.py'
+          New-Item -ItemType Directory -Force -Path $diagRoot | Out-Null
+          Remove-Item -LiteralPath $result -Force -ErrorAction SilentlyContinue
+
+          function Quote-PsLiteral([string]$Value) { return "'" + $Value.Replace("'","''") + "'" }
+          $launcherText = @(
+            '$ErrorActionPreference = ''Continue''',
+            '$env:PYTHONDONTWRITEBYTECODE = ''1''',
+            ('$env:ARTHUR_CONTROL_PLANE_CODE_ROOT = ' + (Quote-PsLiteral $controlRoot)),
+            '$env:HEADLESS_CODEX_MODEL = ''gpt-5.6-terra''',
+            ('$raw = (& ' + (Quote-PsLiteral $pythonExe) + ' ' + (Quote-PsLiteral $probe) + ' 2>&1 | Out-String).Trim()'),
+            '$probeExit = $LASTEXITCODE',
+            'try {',
+            '  $p = $raw | ConvertFrom-Json',
+            '  $out = [ordered]@{ parse_ok=$true; exit_code=$probeExit; exit_class=[string]$p.exit_class; account_preflight_ok=[bool]$p.account_preflight_ok; model_catalog_skipped=[bool]$p.model_catalog_skipped; effective_model=[string]$p.effective_model; ai_orchestrator_file=[string]$p.ai_orchestrator_file }',
+            '} catch {',
+            '  $out = [ordered]@{ parse_ok=$false; exit_code=$probeExit; exit_class=''PROBE_JSON_ERROR''; account_preflight_ok=$false; model_catalog_skipped=$false; effective_model=$null; ai_orchestrator_file=$null }',
+            '}',
+            ('$out | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath ' + (Quote-PsLiteral $result) + ' -Encoding UTF8'),
+            'exit 0'
+          ) -join [Environment]::NewLine
+          [IO.File]::WriteAllText($launcher,$launcherText + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+
+          try {
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+            $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`"" -WorkingDirectory $diagRoot
+            $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType S4U -RunLevel Limited
+            $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
+            $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings -Description 'Disposable Arthur S4U Codex credential/runtime probe; no firmware authority.'
+            Register-ScheduledTask -TaskName $taskName -InputObject $task -Force -ErrorAction Stop | Out-Null
+            $registered = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+            Write-Host ("S4U_TASK_REGISTERED=PASS:USER={0}:LOGON={1}:STATE={2}" -f [string]$registered.Principal.UserId,[string]$registered.Principal.LogonType,[string]$registered.State)
+            Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
+            Write-Host 'S4U_TASK_STARTED=PASS'
+
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $deadline -and -not (Test-Path -LiteralPath $result -PathType Leaf)) {
+              Start-Sleep -Seconds 2
+            }
+            $info = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($info) { Write-Host ("S4U_TASK_LAST_RESULT={0}" -f $info.LastTaskResult) }
+            if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {
+              Write-Host 'S4U_PROBE_RESULT=MISSING'
+              exit 2
+            }
+            $payload = Get-Content -Raw -LiteralPath $result | ConvertFrom-Json
+            Write-Host ("S4U_PROBE_PARSE_OK={0}" -f [string]$payload.parse_ok)
+            Write-Host ("S4U_PROBE_EXIT={0}" -f [string]$payload.exit_code)
+            Write-Host ("S4U_PROBE_EXIT_CLASS={0}" -f [string]$payload.exit_class)
+            Write-Host ("S4U_PROBE_ACCOUNT_PREFLIGHT_OK={0}" -f [string]$payload.account_preflight_ok)
+            Write-Host ("S4U_PROBE_MODEL_CATALOG_SKIPPED={0}" -f [string]$payload.model_catalog_skipped)
+            Write-Host ("S4U_PROBE_EFFECTIVE_MODEL={0}" -f [string]$payload.effective_model)
+            Write-Host ("S4U_PROBE_MODULE={0}" -f [string]$payload.ai_orchestrator_file)
+            if (-not [bool]$payload.account_preflight_ok -or [string]$payload.exit_class -ne 'PROBE_OK') {
+              throw 'S4U_CODEX_PROBE_FAILED'
+            }
+            Write-Host 'S4U_CODEX_RUNTIME_CONTEXT=PASS'
+          }
+          finally {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $diagRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host 'S4U_PROBE_TASK_CLEANUP=PASS'
+          }
