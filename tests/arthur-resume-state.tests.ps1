@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ResumeScriptPath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
+$ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -24,6 +25,7 @@ function Assert-Contains {
 
 Assert-True (Test-Path $ResumeScriptPath) 'canonical Arthur resume-state helper must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
+Assert-True (Test-Path $ControlPlaneGatePath) 'Arthur control-plane gate must exist'
 
 . $ResumeScriptPath
 
@@ -62,6 +64,51 @@ Assert-Equal $missingLive.status 'RESUME_SAFE' 'identified current Arthur with m
 Assert-Equal $missingLive.instruction_allowed $true 'recoverable missing build-info must allow the existing ADH repair runtime to start'
 Assert-Equal $missingLive.real_device.version '0.1.3' 'fallback must retain the accepted physical 0.1.3 baseline version'
 Assert-Equal $missingLive.real_device.evidence 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'fallback must be explicit and must not masquerade as parsed live build-info'
+
+# Final release BUILD is normally fail-closed when live build-info is missing. The
+# exact final-release gate may pass a process-local authorization context only after
+# it has validated operator intent plus the durable final-release request. The
+# resolver must still restrict that context to BUILD, so post-flash/release identity
+# can never inherit this fallback.
+$runtimeBuild = [pscustomobject]@{
+    phase = 'BUILD'
+    current_stage = 'BUILD'
+    next_action = 'BUILD'
+    turn_count = 5
+}
+$missingBuildDefault = Resolve-ArthurResumeState -RepositoryHead ('f' * 40) -RealDeviceBaseline $baseline -LiveDevice $null -RuntimeState $runtimeBuild
+Assert-Equal $missingBuildDefault.status 'STATE_RECONCILIATION_REQUIRED' 'BUILD missing live build-info must remain fail-closed without exact final-release authorization'
+Assert-Equal $missingBuildDefault.instruction_allowed $false 'generic BUILD must not receive baseline fallback implicitly'
+Assert-True (@($missingBuildDefault.conflicts) -contains 'REAL_DEVICE_VERSION_MISSING') 'generic BUILD missing build-info conflict must remain explicit'
+
+$oldFallbackContext = $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK
+try {
+    $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = '1'
+    $missingBuildAuthorized = Resolve-ArthurResumeState -RepositoryHead ('f' * 40) -RealDeviceBaseline $baseline -LiveDevice $null -RuntimeState $runtimeBuild
+    Assert-Equal $missingBuildAuthorized.status 'RESUME_SAFE' 'exact final-release BUILD context may reuse accepted baseline only to start provenance repair'
+    Assert-Equal $missingBuildAuthorized.instruction_allowed $true 'authorized final-release BUILD must be able to start the repair runtime'
+    Assert-Equal $missingBuildAuthorized.real_device.evidence 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'authorized BUILD fallback must remain visibly distinguishable from live build-info'
+}
+finally {
+    $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = $oldFallbackContext
+}
+
+$runtimeArtifact = [pscustomobject]@{
+    phase = 'ARTIFACT'
+    current_stage = 'ARTIFACT'
+    next_action = 'ARTIFACT'
+    turn_count = 6
+}
+$oldFallbackContext = $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK
+try {
+    $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = '1'
+    $artifactMissingLive = Resolve-ArthurResumeState -RepositoryHead ('f' * 40) -RealDeviceBaseline $baseline -LiveDevice $null -RuntimeState $runtimeArtifact
+    Assert-Equal $artifactMissingLive.status 'STATE_RECONCILIATION_REQUIRED' 'BUILD fallback authorization must not leak into ARTIFACT or any later release phase'
+    Assert-Equal $artifactMissingLive.instruction_allowed $false 'post-BUILD resume identity must remain fail-closed without live evidence'
+}
+finally {
+    $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = $oldFallbackContext
+}
 
 $runtimeChangeImpact = [pscustomobject]@{
     phase = 'CHANGE_IMPACT'
@@ -128,8 +175,15 @@ Assert-Contains $controlPlane 'instruction_allowed' 'control plane must guard Co
 Assert-Contains $controlPlane 'RESUME_STATE_PUBLISHED' 'control plane must publish a durable state marker for GPT/Codex recovery'
 Assert-Contains $controlPlane 'Get-ArthurResumePhaseIndex $checkpoint.next_action' 'control plane must validate checkpoints against the canonical Arthur phase registry, not a stale hard-coded subset'
 
+$controlPlaneGate = Get-Content -Raw $ControlPlaneGatePath
+Assert-Contains $controlPlaneGate '$isFinalRelease = $false' 'gate must default final-release BUILD fallback authorization to denied'
+Assert-Contains $controlPlaneGate 'ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK' 'gate must pass a process-local BUILD fallback context only after exact final-release request validation'
+Assert-Contains $controlPlaneGate 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=PASS' 'gate must emit explicit authorization evidence before handing off to the Control Plane'
+
 $resumeHelper = Get-Content -Raw $ResumeScriptPath
-Assert-Contains $resumeHelper "phase -in @('ADH_MANAGEMENT','ADH_CHINESE')" 'missing live build-info fallback must remain restricted to the ADH preview phases'
+Assert-Contains $resumeHelper "phase -in @('ADH_MANAGEMENT','ADH_CHINESE')" 'missing live build-info fallback must remain restricted to the ADH preview phases by default'
+Assert-Contains $resumeHelper 'ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK' 'resume helper must recognize only the explicit process-local final-release BUILD context'
+Assert-Contains $resumeHelper "`$phase -eq 'BUILD'" 'final-release fallback context must be phase-bound to BUILD and must not leak later'
 Assert-Contains $resumeHelper 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'fallback evidence must remain explicit and distinguishable from parsed live build-info'
 
 Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'

@@ -118,7 +118,15 @@ function Resolve-ArthurResumeState {
 
     $liveEvidence = 'LIVE_BUILD_INFO'
     $adhPreviewPhase = $phase -in @('ADH_MANAGEMENT','ADH_CHINESE')
-    $useBaselineFallback = ($null -eq $LiveDevice) -and $activeBaseline -eq $true -and ($AllowBaselineFallbackForMissingLiveDevice -or $adhPreviewPhase)
+    $finalReleaseBuildFallback = (
+        $phase -eq 'BUILD' -and
+        [string]$env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK -eq '1'
+    )
+    $useBaselineFallback = (
+        ($null -eq $LiveDevice) -and
+        $activeBaseline -eq $true -and
+        ($AllowBaselineFallbackForMissingLiveDevice -or $adhPreviewPhase -or $finalReleaseBuildFallback)
+    )
     if ($useBaselineFallback) {
         $LiveDevice = [pscustomobject]@{
             version = $baselineVersion

@@ -48,6 +48,7 @@ if (-not $decision.allowed) {
 }
 
 Write-Host 'FIRMWARE_EXECUTION_AUTHORIZED=PASS'
+$isFinalRelease = $false
 
 # The durable final-release request supersedes stale pre-build AI runtime phases.
 # Migrate only forward to the existing BUILD phase. A SAFETY_BLOCKED marker may be
@@ -144,6 +145,19 @@ if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathTyp
             Write-Host "FINAL_RELEASE_RUNTIME_MIGRATION=SKIPPED reason=RUNTIME_STATE_MISSING request_id=$requestId"
         }
     }
+}
+
+# The accepted 0.1.3 device is reachable and positively identified, but that legacy
+# image may not expose build-info.json. Only the exact final-release BUILD recovery
+# path may reuse the accepted baseline identity to start the provenance repair. The
+# resolver itself is phase-bound to BUILD, so this context cannot authorize artifact,
+# flash, post-flash, release, or PRODUCTION_RELEASED identity verification.
+$env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = $(if ($isFinalRelease -and $currentStage -eq 'BUILD') { '1' } else { '0' })
+if ($env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK -eq '1') {
+    Write-Host 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=PASS scope=BUILD_ONLY evidence=EXACT_FINAL_RELEASE_REQUEST'
+}
+else {
+    Write-Host 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=DENIED'
 }
 
 # Durable GitHub Candidate failure evidence takes precedence over legacy local
