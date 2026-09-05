@@ -14,9 +14,12 @@ $intentPath = Join-Path $root 'production\operator-intent.json'
 $resumePath = Join-Path $root 'production\resume-state.json'
 $ledgerPath = Join-Path $root 'production\firmware-events.jsonl'
 $ledgerLibPath = Join-Path $root 'scripts\arthur-firmware-event-ledger.ps1'
+$gitShaHelperPath = Join-Path $root 'scripts\arthur-git-sha.ps1'
 
 if (-not (Test-Path -LiteralPath $ledgerLibPath -PathType Leaf)) { throw 'RESUME_GATE_LEDGER_HELPER_MISSING' }
+if (-not (Test-Path -LiteralPath $gitShaHelperPath -PathType Leaf)) { throw 'RESUME_GATE_GIT_SHA_HELPER_MISSING' }
 . $ledgerLibPath
+. $gitShaHelperPath
 
 function Read-JsonFile {
     param([string]$Path,[string]$MissingCode)
@@ -33,10 +36,10 @@ $tail = @($events | Select-Object -Last ([Math]::Max(1,$EventTail)))
 
 Push-Location $root
 try {
-    $effectiveHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' | Out-String).Trim()
+    $effectiveHeadRaw = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' | Out-String)
 }
 finally { Pop-Location }
-if ([string]::IsNullOrWhiteSpace($effectiveHead)) { $effectiveHead = 'UNKNOWN' }
+$effectiveHead = ConvertTo-ArthurCanonicalGitSha $effectiveHeadRaw
 
 $github = [ordered]@{ checked = $false; status = 'SKIPPED'; runs = @() }
 if (-not $SkipExternal) {
@@ -68,18 +71,22 @@ $reconciliationWarnings = @()
 if ([string]$intent.project -ne 'Arthur') { $conflicts += 'OPERATOR_INTENT_PROJECT_MISMATCH' }
 if ([string]$resume.status -ne 'RESUME_SAFE') { $conflicts += "RESUME_STATUS_$([string]$resume.status)" }
 if ($resume.instruction_allowed -ne $true) { $conflicts += 'RESUME_INSTRUCTION_NOT_ALLOWED' }
-if ($effectiveHead -notmatch '^[0-9a-fA-F]{40}$') { $conflicts += 'EFFECTIVE_GITHUB_HEAD_INVALID' }
+if ([string]::IsNullOrWhiteSpace($effectiveHead)) { $conflicts += 'EFFECTIVE_GITHUB_HEAD_INVALID' }
 if (-not $SkipExternal -and -not $github.checked) { $conflicts += "GITHUB_EVIDENCE_UNAVAILABLE:$($github.status)" }
 
-$resumeHead = [string]$resume.repository_head
-$headDrift = ($effectiveHead -match '^[0-9a-fA-F]{40}$' -and $resumeHead -match '^[0-9a-fA-F]{40}$' -and -not [string]::Equals($effectiveHead,$resumeHead,[StringComparison]::OrdinalIgnoreCase))
+$resumeHead = ConvertTo-ArthurCanonicalGitSha $resume.repository_head
+if ([string]::IsNullOrWhiteSpace($resumeHead)) {
+    $conflicts += 'RESUME_REPOSITORY_HEAD_INVALID'
+}
+$headDrift = (
+    -not [string]::IsNullOrWhiteSpace($effectiveHead) -and
+    -not [string]::IsNullOrWhiteSpace($resumeHead) -and
+    -not [string]::Equals($effectiveHead,$resumeHead,[StringComparison]::OrdinalIgnoreCase)
+)
 if ($headDrift) {
     $headMessage = "REPOSITORY_HEAD_MISMATCH:resume=${resumeHead}:effective=${effectiveHead}"
     if ($AllowRepositoryHeadDriftForReconciliation) { $reconciliationWarnings += $headMessage }
     else { $conflicts += $headMessage }
-}
-elseif ($resumeHead -notmatch '^[0-9a-fA-F]{40}$') {
-    $conflicts += 'RESUME_REPOSITORY_HEAD_INVALID'
 }
 
 $intentStage = if ($intent.firmware_state -and $intent.firmware_state.current_stage) { [string]$intent.firmware_state.current_stage } else { '' }
