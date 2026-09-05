@@ -47,17 +47,12 @@ if (-not $decision.allowed) {
 }
 
 Write-Host 'FIRMWARE_EXECUTION_AUTHORIZED=PASS'
-$resumeOutput = & $resumeGatePath -Repository $Repository -AllowRepositoryHeadDriftForReconciliation 2>&1 | Out-String
-$resumeCode = $LASTEXITCODE
-if (-not [string]::IsNullOrWhiteSpace($resumeOutput)) { Write-Host $resumeOutput.Trim() }
-if ($resumeCode -ne 0) {
-    Write-Error "UNIFIED_RESUME_GATE_BLOCKED: exit_code=$resumeCode"
-    exit $resumeCode
-}
-Write-Host 'UNIFIED_RESUME_GATE=PASS'
 
-$workspace = if ([string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) { $root } else { $env:GITHUB_WORKSPACE }
-$repairOutput = & $failureRecoveryPath -Repository $Repository -Workspace $workspace 2>&1 | Out-String
+# Durable GitHub Candidate failure evidence takes precedence over legacy local
+# resume-state metadata. Use this clean current-main checkout for the resolver and
+# repair controller; the persistent task workspace may intentionally be dirty or
+# pinned to an older task source and must not decide the current repair route.
+$repairOutput = & $failureRecoveryPath -Repository $Repository -Workspace $root 2>&1 | Out-String
 $repairCode = $LASTEXITCODE
 if (-not [string]::IsNullOrWhiteSpace($repairOutput)) { Write-Host $repairOutput.Trim() }
 if ($repairCode -ne 0) {
@@ -69,6 +64,17 @@ if ($repairOutput -match 'CANDIDATE_FAILURE_REPAIR=(STARTED|ALREADY_RUNNING)') {
     Write-Host 'CONTROL_PLANE_MUTATION_SKIPPED=PASS reason=existing_v3_repair_controller_owns_failed_candidate'
     exit 0
 }
+
+# No failed Candidate owns this wakeup. Only now evaluate the canonical Resume Gate
+# for ordinary continuation/reconciliation paths.
+$resumeOutput = & $resumeGatePath -Repository $Repository -AllowRepositoryHeadDriftForReconciliation 2>&1 | Out-String
+$resumeCode = $LASTEXITCODE
+if (-not [string]::IsNullOrWhiteSpace($resumeOutput)) { Write-Host $resumeOutput.Trim() }
+if ($resumeCode -ne 0) {
+    Write-Error "UNIFIED_RESUME_GATE_BLOCKED: exit_code=$resumeCode"
+    exit $resumeCode
+}
+Write-Host 'UNIFIED_RESUME_GATE=PASS'
 
 & $controlPlanePath -Repository $Repository -WorkflowRunId $WorkflowRunId
 exit $LASTEXITCODE
