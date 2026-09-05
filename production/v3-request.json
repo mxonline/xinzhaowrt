@@ -1,15 +1,14 @@
 {
   "schema_version": "1.0",
-  "request_id": "handoff-arthur-adh-quickstart-c4cadd6e185d-6a8493619c08",
+  "request_id": "arthur-final-candidate-zhcn-20260905",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-known-good-v1",
   "device": "jdcloud_re-ss-01",
-  "source_ref": "handoff-source-arthur-adh-quickstart-c4cadd6e185d-6a8493619c08",
-  "source_sha": "c4cadd6e185d460f3541a5d7b95090b5d591d4c3",
+  "source_ref": "main",
   "feature_id": "arthur-adh-quickstart",
   "accepted_preview_source_sha": "f4190c7ce51984ae0ba99b59829323fef12b692a",
   "accepted_diff_sha256": "6a8493619c088dd6adb0c5477412518a0f242116df3369654b11bccbd1e58feb",
   "preview_manifest_sha256": "771bc19690c6ec8227ed4bd6490c77d161138ddc5d0ffae66078039d39b55757",
-  "reason": "Build the immutable accepted LIVE_PREVIEW source for arthur-adh-quickstart; WIFI=VERIFIED_FROZEN; deferred runtime acceptance remains for formal REAL_DEVICE_VERIFY.",
-  "requested_at": "09/03/2026 19:19:33"
+  "reason": "Resume the original Arthur production release flow at FINAL_CANDIDATE. Preserve accepted ADH complete management, QuickStart and WIFI=VERIFIED_FROZEN; require luci-i18n-base-zh-cn with usr/lib/lua/luci/i18n/base.zh-cn.lmo in the final firmware. Do not repeat ADH/QuickStart/Wi-Fi development. Continue through formal Candidate, safety gate, at-most-once sysupgrade, real-device verification, and PRODUCTION_RELEASED.",
+  "requested_at": "2026-09-05"
 }
