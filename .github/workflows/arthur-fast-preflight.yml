@@ -41,6 +41,9 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-candidate-failure-recovery.tests.ps1
 
+      - name: Test source/config closure preflight contract
+        run: ./tests/test-build-closure-preflight.sh
+
       - name: Test LIVE_PREVIEW safety contract
         run: ./tests/test-live-preview-contract.sh
 
