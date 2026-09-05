@@ -26,6 +26,7 @@ try {
     if ($root -match '(?i)\\Users\\chenz(\\|$)') {
         Fail "CONTROL_PLANE_ROOT_FORBIDDEN: $root"
     }
+    $codeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
     $stateDir = Join-Path $root 'state'
     $logDir = Join-Path $root 'logs'
@@ -143,11 +144,12 @@ try {
         workflow_run_id = $WorkflowRunId
     })
     Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity"
+    Log "CONTROL_PLANE_CODE_ROOT=PASS path=$codeRoot"
 
     foreach ($tool in @('git', 'gh', 'python')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "CONTROL_PLANE_TOOL_MISSING: $tool" }
     }
-    $resumeHelperPath = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-resume-state.ps1'
+    $resumeHelperPath = Join-Path $codeRoot 'scripts\arthur-resume-state.ps1'
     if (-not (Test-Path -LiteralPath $resumeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RESUME_HELPER_MISSING' }
     . $resumeHelperPath
 
@@ -325,7 +327,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Log 'AI_ORCHESTRATOR_STATE_BOOTSTRAPPED=PASS phase=ADH_MANAGEMENT'
     }
 
-    $baselinePath = Join-Path $env:GITHUB_WORKSPACE 'production\real-device-baseline.json'
+    $baselinePath = Join-Path $codeRoot 'production\real-device-baseline.json'
     if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) { Fail 'STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_MISSING' }
     try { $realDeviceBaseline = Get-Content -Raw -LiteralPath $baselinePath | ConvertFrom-Json }
     catch { Fail "STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_INVALID $($_.Exception.Message)" }
@@ -354,60 +356,94 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     $turnBefore = [int]$runtimeBefore.turn_count
     $phaseBefore = [string]$runtimeBefore.phase
-    Log "HEADLESS_RUNTIME_STARTING phase=$phaseBefore turn_count=$turnBefore"
+    if ($runtimeBefore.terminal_state -eq 'PRODUCTION_RELEASED' -or $phaseBefore -eq 'PRODUCTION_RELEASED') {
+        $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
+        $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+        $state.checkpoint = [ordered]@{ current = 'PRODUCTION_RELEASED'; next_action = 'PRODUCTION_RELEASED'; status = 'PRODUCTION_RELEASED'; last_run_id = $WorkflowRunId }
+        Save-Json $canonicalPath $state
+        Log 'PRODUCTION_RELEASED=true'
+        exit 0
+    }
+
+    $supervisorPath = Join-Path $codeRoot 'scripts\run-supervisor.py'
+    if (-not (Test-Path -LiteralPath $supervisorPath -PathType Leaf)) {
+        Fail 'RECOVERY_SUPERVISOR_MISSING: scripts/run-supervisor.py'
+    }
+    $runtimePython = if ($env:HEADLESS_PYTHON_EXE -and (Test-Path -LiteralPath $env:HEADLESS_PYTHON_EXE -PathType Leaf)) { $env:HEADLESS_PYTHON_EXE } else { 'python' }
+    Log "RECOVERY_SUPERVISOR_WAKEUP=BEGIN phase=$phaseBefore turn_count=$turnBefore"
 
     Push-Location $env:GITHUB_WORKSPACE
     try {
         $old = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $runtimeOutput = (& python -m ai_orchestrator resume --state-dir $stateDir --max-turns 1 2>&1 | Out-String).Trim()
-            $runtimeCode = $LASTEXITCODE
+            $supervisorOutput = (& $runtimePython $supervisorPath --state-dir $stateDir --once 2>&1 | Out-String).Trim()
+            $supervisorCode = $LASTEXITCODE
         }
         finally { $ErrorActionPreference = $old }
     }
     finally { Pop-Location }
 
-    if ($runtimeOutput) { Add-Content -LiteralPath $logPath -Value $runtimeOutput -Encoding UTF8 }
-    if ($runtimeCode -ne 0) {
-        Fail "HEADLESS_RUNTIME_FAILED: exit=$runtimeCode"
+    if ($supervisorOutput) {
+        Add-Content -LiteralPath $logPath -Value $supervisorOutput -Encoding UTF8
+        Write-Host $supervisorOutput
     }
-    Log 'HEADLESS_RUNTIME_STARTED=PASS'
+    if ($supervisorCode -ne 0) {
+        Fail "RECOVERY_SUPERVISOR_FAILED: exit=$supervisorCode"
+    }
+
+    $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
+    if (-not (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf)) {
+        Fail 'RECOVERY_SUPERVISOR_STATUS_MISSING'
+    }
+    try { $supervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json }
+    catch { Fail "RECOVERY_SUPERVISOR_STATUS_INVALID: $($_.Exception.Message)" }
+    $supervisorState = [string]$supervisorStatus.status
+    if ($supervisorState -eq 'CRASH_LOOP_BLOCKED') {
+        Fail 'RECOVERY_SUPERVISOR_CRASH_LOOP_BLOCKED'
+    }
+    if ($supervisorState -in @('WAITING_HUMAN','DEFERRED_SAFETY_PHASE')) {
+        Fail "RECOVERY_SUPERVISOR_SAFETY_DEFERRED: status=$supervisorState"
+    }
+    if ($supervisorState -eq 'TERMINAL') {
+        $runtimeTerminal = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+        if ($runtimeTerminal.terminal_state -eq 'PRODUCTION_RELEASED' -or $runtimeTerminal.phase -eq 'PRODUCTION_RELEASED') {
+            $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
+            $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+            $state.checkpoint = [ordered]@{ current = 'PRODUCTION_RELEASED'; next_action = 'PRODUCTION_RELEASED'; status = 'PRODUCTION_RELEASED'; last_run_id = $WorkflowRunId }
+            Save-Json $canonicalPath $state
+            Log 'PRODUCTION_RELEASED=true'
+            exit 0
+        }
+        Fail "RECOVERY_SUPERVISOR_TERMINAL: terminal_state=$($runtimeTerminal.terminal_state)"
+    }
 
     $runtimeAfter = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
     $turnAfter = [int]$runtimeAfter.turn_count
     $phaseAfter = [string]$runtimeAfter.phase
-    if ($turnAfter -le $turnBefore -and $phaseAfter -eq $phaseBefore) {
-        Fail "HEADLESS_RUNTIME_NO_PROGRESS: phase=$phaseAfter turn_count=$turnAfter"
-    }
-
-    $postResumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeAfter -PreviousResumeState $resumeState
-    Publish-ResumeState $postResumeState $resumeStatePath
-    if (-not $postResumeState.instruction_allowed) {
-        Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($postResumeState.conflicts) -join ','))
-    }
-
     $state.checkpoint = [ordered]@{
         current = $phaseAfter
         next_action = $(if ($runtimeAfter.next_action) { [string]$runtimeAfter.next_action } else { $phaseAfter })
-        status = 'HEADLESS_RUNTIME_RESUMED'
+        status = 'RECOVERY_SUPERVISOR_ACTIVE'
         last_run_id = $WorkflowRunId
     }
-    $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+    if ($turnAfter -gt $turnBefore -or $phaseAfter -ne $phaseBefore) {
+        $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+        Log "CHECKPOINT_AUTO_RESUMED=PASS before=$phaseBefore/$turnBefore after=$phaseAfter/$turnAfter"
+    }
+    else {
+        $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PENDING'
+        Log "CHECKPOINT_ASYNC_RUNTIME=PASS phase=$phaseAfter turn_count=$turnAfter"
+    }
     $state.updated_at = [DateTime]::UtcNow.ToString('o')
     Save-Json $canonicalPath $state
-    Log "CHECKPOINT_AUTO_RESUMED=PASS before=$phaseBefore/$turnBefore after=$phaseAfter/$turnAfter"
-
-    if ($runtimeAfter.terminal_state -eq 'PRODUCTION_RELEASED' -or $phaseAfter -eq 'PRODUCTION_RELEASED') {
-        $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
-        Save-Json $canonicalPath $state
-        Log 'PRODUCTION_RELEASED=true'
-    }
+    Log "RECOVERY_SUPERVISOR_WAKEUP=PASS status=$supervisorState child_pid=$($supervisorStatus.child_pid)"
+    Log 'HEADLESS_RUNTIME_STARTED=PASS'
 
     exit 0
 }
 catch {
-    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_|^STATE_RECONCILIATION_|^RESUME_STATE_') { Write-Error $_ }
+    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_|^STATE_RECONCILIATION_|^RESUME_STATE_|^RECOVERY_SUPERVISOR_') { Write-Error $_ }
     exit 1
 }
 finally {

@@ -38,9 +38,10 @@ Assert-NotContains $workflow 'schedule:' 'manual Arthur Control Plane workflow m
 Assert-NotContains $workflow "cron: '*/5 * * * *'" 'manual Arthur Control Plane workflow must not duplicate the runner wakeup cron'
 Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'manual workflow must not pin the old runner feature branch'
 
-Assert-Contains $script 'HEADLESS_RUNTIME_STARTED=PASS' 'recoverable control-plane state must start the existing headless ProductionRuntime'
+Assert-Contains $script 'HEADLESS_RUNTIME_STARTED=PASS' 'recoverable control-plane state must hand runtime ownership to the existing headless recovery supervisor'
 Assert-Contains $script 'STATE_SOURCE=AI_ORCHESTRATOR' 'ai_orchestrator StateStore must be the execution checkpoint source'
-Assert-Contains $script 'python -m ai_orchestrator resume' 'control plane must reuse the existing ai_orchestrator resume entrypoint'
+Assert-Contains $script 'run-supervisor.py' 'control plane must reuse the existing RecoveryRuntimeSupervisor entrypoint'
+Assert-NotContains $script '--max-turns 1' 'control plane must not own one ProductionRuntime turn per schedule tick'
 Assert-Contains $script 'runtime-state.json' 'control plane must seed or resume the durable ai_orchestrator runtime state'
 Assert-Contains $script 'RECOVERABLE_BUILD_INFO_PROVENANCE' 'build-info provenance mismatch must be recoverable rather than terminal watchdog-only BLOCKED'
 Assert-Contains $script 'Resolve-ArthurResumeState' 'control plane must preserve canonical resume-state reconciliation before runtime dispatch'

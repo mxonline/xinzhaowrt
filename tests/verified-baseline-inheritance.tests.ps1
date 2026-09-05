@@ -21,6 +21,8 @@ $arthurConfig = Get-Content -Raw (Join-Path $Root 'config/arthur.config')
 $deploy = Get-Content -Raw (Join-Path $Root '.github/workflows/production-agent-deploy.yml')
 $controlPlaneGate = Get-Content -Raw (Join-Path $Root 'scripts/arthur-control-plane-gate.ps1')
 $controlPlane = Get-Content -Raw (Join-Path $Root 'scripts/arthur-control-plane.ps1')
+$supervisorShim = Get-Content -Raw (Join-Path $Root 'scripts/run-supervisor.py')
+$supervisor = Get-Content -Raw (Join-Path $Root 'ai_orchestrator/supervisor.py')
 $themeLock = Get-Content -Raw (Join-Path $Root 'config/arthur-theme.lock')
 $requirementsPath = Join-Path $Root 'requirements-headless.txt'
 
@@ -47,10 +49,11 @@ foreach ($relative in @(
     Assert-True (Test-Path (Join-Path $Root $relative)) "existing GPT-Codex Bridge runtime file must be present: $relative"
 }
 
-# The active topology is runner wakeup -> persistent workspace -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
-# Bridge semantics live behind the existing Control Plane; the intent gate only authorizes entry and does not replace orchestration.
-Assert-Contains $controlPlane 'python -m ai_orchestrator resume' 'Arthur Control Plane must invoke the existing GPT-Codex decision runtime'
-Assert-Contains $controlPlane 'HEADLESS_RUNTIME_STARTED=PASS' 'Control Plane must prove the headless decision runtime actually resumed'
+# Active topology: runner wakeup -> persistent workspace -> scoped operator-intent gate -> Arthur Control Plane -> RecoveryRuntimeSupervisor -> continuous ai_orchestrator resume.
+Assert-Contains $controlPlane 'run-supervisor.py' 'Arthur Control Plane must hand runtime lifecycle to the existing RecoveryRuntimeSupervisor'
+Assert-Contains $supervisorShim 'ai_orchestrator.recovery_runtime' 'supervisor shim must use the existing recovery runtime'
+Assert-Contains $supervisor '"resume"' 'RecoveryRuntimeSupervisor child must invoke the existing GPT-Codex decision runtime continuously'
+Assert-Contains $controlPlane 'HEADLESS_RUNTIME_STARTED=PASS' 'Control Plane must prove the headless runtime ownership handoff succeeded'
 Assert-Contains $deploy 'scripts\arthur-control-plane-gate.ps1' 'runner wakeup must enter through the scoped operator-intent gate'
 Assert-Contains $controlPlaneGate 'scripts\arthur-control-plane.ps1' 'authorized intent gate must hand off into the existing Arthur Control Plane'
 Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'intent gate must explicitly stop unauthorized firmware execution before the Control Plane'
