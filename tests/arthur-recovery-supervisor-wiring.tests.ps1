@@ -36,6 +36,10 @@ Assert-NotContains $controlPlane '--max-turns 1' 'Control Plane must not limit P
 Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane must not require asynchronous ProductionRuntime progress inside the same wakeup job'
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
+# A failed recovery tick must expose its exact reason in Actions; exit 1 without evidence is not diagnosable or self-healable.
+Assert-Contains $controlPlane '::error::$Message' 'Fail() must always emit the explicit failure reason to GitHub Actions'
+Assert-Contains $controlPlane '::error::$($_.Exception.Message)' 'unexpected Control Plane exceptions must be surfaced instead of suppressed by prefix filters'
+
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
 Assert-Contains $windowsProcess 'HEADLESS_PYTHON_EXE' 'supervisor child interpreter selection must reuse the verified persistent headless Python when available'
@@ -59,3 +63,4 @@ Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be art
 
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
+Write-Host 'ARTHUR_RECOVERY_FAILURE_EVIDENCE_CONTRACT=PASS'
