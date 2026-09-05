@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-windows-repair-controller.tests.ps1
 
+      - name: Test Arthur Windows repair Scheduled Task contract
+        shell: pwsh
+        run: ./tests/arthur-windows-repair-task.tests.ps1
+
       - name: Test Windows failed Candidate recovery wiring
         shell: pwsh
         run: ./tests/arthur-candidate-failure-recovery.tests.ps1
@@ -134,7 +138,8 @@ jobs:
             'scripts/arthur-firmware-resume.ps1',
             'scripts/check-firmware-event-ledger-history.ps1',
             'scripts/arthur-control-plane.ps1',
-            'scripts/arthur-windows-repair-controller.ps1'
+            'scripts/arthur-windows-repair-controller.ps1',
+            'scripts/ensure-arthur-windows-repair-controller.ps1'
           )) {
             if (-not (Test-Path $file)) {
               Write-Error "Required PowerShell file missing: $file"
