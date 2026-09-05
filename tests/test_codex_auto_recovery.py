@@ -1,8 +1,12 @@
+import asyncio
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from ai_orchestrator import adapters, cli
 from ai_orchestrator.models import PipelineState
 from ai_orchestrator.recovery import (
     ExecutorLease,
@@ -174,6 +178,69 @@ class CodexAutoRecoveryContractTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         shim = (root / "scripts" / "run-supervisor.py").read_text(encoding="utf-8")
         self.assertIn("ai_orchestrator.recovery_runtime", shim)
+
+
+class _FakeCodex:
+    def __init__(self):
+        self.models_called = 0
+
+    async def account(self):
+        return {"type": "chatgpt"}
+
+    async def models(self):
+        self.models_called += 1
+        raise AssertionError("models() must not be called on the headless production path")
+
+
+class CodexModelCacheBypassContractTests(unittest.TestCase):
+    def test_executor_preflight_can_skip_remote_model_catalog(self):
+        fake = _FakeCodex()
+        module = SimpleNamespace()
+        executor = adapters.AsyncCodexExecutor(
+            Path.cwd(),
+            model="gpt-5.6-terra",
+            codex_factory=lambda _module: fake,
+        )
+        with patch.object(adapters, "_import_sdk", return_value=module):
+            probe = asyncio.run(executor.preflight(include_models=False))
+
+        self.assertTrue(probe["model_catalog_skipped"])
+        self.assertEqual("gpt-5.6-terra", probe["executor_model"])
+        self.assertEqual(0, fake.models_called)
+
+    def test_build_runtime_has_explicit_chatgpt_model_without_models_list(self):
+        executor_fake = _FakeCodex()
+        controller_fake = _FakeCodex()
+        module = SimpleNamespace()
+
+        executor = adapters.AsyncCodexExecutor(
+            Path.cwd(),
+            codex_factory=lambda _module: executor_fake,
+        )
+        self.assertEqual("gpt-5.6-terra", executor.model)
+
+        with patch.object(adapters, "_import_sdk", return_value=module):
+            executor_probe = asyncio.run(executor.preflight())
+
+        model_ids = cli._model_ids(executor_probe["models"])
+        self.assertEqual(["gpt-5.6-terra"], model_ids)
+        selection = adapters.choose_controller_backend(None, model_ids)
+        self.assertEqual("codex_thread", selection.kind)
+        self.assertEqual("gpt-5.6-terra", selection.model)
+
+        controller = adapters.CodexThreadController(
+            Path.cwd(),
+            selection.model,
+            codex_factory=lambda _module: controller_fake,
+        )
+        with patch.object(adapters, "_import_sdk", return_value=module):
+            controller_probe = asyncio.run(controller.preflight())
+
+        self.assertTrue(executor_probe["model_catalog_skipped"])
+        self.assertTrue(controller_probe["model_catalog_skipped"])
+        self.assertEqual("gpt-5.6-terra", controller_probe["controller_model"])
+        self.assertEqual(0, executor_fake.models_called)
+        self.assertEqual(0, controller_fake.models_called)
 
 
 if __name__ == "__main__":
