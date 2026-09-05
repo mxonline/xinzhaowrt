@@ -183,7 +183,7 @@ Assert-Contains $controlPlaneGate 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=PA
 $resumeHelper = Get-Content -Raw $ResumeScriptPath
 Assert-Contains $resumeHelper "phase -in @('ADH_MANAGEMENT','ADH_CHINESE')" 'missing live build-info fallback must remain restricted to the ADH preview phases by default'
 Assert-Contains $resumeHelper 'ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK' 'resume helper must recognize only the explicit process-local final-release BUILD context'
-Assert-Contains $resumeHelper "$phase -eq 'BUILD'" 'final-release fallback context must be phase-bound to BUILD and must not leak later'
+Assert-Contains $resumeHelper "`$phase -eq 'BUILD'" 'final-release fallback context must be phase-bound to BUILD and must not leak later'
 Assert-Contains $resumeHelper 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'fallback evidence must remain explicit and distinguishable from parsed live build-info'
 
 Write-Host 'ARTHUR_RESUME_STATE_CONTRACT=PASS'
