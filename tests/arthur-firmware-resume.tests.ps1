@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $LedgerPath = Join-Path $Root 'production\firmware-events.jsonl'
 $LedgerLibPath = Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1'
+$HistoryGuardPath = Join-Path $Root 'scripts\check-firmware-event-ledger-history.ps1'
 $ResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
 $RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
 $AgentsPath = Join-Path $Root 'AGENTS.md'
@@ -35,6 +36,7 @@ function Assert-Throws {
 
 Assert-True (Test-Path $LedgerPath) 'append-only firmware event ledger must exist'
 Assert-True (Test-Path $LedgerLibPath) 'firmware event ledger helper must exist'
+Assert-True (Test-Path $HistoryGuardPath) 'git history guard must enforce append-only ledger changes'
 Assert-True (Test-Path $ResumePath) 'unified firmware resume gate must exist'
 
 . $LedgerLibPath
@@ -67,6 +69,11 @@ $ledgerLines = @(Get-Content -LiteralPath $LedgerPath | Where-Object { -not [str
 Assert-True ($ledgerLines.Count -ge 1) 'repository ledger must contain a bootstrap event'
 foreach ($line in $ledgerLines) { $null = $line | ConvertFrom-Json }
 Assert-True ([bool](Test-ArthurFirmwareEventLedger -Path $LedgerPath)) 'repository ledger must have a valid hash chain'
+
+$historyGuard = Get-Content -Raw $HistoryGuardPath
+Assert-Contains $historyGuard 'FIRMWARE_EVENT_HISTORY_APPEND_ONLY=PASS' 'history guard must emit explicit append-only success'
+Assert-Contains $historyGuard 'FIRMWARE_EVENT_HISTORY_REWRITE_BLOCKED' 'history guard must fail closed when historical bytes change'
+Assert-Contains $historyGuard 'git show' 'history guard must compare the ledger against the base revision'
 
 $resume = Get-Content -Raw $ResumePath
 Assert-Contains $resume 'production\operator-intent.json' 'resume gate must read durable operator intent'
