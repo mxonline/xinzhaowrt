@@ -29,7 +29,7 @@ Assert-Contains $installer 'Principal.UserId' 'repair task must read the approve
 Assert-Contains $installer 'LogonType Interactive' 'repair task must use Codex credential-bearing interactive context'
 Assert-Contains $installer 'RunLevel Highest' 'repair task must retain the approved elevated interactive context'
 Assert-Contains $installer 'MultipleInstances IgnoreNew' 'repair task must be single-instance'
-Assert-Contains $installer 'arthur-windows-repair-controller.ps1' 'task must invoke the independent repair controller'
+Assert-Contains $installer 'invoke-arthur-windows-repair-controller.ps1' 'task must invoke the durable repair controller wrapper'
 Assert-Contains $installer 'XinZhaoWrt\RepairController' 'launcher must live under canonical ProgramData RepairController directory'
 Assert-Contains $installer 'ARTHUR_CONTROL_PLANE_CODE_ROOT' 'repair launcher must bind clean control-runtime'
 Assert-Contains $installer 'ARTHUR_CONTROL_PLANE_STATE_DIR' 'repair launcher must bind canonical state directory'
