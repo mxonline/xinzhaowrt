@@ -59,3 +59,9 @@ jobs:
           & ./tests/arthur-host-key-bootstrap.tests.ps1
           & ./tests/rebuild-dispatch-ack.tests.ps1
           & ./tests/rebuild-dispatch-at-most-once.tests.ps1
+
+      - name: Windows PowerShell Arthur Resume Gate runtime contract
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tests/arthur-resume-windows-runtime.tests.ps1
