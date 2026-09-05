@@ -29,6 +29,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
       PYTHONDONTWRITEBYTECODE: '1'
+      ARTHUR_WINDOWS_REPAIR_MODE: DiagnosticOnly
 
     steps:
       - name: Sync persistent task workspace and clean Control Plane code
@@ -203,10 +204,150 @@ jobs:
           "HEADLESS_PYTHON_EXE=$pythonExe" >> $env:GITHUB_ENV
           Write-Host "HEADLESS_CODEX_RUNTIME=PASS interpreter=$pythonExe"
 
+      - name: Observe or trigger Windows-owned Arthur repair controller
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          $stateDir = Join-Path $root 'state'
+          $repairStatusPath = Join-Path $stateDir 'repair-status.json'
+          $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
+          $runtimeStatusPath = Join-Path $stateDir 'runtime-status.json'
+          $runtimeStatePath = Join-Path $stateDir 'runtime-state.json'
+          $repairTaskName = 'XinZhaoWrt-Arthur-Repair-Controller'
+          $supervisorTaskName = 'XinZhaoWrt-Arthur-Persistent-Supervisor'
+          $mode = [string]$env:ARTHUR_WINDOWS_REPAIR_MODE
+          if ($mode -notin @('DiagnosticOnly','WhitelistRepair','FullRecovery')) {
+            throw "WINDOWS_REPAIR_CONTROLLER_MODE_INVALID: $mode"
+          }
+
+          function Read-JsonSafe([string]$Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+            try { return (Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json) }
+            catch { return $null }
+          }
+          function Get-Value($Object,[string]$Name,$Default=$null) {
+            if ($null -eq $Object) { return $Default }
+            $property = $Object.PSObject.Properties[$Name]
+            if ($null -eq $property) { return $Default }
+            return $property.Value
+          }
+
+          "ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL=0" >> $env:GITHUB_ENV
+          "ARTHUR_WINDOWS_REPAIR_STATE=NOT_REQUIRED" >> $env:GITHUB_ENV
+
+          $repair = Read-JsonSafe $repairStatusPath
+          if ($repair) {
+            $repairStatus = [string](Get-Value $repair 'status' '')
+            $repairResult = [string](Get-Value $repair 'final_result' '')
+            $repairMode = [string](Get-Value $repair 'mode' '')
+            if ($repairStatus -eq 'CODEX_RUNTIME_RECOVERED' -or $repairResult -eq 'CODEX_RUNTIME_RECOVERED') {
+              Write-Host "WINDOWS_REPAIR_CONTROLLER=RECOVERED status=$repairStatus mode=$repairMode evidence=$repairStatusPath"
+              "ARTHUR_WINDOWS_REPAIR_STATE=RECOVERED" >> $env:GITHUB_ENV
+              exit 0
+            }
+            if ($repairStatus -like 'REPAIR_BLOCKED_*' -or $repairStatus -eq 'REPAIR_EXHAUSTED' -or $repairResult -like 'REPAIR_BLOCKED_*' -or $repairResult -eq 'REPAIR_EXHAUSTED') {
+              Write-Host "WINDOWS_REPAIR_CONTROLLER=BLOCKED status=$repairStatus result=$repairResult mode=$repairMode evidence=$repairStatusPath"
+              "ARTHUR_WINDOWS_REPAIR_STATE=BLOCKED" >> $env:GITHUB_ENV
+              throw "WINDOWS_REPAIR_CONTROLLER_BLOCKED: evidence=$repairStatusPath status=$repairStatus result=$repairResult"
+            }
+            if ($repairStatus -in @('DIAGNOSING','REPAIRING','PROBING','RESTARTING','VERIFYING') -and $repairMode -eq $mode) {
+              Write-Host "WINDOWS_REPAIR_CONTROLLER=ACTIVE status=$repairStatus mode=$repairMode evidence=$repairStatusPath"
+              "ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL=1" >> $env:GITHUB_ENV
+              "ARTHUR_WINDOWS_REPAIR_STATE=ACTIVE" >> $env:GITHUB_ENV
+              exit 0
+            }
+          }
+
+          $runtimeState = Read-JsonSafe $runtimeStatePath
+          $supervisorStatus = Read-JsonSafe $supervisorStatusPath
+          $runtimeStatus = Read-JsonSafe $runtimeStatusPath
+
+          $phase = [string](Get-Value $runtimeState 'phase' '')
+          if ([string]::IsNullOrWhiteSpace($phase)) { $phase = [string](Get-Value $runtimeState 'current_stage' '') }
+          $protectedPhases = @(
+            'ARTIFACT','PRE_FLASH','AUTO_FLASH_SAFETY_GATE','FLASH','WAIT_DEVICE','IDENTIFY',
+            'LAN_RUNTIME','DHCP','WAN','DNS','SSH','LUCI','PLUGIN_RUNTIME_22','ARGON_KUCAT_RUNTIME',
+            'SYSTEM_HEALTH','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'
+          )
+          $humanGate = ''
+          foreach ($gateName in @('human_gate','humanGate','pending_human_gate','pendingHumanGate')) {
+            $candidateGate = [string](Get-Value $runtimeState $gateName '')
+            if (-not [string]::IsNullOrWhiteSpace($candidateGate)) { $humanGate = $candidateGate; break }
+          }
+          $protected = (-not [string]::IsNullOrWhiteSpace($humanGate)) -or ($protectedPhases -contains $phase.ToUpperInvariant())
+
+          $supervisorAlive = $false
+          $codexAlive = $false
+          if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+            foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+              $command = [string]$process.CommandLine
+              if ([string]::IsNullOrWhiteSpace($command) -or $command.IndexOf($stateDir,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+              if ($command -match 'run-supervisor\.py') { $supervisorAlive = $true }
+              if ($command -match 'ai_orchestrator' -and $command -match '\bresume\b') { $codexAlive = $true }
+            }
+          }
+
+          $heartbeatFresh = $false
+          $heartbeatAt = [string](Get-Value $runtimeStatus 'heartbeat_at' '')
+          if (-not [string]::IsNullOrWhiteSpace($heartbeatAt)) {
+            $parsedHeartbeat = [DateTimeOffset]::MinValue
+            if ([DateTimeOffset]::TryParse($heartbeatAt,[ref]$parsedHeartbeat)) {
+              $heartbeatAge = ([DateTimeOffset]::UtcNow - $parsedHeartbeat.ToUniversalTime()).TotalSeconds
+              $heartbeatFresh = ($heartbeatAge -ge 0 -and $heartbeatAge -le 120)
+            }
+          }
+          $supervisorState = [string](Get-Value $supervisorStatus 'status' '')
+          $crashLoop = ($supervisorState -eq 'CRASH_LOOP_BLOCKED')
+          if ($supervisorAlive -and $codexAlive -and $heartbeatFresh -and -not $crashLoop) {
+            Write-Host "WINDOWS_REPAIR_CONTROLLER=NOT_REQUIRED supervisor_alive=$supervisorAlive codex_alive=$codexAlive heartbeat_fresh=$heartbeatFresh"
+            "ARTHUR_WINDOWS_REPAIR_STATE=NOT_REQUIRED" >> $env:GITHUB_ENV
+            exit 0
+          }
+
+          if ($protected) {
+            Write-Host "WINDOWS_REPAIR_CONTROLLER=BLOCKED reason=protected_runtime phase=$phase human_gate=$humanGate evidence=$runtimeStatePath"
+            "ARTHUR_WINDOWS_REPAIR_STATE=BLOCKED" >> $env:GITHUB_ENV
+            throw "WINDOWS_REPAIR_CONTROLLER_BLOCKED: runtime repair is prohibited in phase=$phase human_gate=$humanGate"
+          }
+
+          if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+            throw 'WINDOWS_REPAIR_CONTROLLER_BLOCKED: ScheduledTasks cmdlets unavailable on self-hosted Windows runner.'
+          }
+          $supervisorTask = Get-ScheduledTask -TaskName $supervisorTaskName -ErrorAction SilentlyContinue
+          if (-not $supervisorTask) {
+            Write-Host 'WINDOWS_REPAIR_CONTROLLER=NOT_REQUIRED reason=supervisor_task_bootstrap_required'
+            "ARTHUR_WINDOWS_REPAIR_STATE=NOT_READY" >> $env:GITHUB_ENV
+            exit 0
+          }
+
+          $helper = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\ensure-arthur-windows-repair-controller.ps1'
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "WINDOWS_REPAIR_CONTROLLER_HELPER_MISSING: $helper"
+          }
+          & $helper `
+            -StateDir $stateDir `
+            -ControlRoot $env:ARTHUR_CONTROL_PLANE_CODE_ROOT `
+            -HeadlessPythonExe $env:HEADLESS_PYTHON_EXE `
+            -Mode $mode `
+            -SupervisorTaskName $supervisorTaskName `
+            -RepairTaskName $repairTaskName `
+            -Start
+          if ($LASTEXITCODE -ne 0) {
+            throw "WINDOWS_REPAIR_CONTROLLER_TRIGGER_FAILED: exit=$LASTEXITCODE"
+          }
+          Write-Host "WINDOWS_REPAIR_CONTROLLER=TRIGGERED task=$repairTaskName mode=$mode supervisor_status=$supervisorState supervisor_alive=$supervisorAlive codex_alive=$codexAlive heartbeat_fresh=$heartbeatFresh"
+          "ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL=1" >> $env:GITHUB_ENV
+          "ARTHUR_WINDOWS_REPAIR_STATE=TRIGGERED" >> $env:GITHUB_ENV
+
       - name: Reconcile and resume Arthur Control Plane
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          if ($env:ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL -eq '1') {
+            Write-Host "CONTROL_PLANE_RESUME_SKIPPED_FOR_WINDOWS_REPAIR=PASS state=$env:ARTHUR_WINDOWS_REPAIR_STATE"
+            exit 0
+          }
           $script = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\arthur-control-plane-gate.ps1'
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
@@ -247,6 +388,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          if ($env:ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL -eq '1') {
+            Write-Host "PERSISTENT_SUPERVISOR_START_SKIPPED_FOR_WINDOWS_REPAIR=PASS state=$env:ARTHUR_WINDOWS_REPAIR_STATE"
+            exit 0
+          }
           $helper = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\ensure-arthur-persistent-supervisor.ps1'
           if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
             throw "PERSISTENT_SUPERVISOR_HELPER_MISSING: $helper"
@@ -273,6 +418,7 @@ jobs:
           "- Persistent task workspace: ``$env:ARTHUR_CONTROL_PLANE_WORKSPACE``" >> $env:GITHUB_STEP_SUMMARY
           "- Task source branch: ``$env:CONTROL_PLANE_SOURCE_BRANCH``" >> $env:GITHUB_STEP_SUMMARY
           "- Task source SHA: ``$env:CONTROL_PLANE_SOURCE_SHA``" >> $env:GITHUB_STEP_SUMMARY
+          "- Windows repair routing: ``$env:ARTHUR_WINDOWS_REPAIR_STATE`` (mode ``$env:ARTHUR_WINDOWS_REPAIR_MODE``)" >> $env:GITHUB_STEP_SUMMARY
           $heartbeat = Join-Path $root 'heartbeat.json'
           if (Test-Path -LiteralPath $heartbeat) {
             $h = Get-Content -Raw -LiteralPath $heartbeat | ConvertFrom-Json
@@ -285,4 +431,17 @@ jobs:
             "- Runtime phase: ``$($runtime.phase)``" >> $env:GITHUB_STEP_SUMMARY
             "- Runtime turn count: ``$($runtime.turn_count)``" >> $env:GITHUB_STEP_SUMMARY
             "- Terminal state: ``$($runtime.terminal_state)``" >> $env:GITHUB_STEP_SUMMARY
+          }
+          $repairStatus = Join-Path $root 'state\repair-status.json'
+          if (Test-Path -LiteralPath $repairStatus) {
+            try {
+              $repair = Get-Content -Raw -LiteralPath $repairStatus | ConvertFrom-Json
+              "- Repair status: ``$($repair.status)``" >> $env:GITHUB_STEP_SUMMARY
+              "- Repair failure class: ``$($repair.failure_class)``" >> $env:GITHUB_STEP_SUMMARY
+              "- Repair action: ``$($repair.selected_repair_action)``" >> $env:GITHUB_STEP_SUMMARY
+              "- Repair final result: ``$($repair.final_result)``" >> $env:GITHUB_STEP_SUMMARY
+            }
+            catch {
+              "- Repair status: ``UNREADABLE``" >> $env:GITHUB_STEP_SUMMARY
+            }
           }
