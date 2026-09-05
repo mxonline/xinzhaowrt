@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Reads repository-relative changed paths from stdin and prints exactly one scope:
 #   DOC_ONLY     - documentation/knowledge only; no firmware build required.
-#   FAST_GATE    - CI, verifier, test, or control-plane-only change; run static gates.
+#   FAST_GATE    - CI, verifier, test, control-plane, or release-state-only change; run static gates.
 #   IMAGEBUILDER - explicit image assembly / safe filesystem overlay change.
 #   SDK_BUILD    - explicit user-space package rebuild using the Known-Good-matched SDK.
 #   FULL_BUILD   - firmware/kernel/unknown change; require a full Candidate build.
@@ -59,6 +59,7 @@ while IFS= read -r path; do
     scripts/live-preview.ps1|scripts/live-preview-mature-safe.ps1|scripts/prepare-live-preview-sources.ps1|\
     scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|\
     production/v3-request.json|production/request.json|production/known-good-request.json|\
+    production/operator-intent.json|production/resume-state.json|production/firmware-events.jsonl|\
     production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json|\
     production/production-agent.json|production/arthur-flash-profile.json|\
     production/real-device-baseline.json|production/expected-diff.json|\
