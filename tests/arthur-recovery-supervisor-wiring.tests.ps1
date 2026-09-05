@@ -66,6 +66,23 @@ Assert-NotContains $persistentSupervisorTask '--once' 'persistent Scheduled Task
 Assert-Contains $persistentSupervisorTask 'PERSISTENT_SUPERVISOR_TASK_REREGISTERED=PASS' 'drifted existing Supervisor task must be re-registered under the same task name'
 Assert-Contains $persistentSupervisorTask 'launcherDrift' 'persistent task helper must compare existing action against canonical launcher binding'
 
+# GitHub wakeup is only an observer/trigger for the independent Windows Repair Controller.
+# It must inspect durable repair state before ordinary Control Plane/Supervisor recovery,
+# suppress duplicate recovery while Windows owns a repair cycle, and never wait through
+# the long health verification window inside Actions.
+Assert-Contains $wakeup 'repair-status.json' 'wakeup must observe durable Windows repair state'
+Assert-Contains $wakeup 'XinZhaoWrt-Arthur-Repair-Controller' 'wakeup must trigger the Windows-owned repair task'
+Assert-Contains $wakeup 'ensure-arthur-windows-repair-controller.ps1' 'wakeup must install the independent Windows repair task through its canonical helper'
+Assert-Contains $wakeup 'WINDOWS_REPAIR_CONTROLLER=ACTIVE' 'active repair must suppress duplicate recovery'
+Assert-Contains $wakeup 'WINDOWS_REPAIR_CONTROLLER=RECOVERED' 'recovered repair state must allow ordinary Control Plane continuation'
+Assert-Contains $wakeup 'WINDOWS_REPAIR_CONTROLLER=BLOCKED' 'blocked repair evidence must surface in Actions'
+Assert-Contains $wakeup 'WINDOWS_REPAIR_CONTROLLER=TRIGGERED' 'broken runtime must trigger the Windows-owned repair task'
+Assert-NotContains $wakeup 'Start-Sleep -Seconds 120' 'Actions must not own the long recovery verification window'
+Assert-NotContains $wakeup 'Remove-Item $supervisorState' 'wakeup must never directly delete supervisor-state.json'
+$repairObserverIndex = $wakeup.IndexOf('repair-status.json',[System.StringComparison]::OrdinalIgnoreCase)
+$reconcileIndex = $wakeup.IndexOf('Reconcile and resume Arthur Control Plane',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($repairObserverIndex -ge 0 -and $reconcileIndex -ge 0 -and $repairObserverIndex -lt $reconcileIndex) 'Windows repair observer/trigger must run before ordinary Control Plane resume'
+
 $existingTaskIndex = $persistentSupervisorTask.IndexOf('$existing = Get-ScheduledTask',[System.StringComparison]::OrdinalIgnoreCase)
 $interactiveLookupIndex = $persistentSupervisorTask.IndexOf('$interactiveUser =',[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($existingTaskIndex -ge 0 -and $interactiveLookupIndex -ge 0 -and $existingTaskIndex -lt $interactiveLookupIndex) 'existing persistent task must be reusable before interactive-user detection is required'
@@ -103,5 +120,6 @@ Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_TASK_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_IDEMPOTENT_WAKEUP_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_INTERACTIVE_USER_DISCOVERY_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_DRIFT_REPAIR_CONTRACT=PASS'
+Write-Host 'ARTHUR_WINDOWS_REPAIR_WAKEUP_ROUTING_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_RUNTIME_PYTHON_CACHE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
