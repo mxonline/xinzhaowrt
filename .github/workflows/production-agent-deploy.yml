@@ -229,11 +229,12 @@ jobs:
           Write-Host "CONTROL_PLANE_RUNTIME_INPUT=PASS workspace_ledger=$([bool](Test-Path -LiteralPath $workspaceLedger -PathType Leaf)) workspace_resume=$([bool](Test-Path -LiteralPath $workspaceResume -PathType Leaf)) control_ledger=$([bool](Test-Path -LiteralPath $controlLedger -PathType Leaf)) control_resume=$([bool](Test-Path -LiteralPath $controlResume -PathType Leaf))"
 
           $actionsWorkspace = $env:GITHUB_WORKSPACE
-          $env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE
-          Push-Location $env:ARTHUR_CONTROL_PLANE_WORKSPACE
+          $taskWorkspace = $env:ARTHUR_CONTROL_PLANE_WORKSPACE
+          $env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_CODE_ROOT
+          Push-Location $env:ARTHUR_CONTROL_PLANE_CODE_ROOT
           try {
-            Write-Host "CONTROL_PLANE_WORKSPACE_BOUND=PASS path=$env:GITHUB_WORKSPACE"
-            Write-Host "CONTROL_PLANE_CODE_BOUND=PASS path=$env:ARTHUR_CONTROL_PLANE_CODE_ROOT sha=$env:CONTROL_PLANE_CODE_SHA"
+            Write-Host "CONTROL_PLANE_GOVERNANCE_WORKSPACE_BOUND=PASS path=$env:GITHUB_WORKSPACE sha=$env:CONTROL_PLANE_CODE_SHA"
+            Write-Host "CONTROL_PLANE_TASK_WORKSPACE_PRESERVED=PASS path=$taskWorkspace source_sha=$env:CONTROL_PLANE_SOURCE_SHA"
             & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
