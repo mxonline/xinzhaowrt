@@ -36,9 +36,11 @@ Assert-NotContains $controlPlane '--max-turns 1' 'Control Plane must not limit P
 Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane must not require asynchronous ProductionRuntime progress inside the same wakeup job'
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
-# A failed recovery tick must expose its exact reason in Actions; exit 1 without evidence is not diagnosable or self-healable.
-Assert-Contains $controlPlane '::error::$Message' 'Fail() must always emit the explicit failure reason to GitHub Actions'
-Assert-Contains $controlPlane '::error::$($_.Exception.Message)' 'unexpected Control Plane exceptions must be surfaced instead of suppressed by prefix filters'
+# A failed supervisor tick must expose enough persisted evidence in the same Actions log to diagnose the first cause.
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_EXCEPTION=' 'Supervisor shim must print the exact Python exception before returning a failed wakeup'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_STATUS=' 'Supervisor shim must print supervisor-status.json evidence before returning a failed wakeup'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Supervisor shim must print the persisted supervisor log tail before returning a failed wakeup'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Supervisor shim must delimit the persisted supervisor log tail in Actions'
 
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
