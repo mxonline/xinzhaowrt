@@ -26,6 +26,7 @@ try {
     if ($root -match '(?i)\\Users\\chenz(\\|$)') {
         Fail "CONTROL_PLANE_ROOT_FORBIDDEN: $root"
     }
+    $codeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
     $stateDir = Join-Path $root 'state'
     $logDir = Join-Path $root 'logs'
@@ -143,11 +144,12 @@ try {
         workflow_run_id = $WorkflowRunId
     })
     Log "RUNNER_CONTROL_PLANE=RUNNING sequence=$heartbeat identity=$identity"
+    Log "CONTROL_PLANE_CODE_ROOT=PASS path=$codeRoot"
 
     foreach ($tool in @('git', 'gh', 'python')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "CONTROL_PLANE_TOOL_MISSING: $tool" }
     }
-    $resumeHelperPath = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-resume-state.ps1'
+    $resumeHelperPath = Join-Path $codeRoot 'scripts\arthur-resume-state.ps1'
     if (-not (Test-Path -LiteralPath $resumeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RESUME_HELPER_MISSING' }
     . $resumeHelperPath
 
@@ -325,7 +327,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Log 'AI_ORCHESTRATOR_STATE_BOOTSTRAPPED=PASS phase=ADH_MANAGEMENT'
     }
 
-    $baselinePath = Join-Path $env:GITHUB_WORKSPACE 'production\real-device-baseline.json'
+    $baselinePath = Join-Path $codeRoot 'production\real-device-baseline.json'
     if (-not (Test-Path -LiteralPath $baselinePath -PathType Leaf)) { Fail 'STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_MISSING' }
     try { $realDeviceBaseline = Get-Content -Raw -LiteralPath $baselinePath | ConvertFrom-Json }
     catch { Fail "STATE_RECONCILIATION_REQUIRED: REAL_DEVICE_BASELINE_INVALID $($_.Exception.Message)" }
@@ -363,7 +365,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         exit 0
     }
 
-    $supervisorPath = Join-Path $env:GITHUB_WORKSPACE 'scripts\run-supervisor.py'
+    $supervisorPath = Join-Path $codeRoot 'scripts\run-supervisor.py'
     if (-not (Test-Path -LiteralPath $supervisorPath -PathType Leaf)) {
         Fail 'RECOVERY_SUPERVISOR_MISSING: scripts/run-supervisor.py'
     }
