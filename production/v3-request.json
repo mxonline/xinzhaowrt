@@ -1,15 +1,14 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-final-release-20260905-1919",
+  "request_id": "arthur-final-release-20260905-1919-main",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-known-good-v1",
   "device": "jdcloud_re-ss-01",
   "source_ref": "main",
-  "source_sha": "416bed068c9971dbf36eac7ba4544a0065414875",
   "feature_id": "arthur-adh-quickstart",
   "accepted_preview_source_sha": "f4190c7ce51984ae0ba99b59829323fef12b692a",
   "accepted_diff_sha256": "6a8493619c088dd6adb0c5477412518a0f242116df3369654b11bccbd1e58feb",
   "preview_manifest_sha256": "771bc19690c6ec8227ed4bd6490c77d161138ddc5d0ffae66078039d39b55757",
-  "reason": "Final Arthur release continuation from merged PR #82. Preserve validated mature AdGuard Home management, LuCI Chinese, official QuickStart and WIFI=VERIFIED_FROZEN. Build exactly one formal Candidate from source_sha 416bed068c9971dbf36eac7ba4544a0065414875, then continue PRE_FLASH -> at-most-once sysupgrade -> PostFlash real-device verification -> PRODUCTION_RELEASED. Do not repeat feature development and do not duplicate Build/Candidate/Flash.",
+  "reason": "Final Arthur release continuation after merged PR #82. Preserve validated mature AdGuard Home management, LuCI Chinese, official QuickStart and WIFI=VERIFIED_FROZEN. Use the current main HEAD after this durable request; continue exactly once through Candidate -> PRE_FLASH -> at-most-once sysupgrade -> PostFlash real-device verification -> PRODUCTION_RELEASED. Do not repeat feature development and do not duplicate Build/Candidate/Flash.",
   "requested_at": "2026-09-05T19:19:00+08:00"
 }
