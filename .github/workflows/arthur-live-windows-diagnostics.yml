@@ -1,0 +1,194 @@
+name: Arthur Live Windows Diagnostics
+
+on:
+  push:
+    branches:
+      - diag/arthur-live-windows-state-20260905
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 10
+    steps:
+      - name: Capture read-only Windows state
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Set-StrictMode -Version Latest
+
+          function Section([string]$Name) {
+            Write-Host "===== $Name ====="
+          }
+
+          Section 'IDENTITY'
+          Write-Host "WHOAMI=$((whoami).Trim())"
+          Write-Host "COMPUTERNAME=$env:COMPUTERNAME"
+          Write-Host "LOCALAPPDATA=$env:LOCALAPPDATA"
+          Write-Host "PWD=$((Get-Location).Path)"
+
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          $stateDir = Join-Path $root 'state'
+          $taskWorkspace = Join-Path $root 'workspace'
+          $controlRuntime = Join-Path $root 'control-runtime'
+          $headlessPython = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe'
+
+          Section 'PROCESSES'
+          Get-Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProcessName -match '^(python|pythonw|codex|Runner\.Listener|Runner\.Worker)$' } |
+            Sort-Object ProcessName,Id |
+            ForEach-Object {
+              $path = ''
+              try { $path = $_.Path } catch { $path = '<unavailable>' }
+              $started = ''
+              try { $started = $_.StartTime.ToString('o') } catch { $started = '<unavailable>' }
+              Write-Host ("PROCESS name={0} pid={1} start={2} path={3}" -f $_.ProcessName,$_.Id,$started,$path)
+            }
+
+          Section 'REGISTRY_STARTUP'
+          try {
+            $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+            $props = Get-ItemProperty -LiteralPath $runKey -ErrorAction Stop
+            $value = $props.XinZhaoWrtGPTCodexBridgeSupervisor
+            if ($null -ne $value) { Write-Host "STARTUP_ENTRY=Present value=$value" }
+            else { Write-Host 'STARTUP_ENTRY=Missing' }
+          }
+          catch { Write-Host "STARTUP_ENTRY=ERROR type=$($_.Exception.GetType().Name)" }
+
+          Section 'SCHEDULED_TASKS'
+          try {
+            Get-ScheduledTask -ErrorAction Stop |
+              Where-Object { $_.TaskName -like 'XinZhaoWrt*' } |
+              ForEach-Object {
+                $info = $null
+                try { $info = Get-ScheduledTaskInfo -TaskName $_.TaskName -ErrorAction Stop } catch { }
+                Write-Host ("TASK name={0} state={1} last_run={2} last_result={3}" -f $_.TaskName,$_.State,$(if($info){$info.LastRunTime.ToString('o')}else{'<unknown>'}),$(if($info){$info.LastTaskResult}else{'<unknown>'}))
+              }
+          }
+          catch { Write-Host "TASK_QUERY=ERROR type=$($_.Exception.GetType().Name)" }
+
+          Section 'PERSISTENT_PATHS'
+          foreach ($p in @($root,$stateDir,$taskWorkspace,$controlRuntime,$headlessPython)) {
+            Write-Host "PATH exists=$([bool](Test-Path -LiteralPath $p)) path=$p"
+          }
+
+          Section 'PYTHON_RUNTIME'
+          if (Test-Path -LiteralPath $headlessPython -PathType Leaf) {
+            & $headlessPython -c "import sys; print('PYTHON=' + sys.executable); print('VERSION=' + sys.version.replace(chr(10),' ')); import importlib.util; print('OPENAI_CODEX=' + ('PASS' if importlib.util.find_spec('openai_codex') else 'MISSING'))"
+            Write-Host "PYTHON_EXIT=$LASTEXITCODE"
+          }
+          else { Write-Host 'PYTHON_RUNTIME=MISSING' }
+
+          Section 'PERSISTENT_GH_AUTH'
+          $savedGh = $env:GH_TOKEN
+          $savedGithub = $env:GITHUB_TOKEN
+          try {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+            $auth = (& gh auth status 2>&1 | Out-String).Trim()
+            Write-Host $auth
+            Write-Host "GH_AUTH_EXIT=$LASTEXITCODE"
+          }
+          finally {
+            if ($null -ne $savedGh) { $env:GH_TOKEN = $savedGh }
+            if ($null -ne $savedGithub) { $env:GITHUB_TOKEN = $savedGithub }
+          }
+
+          function Show-GitState([string]$Label,[string]$Path) {
+            Section "GIT_$Label"
+            if (-not (Test-Path -LiteralPath (Join-Path $Path '.git'))) {
+              Write-Host 'GIT_REPO=MISSING'
+              return
+            }
+            $branch = (& git -C $Path branch --show-current 2>$null | Out-String).Trim()
+            $head = (& git -C $Path rev-parse HEAD 2>$null | Out-String).Trim()
+            $origin = (& git -C $Path rev-parse origin/main 2>$null | Out-String).Trim()
+            Write-Host "BRANCH=$branch"
+            Write-Host "HEAD=$head"
+            Write-Host "ORIGIN_MAIN=$origin"
+            Write-Host 'DIRTY_BEGIN'
+            & git -C $Path status --porcelain
+            Write-Host 'DIRTY_END'
+          }
+
+          Show-GitState 'TASK_WORKSPACE' $taskWorkspace
+          Show-GitState 'CONTROL_RUNTIME' $controlRuntime
+
+          Section 'STATE_JSON'
+          $stateFiles = @(
+            'runtime-state.json',
+            'runtime-status.json',
+            'supervisor-status.json',
+            'supervisor-state.json'
+          )
+          foreach ($name in $stateFiles) {
+            $path = Join-Path $stateDir $name
+            Write-Host "FILE=$name exists=$([bool](Test-Path -LiteralPath $path -PathType Leaf))"
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+              try {
+                $obj = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+                $pairs = [ordered]@{}
+                foreach ($key in @('release_task_id','request_id','phase','current_stage','next_action','turn_count','terminal_state','runtime','status','action','heartbeat_at','last_progress_at','supervisor_pid','child_pid','daemon_pid','restart_count','next_retry_at','error','reason')) {
+                  if ($obj.PSObject.Properties[$key]) { $pairs[$key] = $obj.$key }
+                }
+                if ($obj.observability -and $obj.observability.runtime) { $pairs['observability.runtime'] = $obj.observability.runtime }
+                if ($obj.observability -and $obj.observability.heartbeat_at) { $pairs['observability.heartbeat_at'] = $obj.observability.heartbeat_at }
+                Write-Host ($pairs | ConvertTo-Json -Compress -Depth 8)
+              }
+              catch { Write-Host "STATE_PARSE_ERROR file=$name type=$($_.Exception.GetType().Name)" }
+            }
+          }
+
+          foreach ($name in @('canonical-state.json','heartbeat.json')) {
+            $path = Join-Path $root $name
+            Write-Host "FILE=$name exists=$([bool](Test-Path -LiteralPath $path -PathType Leaf))"
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+              try {
+                $obj = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+                $pairs = [ordered]@{}
+                foreach ($key in @('status','production_task','state_source','updated_at','sequence','workflow_run_id','identity')) {
+                  if ($obj.PSObject.Properties[$key]) { $pairs[$key] = $obj.$key }
+                }
+                if ($obj.checkpoint) {
+                  foreach ($key in @('current_stage','next_action','turn_count','release_task_id')) {
+                    if ($obj.checkpoint.PSObject.Properties[$key]) { $pairs["checkpoint.$key"] = $obj.checkpoint.$key }
+                  }
+                }
+                Write-Host ($pairs | ConvertTo-Json -Compress -Depth 8)
+              }
+              catch { Write-Host "STATE_PARSE_ERROR file=$name type=$($_.Exception.GetType().Name)" }
+            }
+          }
+
+          Section 'SUPERVISOR_LOG_TAIL'
+          $supervisorLog = Join-Path $stateDir 'supervisor.log'
+          if (Test-Path -LiteralPath $supervisorLog -PathType Leaf) {
+            Get-Content -LiteralPath $supervisorLog -Tail 120
+          }
+          else { Write-Host 'SUPERVISOR_LOG=MISSING' }
+
+          Section 'CONTROL_PLANE_LOG_TAIL'
+          $logDir = Join-Path $root 'logs'
+          if (Test-Path -LiteralPath $logDir -PathType Container) {
+            $latest = Get-ChildItem -LiteralPath $logDir -File -Filter 'run-*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latest) {
+              Write-Host "LATEST_CONTROL_LOG=$($latest.FullName)"
+              Get-Content -LiteralPath $latest.FullName -Tail 160
+            }
+            else { Write-Host 'CONTROL_LOG=MISSING' }
+          }
+
+          Section 'ROUTER_REACHABILITY_READ_ONLY'
+          try {
+            $tcp = Test-NetConnection -ComputerName 192.168.6.1 -Port 22 -WarningAction SilentlyContinue
+            Write-Host "SSH_TCP=$($tcp.TcpTestSucceeded)"
+          }
+          catch { Write-Host "SSH_TCP=ERROR type=$($_.Exception.GetType().Name)" }
+
+          Write-Host 'ARTHUR_LIVE_WINDOWS_DIAGNOSTICS=PASS'
