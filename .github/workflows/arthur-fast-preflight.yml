@@ -5,6 +5,23 @@ name: Arthur Fast Preflight
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      build_closure:
+        description: 'Run exact locked source/feed/package/defconfig closure without firmware compile'
+        required: false
+        default: false
+        type: boolean
+      update_mode:
+        description: 'Candidate lock mode to mirror during closure'
+        required: false
+        default: rebuild_known_good
+        type: choice
+        options:
+          - rebuild_known_good
+          - update_immortalwrt
+          - update_feeds
+          - update_plugins
+          - update_all
 
 permissions:
   contents: read
@@ -182,4 +199,90 @@ jobs:
             echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'
             echo '- SDK_BUILD: rebuild user-space packages with the Known-Good-matched SDK.'
             echo '- FULL_BUILD: kernel/ABI/unknown change; full Candidate build required.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-closure:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_closure == true }}
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
+          df -h
+
+      - name: Install build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Prepare exact Candidate lock
+        id: lock
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/*.sh
+          CLOSURE_LOCK="$RUNNER_TEMP/arthur-build-closure.lock"
+          ./scripts/prepare-update-lock.sh '${{ inputs.update_mode }}' "$CLOSURE_LOCK"
+          echo "path=$CLOSURE_LOCK" >> "$GITHUB_OUTPUT"
+          echo "sha=$(sha256sum "$CLOSURE_LOCK" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Run exact source and config closure
+        shell: bash
+        env:
+          USE_KNOWN_GOOD_LOCK: '1'
+          KNOWN_GOOD_LOCK: ${{ steps.lock.outputs.path }}
+          JOBS: '2'
+          QUIET_BUILD: '0'
+          REUSE_SOURCE: '0'
+          BUILD_CLOSURE_ONLY: '1'
+        run: |
+          set -Eeuo pipefail
+          ./scripts/build.sh
+          grep -q '^BUILD_CLOSURE_PREFLIGHT=PASS$' output/logs/build.log
+
+      - name: Analyze closure failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          if [[ -s output/logs/build.log ]]; then
+            ./scripts/analyze-error.sh output/logs/build.log
+          elif [[ -s output/logs/build-diagnostic.log ]]; then
+            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
+          fi
+          exit 0
+
+      - name: Upload build closure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-build-closure-${{ github.run_id }}
+          path: |
+            output/logs/build.log
+            output/logs/build-diagnostic.log
+            output/logs/error-context.txt
+            output/logs/error-summary.txt
+            output/logs/failure-report.txt
+            output/full.config
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Build closure summary
+        if: always()
+        run: |
+          {
+            echo '## Arthur exact build closure'
+            echo
+            echo "- Source: \`${GITHUB_SHA}\`"
+            echo "- Update mode: \`${{ inputs.update_mode }}\`"
+            echo "- Candidate lock SHA256: \`${{ steps.lock.outputs.sha || 'UNAVAILABLE' }}\`"
+            echo '- Boundary: exact source/feeds/custom packages/provenance/package existence/overlay/make defconfig/check-config only.'
+            echo '- Firmware source download: not run after closure PASS.'
+            echo '- Firmware compile: not run.'
           } >> "$GITHUB_STEP_SUMMARY"
