@@ -20,6 +20,12 @@ function Assert-NotContains {
         throw "TEST_FAIL: $Message (unexpected '$Needle')"
     }
 }
+function Assert-Contains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "TEST_FAIL: $Message (missing '$Needle')"
+    }
+}
 function Assert-ThrowsContains {
     param([scriptblock]$Action,[string]$Needle,[string]$Message)
     try {
@@ -41,6 +47,9 @@ Assert-NotContains $source 'git reset --hard' 'repair controller must never hard
 Assert-NotContains $source 'git clean' 'repair controller must never clean a repository'
 Assert-NotContains $source 'git stash' 'repair controller must never stash mutable task work'
 Assert-NotContains $source 'Remove-Item $runtimeState' 'repair controller must never delete runtime-state.json'
+Assert-Contains $source 'CODEX_RUNTIME_RECOVERED=PASS' 'full recovery success marker must be explicit'
+Assert-Contains $source 'WINDOWS_REPAIR_HEALTH_WINDOW=PASS' 'full recovery must report the measured health window'
+Assert-Contains $source 'Start-ScheduledTask' 'FullRecovery must restart the existing Supervisor Scheduled Task'
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('arthur-repair-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -168,8 +177,56 @@ try {
     Assert-True (-not [string]::IsNullOrWhiteSpace($fingerprint1)) 'failure fingerprint must be non-empty'
     Assert-Equal $fingerprint1 $fingerprint2 'failure fingerprint must be deterministic'
 
+    $observations = @(
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:00:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:01:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:55Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:02:01Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:01:55Z' }
+    )
+    $health = Test-ArthurRepairRecoveryWindow -Observations $observations
+    Assert-Equal $health.passed $true 'two advancing heartbeats over >=120 seconds must pass'
+    Assert-True ([double]$health.healthy_seconds -ge 120) 'successful recovery must measure at least 120 seconds'
+    Assert-True ([int]$health.heartbeat_advances -ge 2) 'successful recovery must observe at least two heartbeat advances'
+
+    $diesEarly = @(
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:00:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:01:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:55Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:01:30Z'; task_running=$true; supervisor_alive=$true; codex_alive=$false; heartbeat='2026-09-06T00:01:25Z' }
+    )
+    Assert-Equal (Test-ArthurRepairRecoveryWindow -Observations $diesEarly).passed $false 'Codex dying at 90 seconds must fail recovery'
+
+    $staleHeartbeats = @(
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:00:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:01:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' },
+        [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:02:01Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' }
+    )
+    Assert-Equal (Test-ArthurRepairRecoveryWindow -Observations $staleHeartbeats).passed $false 'unchanged heartbeat must fail recovery'
+
+    $fingerprint = 'same-failure'
+    $now = [datetimeoffset]'2026-09-06T00:30:00Z'
+    $attemptEvents = @(
+        [pscustomobject]@{ timestamp='2026-09-06T00:05:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } },
+        [pscustomobject]@{ timestamp='2026-09-06T00:10:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } },
+        [pscustomobject]@{ timestamp='2026-09-06T00:20:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } },
+        [pscustomobject]@{ timestamp='2026-09-06T00:25:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint='other-failure' } }
+    )
+    $decision = Get-ArthurRepairAttemptDecision -Events $attemptEvents -Fingerprint $fingerprint -Now $now
+    Assert-Equal $decision.allowed $false 'fourth attempt for unchanged fingerprint within 30 minutes must be blocked'
+    Assert-Equal $decision.attempt_count 3 'attempt gate must count only same fingerprint in window'
+    Assert-Equal $decision.result 'REPAIR_EXHAUSTED' 'fourth unchanged attempt must terminate as REPAIR_EXHAUSTED'
+
+    $outsideWindow = @(
+        [pscustomobject]@{ timestamp='2026-09-05T23:00:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } },
+        [pscustomobject]@{ timestamp='2026-09-06T00:10:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } },
+        [pscustomobject]@{ timestamp='2026-09-06T00:20:00Z'; event='repair_action_started'; data=[pscustomobject]@{ failure_fingerprint=$fingerprint } }
+    )
+    $allowed = Get-ArthurRepairAttemptDecision -Events $outsideWindow -Fingerprint $fingerprint -Now $now
+    Assert-Equal $allowed.allowed $true 'old repair attempts outside 30-minute window must not exhaust recovery'
+    Assert-Equal $allowed.attempt_count 2 'attempt count must use a bounded 30-minute window'
+
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_DIAGNOSTIC_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_WHITELIST_CONTRACT=PASS'
+    Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_RECOVERY_WINDOW_CONTRACT=PASS'
+    Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_ATTEMPT_BOUND_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_SAFETY_BOUNDARY=PASS'
 }
 finally {
