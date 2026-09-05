@@ -211,6 +211,22 @@ jobs:
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
           }
+          if ([string]::IsNullOrWhiteSpace($env:HEADLESS_PYTHON_EXE) -or -not (Test-Path -LiteralPath $env:HEADLESS_PYTHON_EXE -PathType Leaf)) {
+            throw "CONTROL_PLANE_PYTHON_BINDING_FAILED: HEADLESS_PYTHON_EXE is missing or invalid: $env:HEADLESS_PYTHON_EXE"
+          }
+          $pythonDir = Split-Path -Parent $env:HEADLESS_PYTHON_EXE
+          $env:PATH = "$pythonDir;$env:PATH"
+          $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+          if (-not $pythonCommand) {
+            throw "CONTROL_PLANE_PYTHON_BINDING_FAILED: python command unavailable after binding $pythonDir"
+          }
+          Write-Host "CONTROL_PLANE_PYTHON_BINDING=PASS interpreter=$($pythonCommand.Source)"
+
+          $workspaceLedger = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'production\firmware-events.jsonl'
+          $workspaceResume = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'production\resume-state.json'
+          $controlLedger = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'production\firmware-events.jsonl'
+          $controlResume = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'production\resume-state.json'
+          Write-Host "CONTROL_PLANE_RUNTIME_INPUT=PASS workspace_ledger=$([bool](Test-Path -LiteralPath $workspaceLedger -PathType Leaf)) workspace_resume=$([bool](Test-Path -LiteralPath $workspaceResume -PathType Leaf)) control_ledger=$([bool](Test-Path -LiteralPath $controlLedger -PathType Leaf)) control_resume=$([bool](Test-Path -LiteralPath $controlResume -PathType Leaf))"
 
           $actionsWorkspace = $env:GITHUB_WORKSPACE
           $env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE
