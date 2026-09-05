@@ -1,0 +1,225 @@
+name: Arthur Windows Task Visibility Diagnostic
+
+on:
+  push:
+    branches:
+      - diag/arthur-windows-task-visibility-20260906
+    paths:
+      - .github/workflows/arthur-windows-task-visibility-diag.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 5
+
+    steps:
+      - name: Read-only Windows task and session evidence
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Set-StrictMode -Version Latest
+
+          $supervisorTask = 'XinZhaoWrt-Arthur-Persistent-Supervisor'
+          $repairTask = 'XinZhaoWrt-Arthur-Repair-Controller'
+          $supervisorLauncher = 'C:\ProgramData\XinZhaoWrt\PersistentSupervisor\run-arthur-persistent-supervisor.ps1'
+          $repairLauncher = 'C:\ProgramData\XinZhaoWrt\RepairController\run-arthur-repair-controller.ps1'
+
+          Write-Host '=== IDENTITY ==='
+          Write-Host "DIAG_IDENTITY=$(whoami)"
+          Write-Host "DIAG_MACHINE=$env:COMPUTERNAME"
+          Write-Host "DIAG_USERPROFILE=$env:USERPROFILE"
+          Write-Host "DIAG_LOCALAPPDATA=$env:LOCALAPPDATA"
+          Write-Host "DIAG_PROGRAMDATA=$env:ProgramData"
+
+          Write-Host '=== GET-SCHEDULEDTASK EXACT ==='
+          foreach ($taskName in @($supervisorTask,$repairTask)) {
+            try {
+              $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+              $task | Select-Object TaskName,TaskPath,State,
+                @{n='PrincipalUserId';e={$_.Principal.UserId}},
+                @{n='PrincipalLogonType';e={$_.Principal.LogonType}},
+                @{n='PrincipalRunLevel';e={$_.Principal.RunLevel}},
+                Actions | ConvertTo-Json -Depth 10 | Write-Host
+              Write-Host "GET_SCHEDULED_TASK=$taskName:FOUND"
+            }
+            catch {
+              Write-Host "GET_SCHEDULED_TASK=$taskName:ERROR:$($_.Exception.Message)"
+            }
+          }
+
+          Write-Host '=== GET-SCHEDULEDTASK PREFIX ENUMERATION ==='
+          try {
+            @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -like 'XinZhaoWrt*' -or $_.TaskPath -like '*XinZhaoWrt*' }) |
+              Select-Object TaskName,TaskPath,State,@{n='PrincipalUserId';e={$_.Principal.UserId}},Actions |
+              ConvertTo-Json -Depth 10 | Write-Host
+          }
+          catch {
+            Write-Host "GET_SCHEDULED_TASK_ENUM_ERROR=$($_.Exception.Message)"
+          }
+
+          Write-Host '=== SCHTASKS EXACT XML ==='
+          foreach ($taskName in @($supervisorTask,$repairTask)) {
+            $xml = & schtasks.exe /Query /TN $taskName /XML 2>&1
+            $code = $LASTEXITCODE
+            Write-Host "SCHTASKS_QUERY=$taskName:EXIT=$code"
+            $xml | ForEach-Object { Write-Host ([string]$_) }
+          }
+
+          Write-Host '=== TASK FILESYSTEM ==='
+          foreach ($path in @(
+            "C:\Windows\System32\Tasks\$supervisorTask",
+            "C:\Windows\System32\Tasks\$repairTask"
+          )) {
+            try {
+              Write-Host "TASK_FILE=$path:EXISTS=$(Test-Path -LiteralPath $path -PathType Leaf)"
+              if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $acl = Get-Acl -LiteralPath $path
+                Write-Host "TASK_FILE_OWNER=$($acl.Owner)"
+                Get-Content -Raw -LiteralPath $path | Write-Host
+              }
+            }
+            catch {
+              Write-Host "TASK_FILE_ERROR=$path:$($_.Exception.Message)"
+            }
+          }
+
+          Write-Host '=== LAUNCHERS AND ACL ==='
+          foreach ($path in @($supervisorLauncher,$repairLauncher)) {
+            try {
+              $exists = Test-Path -LiteralPath $path -PathType Leaf
+              Write-Host "LAUNCHER=$path:EXISTS=$exists"
+              if ($exists) {
+                $acl = Get-Acl -LiteralPath $path
+                Write-Host "LAUNCHER_OWNER=$($acl.Owner)"
+                Write-Host 'LAUNCHER_CONTENT_BEGIN'
+                Get-Content -Raw -LiteralPath $path | Write-Host
+                Write-Host 'LAUNCHER_CONTENT_END'
+              }
+              $folder = Split-Path -Parent $path
+              if (Test-Path -LiteralPath $folder -PathType Container) {
+                $folderAcl = Get-Acl -LiteralPath $folder
+                Write-Host "LAUNCHER_FOLDER=$folder:OWNER=$($folderAcl.Owner)"
+              }
+            }
+            catch {
+              Write-Host "LAUNCHER_ERROR=$path:$($_.Exception.Message)"
+            }
+          }
+
+          Write-Host '=== CONSOLE USER ==='
+          try {
+            $computer = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+            Write-Host "WIN32_COMPUTERSYSTEM_USERNAME=$([string]$computer.UserName)"
+          }
+          catch {
+            Write-Host "WIN32_COMPUTERSYSTEM_ERROR=$($_.Exception.Message)"
+          }
+
+          Write-Host '=== EXPLORER PROCESS OWNERS ==='
+          try {
+            $explorers = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction Stop)
+            Write-Host "EXPLORER_COUNT=$($explorers.Count)"
+            foreach ($process in $explorers) {
+              Write-Host "EXPLORER_PID=$($process.ProcessId):SESSION=$($process.SessionId):COMMAND=$([string]$process.CommandLine)"
+              try {
+                $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -ErrorAction Stop
+                Write-Host "EXPLORER_OWNER_PID=$($process.ProcessId):RETURN=$($owner.ReturnValue):DOMAIN=$([string]$owner.Domain):USER=$([string]$owner.User)"
+              }
+              catch {
+                Write-Host "EXPLORER_OWNER_ERROR_PID=$($process.ProcessId):$($_.Exception.Message)"
+              }
+            }
+          }
+          catch {
+            Write-Host "EXPLORER_ENUM_ERROR=$($_.Exception.Message)"
+          }
+
+          Write-Host '=== QUSER SUPPLEMENT ==='
+          try {
+            $quser = & quser.exe 2>&1
+            Write-Host "QUSER_EXIT=$LASTEXITCODE"
+            $quser | ForEach-Object { Write-Host ([string]$_) }
+          }
+          catch {
+            Write-Host "QUSER_ERROR=$($_.Exception.Message)"
+          }
+
+          Write-Host '=== WTS API SESSIONS ==='
+          $source = @'
+          using System;
+          using System.Runtime.InteropServices;
+          using System.Text;
+          public static class ArthurWtsDiag {
+              [StructLayout(LayoutKind.Sequential)]
+              public struct WTS_SESSION_INFO {
+                  public Int32 SessionID;
+                  public IntPtr pWinStationName;
+                  public Int32 State;
+              }
+              [DllImport("wtsapi32.dll", SetLastError=true)]
+              public static extern bool WTSEnumerateSessions(IntPtr hServer, Int32 Reserved, Int32 Version, out IntPtr ppSessionInfo, out Int32 pCount);
+              [DllImport("wtsapi32.dll")]
+              public static extern void WTSFreeMemory(IntPtr pMemory);
+              [DllImport("wtsapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+              public static extern bool WTSQuerySessionInformation(IntPtr hServer, Int32 sessionId, Int32 infoClass, out IntPtr ppBuffer, out Int32 pBytesReturned);
+              public static string Query(Int32 sessionId, Int32 infoClass) {
+                  IntPtr buffer = IntPtr.Zero;
+                  Int32 bytes = 0;
+                  try {
+                      if (!WTSQuerySessionInformation(IntPtr.Zero, sessionId, infoClass, out buffer, out bytes) || buffer == IntPtr.Zero) return "";
+                      return Marshal.PtrToStringUni(buffer) ?? "";
+                  } finally {
+                      if (buffer != IntPtr.Zero) WTSFreeMemory(buffer);
+                  }
+              }
+          }
+          '@
+          try {
+            Add-Type -TypeDefinition $source -ErrorAction Stop
+            $ptr = [IntPtr]::Zero
+            $count = 0
+            if ([ArthurWtsDiag]::WTSEnumerateSessions([IntPtr]::Zero,0,1,[ref]$ptr,[ref]$count)) {
+              Write-Host "WTS_SESSION_COUNT=$count"
+              $size = [Runtime.InteropServices.Marshal]::SizeOf([type][ArthurWtsDiag+WTS_SESSION_INFO])
+              for ($i = 0; $i -lt $count; $i++) {
+                $itemPtr = [IntPtr]($ptr.ToInt64() + ($i * $size))
+                $item = [Runtime.InteropServices.Marshal]::PtrToStructure($itemPtr,[type][ArthurWtsDiag+WTS_SESSION_INFO])
+                $station = if ($item.pWinStationName -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::PtrToStringUni($item.pWinStationName) } else { '' }
+                $user = [ArthurWtsDiag]::Query($item.SessionID,5)
+                $domain = [ArthurWtsDiag]::Query($item.SessionID,7)
+                Write-Host "WTS_SESSION_ID=$($item.SessionID):STATE=$($item.State):STATION=$station:DOMAIN=$domain:USER=$user"
+              }
+              [ArthurWtsDiag]::WTSFreeMemory($ptr)
+            }
+            else {
+              Write-Host "WTS_ENUM_FAILED_WIN32=$([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+            }
+          }
+          catch {
+            Write-Host "WTS_DIAG_ERROR=$($_.Exception.Message)"
+          }
+
+          Write-Host '=== LOCAL ARTIFACT DISCOVERY ==='
+          $roots = @(
+            'C:\ProgramData\XinZhaoWrt',
+            (Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane')
+          )
+          foreach ($root in $roots) {
+            if (Test-Path -LiteralPath $root -PathType Container) {
+              Write-Host "ARTIFACT_ROOT=$root"
+              Get-ChildItem -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match 'supervisor|repair|launcher|task' } |
+                Select-Object -First 100 FullName,Length,LastWriteTime |
+                ConvertTo-Json -Depth 5 | Write-Host
+            }
+          }
+
+          Write-Host 'WINDOWS_TASK_VISIBILITY_DIAGNOSTIC=PASS'
