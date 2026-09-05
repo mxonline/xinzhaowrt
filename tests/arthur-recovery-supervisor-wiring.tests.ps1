@@ -40,6 +40,16 @@ Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane m
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
 Assert-Contains $windowsProcess 'HEADLESS_PYTHON_EXE' 'supervisor child interpreter selection must reuse the verified persistent headless Python when available'
 
+# Control code must stay up to date even while the task workspace is intentionally dirty.
+Assert-Contains $wakeup 'control-runtime' 'runner wakeup must maintain a separate clean control-code checkout'
+Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_CODE_ROOT' 'runner wakeup must export the clean control-code root separately from the task workspace'
+Assert-Contains $wakeup 'CONTROL_PLANE_CODE=PASS' 'runner wakeup must emit the exact clean control-code SHA used for each wakeup'
+Assert-Contains $wakeup '$env:ARTHUR_CONTROL_PLANE_CODE_ROOT' 'the scoped gate must execute from the clean control-code root'
+Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty task changes must still be preserved without blocking control-code updates'
+Assert-Contains $controlPlane '$codeRoot' 'Control Plane must distinguish clean control code from the mutable task workspace'
+Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\\arthur-resume-state.ps1'" 'resume-state helper must come from clean control code'
+Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\\run-supervisor.py'" 'recovery supervisor shim must come from clean control code'
+
 # Reuse the already-tested recovery architecture; do not invent another controller.
 Assert-Contains $shim 'ai_orchestrator.recovery_runtime' 'production supervisor shim must use RecoveryRuntimeSupervisor'
 Assert-Contains $recoveryRuntime 'class RecoveryRuntimeSupervisor' 'durable recovery supervisor must remain the runtime owner'
@@ -48,3 +58,4 @@ Assert-Contains $supervisor '"resume"' 'supervisor child must run the continuous
 Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be artificially bounded to a single turn'
 
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
+Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
