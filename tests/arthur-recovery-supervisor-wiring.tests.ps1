@@ -37,9 +37,9 @@ Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane m
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
 # A failed supervisor tick must expose enough persisted evidence in the same Actions log to diagnose the first cause.
-Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_STATUS=' 'Control Plane must print supervisor-status.json evidence before failing the wakeup'
-Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Control Plane must print the persisted supervisor log tail before failing the wakeup'
-Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Control Plane must delimit the persisted supervisor log tail in Actions'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_STATUS=' 'Supervisor shim must print supervisor-status.json evidence before returning a failed wakeup'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Supervisor shim must print the persisted supervisor log tail before returning a failed wakeup'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Supervisor shim must delimit the persisted supervisor log tail in Actions'
 
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
