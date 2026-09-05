@@ -29,14 +29,17 @@ $supervisor = Get-Content -Raw $SupervisorPath
 $windowsProcess = Get-Content -Raw $WindowsProcessPath
 $shim = Get-Content -Raw $ShimPath
 
-# The five-minute runner wakeup must no longer own a single ProductionRuntime turn.
+# GitHub wakeup is bootstrap/fallback only. The recovery supervisor itself must stay alive locally.
 Assert-Contains $controlPlane 'run-supervisor.py' 'Control Plane must delegate runtime lifecycle to the existing recovery supervisor shim'
-Assert-Contains $controlPlane '--once' 'Control Plane must use one idempotent supervisor health/recovery tick per runner wakeup'
+Assert-NotContains $controlPlane '--once' 'production Control Plane must not reduce the recovery supervisor to one GitHub-schedule tick'
+Assert-Contains $controlPlane 'Start-Process' 'Control Plane must launch the recovery supervisor as a detached local watchdog'
+Assert-Contains $controlPlane 'RUNNER_TRACKING_ID' 'detached recovery supervisor must escape GitHub runner orphan-process cleanup'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_DAEMON=PASS' 'Control Plane must emit explicit durable supervisor evidence'
 Assert-NotContains $controlPlane '--max-turns 1' 'Control Plane must not limit ProductionRuntime to one turn per GitHub schedule tick'
 Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane must not require asynchronous ProductionRuntime progress inside the same wakeup job'
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
-# A failed supervisor tick must expose enough persisted evidence in the same Actions log to diagnose the first cause.
+# A failed supervisor startup must expose enough persisted evidence in the same Actions log to diagnose the first cause.
 Assert-Contains $shim 'RECOVERY_SUPERVISOR_STATUS=' 'Supervisor shim must print supervisor-status.json evidence before returning a failed wakeup'
 Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Supervisor shim must print the persisted supervisor log tail before returning a failed wakeup'
 Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Supervisor shim must delimit the persisted supervisor log tail in Actions'
@@ -64,11 +67,13 @@ Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\run-supervisor.py'"
 # Reuse the already-tested recovery architecture; do not invent another controller.
 Assert-Contains $shim 'ai_orchestrator.recovery_runtime' 'production supervisor shim must use RecoveryRuntimeSupervisor'
 Assert-Contains $recoveryRuntime 'class RecoveryRuntimeSupervisor' 'durable recovery supervisor must remain the runtime owner'
+Assert-Contains $recoveryRuntime 'while True:' 'RecoveryRuntimeSupervisor must own a continuous local watchdog loop'
 Assert-Contains $recoveryRuntime 'resume_persisted_handoff' 'recovery supervisor must resume the same persisted release task after runtime loss'
 Assert-Contains $supervisor '"resume"' 'supervisor child must run the continuous ai_orchestrator resume entrypoint'
 Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be artificially bounded to a single turn'
 
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
+Write-Host 'ARTHUR_PERSISTENT_RECOVERY_SUPERVISOR_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_RUNTIME_PYTHON_CACHE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
