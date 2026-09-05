@@ -2,7 +2,7 @@
     "schema_version":  1,
     "status":  "RESUME_SAFE",
     "instruction_allowed":  true,
-    "repository_head":  "db57876a2481c351fc1e1bb9dcc7e44247aee1dc",
+    "repository_head":  "db57876a2481c351fc2f9b5eea58f9cf5d6122a25d",
     "real_device":  {
                         "version":  "0.1.3",
                         "build_id":  "33462873812",
@@ -21,7 +21,10 @@
                    },
     "verified":  {
                      "real_device_baseline":  "MATCHED",
-                     "wifi":  "VERIFIED_FROZEN"
+                     "wifi":  "VERIFIED_FROZEN",
+                     "luci_chinese":  "VERIFIED_FROZEN",
+                     "adguard_full_manager":  "LIVE_BROWSER_VERIFIED",
+                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED"
                  },
     "pending":  [
                     "BUILD"
@@ -43,6 +46,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "34ffbfbc57763d68720eb38459d0e79c3d35bbed4cf9b7e771cea678ab9566e8",
+    "semantic_sha256":  "0a1ae8d74d9e6ca567e7e3051a8d9a2869113c90eebf7b74d9065abf2f960b14",
     "evidence_timestamp":  "2026-09-05T18:25:49.5853929+00:00"
 }

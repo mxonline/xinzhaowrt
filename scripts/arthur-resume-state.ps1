@@ -197,6 +197,9 @@ function Resolve-ArthurResumeState {
         verified = [ordered]@{
             real_device_baseline = $(if ($safe) { 'MATCHED' } else { 'RECONCILE_REQUIRED' })
             wifi = 'VERIFIED_FROZEN'
+            luci_chinese = 'VERIFIED_FROZEN'
+            adguard_full_manager = 'LIVE_BROWSER_VERIFIED'
+            quickstart = 'AUTHENTICATED_RENDER_VERIFIED'
         }
         pending = @($nextAction)
         next_action = $nextAction
