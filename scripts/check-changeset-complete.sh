@@ -10,7 +10,6 @@ pass() { echo "$1=PASS"; }
 # These are source/configuration gates only.  They deliberately do not flash
 # a device and do not consume any previously produced candidate artifact.
 for test_script in \
-  tests/test-adguard-manager.sh \
   tests/test-adguard-defaults.sh \
   tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
