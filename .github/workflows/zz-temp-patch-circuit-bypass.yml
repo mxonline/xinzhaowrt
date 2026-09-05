@@ -1,0 +1,43 @@
+name: TEMP remove Candidate circuit bypass
+
+'on':
+  push:
+    branches:
+      - 'fix/arthur-unattended-build-failure-loop-20260905'
+    paths:
+      - '.github/workflows/zz-temp-patch-circuit-bypass.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/arthur-unattended-build-failure-loop-20260905
+          fetch-depth: 0
+      - name: Remove bypass
+        run: python3 scripts/zz-temp-remove-circuit-bypass.py
+      - name: Verify focused regression
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/ci-controller-v3.ps1',[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            exit 1
+          }
+          ./tests/arthur-candidate-failure-recovery.tests.ps1
+      - name: Commit controller fix
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'Arthur automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add scripts/ci-controller-v3.ps1
+          git diff --cached --check
+          git commit -m 'fix: forbid circuit-breaker Candidate bypass'
+          git push origin HEAD:fix/arthur-unattended-build-failure-loop-20260905
