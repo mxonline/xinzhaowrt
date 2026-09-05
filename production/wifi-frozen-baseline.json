@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "device": "jdcloud_re-ss-01",
+  "status": "VERIFIED_FROZEN",
+  "source_path": "files/etc/uci-defaults/99-xinzhao-defaults",
+  "source_git_blob_sha": "bcd7235d2591a3609861c19d95b4798cc64e6a55",
+  "evidence_source": "production/resume-state.json#verified.wifi",
+  "evidence": "Inherited from the current production resume state where Arthur Wi-Fi is VERIFIED_FROZEN. This release does not modify the authoritative first-boot Wi-Fi source; static verification pins that source byte-for-byte. Runtime Wi-Fi is not mutated or reloaded during Prebuild and is rechecked read-only after flash.",
+  "policy": {
+    "runtime_revalidation_required_for_prebuild": false,
+    "runtime_mutation_forbidden": true,
+    "wifi_reload_forbidden": true,
+    "postflash_readonly_verification_required": true,
+    "source_change_requires_explicit_user_authorization": true
+  }
+}
