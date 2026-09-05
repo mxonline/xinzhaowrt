@@ -30,27 +30,29 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Sync persistent Control Plane workspace
+      - name: Sync persistent task workspace and clean Control Plane code
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
           $workspace = Join-Path $root 'workspace'
+          $controlRoot = Join-Path $root 'control-runtime'
           New-Item -ItemType Directory -Force -Path $root | Out-Null
 
           gh auth setup-git
           if ($LASTEXITCODE -ne 0) { throw 'Unable to configure Git authentication for the runner Control Plane.' }
 
+          # Mutable task workspace: preserve Headless Codex changes exactly as they are.
           if (-not (Test-Path (Join-Path $workspace '.git'))) {
             git clone --branch main --single-branch "https://github.com/$env:GITHUB_REPOSITORY.git" $workspace
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to create persistent Control Plane workspace.' }
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create persistent Control Plane task workspace.' }
             Write-Host 'CONTROL_PLANE_WORKSPACE_BOOTSTRAPPED=PASS'
           }
           else {
             git -C $workspace remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize persistent workspace origin.' }
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize persistent task workspace origin.' }
             git -C $workspace fetch --prune origin main
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into persistent workspace.' }
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into persistent task workspace.' }
 
             $dirty = (& git -C $workspace status --porcelain | Out-String).Trim()
             if ($dirty) {
@@ -71,7 +73,7 @@ jobs:
 
                 if ($behind -and $branch -eq 'main') {
                   git -C $workspace merge --ff-only origin/main
-                  if ($LASTEXITCODE -ne 0) { throw 'Persistent main workspace could not fast-forward safely.' }
+                  if ($LASTEXITCODE -ne 0) { throw 'Persistent task workspace could not fast-forward safely.' }
                   Write-Host 'CONTROL_PLANE_WORKSPACE_FAST_FORWARD=PASS'
                 }
                 elseif ($ahead) {
@@ -85,15 +87,46 @@ jobs:
           }
 
           $sourceSha = (& git -C $workspace rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'Persistent workspace HEAD is invalid.' }
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'Persistent task workspace HEAD is invalid.' }
           $sourceBranch = (& git -C $workspace branch --show-current).Trim()
           if (-not $sourceBranch) { $sourceBranch = 'DETACHED' }
 
+          # Clean control-code checkout: never let a dirty task workspace pin watchdog/runtime fixes to an old SHA.
+          if (-not (Test-Path (Join-Path $controlRoot '.git'))) {
+            git clone --branch main --single-branch "https://github.com/$env:GITHUB_REPOSITORY.git" $controlRoot
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create clean Control Plane code checkout.' }
+            Write-Host 'CONTROL_PLANE_CODE_BOOTSTRAPPED=PASS'
+          }
+          else {
+            git -C $controlRoot remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize clean Control Plane code origin.' }
+            $controlDirty = (& git -C $controlRoot status --porcelain | Out-String).Trim()
+            if ($controlDirty) { throw 'CONTROL_PLANE_CODE_DIRTY: clean control-runtime must never carry task changes.' }
+            git -C $controlRoot fetch --prune origin main
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into clean Control Plane code checkout.' }
+            $controlBranch = (& git -C $controlRoot branch --show-current).Trim()
+            if ($controlBranch -ne 'main') {
+              git -C $controlRoot switch main
+              if ($LASTEXITCODE -ne 0) { throw 'Unable to switch clean Control Plane code checkout to main.' }
+            }
+            git -C $controlRoot merge --ff-only origin/main
+            if ($LASTEXITCODE -ne 0) { throw 'Clean Control Plane code checkout could not fast-forward to origin/main.' }
+          }
+
+          $controlSha = (& git -C $controlRoot rev-parse HEAD).Trim()
+          $controlOriginMain = (& git -C $controlRoot rev-parse origin/main).Trim()
+          if ($LASTEXITCODE -ne 0 -or $controlSha -notmatch '^[0-9a-f]{40}$' -or $controlSha -ne $controlOriginMain) {
+            throw "CONTROL_PLANE_CODE_STALE: head=$controlSha origin_main=$controlOriginMain"
+          }
+
           "ARTHUR_CONTROL_PLANE_WORKSPACE=$workspace" >> $env:GITHUB_ENV
           "CONTROL_PLANE_WORKSPACE=$workspace" >> $env:GITHUB_ENV
+          "ARTHUR_CONTROL_PLANE_CODE_ROOT=$controlRoot" >> $env:GITHUB_ENV
+          "CONTROL_PLANE_CODE_SHA=$controlSha" >> $env:GITHUB_ENV
           "CONTROL_PLANE_SOURCE_SHA=$sourceSha" >> $env:GITHUB_ENV
           "CONTROL_PLANE_SOURCE_BRANCH=$sourceBranch" >> $env:GITHUB_ENV
           Write-Host "CONTROL_PLANE_WORKSPACE=PASS path=$workspace branch=$sourceBranch sha=$sourceSha"
+          Write-Host "CONTROL_PLANE_CODE=PASS path=$controlRoot sha=$controlSha"
 
       - name: Ensure persistent headless Python and Codex runtime
         shell: powershell
@@ -104,9 +137,9 @@ jobs:
           $uvCache = Join-Path $pythonHome 'cache'
           $venv = Join-Path $pythonHome '.venv'
           $pythonExe = Join-Path $venv 'Scripts\python.exe'
-          $requirements = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'requirements-headless.txt'
+          $requirements = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'requirements-headless.txt'
           New-Item -ItemType Directory -Force -Path $pythonHome | Out-Null
-          if (-not (Test-Path $requirements)) { throw "Headless requirements missing from persistent workspace: $requirements" }
+          if (-not (Test-Path $requirements)) { throw "Headless requirements missing from clean Control Plane code: $requirements" }
 
           $reuse = $false
           if (Test-Path $pythonExe) {
@@ -160,7 +193,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $script = Join-Path $env:ARTHUR_CONTROL_PLANE_WORKSPACE 'scripts\arthur-control-plane-gate.ps1'
+          $script = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\arthur-control-plane-gate.ps1'
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
             throw "CONTROL_PLANE_WAKEUP_FAILED: missing $script"
           }
@@ -170,6 +203,7 @@ jobs:
           Push-Location $env:ARTHUR_CONTROL_PLANE_WORKSPACE
           try {
             Write-Host "CONTROL_PLANE_WORKSPACE_BOUND=PASS path=$env:GITHUB_WORKSPACE"
+            Write-Host "CONTROL_PLANE_CODE_BOUND=PASS path=$env:ARTHUR_CONTROL_PLANE_CODE_ROOT sha=$env:CONTROL_PLANE_CODE_SHA"
             & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -186,9 +220,10 @@ jobs:
           "## Arthur Runner Control Plane Wakeup" >> $env:GITHUB_STEP_SUMMARY
           "- Runner identity: ``$(whoami)``" >> $env:GITHUB_STEP_SUMMARY
           "- Canonical root: ``$root``" >> $env:GITHUB_STEP_SUMMARY
-          "- Persistent workspace: ``$env:ARTHUR_CONTROL_PLANE_WORKSPACE``" >> $env:GITHUB_STEP_SUMMARY
-          "- Source branch: ``$env:CONTROL_PLANE_SOURCE_BRANCH``" >> $env:GITHUB_STEP_SUMMARY
-          "- Source SHA: ``$env:CONTROL_PLANE_SOURCE_SHA``" >> $env:GITHUB_STEP_SUMMARY
+          "- Clean control code: ``$env:ARTHUR_CONTROL_PLANE_CODE_ROOT`` @ ``$env:CONTROL_PLANE_CODE_SHA``" >> $env:GITHUB_STEP_SUMMARY
+          "- Persistent task workspace: ``$env:ARTHUR_CONTROL_PLANE_WORKSPACE``" >> $env:GITHUB_STEP_SUMMARY
+          "- Task source branch: ``$env:CONTROL_PLANE_SOURCE_BRANCH``" >> $env:GITHUB_STEP_SUMMARY
+          "- Task source SHA: ``$env:CONTROL_PLANE_SOURCE_SHA``" >> $env:GITHUB_STEP_SUMMARY
           $heartbeat = Join-Path $root 'heartbeat.json'
           if (Test-Path -LiteralPath $heartbeat) {
             $h = Get-Content -Raw -LiteralPath $heartbeat | ConvertFrom-Json
