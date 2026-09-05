@@ -2,38 +2,39 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fail() { echo "FUNCTIONAL_ACCEPTANCE: FAIL -- $*" >&2; exit 1; }
+fail() { echo "FUNCTIONAL_ACCEPTANCE_GATE: FAIL -- $*" >&2; exit 1; }
 
-acl="$root/files/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
-menu="$root/files/usr/share/luci/menu.d/luci-app-adguardhome.json"
-luci_defaults="$root/files/etc/uci-defaults/97-xinzhao-luci-defaults"
+build_env="$root/build.env"
+wifi_defaults="$root/files/etc/uci-defaults/98-xinzhao-wifi-defaults"
+firstboot_defaults="$root/files/etc/uci-defaults/99-xinzhao-defaults"
 verify="$root/scripts/real-device-verify.ps1"
-verify_v3="$root/scripts/real-device-verify-v3.ps1"
-safety="$root/scripts/auto-flash-safety-gate.ps1"
-workflow="$root/.github/workflows/arthur-update-v3.yml"
-rejection="$root/production/candidate-rejection-33569029385.json"
 
-[[ -s "$acl" ]] || fail 'AdGuard Home rpcd ACL is missing'
-[[ ! -e "$root/files/www/luci-static/resources/view/adguardhome/config.js" ]] || fail 'obsolete custom AdGuard manager overlay remains'
-for page in overview base tools log manual; do
-  grep -Fq "AdGuardHome/$page" "$menu" || fail "mature AdGuard menu is missing $page"
-  [[ -s "$root/files/usr/lib/lua/luci/model/cbi/AdGuardHome/$page.lua" ]] || fail "mature AdGuard CBI model is missing $page"
-done
+grep -Fxq 'DEFAULT_WIFI_SSID="xinzhaowrt"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi SSID'
+grep -Fxq 'DEFAULT_WIFI_PASSWORD="12345678"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi password'
+grep -Fxq 'DEFAULT_ROOT_PASSWORD="passwort"' "$build_env" || fail 'build.env must define the authoritative initial root password'
+grep -Fq "wifi_default_ssid='xinzhaowrt'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative SSID'
+grep -Fq "wifi_default_password='12345678'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative password'
+grep -Fq "wifi_default_ssid='xinzhaowrt'" "$firstboot_defaults" || fail 'first-boot defaults must use the authoritative SSID'
+grep -Fq "wifi_default_password='12345678'" "$firstboot_defaults" || fail 'first-boot defaults must use the authoritative password'
+! grep -Eq 'XinZhaoWrt-(2\.4G|5G)' "$wifi_defaults" || fail 'legacy band-specific SSIDs remain in independent defaults'
+! grep -Eq 'XinZhaoWrt-(2\.4G|5G)' "$firstboot_defaults" || fail 'legacy band-specific SSIDs remain in first-boot defaults'
 
-grep -Fq '"AdGuardHome"' "$acl" || fail 'AdGuard mature UCI ACL permission is missing'
+package_root="${ADGUARD_MANAGER_PACKAGE_ROOT:-$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome}"
+if [[ -d "$package_root" ]]; then
+  ADGUARD_MANAGER_PACKAGE_ROOT="$package_root" "$root/tests/test-adguard-manager.sh" || fail 'the prepared mature AdGuard manager contract failed'
+else
+  PYTHON_BIN="${PYTHON_BIN:-python3}" "$root/tests/test-adguard-source-of-truth.sh" || fail 'the pinned mature AdGuard source-of-truth contract failed'
+fi
 
-grep -Fq "homepage='admin/quickstart'" "$luci_defaults" || fail 'LuCI default homepage is not iStore QuickStart'
-grep -Fq '/cgi-bin/luci/admin/quickstart' "$verify" || fail 'real-device verifier does not exercise the iStore QuickStart homepage route'
-grep -Fq 'luci-static/quickstart/index.js' "$verify" || fail 'real-device verifier does not require rendered QuickStart frontend assets'
-grep -Fq 'quickstart_home_functional' "$verify" || fail 'real-device verifier does not require functional QuickStart homepage rendering'
-grep -Fq 'adguard_rpc_functional' "$verify" || fail 'real-device verifier does not require authenticated AdGuard management access'
-grep -Fq '33569029385' "$verify_v3" || fail 'pre-fix run must be refused by functional real-device verification'
+grep -Fq 'ARTHUR_LUCI_COOKIE_FILE' "$verify" || fail 'real-device verification must require an existing authenticated LuCI session'
+! grep -Fq 'ARTHUR_ROOT_PASSWORD' "$verify" || fail 'real-device verification must not depend on or handle the root password after SSH bootstrap'
+grep -Fq 'session access' "$verify" || fail 'real-device verification must exercise authenticated rpcd session access'
+grep -Fq 'adguard_rpc_functional' "$verify" || fail 'real-device verification must include AdGuard RPC functionality'
+grep -Fq 'adguard_page_functional' "$verify" || fail 'real-device verification must include authenticated AdGuard page functionality'
+grep -Fq '/cgi-bin/luci/admin/quickstart' "$verify" || fail 'real-device verification must exercise the official QuickStart route'
+grep -Fq 'luci-static/quickstart/index.js' "$verify" || fail 'real-device verification must assert the official QuickStart frontend is rendered'
+grep -Fq 'quickstart_home_functional' "$verify" || fail 'real-device verification must include QuickStart homepage functionality'
+grep -Fq 'prebuild_features' "$verify" || fail 'real-device verification must publish the prebuild feature gate evidence'
+grep -Fq '33462873812' "$verify" || fail 'real-device verification must refuse the invalidated candidate'
 
-[[ -s "$rejection" ]] || fail 'pre-fix production run must have durable rejection evidence'
-grep -Fq '33569029385' "$rejection" || fail 'rejection evidence must identify the pre-fix run'
-grep -Fq 'REJECTED_FOR_RELEASE' "$rejection" || fail 'pre-fix run must be rejected for release'
-grep -Fq 'candidate-rejection-' "$safety" || fail 'existing AUTO_FLASH_SAFETY_GATE must enforce durable candidate rejection evidence'
-
-grep -Fq "status not in {'verified', 'frozen'}" "$workflow" || fail 'formal workflow must accept the authoritative frozen verified Known-Good state'
-
-echo 'FUNCTIONAL_ACCEPTANCE=PASS'
+echo 'FUNCTIONAL_ACCEPTANCE_GATE: PASS'

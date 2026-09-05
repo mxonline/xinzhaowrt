@@ -11,6 +11,19 @@ if [[ -f "$LOCK_FILE" ]]; then
   source "$LOCK_FILE"
   echo "KNOWN_GOOD_LOCK: $LOCK_FILE"
 fi
+QUICKSTART_LOCK_FILE="${ISTORE_QUICKSTART_LOCK:-$PROJECT_ROOT/config/istore-quickstart.lock}"
+if [[ -f "$QUICKSTART_LOCK_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$QUICKSTART_LOCK_FILE"
+  echo "ISTORE_QUICKSTART_LOCK: $QUICKSTART_LOCK_FILE"
+fi
+THEME_LOCK_FILE="${ARTHUR_THEME_LOCK:-$PROJECT_ROOT/config/arthur-theme.lock}"
+[[ -f "$THEME_LOCK_FILE" ]] || { echo "ERROR: Arthur theme lock missing: $THEME_LOCK_FILE" >&2; exit 1; }
+# shellcheck disable=SC1090
+source "$THEME_LOCK_FILE"
+: "${ARGON_REF:?ARGON_REF is required}"
+: "${KUCAT_REF:?KUCAT_REF is required}"
+echo "ARTHUR_THEME_LOCK: $THEME_LOCK_FILE"
 
 SOURCES="$SRC/.xinzhao-sources"
 FEED="$SRC/.xinzhao-feed"
@@ -45,36 +58,99 @@ link_pkg() {
   ln -s "$src" "$FEED/$pkg"
 }
 
-# iStoreX/QuickStart ecosystem + Lucky + QuickFile.
+# Frozen themes are production inputs. Apply the same accepted transformations
+# that passed Arthur Theme Candidate 33790155987 before exposing them to feeds.
+clone_or_update \
+  luci-theme-argon \
+  https://github.com/jerrykuku/luci-theme-argon.git \
+  "$ARGON_REF"
+clone_or_update \
+  luci-theme-kucat \
+  https://github.com/sirpdboy/luci-theme-kucat.git \
+  "$KUCAT_REF"
+ARGON="$SOURCES/luci-theme-argon"
+KUCAT="$SOURCES/luci-theme-kucat"
+rm -f \
+  "$KUCAT/root/etc/uci-defaults/30_luci-kuacat" \
+  "$KUCAT/root/etc/uci-defaults/30_luci-kucat" \
+  "$KUCAT/root/usr/libexec/rpcd/luci.kucatget" \
+  "$KUCAT/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json"
+sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' "$KUCAT/Makefile"
+for theme_dir in "$ARGON" "$KUCAT"; do
+  while IFS= read -r -d '' template; do
+    sed -i \
+      -e 's#/luci-static/argon/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+      -e 's#/luci-static/argon/icon/favicon-32x32.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+      -e 's#/luci-static/argon/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#/luci-static/argon/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+      -e 's#/luci-static/argon/img/argon.svg#/luci-static/xinzhao/logo.png#g' \
+      -e 's#/luci-static/kucat/logo.svg#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+      -e 's#{{ media }}/icon/favicon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+      -e 's#{{ media }}/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#{{ media }}/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+      -e 's#{{ media }}/icon/ms-icon-144x144.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+      -e 's#{{ media }}/logo.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/img/logo[0-9]*.png#/luci-static/xinzhao/logo.png#g' \
+      -e "s#const hostname = striptags(boardinfo?.hostname ?? '?');#const hostname = 'XinZhaoWrt';#g" \
+      -e 's#{{ media }}/img/logo180.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's#{{ media }}/img/logo150.png#/luci-static/xinzhao/logo.png#g' \
+      -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img class="xz-brand-logo" src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt"><span class="xz-brand-label">XinZhaoWrt</span></a>|g' \
+      -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
+      -e 's#ImmortalWRT#XinZhaoWrt#g' \
+      -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' \
+      "$template"
+  done < <(find "$theme_dir" -type f \( -name '*.htm' -o -name '*.html' -o -name '*.ut' \) -print0)
+done
+link_pkg luci-theme-argon "$ARGON"
+link_pkg luci-theme-kucat "$KUCAT"
+
+# iStoreX ecosystem + Lucky + QuickFile. QuickStart itself is sourced from
+# the official iStoreOS LinkEase repositories below.
 clone_or_update \
   kenzok8-openwrt-packages \
   https://github.com/kenzok8/openwrt-packages.git \
   "${KENZOK8_REF:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# 京东云亚瑟 IPQ60xx 的 OpenWrt 架构名为 arm_cortex-a7，而 quickstart
-# 上游发布的是通用 arm 二进制。仅修正临时自定义 feed 的元数据，不修改
-# config/arthur.config 或 config/required-plugins.txt。
-QUICKSTART_MAKEFILE="$KENZO/quickstart/Makefile"
-if grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" && \
-   grep -q 'DEPENDS:=@(x86_64||aarch64||arm)' "$QUICKSTART_MAKEFILE"; then
-  sed -i \
-    -e 's/DEPENDS:=@(x86_64||aarch64||arm) /DEPENDS:=/' \
-    -e 's/quickstart\.\$(PKG_ARCH_quickstart)/quickstart.arm/' \
-    "$QUICKSTART_MAKEFILE"
-  echo 'PATCHED_PACKAGE_ARCH: quickstart keeps target package arch and installs generic arm binary'
-else
-  echo 'ERROR: quickstart Makefile 的预期架构声明已变化，拒绝静默应用兼容性补丁。' >&2
-  exit 1
-fi
+# AdGuard Home is intentionally isolated from the broader kenzok8 source
+# family. Its complete mature CBI manager is fixed at the accepted revision.
+: "${ADGUARD_MATURE_REF:?ADGUARD_MATURE_REF is required}"
+clone_or_update \
+  kenzok8-adguardhome \
+  https://github.com/kenzok8/openwrt-packages.git \
+  "$ADGUARD_MATURE_REF"
+ADGUARD_MATURE="$SOURCES/kenzok8-adguardhome"
 
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"
 link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
-link_pkg luci-app-quickstart "$KENZO/luci-app-quickstart"
-link_pkg quickstart "$KENZO/quickstart"
+link_pkg luci-app-adguardhome "$ADGUARD_MATURE/luci-app-adguardhome"
+# iStoreOS Original QuickStart: keep frontend/RPC/backend/service sources
+# paired at fixed, auditable upstream revisions.
+clone_or_update \
+  istoreos-luci \
+  "${ISTORE_QUICKSTART_LUCI_REPO:-https://github.com/linkease/nas-packages-luci.git}" \
+  "${ISTORE_QUICKSTART_LUCI_REF:?ISTORE_QUICKSTART_LUCI_REF is required}"
+clone_or_update \
+  istoreos-packages \
+  "${ISTORE_QUICKSTART_REPO:-https://github.com/linkease/nas-packages.git}" \
+  "${ISTORE_QUICKSTART_REF:?ISTORE_QUICKSTART_REF is required}"
+ISTOREOS_LUCI="$SOURCES/istoreos-luci"
+ISTOREOS_PACKAGES="$SOURCES/istoreos-packages"
+QUICKSTART_MAKEFILE="$ISTOREOS_PACKAGES/network/services/quickstart/Makefile"
+grep -q 'PKG_ARCH_quickstart:=$(ARCH)' "$QUICKSTART_MAKEFILE" || {
+  echo 'ERROR: official QuickStart must select the target architecture artifact.' >&2
+  exit 1
+}
+grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' "$QUICKSTART_MAKEFILE" || {
+  echo 'ERROR: official QuickStart artifact selector is missing.' >&2
+  exit 1
+}
+link_pkg luci-app-quickstart "$ISTOREOS_LUCI/luci/luci-app-quickstart"
+link_pkg quickstart "$ISTOREOS_PACKAGES/network/services/quickstart"
 
 # 官方 iStore feed。
 clone_or_update \
@@ -91,7 +167,7 @@ clone_or_update \
   "${LUCI_REF:-master}"
 IMMORTAL_LUCI="$SOURCES/immortalwrt-luci"
 for pkg in \
-  luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
+  luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp \
   luci-app-vlmcsd luci-app-wol; do
@@ -201,6 +277,7 @@ printf 'src-link xinzhao %s\n' "$FEED" >> feeds.conf
 ./scripts/feeds update xinzhao
 
 CUSTOM_PKGS=(
+  luci-theme-argon luci-theme-kucat
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall
@@ -218,6 +295,7 @@ for pkg in "${CUSTOM_PKGS[@]}"; do
 done
 
 ./scripts/feeds install -f -p xinzhao \
+  luci-theme-argon luci-theme-kucat \
   luci-app-istorex luci-app-quickstart quickstart \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \

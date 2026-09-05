@@ -1,0 +1,12 @@
+#!/bin/sh
+
+[ "${ACTION:-}" = 'ifup' ] || exit 0
+[ "${INTERFACE:-}" = 'lan' ] || exit 0
+
+sh /usr/libexec/xinzhao/luci-upgrade-converge.sh || {
+	logger -t xinzhaowrt 'LUCI_UPGRADE_CONVERGENCE_HOTPLUG=FAIL' 2>/dev/null || true
+	exit 1
+}
+
+logger -t xinzhaowrt 'LUCI_UPGRADE_CONVERGENCE_HOTPLUG=PASS' 2>/dev/null || true
+exit 0
