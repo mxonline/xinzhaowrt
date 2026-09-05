@@ -36,6 +36,11 @@ Assert-NotContains $controlPlane '--max-turns 1' 'Control Plane must not limit P
 Assert-NotContains $controlPlane 'HEADLESS_RUNTIME_NO_PROGRESS' 'Control Plane must not require asynchronous ProductionRuntime progress inside the same wakeup job'
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_WAKEUP=PASS' 'Control Plane must emit explicit supervisor handoff evidence'
 
+# A failed supervisor tick must expose enough persisted evidence in the same Actions log to diagnose the first cause.
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_STATUS=' 'Control Plane must print supervisor-status.json evidence before failing the wakeup'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Control Plane must print the persisted supervisor log tail before failing the wakeup'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Control Plane must delimit the persisted supervisor log tail in Actions'
+
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
 Assert-Contains $windowsProcess 'HEADLESS_PYTHON_EXE' 'supervisor child interpreter selection must reuse the verified persistent headless Python when available'
@@ -58,4 +63,5 @@ Assert-Contains $supervisor '"resume"' 'supervisor child must run the continuous
 Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be artificially bounded to a single turn'
 
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
+Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
