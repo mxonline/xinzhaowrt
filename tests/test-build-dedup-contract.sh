@@ -29,6 +29,12 @@ scope="$(printf '%s\n' \
   tests/test-build-dedup-contract.sh | bash "$ROOT/scripts/classify-build-scope.sh")"
 [[ "$scope" == FAST_GATE ]] || { echo "FAIL: dedup control plane classified as $scope" >&2; exit 1; }
 
+state_scope="$(printf '%s\n' \
+  production/operator-intent.json \
+  production/resume-state.json \
+  production/firmware-events.jsonl | bash "$ROOT/scripts/classify-build-scope.sh")"
+[[ "$state_scope" == FAST_GATE ]] || { echo "FAIL: pure release-state files classified as $state_scope; they must not trigger a firmware Candidate" >&2; exit 1; }
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 git clone --shared --quiet "$ROOT" "$work/repo"
@@ -53,12 +59,29 @@ handoff_head="$(git rev-parse HEAD)"
 [[ "$(bash scripts/source-impact-gate.sh "$doc_head" "$handoff_head")" == $'NO_FIRMWARE_CHANGE\tFAST_GATE' ]]
 [[ "$(bash scripts/build-fingerprint.sh "$handoff_head")" == "$fp_base" ]]
 
+python3 - <<'PY'
+import json
+from pathlib import Path
+for name in ('production/operator-intent.json', 'production/resume-state.json'):
+    p = Path(name)
+    data = json.loads(p.read_text(encoding='utf-8'))
+    data['_dedup_contract_probe'] = 'state-only'
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+with Path('production/firmware-events.jsonl').open('a', encoding='utf-8') as f:
+    f.write('{"schema_version":1,"event":"DEDUP_CONTRACT_STATE_ONLY"}\n')
+PY
+git add production/operator-intent.json production/resume-state.json production/firmware-events.jsonl
+git commit -qm 'test state only'
+state_head="$(git rev-parse HEAD)"
+[[ "$(bash scripts/source-impact-gate.sh "$handoff_head" "$state_head")" == $'NO_FIRMWARE_CHANGE\tFAST_GATE' ]]
+[[ "$(bash scripts/build-fingerprint.sh "$state_head")" == "$fp_base" ]]
+
 mkdir -p files/etc/config
 printf 'option dedup test\n' > files/etc/config/dedup-contract
 git add files/etc/config/dedup-contract
 git commit -qm 'test firmware input'
 firmware_head="$(git rev-parse HEAD)"
-[[ "$(bash scripts/source-impact-gate.sh "$handoff_head" "$firmware_head")" == $'FIRMWARE_IMPACT\tIMAGEBUILDER' ]]
+[[ "$(bash scripts/source-impact-gate.sh "$state_head" "$firmware_head")" == $'FIRMWARE_IMPACT\tIMAGEBUILDER' ]]
 [[ "$(bash scripts/build-fingerprint.sh "$firmware_head")" != "$fp_base" ]]
 
 mkdir -p "$work/bin"
