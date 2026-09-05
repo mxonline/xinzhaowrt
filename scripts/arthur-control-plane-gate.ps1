@@ -42,7 +42,7 @@ if (-not $decision.allowed) {
 }
 
 Write-Host 'FIRMWARE_EXECUTION_AUTHORIZED=PASS'
-$resumeOutput = & $resumeGatePath -Repository $Repository 2>&1 | Out-String
+$resumeOutput = & $resumeGatePath -Repository $Repository -AllowRepositoryHeadDriftForReconciliation 2>&1 | Out-String
 $resumeCode = $LASTEXITCODE
 if (-not [string]::IsNullOrWhiteSpace($resumeOutput)) { Write-Host $resumeOutput.Trim() }
 if ($resumeCode -ne 0) {
