@@ -52,9 +52,6 @@ Assert-Contains $script "@(`$deviceLines | Where-Object { `$_ -match 'build-info
 Assert-Contains $script "-split '__BUILD_INFO_SCAN__', 2" 'device probe must preserve the complete multiline ubus board JSON before the build-info scan marker'
 Assert-Contains $script "PSObject.Properties['board_name']" 'device identity must read OpenWrt system board_name defensively under StrictMode'
 Assert-Contains $script 'DEVICE_PROBE reachable=' 'live device classification must emit explicit evidence before a safety decision'
-Assert-Contains $script '$env:HEADLESS_PYTHON_EXE' 'control plane must consume the verified persistent headless Python path passed by the wakeup workflow'
-Assert-Contains $script 'CONTROL_PLANE_PYTHON=PASS' 'control plane must emit which verified Python executable it selected'
-Assert-NotContains $script "foreach (`$tool in @('git', 'gh', 'python'))" 'control plane must not require a generic python command when HEADLESS_PYTHON_EXE is explicitly provided'
 
 # Current release checkpoint is ADH management first, then Chinese localization.
 Assert-Contains $script "request_id = 'arthur-adh-quickstart'" 'control-plane bootstrap must bind to the current Arthur ADH release task'
@@ -89,6 +86,9 @@ Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headles
 Assert-Contains $wakeup 'merge --ff-only' 'a clean persistent workspace may only fast-forward to origin/main'
 Assert-Contains $wakeup '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE' 'control plane repo lookups, resume-state and Headless Codex must all bind to the persistent workspace'
 Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_BOUND=PASS' 'runtime evidence must prove the persistent workspace binding'
+Assert-Contains $wakeup '$env:HEADLESS_PYTHON_EXE' 'wakeup must pass and validate the verified persistent Python interpreter before Control Plane execution'
+Assert-Contains $wakeup 'CONTROL_PLANE_PYTHON_BINDING=PASS' 'wakeup must make the verified Python interpreter visible to the Control Plane in the same step'
+Assert-Contains $wakeup 'CONTROL_PLANE_RUNTIME_INPUT=PASS' 'wakeup must expose state-input existence before invoking the Control Plane so failures are diagnosable'
 Assert-NotContains $wakeup 'reset --hard' 'runner wakeup must never destroy persistent headless source changes'
 Assert-NotContains $wakeup 'git clean' 'runner wakeup must never clean persistent headless source changes'
 Assert-NotContains $wakeup 'actions/checkout@v4' 'active unattended source must not be replaced by an ephemeral Actions checkout'
