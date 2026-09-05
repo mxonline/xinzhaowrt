@@ -42,7 +42,7 @@ if ($env:ARTHUR_REPAIR_TASK_IMPORT_ONLY -eq '1') { return }
 $statePath = [IO.Path]::GetFullPath($StateDir)
 $controlPath = [IO.Path]::GetFullPath($ControlRoot)
 $pythonPath = [IO.Path]::GetFullPath($HeadlessPythonExe)
-$controllerPath = Join-Path $controlPath 'scripts\arthur-windows-repair-controller.ps1'
+$controllerWrapperPath = Join-Path $controlPath 'scripts\invoke-arthur-windows-repair-controller.ps1'
 
 if (-not (Test-Path -LiteralPath $statePath -PathType Container)) {
     New-Item -ItemType Directory -Force -Path $statePath | Out-Null
@@ -53,8 +53,8 @@ if (-not (Test-Path -LiteralPath $controlPath -PathType Container)) {
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
     Fail "REPAIR_CONTROLLER_PYTHON_MISSING: $pythonPath"
 }
-if (-not (Test-Path -LiteralPath $controllerPath -PathType Leaf)) {
-    Fail "REPAIR_CONTROLLER_SCRIPT_MISSING: $controllerPath"
+if (-not (Test-Path -LiteralPath $controllerWrapperPath -PathType Leaf)) {
+    Fail "REPAIR_CONTROLLER_WRAPPER_MISSING: $controllerWrapperPath"
 }
 
 $supervisor = Get-ScheduledTask -TaskName $SupervisorTaskName -ErrorAction SilentlyContinue
@@ -79,7 +79,7 @@ $launcher = @(
     ('$env:ARTHUR_CONTROL_PLANE_STATE_DIR = ' + (Quote-PsLiteral $statePath)),
     '$env:HEADLESS_CODEX_MODEL = ''gpt-5.6-terra''',
     ('Set-Location -LiteralPath ' + (Quote-PsLiteral $controlPath)),
-    ('& ' + (Quote-PsLiteral $controllerPath) +
+    ('& ' + (Quote-PsLiteral $controllerWrapperPath) +
         ' -StateDir ' + (Quote-PsLiteral $statePath) +
         ' -ControlRoot ' + (Quote-PsLiteral $controlPath) +
         ' -HeadlessPythonExe ' + (Quote-PsLiteral $pythonPath) +
