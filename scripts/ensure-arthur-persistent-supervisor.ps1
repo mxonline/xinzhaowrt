@@ -14,6 +14,46 @@ function Fail([string]$Message) {
     exit 1
 }
 
+function Get-InteractiveDesktopUser {
+    $consoleUser = [string](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName
+    if (-not [string]::IsNullOrWhiteSpace($consoleUser)) {
+        Write-Host "PERSISTENT_SUPERVISOR_INTERACTIVE_USER=PASS user=$consoleUser source=Win32_ComputerSystem"
+        return $consoleUser.Trim()
+    }
+
+    $owners = New-Object System.Collections.Generic.List[string]
+    $shells = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue)
+    foreach ($shell in $shells) {
+        try {
+            $owner = Invoke-CimMethod -InputObject $shell -MethodName GetOwner -ErrorAction Stop
+        }
+        catch {
+            continue
+        }
+        if ($null -eq $owner -or [int]$owner.ReturnValue -ne 0 -or [string]::IsNullOrWhiteSpace([string]$owner.User)) {
+            continue
+        }
+
+        $user = [string]$owner.User
+        $domain = [string]$owner.Domain
+        $qualified = if ([string]::IsNullOrWhiteSpace($domain)) { $user } else { "$domain\$user" }
+        if (-not $owners.Contains($qualified)) {
+            $owners.Add($qualified)
+        }
+    }
+
+    if ($owners.Count -eq 1) {
+        $resolved = [string]$owners[0]
+        Write-Host "PERSISTENT_SUPERVISOR_INTERACTIVE_USER_FALLBACK=PASS user=$resolved source=explorer.exe"
+        return $resolved
+    }
+    if ($owners.Count -gt 1) {
+        Fail "PERSISTENT_SUPERVISOR_INTERACTIVE_USER_AMBIGUOUS: users=$($owners -join ',')"
+    }
+
+    Fail 'PERSISTENT_SUPERVISOR_NO_INTERACTIVE_USER: Arthur Codex credentials require an active desktop user context.'
+}
+
 $statePath = [IO.Path]::GetFullPath($StateDir)
 $controlPath = [IO.Path]::GetFullPath($ControlRoot)
 $pythonPath = [IO.Path]::GetFullPath($HeadlessPythonExe)
@@ -32,9 +72,17 @@ if (-not (Test-Path -LiteralPath $shimPath -PathType Leaf)) {
     Fail "PERSISTENT_SUPERVISOR_SHIM_MISSING: $shimPath"
 }
 
-$interactiveUser = [string](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName
-if ([string]::IsNullOrWhiteSpace($interactiveUser)) {
-    Fail 'PERSISTENT_SUPERVISOR_NO_INTERACTIVE_USER: Arthur Codex credentials require an active desktop user context.'
+# Reuse an existing durable task before requiring the runner service to rediscover
+# the desktop user. The task principal is already the authoritative interactive
+# identity selected at registration time.
+$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$interactiveUser = ''
+if ($existing -and $existing.Principal -and -not [string]::IsNullOrWhiteSpace([string]$existing.Principal.UserId)) {
+    $interactiveUser = [string]$existing.Principal.UserId
+    Write-Host "PERSISTENT_SUPERVISOR_INTERACTIVE_USER=REUSE user=$interactiveUser source=ScheduledTaskPrincipal"
+}
+else {
+    $interactiveUser = Get-InteractiveDesktopUser
 }
 
 $launcherRoot = Join-Path $env:ProgramData 'XinZhaoWrt\PersistentSupervisor'
@@ -57,7 +105,6 @@ $launcher = @(
 ) -join [Environment]::NewLine
 [IO.File]::WriteAllText($launcherPath, $launcher + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
-$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if (-not $existing) {
     $action = New-ScheduledTaskAction `
         -Execute 'powershell.exe' `
