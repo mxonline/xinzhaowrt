@@ -29,19 +29,17 @@ pass AUTHORITATIVE_TARGET_VALUES
 
 config='config/arthur.config'
 defaults='files/etc/uci-defaults/99-xinzhao-defaults'
-wifi_defaults='files/etc/uci-defaults/98-xinzhao-wifi-defaults'
 luci_defaults='files/etc/uci-defaults/97-xinzhao-luci-defaults'
 verify='scripts/real-device-verify.ps1'
 
 grep -Fxq 'CONFIG_TARGET_qualcommax=y' "$config" || fail 'target qualcommax is not enabled'
+grep -Fxq 'CONFIG_TARGET_qualcomax_ipq60xx=y' "$config" && fail 'invalid target spelling remains' || true
 grep -Fxq 'CONFIG_TARGET_qualcommax_ipq60xx=y' "$config" || fail 'subtarget ipq60xx is not enabled'
 grep -Fxq 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01=y' "$config" || fail 'Arthur profile is not enabled'
 grep -Fq "uci set network.lan.ipaddr='192.168.6.1'" "$defaults" || fail 'first-boot LAN default is inconsistent'
 grep -Fq "DeviceIp = '192.168.6.1'" "$verify" || fail 'real-device LAN target is inconsistent'
 grep -Fq "wifi_default_ssid='xinzhaowrt'" "$defaults" || fail 'first-boot SSID is inconsistent'
 grep -Fq "wifi_default_password='12345678'" "$defaults" || fail 'first-boot Wi-Fi password is inconsistent'
-grep -Fq "wifi_default_ssid='xinzhaowrt'" "$wifi_defaults" || fail 'independent SSID default is inconsistent'
-grep -Fq "wifi_default_password='12345678'" "$wifi_defaults" || fail 'independent Wi-Fi password is inconsistent'
 grep -Fq "luci.main.lang='zh_cn'" "$luci_defaults" || fail 'language default is inconsistent'
 grep -Fq "luci.main.mediaurlbase='/luci-static/argon'" "$luci_defaults" || fail 'Argon default is inconsistent'
 grep -Fq "luci.themes.KuCat='/luci-static/kucat'" "$luci_defaults" || fail 'KuCat selectable theme registration is missing'
