@@ -1,0 +1,17 @@
+name: Arthur Repair Controller Tests
+
+'on':
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  probe-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: RED/GREEN Arthur Codex runtime probe contract
+        run: python3 -m unittest tests.test_arthur_codex_runtime_probe -v
