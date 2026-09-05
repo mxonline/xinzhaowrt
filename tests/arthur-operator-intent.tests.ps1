@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IntentPath = Join-Path $Root 'production\operator-intent.json'
 $RequestPath = Join-Path $Root 'production\v3-request.json'
+$ResumeStatePath = Join-Path $Root 'production\resume-state.json'
 $IntentHelperPath = Join-Path $Root 'scripts\arthur-operator-intent.ps1'
 $GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
@@ -30,6 +31,7 @@ function Assert-Contains {
 
 Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
 Assert-True (Test-Path $RequestPath) 'final Arthur v3 release request must exist'
+Assert-True (Test-Path $ResumeStatePath) 'machine-readable resume state must exist'
 Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
 Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
@@ -41,6 +43,7 @@ Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
 
 $current = Get-Content -Raw $IntentPath | ConvertFrom-Json
 $request = Get-Content -Raw $RequestPath | ConvertFrom-Json
+$resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
 if ($current.firmware_execution_authorized -eq $true) {
     Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'authorized firmware execution must use EXECUTE_FIRMWARE intent'
@@ -58,6 +61,17 @@ foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')
 }
 Assert-Contains ([string]$request.reason) 'Do not repeat feature development' 'final release request must forbid repeating accepted feature development'
 Assert-Contains ([string]$request.reason) 'replacement Candidate' 'final release request must continue via one replacement Candidate'
+
+# The durable Resume Gate must agree with the accepted final-release checkpoint.
+# Stale ADH_MANAGEMENT state was observed blocking the live self-hosted wakeup even
+# after operator intent had moved to BUILD.
+Assert-Equal $resume.checkpoint.current 'BUILD' 'durable resume checkpoint must not route final release back to ADH_MANAGEMENT'
+Assert-Equal $resume.checkpoint.next_action 'BUILD' 'durable resume next action must be BUILD'
+Assert-Equal $resume.next_action 'BUILD' 'top-level durable resume action must be BUILD'
+Assert-True (@($resume.pending).Count -eq 1 -and @($resume.pending)[0] -eq 'BUILD') 'BUILD must be the only remaining current action before artifact handling'
+foreach ($frozen in @('wifi','luci_chinese','adguard_full_manager','quickstart')) {
+    Assert-True ($null -ne $resume.verified.$frozen) "$frozen evidence must remain durable in resume state"
+}
 
 $stateOnly = [pscustomobject]@{
     intent_type = 'STATE_CORRECTION'
@@ -97,6 +111,8 @@ Assert-Contains $gate 'forensic -> root cause -> auto-fix -> rebuild -> PRE_FLAS
 Assert-Contains $gate 'production\v3-request.json' 'runtime migration must be grounded in the durable final release request'
 Assert-Contains $gate 'ADH_MANAGEMENT' 'migration must recognize the known stale ADH runtime checkpoint'
 Assert-Contains $gate "phase = 'BUILD'" 'migration must set the persistent runtime phase to BUILD'
+Assert-Contains $gate "runtimeTerminal -eq 'SAFETY_BLOCKED'" 'a stale pre-build SAFETY_BLOCKED terminal from the superseded task must be eligible for final-release reconciliation'
+Assert-Contains $gate "terminal_state = ''" 'final-release reconciliation must clear only the superseded pre-build terminal marker before resuming BUILD'
 
 $wakeup = Get-Content -Raw $WakeupPath
 Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
