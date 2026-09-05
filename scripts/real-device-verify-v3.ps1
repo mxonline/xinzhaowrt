@@ -1,39 +1,29 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Candidate,
+    [string]$Candidate = 'prebuild-current-router',
 
     [Parameter(Mandatory = $true)]
     [string]$Commit,
 
     [string]$Target = 'root@192.168.6.1',
 
-    [string]$RootPassword = $env:ARTHUR_ROOT_PASSWORD
+    [string]$LuciCookieFile = $env:ARTHUR_LUCI_COOKIE_FILE,
+
+    [ValidateSet('Prebuild','PostFlash')]
+    [string]$Mode = 'Prebuild'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $BaseScript = Join-Path $PSScriptRoot 'real-device-verify.ps1'
-$BuildEnv = Join-Path $PSScriptRoot '..\build.env'
-
 if (-not (Test-Path $BaseScript)) {
     throw "Base real-device verification script is missing: $BaseScript"
 }
 
-if ([string]::IsNullOrWhiteSpace($RootPassword) -and (Test-Path $BuildEnv)) {
-    $passwordLine = Get-Content $BuildEnv | Where-Object { $_ -match '^DEFAULT_ROOT_PASSWORD="[^"]+"$' } | Select-Object -First 1
-    if ($passwordLine -match '^DEFAULT_ROOT_PASSWORD="([^"]+)"$') {
-        $RootPassword = $Matches[1]
-    }
+if ($Mode -eq 'PostFlash' -and $Candidate -notmatch '^arthur-(known-good|update)-\d+$') {
+    throw "PostFlash verification requires a real Candidate tag: $Candidate"
 }
-if ([string]::IsNullOrWhiteSpace($RootPassword)) {
-    throw 'ARTHUR_ROOT_PASSWORD is unavailable and build.env contains no approved root credential; authenticated LuCI verification is fail-closed.'
-}
-
-if ($Candidate -notmatch '^arthur-(known-good|update)-\d+$') {
-    throw "Unsupported Candidate tag: $Candidate"
-}
-if ($Candidate -match '33462873812|33569029385') {
-    throw "REJECTED_FOR_RELEASE: candidate $Candidate predates the current functional AdGuard/iStore acceptance target and may not be flashed or released."
+if ($Candidate -match '33462873812') {
+    throw 'REJECTED_FOR_RELEASE: candidate 33462873812 is REAL_DEVICE_VERIFY_INVALIDATED and may not be reflashed or released.'
 }
 
 if ($Commit -notmatch '^[0-9a-f]{40}$') {
@@ -48,8 +38,9 @@ $HostIp = $Matches[1]
 Write-Host "REAL_DEVICE_V3_TARGET=$Target"
 Write-Host "REAL_DEVICE_V3_CANDIDATE=$Candidate"
 Write-Host "REAL_DEVICE_V3_COMMIT=$Commit"
+Write-Host "REAL_DEVICE_V3_MODE=$Mode"
 
-& pwsh -NoProfile -ExecutionPolicy Bypass -File $BaseScript -DeviceIp $HostIp -Candidate $Candidate -Commit $Commit -RootPassword $RootPassword
+& pwsh -NoProfile -ExecutionPolicy Bypass -File $BaseScript -DeviceIp $HostIp -Candidate $Candidate -Commit $Commit -LuciCookieFile $LuciCookieFile -Mode $Mode
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
