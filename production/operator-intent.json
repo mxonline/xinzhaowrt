@@ -5,15 +5,21 @@
   "authorization_scope": "FIRMWARE_RELEASE",
   "firmware_execution_authorized": true,
   "firmware_state": {
-    "current_stage": "ADH_MANAGEMENT",
-    "next_stage": "ADH_CHINESE",
+    "current_stage": "BUILD",
+    "next_stage": "ARTIFACT",
     "verified_frozen": [
-      "WIFI"
+      "WIFI",
+      "LUCI_CHINESE",
+      "ADGUARD_FULL_MANAGER",
+      "QUICKSTART"
     ],
     "preserve": [
+      "WIFI",
+      "LuCI Simplified Chinese",
+      "AdGuard Home full manager",
       "iStore/QuickStart"
     ],
-    "source": "USER_EXPLICIT_START_2026-09-04"
+    "source": "FINAL_RELEASE_REQUEST_2026-09-05_AND_LIVE_VERIFIED_CHECKPOINTS"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
@@ -25,6 +31,6 @@
   "governance_task": {
     "authorized": false,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Firmware execution is explicitly authorized; resume the existing Arthur release task from ADH_MANAGEMENT without redesigning the control plane."
+    "goal": "Firmware execution is explicitly authorized. Preserve the four live-verified feature states and resume only the remaining production BUILD -> ARTIFACT -> PRE_FLASH -> at-most-once sysupgrade -> PostFlash verification -> Release path."
   }
 }
