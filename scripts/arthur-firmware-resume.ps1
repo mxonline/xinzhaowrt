@@ -65,7 +65,7 @@ $intentStage = if ($intent.firmware_state -and $intent.firmware_state.current_st
 $resumeStage = if ($resume.checkpoint -and $resume.checkpoint.current) { [string]$resume.checkpoint.current } else { '' }
 $resumeNext = if ($resume.next_action) { [string]$resume.next_action } else { '' }
 if ($intentStage -and $resumeStage -and $intentStage -ne $resumeStage -and $intentStage -ne $resumeNext) {
-    $conflicts += "OPERATOR_RESUME_STAGE_MISMATCH:$intentStage:$resumeStage:$resumeNext"
+    $conflicts += "OPERATOR_RESUME_STAGE_MISMATCH:${intentStage}:${resumeStage}:${resumeNext}"
 }
 
 $lastEvent = if ($events.Count -gt 0) { $events[-1] } else { $null }
