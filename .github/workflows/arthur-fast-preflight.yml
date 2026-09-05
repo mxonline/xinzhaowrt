@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-operator-intent.tests.ps1
 
+      - name: Test Arthur firmware event-ledger resume contract
+        shell: pwsh
+        run: ./tests/arthur-firmware-resume.tests.ps1
+
       - name: Parse LIVE_PREVIEW and control-plane PowerShell
         shell: pwsh
         run: |
@@ -76,6 +80,8 @@ jobs:
             'scripts/arthur-resume-state.ps1',
             'scripts/arthur-operator-intent.ps1',
             'scripts/arthur-control-plane-gate.ps1',
+            'scripts/arthur-firmware-event-ledger.ps1',
+            'scripts/arthur-firmware-resume.ps1',
             'scripts/arthur-control-plane.ps1'
           )) {
             if (-not (Test-Path $file)) {
