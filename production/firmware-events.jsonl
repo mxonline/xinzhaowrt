@@ -1,0 +1,1 @@
+{"schema_version":1,"seq":1,"time":"2026-09-05T18:50:00+08:00","event":"LEDGER_INITIALIZED","stage":"","source":"GOVERNANCE_BOOTSTRAP","data":{"note":"History starts at ledger initialization; no prior firmware stage is inferred."},"prev_hash":"GENESIS","event_hash":"c585594d844800ce29169cfac4530c256cffeb5da08f756f26f6d9ccfd75b7e6"}
