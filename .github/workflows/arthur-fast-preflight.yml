@@ -31,6 +31,12 @@ jobs:
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
 
+      - name: Test Candidate dedup and failed-run recovery contract
+        run: ./tests/test-build-dedup-contract.sh
+
+      - name: Test Codex auto-recovery state transitions
+        run: python3 -m unittest tests.test_codex_auto_recovery -v
+
       - name: Test LIVE_PREVIEW safety contract
         run: ./tests/test-live-preview-contract.sh
 
@@ -110,7 +116,7 @@ jobs:
           }
 
       - name: Compile Arthur orchestrator Python
-        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py ai_orchestrator/supervisor.py ai_orchestrator/recovery_runtime.py
+        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py ai_orchestrator/supervisor.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py
 
       - name: Test runtime checkpoint synchronization
         run: python3 -m unittest tests.test_runtime_checkpoint_sync -v
