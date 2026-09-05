@@ -116,7 +116,8 @@ $startArgs = @{
     WorkingDirectory = $Workspace
     PassThru = $true
 }
-if ($IsWindows) { $startArgs['WindowStyle'] = 'Hidden' }
+$isWindowsHost = ([string]$env:OS -eq 'Windows_NT') -or ([string]$PSVersionTable.PSEdition -eq 'Desktop')
+if ($isWindowsHost) { $startArgs['WindowStyle'] = 'Hidden' }
 $proc = Start-Process @startArgs
 
 $sourceSha = if ($decision.ContainsKey('SOURCE_SHA')) { [string]$decision['SOURCE_SHA'] } else { '' }
