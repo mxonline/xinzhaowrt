@@ -8,6 +8,7 @@ $HistoryGuardPath = Join-Path $Root 'scripts\check-firmware-event-ledger-history
 $ResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
 $RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
 $AgentsPath = Join-Path $Root 'AGENTS.md'
+$ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 
 function Assert-True {
@@ -38,6 +39,7 @@ Assert-True (Test-Path $LedgerPath) 'append-only firmware event ledger must exis
 Assert-True (Test-Path $LedgerLibPath) 'firmware event ledger helper must exist'
 Assert-True (Test-Path $HistoryGuardPath) 'git history guard must enforce append-only ledger changes'
 Assert-True (Test-Path $ResumePath) 'unified firmware resume gate must exist'
+Assert-True (Test-Path $ControlPlaneGatePath) 'control-plane entry gate must exist'
 
 . $LedgerLibPath
 
@@ -69,6 +71,8 @@ $ledgerLines = @(Get-Content -LiteralPath $LedgerPath | Where-Object { -not [str
 Assert-True ($ledgerLines.Count -ge 1) 'repository ledger must contain a bootstrap event'
 foreach ($line in $ledgerLines) { $null = $line | ConvertFrom-Json }
 Assert-True ([bool](Test-ArthurFirmwareEventLedger -Path $LedgerPath)) 'repository ledger must have a valid hash chain'
+$bootstrap = $ledgerLines[0] | ConvertFrom-Json
+Assert-Equal ([string]$bootstrap.stage) '' 'ledger bootstrap must not invent a firmware stage before historical capture existed'
 
 $historyGuard = Get-Content -Raw $HistoryGuardPath
 Assert-Contains $historyGuard 'FIRMWARE_EVENT_HISTORY_APPEND_ONLY=PASS' 'history guard must emit explicit append-only success'
@@ -81,8 +85,16 @@ Assert-Contains $resume 'production\resume-state.json' 'resume gate must read ca
 Assert-Contains $resume 'production\firmware-events.jsonl' 'resume gate must read immutable event history'
 Assert-Contains $resume 'git log -1' 'resume gate must inspect effective repository HEAD'
 Assert-Contains $resume 'gh run list' 'resume gate must inspect current GitHub workflow evidence when external checks are enabled'
+Assert-Contains $resume 'REPOSITORY_HEAD_MISMATCH' 'resume gate must detect stale snapshot source identity'
+Assert-Contains $resume 'GITHUB_EVIDENCE_UNAVAILABLE' 'resume gate must fail closed when required GitHub evidence cannot be read'
+Assert-Contains $resume 'AllowRepositoryHeadDriftForReconciliation' 'only the reconciler may tolerate source-head drift long enough to repair the snapshot'
 Assert-Contains $resume 'RESUME_GATE_SAFE' 'resume gate must emit an explicit safe result'
 Assert-Contains $resume 'RESUME_GATE_CONFLICT' 'resume gate must fail closed on conflicting state'
+
+$controlPlaneGate = Get-Content -Raw $ControlPlaneGatePath
+Assert-Contains $controlPlaneGate 'arthur-firmware-resume.ps1' 'control-plane entry must run the unified resume gate'
+Assert-Contains $controlPlaneGate 'AllowRepositoryHeadDriftForReconciliation' 'control-plane entry may tolerate source-head drift only for machine reconciliation'
+Assert-Contains $controlPlaneGate 'UNIFIED_RESUME_GATE=PASS' 'control-plane entry must prove resume gate completion before mutation'
 
 $rules = Get-Content -Raw $RulesPath
 Assert-Contains $rules 'firmware-events.jsonl' 'GPT rules must require reading the event ledger'
