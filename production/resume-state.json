@@ -46,6 +46,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "34ffbfbc57763d68720eb38459d0e79c3d35bbed4cf9b7e771cea678ab9566e8",
+    "semantic_sha256":  "0a1ae8d74d9e6ca567e7e3051a8d9a2869113c90eebf7b74d9065abf2f960b14",
     "evidence_timestamp":  "2026-09-05T18:25:49.5853929+00:00"
 }
