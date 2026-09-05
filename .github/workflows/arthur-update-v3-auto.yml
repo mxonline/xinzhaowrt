@@ -84,6 +84,11 @@ jobs:
               echo "V3_AUTO_TRIGGER_ALREADY_DISPATCHED=YES run_id=$EXISTING_RUN request_id=$REQUEST_ID source_ref=$SOURCE_REF"
               exit 0
               ;;
+            REPAIR_FAILED_RUN)
+              echo "V3_AUTO_TRIGGER=REPAIR_FAILED_RUN run_id=$EXISTING_RUN request_id=$REQUEST_ID fingerprint=$FINGERPRINT"
+              echo "V3_AUTO_TRIGGER_REPAIR_OWNED_BY_CONTROL_PLANE=YES run_id=$EXISTING_RUN"
+              exit 0
+              ;;
             NO_NEW_CANDIDATE)
               echo "V3_AUTO_TRIGGER=NO_NEW_CANDIDATE request_id=$REQUEST_ID fingerprint=$FINGERPRINT"
               exit 0
@@ -120,5 +125,5 @@ jobs:
             echo "- Mode: \`${MODE}\`"
             echo "- Source ref: \`${SOURCE_REF}\`"
             echo "- Build fingerprint: \`${FINGERPRINT}\`"
-            echo '- Candidate policy: same fingerprint watches/reuses existing run; new Candidate requires firmware-impact input change.'
+            echo '- Candidate policy: same fingerprint watches/reuses existing run; failed same-fingerprint runs are repaired by the existing Windows Control Plane; new Candidate requires firmware-impact input change.'
           } >> "$GITHUB_STEP_SUMMARY"
