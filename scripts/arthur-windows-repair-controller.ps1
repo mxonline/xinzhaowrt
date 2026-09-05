@@ -27,6 +27,16 @@ function Get-ArthurPropertyValue {
     return $property.Value
 }
 
+function Get-ArthurSha256 {
+    param([Parameter(Mandatory=$true)][string]$Text)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
+    }
+    finally { $sha.Dispose() }
+}
+
 function Read-JsonFile {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -44,11 +54,7 @@ function Save-JsonAtomic {
 }
 
 function Add-ArthurRepairEvent {
-    param(
-        [Parameter(Mandatory=$true)][string]$Path,
-        [Parameter(Mandatory=$true)][string]$Event,
-        [Parameter(Mandatory=$true)]$Data
-    )
+    param([Parameter(Mandatory=$true)][string]$Path,[Parameter(Mandatory=$true)][string]$Event,[Parameter(Mandatory=$true)]$Data)
     $record = [ordered]@{
         timestamp = [DateTimeOffset]::UtcNow.ToString('o')
         event = $Event
@@ -59,12 +65,22 @@ function Add-ArthurRepairEvent {
     Add-Content -LiteralPath $Path -Value (($record | ConvertTo-Json -Depth 30 -Compress)) -Encoding UTF8
 }
 
+function Read-ArthurRepairEvents {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @() }
+    $events = @()
+    foreach ($line in @(Get-Content -LiteralPath $Path)) {
+        if ([string]::IsNullOrWhiteSpace([string]$line)) { continue }
+        try { $events += ($line | ConvertFrom-Json) }
+        catch { continue }
+    }
+    return @($events)
+}
+
 function Get-ArthurRuntimeStateIdentity {
     param([Parameter(Mandatory=$true)]$State)
     $phase = Get-ArthurPropertyValue $State 'phase'
-    if ([string]::IsNullOrWhiteSpace([string]$phase)) {
-        $phase = Get-ArthurPropertyValue $State 'current_stage'
-    }
+    if ([string]::IsNullOrWhiteSpace([string]$phase)) { $phase = Get-ArthurPropertyValue $State 'current_stage' }
     return [pscustomobject][ordered]@{
         release_task_id = Get-ArthurPropertyValue $State 'release_task_id'
         repo = Get-ArthurPropertyValue $State 'repo'
@@ -78,9 +94,7 @@ function Get-ArthurRuntimeStateIdentity {
 
 function Test-ArthurRuntimeStateIdentity {
     param([Parameter(Mandatory=$true)]$Expected,[Parameter(Mandatory=$true)]$Actual)
-    $left = $Expected | ConvertTo-Json -Depth 10 -Compress
-    $right = $Actual | ConvertTo-Json -Depth 10 -Compress
-    return ($left -ceq $right)
+    return (($Expected | ConvertTo-Json -Depth 10 -Compress) -ceq ($Actual | ConvertTo-Json -Depth 10 -Compress))
 }
 
 function Test-ArthurRepairProtectedState {
@@ -90,23 +104,15 @@ function Test-ArthurRepairProtectedState {
         if (-not [string]::IsNullOrWhiteSpace($gate)) { return $true }
     }
     $phase = [string](Get-ArthurPropertyValue $State 'phase' '')
-    if ([string]::IsNullOrWhiteSpace($phase)) {
-        $phase = [string](Get-ArthurPropertyValue $State 'current_stage' '')
-    }
+    if ([string]::IsNullOrWhiteSpace($phase)) { $phase = [string](Get-ArthurPropertyValue $State 'current_stage' '') }
     return ($script:ProtectedPhases -contains $phase.ToUpperInvariant())
 }
 
 function Get-ArthurScheduledTaskEvidence {
     param([Parameter(Mandatory=$true)][string]$TaskName,[string]$ExpectedLauncher='')
     $result = [ordered]@{
-        available = $false
-        exists = $false
-        state = $null
-        user_id = $null
-        execute = $null
-        arguments = $null
-        working_directory = $null
-        launcher_drift = $false
+        available = $false; exists = $false; state = $null; user_id = $null
+        execute = $null; arguments = $null; working_directory = $null; launcher_drift = $false
     }
     if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) { return [pscustomobject]$result }
     $result.available = $true
@@ -129,16 +135,16 @@ function Get-ArthurScheduledTaskEvidence {
 
 function Get-ArthurProcessEvidence {
     param([Parameter(Mandatory=$true)][string]$StatePath)
-    $result = [ordered]@{ supervisor_pid = $null; codex_pid = $null; supervisor_alive = $false; codex_alive = $false }
+    $result = [ordered]@{ supervisor_pid=$null; codex_pid=$null; supervisor_alive=$false; codex_alive=$false }
     if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) { return [pscustomobject]$result }
     foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
         $command = [string]$process.CommandLine
-        if ([string]::IsNullOrWhiteSpace($command)) { continue }
-        if ($command -match 'run-supervisor\.py' -and $command.IndexOf($StatePath,[StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        if ([string]::IsNullOrWhiteSpace($command) -or $command.IndexOf($StatePath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        if ($command -match 'run-supervisor\.py') {
             $result.supervisor_pid = [int]$process.ProcessId
             $result.supervisor_alive = $true
         }
-        if ($command -match 'ai_orchestrator' -and $command -match '\bresume\b' -and $command.IndexOf($StatePath,[StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        if ($command -match 'ai_orchestrator' -and $command -match '\bresume\b') {
             $result.codex_pid = [int]$process.ProcessId
             $result.codex_alive = $true
         }
@@ -156,50 +162,35 @@ function Invoke-ArthurGitText {
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $oldPreference }
-    return [pscustomobject]@{ code = $code; output = $output }
+    return [pscustomobject]@{ code=$code; output=$output }
 }
 
 function Get-ArthurGitEvidence {
     param([Parameter(Mandatory=$true)][string]$Root)
-    $result = [ordered]@{ dirty = $true; relation = 'UNKNOWN'; head = $null; origin_main = $null; error = $null }
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        $result.error = 'GIT_UNAVAILABLE'
-        return [pscustomobject]$result
-    }
-    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
-        $result.error = 'CONTROL_ROOT_MISSING'
-        return [pscustomobject]$result
-    }
+    $result = [ordered]@{ dirty=$true; relation='UNKNOWN'; head=$null; origin_main=$null; error=$null }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { $result.error='GIT_UNAVAILABLE'; return [pscustomobject]$result }
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { $result.error='CONTROL_ROOT_MISSING'; return [pscustomobject]$result }
     $status = Invoke-ArthurGitText $Root @('status','--porcelain')
-    if ($status.code -ne 0) { $result.error = $status.output; return [pscustomobject]$result }
+    if ($status.code -ne 0) { $result.error=$status.output; return [pscustomobject]$result }
     $result.dirty = -not [string]::IsNullOrWhiteSpace($status.output)
     $head = Invoke-ArthurGitText $Root @('rev-parse','HEAD')
-    if ($head.code -ne 0) { $result.error = $head.output; return [pscustomobject]$result }
-    $result.head = $head.output
+    if ($head.code -ne 0) { $result.error=$head.output; return [pscustomobject]$result }
     $origin = Invoke-ArthurGitText $Root @('rev-parse','origin/main')
-    if ($origin.code -ne 0) { $result.error = $origin.output; return [pscustomobject]$result }
+    if ($origin.code -ne 0) { $result.error=$origin.output; return [pscustomobject]$result }
+    $result.head = $head.output
     $result.origin_main = $origin.output
-    if ($result.head -eq $result.origin_main) {
-        $result.relation = 'SAME'
-        return [pscustomobject]$result
-    }
-    $ancestor = Invoke-ArthurGitText $Root @('merge-base','--is-ancestor',$result.head,$result.origin_main)
-    if ($ancestor.code -eq 0) { $result.relation = 'BEHIND'; return [pscustomobject]$result }
-    $reverse = Invoke-ArthurGitText $Root @('merge-base','--is-ancestor',$result.origin_main,$result.head)
-    if ($reverse.code -eq 0) { $result.relation = 'AHEAD'; return [pscustomobject]$result }
-    $result.relation = 'DIVERGED'
+    if ($result.head -eq $result.origin_main) { $result.relation='SAME'; return [pscustomobject]$result }
+    if ((Invoke-ArthurGitText $Root @('merge-base','--is-ancestor',$result.head,$result.origin_main)).code -eq 0) { $result.relation='BEHIND'; return [pscustomobject]$result }
+    if ((Invoke-ArthurGitText $Root @('merge-base','--is-ancestor',$result.origin_main,$result.head)).code -eq 0) { $result.relation='AHEAD'; return [pscustomobject]$result }
+    $result.relation='DIVERGED'
     return [pscustomobject]$result
 }
 
 function Invoke-ArthurRuntimeProbe {
-    param(
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$ExpectedModel
-    )
+    param([Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$ExpectedModel)
     $probePath = Join-Path $Root 'scripts\arthur-codex-runtime-probe.py'
     if (-not (Test-Path -LiteralPath $probePath -PathType Leaf)) {
-        return [pscustomobject]@{ exit_class = 'PROBE_INTERNAL_ERROR'; module_root_ok = $false; model_binding_ok = $false; account_preflight_ok = $false; model_catalog_skipped = $false; error = 'PROBE_MISSING' }
+        return [pscustomobject]@{ exit_class='PROBE_INTERNAL_ERROR'; module_root_ok=$false; model_binding_ok=$false; account_preflight_ok=$false; model_catalog_skipped=$false; error='PROBE_MISSING' }
     }
     $oldRoot = $env:ARTHUR_CONTROL_PLANE_CODE_ROOT
     $oldModel = $env:HEADLESS_CODEX_MODEL
@@ -215,7 +206,7 @@ function Invoke-ArthurRuntimeProbe {
         finally { $ErrorActionPreference = $oldPreference }
         try { $payload = $raw | ConvertFrom-Json }
         catch {
-            return [pscustomobject]@{ exit_class = 'PROBE_INTERNAL_ERROR'; module_root_ok = $false; model_binding_ok = $false; account_preflight_ok = $false; model_catalog_skipped = $false; exit_code = $exitCode; error = $raw }
+            return [pscustomobject]@{ exit_class='PROBE_INTERNAL_ERROR'; module_root_ok=$false; model_binding_ok=$false; account_preflight_ok=$false; model_catalog_skipped=$false; exit_code=$exitCode; error=$raw }
         }
         $actualModule = [string](Get-ArthurPropertyValue $payload 'ai_orchestrator_file' '')
         $actualModel = [string](Get-ArthurPropertyValue $payload 'effective_model' '')
@@ -245,9 +236,7 @@ function Get-ArthurRepairFailureClass {
     if ($probeClass -eq 'MODULE_ROOT_DRIFT' -or -not [bool](Get-ArthurPropertyValue $probe 'module_root_ok' $true)) { return 'MODULE_ROOT_DRIFT' }
     if ($probeClass -eq 'MODEL_BINDING_DRIFT' -or -not [bool](Get-ArthurPropertyValue $probe 'model_binding_ok' $true)) { return 'MODEL_BINDING_DRIFT' }
     $supervisor = Get-ArthurPropertyValue $Evidence 'supervisor'
-    if ([string](Get-ArthurPropertyValue $supervisor 'status' '') -eq 'CRASH_LOOP_BLOCKED' -and $probeClass -eq 'PROBE_OK') {
-        return 'SUPERVISOR_RETRY_EXHAUSTED'
-    }
+    if ([string](Get-ArthurPropertyValue $supervisor 'status' '') -eq 'CRASH_LOOP_BLOCKED' -and $probeClass -eq 'PROBE_OK') { return 'SUPERVISOR_RETRY_EXHAUSTED' }
     return 'UNKNOWN_FAILURE'
 }
 
@@ -263,6 +252,25 @@ function Get-ArthurApprovedRepairAction {
     }
 }
 
+function Get-ArthurTaskActionDigest {
+    param($Task)
+    $basis = [ordered]@{
+        execute = Get-ArthurPropertyValue $Task 'execute'
+        arguments = Get-ArthurPropertyValue $Task 'arguments'
+        working_directory = Get-ArthurPropertyValue $Task 'working_directory'
+    } | ConvertTo-Json -Compress
+    return Get-ArthurSha256 $basis
+}
+
+function Get-ArthurLatestRuntimeErrorClass {
+    param($Supervisor)
+    foreach ($name in @('transport_error','error','reason','status')) {
+        $value = [string](Get-ArthurPropertyValue $Supervisor $name '')
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    }
+    return ''
+}
+
 function Get-ArthurFailureFingerprint {
     param([Parameter(Mandatory=$true)]$Evidence)
     $git = Get-ArthurPropertyValue $Evidence 'git'
@@ -270,46 +278,84 @@ function Get-ArthurFailureFingerprint {
     $probe = Get-ArthurPropertyValue $Evidence 'probe'
     $supervisor = Get-ArthurPropertyValue $Evidence 'supervisor'
     $basis = [ordered]@{
-        class = Get-ArthurRepairFailureClass $Evidence
-        git_relation = Get-ArthurPropertyValue $git 'relation'
-        git_dirty = Get-ArthurPropertyValue $git 'dirty'
-        task_drift = Get-ArthurPropertyValue $task 'launcher_drift'
-        probe_exit = Get-ArthurPropertyValue $probe 'exit_class'
-        module_root_ok = Get-ArthurPropertyValue $probe 'module_root_ok'
-        model_binding_ok = Get-ArthurPropertyValue $probe 'model_binding_ok'
-        supervisor_status = Get-ArthurPropertyValue $supervisor 'status'
+        failure_class = Get-ArthurRepairFailureClass $Evidence
+        control_runtime_sha = Get-ArthurPropertyValue $git 'head'
+        actual_module_root = Get-ArthurPropertyValue $probe 'ai_orchestrator_file'
+        actual_model = Get-ArthurPropertyValue $probe 'effective_model'
+        supervisor_task_action_digest = Get-ArthurTaskActionDigest $task
+        latest_runtime_error_class = Get-ArthurLatestRuntimeErrorClass $supervisor
     } | ConvertTo-Json -Compress
-    $bytes = [Text.Encoding]::UTF8.GetBytes($basis)
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant() }
-    finally { $sha.Dispose() }
+    return Get-ArthurSha256 $basis
+}
+
+function Get-ArthurRepairAttemptDecision {
+    param([object[]]$Events,[Parameter(Mandatory=$true)][string]$Fingerprint,[datetimeoffset]$Now=[DateTimeOffset]::UtcNow)
+    $cutoff = $Now.AddMinutes(-30)
+    $count = 0
+    foreach ($event in @($Events)) {
+        if ([string](Get-ArthurPropertyValue $event 'event' '') -ne 'repair_action_started') { continue }
+        $data = Get-ArthurPropertyValue $event 'data'
+        if ([string](Get-ArthurPropertyValue $data 'failure_fingerprint' '') -ne $Fingerprint) { continue }
+        try { $at = [datetimeoffset]([string](Get-ArthurPropertyValue $event 'timestamp' '')) }
+        catch { continue }
+        if ($at -ge $cutoff -and $at -le $Now) { $count++ }
+    }
+    return [pscustomobject]@{
+        allowed = ($count -lt 3)
+        attempt_count = $count
+        result = if ($count -ge 3) { 'REPAIR_EXHAUSTED' } else { 'ALLOW' }
+    }
+}
+
+function Test-ArthurRepairRecoveryWindow {
+    param([object[]]$Observations)
+    $items = @($Observations)
+    if ($items.Count -lt 2) { return [pscustomobject]@{ passed=$false; healthy_seconds=0; heartbeat_advances=0; reason='INSUFFICIENT_OBSERVATIONS' } }
+    $firstAt = [datetimeoffset](Get-ArthurPropertyValue $items[0] 'at')
+    $lastAt = $firstAt
+    $previousHeartbeat = $null
+    $advances = 0
+    foreach ($item in $items) {
+        $at = [datetimeoffset](Get-ArthurPropertyValue $item 'at')
+        $lastAt = $at
+        if (-not [bool](Get-ArthurPropertyValue $item 'task_running' $false) -or
+            -not [bool](Get-ArthurPropertyValue $item 'supervisor_alive' $false) -or
+            -not [bool](Get-ArthurPropertyValue $item 'codex_alive' $false)) {
+            return [pscustomobject]@{ passed=$false; healthy_seconds=($lastAt-$firstAt).TotalSeconds; heartbeat_advances=$advances; reason='PROCESS_NOT_CONTINUOUSLY_HEALTHY' }
+        }
+        $rawHeartbeat = [string](Get-ArthurPropertyValue $item 'heartbeat' '')
+        if ([string]::IsNullOrWhiteSpace($rawHeartbeat)) {
+            return [pscustomobject]@{ passed=$false; healthy_seconds=($lastAt-$firstAt).TotalSeconds; heartbeat_advances=$advances; reason='HEARTBEAT_MISSING' }
+        }
+        try { $heartbeat = [datetimeoffset]$rawHeartbeat }
+        catch { return [pscustomobject]@{ passed=$false; healthy_seconds=($lastAt-$firstAt).TotalSeconds; heartbeat_advances=$advances; reason='HEARTBEAT_INVALID' } }
+        if (($at - $heartbeat).TotalSeconds -gt 120 -or ($heartbeat - $at).TotalSeconds -gt 30) {
+            return [pscustomobject]@{ passed=$false; healthy_seconds=($lastAt-$firstAt).TotalSeconds; heartbeat_advances=$advances; reason='HEARTBEAT_STALE' }
+        }
+        if ($null -ne $previousHeartbeat -and $heartbeat -gt $previousHeartbeat) { $advances++ }
+        $previousHeartbeat = $heartbeat
+    }
+    $seconds = ($lastAt - $firstAt).TotalSeconds
+    $passed = ($seconds -ge 120 -and $advances -ge 2)
+    return [pscustomobject]@{ passed=$passed; healthy_seconds=$seconds; heartbeat_advances=$advances; reason=if($passed){'PASS'}else{'WINDOW_INCOMPLETE'} }
 }
 
 function Get-ArthurRepairEvidence {
-    param(
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$TaskName
-    )
-    $runtimePath = Join-Path $StatePath 'runtime-state.json'
-    $runtime = Read-JsonFile $runtimePath
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName)
+    $runtime = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
     $identity = if ($runtime) { Get-ArthurRuntimeStateIdentity $runtime } else { $null }
     $supervisor = Read-JsonFile (Join-Path $StatePath 'supervisor-status.json')
-    if (-not $supervisor) { $supervisor = [pscustomobject]@{ status = 'MISSING' } }
+    if (-not $supervisor) { $supervisor = [pscustomobject]@{ status='MISSING' } }
     $programData = [Environment]::GetFolderPath('CommonApplicationData')
     $launcher = if ([string]::IsNullOrWhiteSpace($programData)) { '' } else { Join-Path $programData 'XinZhaoWrt\PersistentSupervisor\run-arthur-persistent-supervisor.ps1' }
-    $task = Get-ArthurScheduledTaskEvidence -TaskName $TaskName -ExpectedLauncher $launcher
-    $process = Get-ArthurProcessEvidence -StatePath $StatePath
-    $probe = Invoke-ArthurRuntimeProbe -Root $Root -PythonExe $PythonExe -ExpectedModel $script:ExpectedHeadlessModel
     return [pscustomobject][ordered]@{
         protected = if ($runtime) { Test-ArthurRepairProtectedState $runtime } else { $true }
         runtime_state = $runtime
         runtime_state_identity = $identity
         git = Get-ArthurGitEvidence $Root
-        task = $task
-        process = $process
-        probe = $probe
+        task = Get-ArthurScheduledTaskEvidence -TaskName $TaskName -ExpectedLauncher $launcher
+        process = Get-ArthurProcessEvidence -StatePath $StatePath
+        probe = Invoke-ArthurRuntimeProbe -Root $Root -PythonExe $PythonExe -ExpectedModel $script:ExpectedHeadlessModel
         supervisor = $supervisor
         expected_model = $script:ExpectedHeadlessModel
     }
@@ -321,16 +367,10 @@ function Write-ArthurRepairStatus {
 }
 
 function Assert-ArthurRepairMutationAllowed {
-    param(
-        [Parameter(Mandatory=$true)]$Evidence,
-        [Parameter(Mandatory=$true)]$ExpectedIdentity,
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root
-    )
+    param([Parameter(Mandatory=$true)]$Evidence,[Parameter(Mandatory=$true)]$ExpectedIdentity,[Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root)
     $runtime = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
     if (-not $runtime) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_MISSING' }
-    $actualIdentity = Get-ArthurRuntimeStateIdentity $runtime
-    if (-not (Test-ArthurRuntimeStateIdentity $ExpectedIdentity $actualIdentity)) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
+    if (-not (Test-ArthurRuntimeStateIdentity $ExpectedIdentity (Get-ArthurRuntimeStateIdentity $runtime))) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
     if ([bool](Get-ArthurPropertyValue $Evidence 'protected' $false) -or (Test-ArthurRepairProtectedState $runtime)) { throw 'REPAIR_BLOCKED_SAFETY_STATE' }
     $evidenceGit = Get-ArthurPropertyValue $Evidence 'git'
     if ([bool](Get-ArthurPropertyValue $evidenceGit 'dirty' $false)) { throw 'REPAIR_BLOCKED_DIRTY_CONTROL_RUNTIME' }
@@ -352,21 +392,15 @@ function Stop-ArthurRuntimeProcesses {
     if (-not (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) { return }
     foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
         $command = [string]$process.CommandLine
-        if ([string]::IsNullOrWhiteSpace($command)) { continue }
-        if ($command.IndexOf($StatePath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-        $matchesSupervisor = $command -match 'run-supervisor\.py'
-        $matchesRuntime = ($command -match 'ai_orchestrator' -and $command -match '\bresume\b')
-        if ($matchesSupervisor -or $matchesRuntime) { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop }
+        if ([string]::IsNullOrWhiteSpace($command) -or $command.IndexOf($StatePath,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        if ($command -match 'run-supervisor\.py' -or ($command -match 'ai_orchestrator' -and $command -match '\bresume\b')) {
+            Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop
+        }
     }
 }
 
 function Invoke-ArthurSupervisorPreparation {
-    param(
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$TaskName
-    )
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName)
     $helper = Join-Path $Root 'scripts\ensure-arthur-persistent-supervisor.ps1'
     if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'REPAIR_BLOCKED_SUPERVISOR_HELPER_MISSING' }
     & $helper -StateDir $StatePath -ControlRoot $Root -HeadlessPythonExe $PythonExe -TaskName $TaskName -DoNotStart
@@ -380,24 +414,25 @@ function Invoke-ArthurFastForwardControlRuntime {
     if ([string](Get-ArthurPropertyValue $before 'relation' '') -ne 'BEHIND') { throw 'REPAIR_BLOCKED_DIVERGED_CONTROL_RUNTIME' }
     $fetch = Invoke-ArthurGitText $Root @('fetch','--prune','origin','main')
     if ($fetch.code -ne 0) { throw "REPAIR_BLOCKED_CONTROL_RUNTIME_FETCH_FAILED:$($fetch.output)" }
-    $ancestor = Invoke-ArthurGitText $Root @('merge-base','--is-ancestor','HEAD','origin/main')
-    if ($ancestor.code -ne 0) { throw 'REPAIR_BLOCKED_DIVERGED_CONTROL_RUNTIME' }
+    if ((Invoke-ArthurGitText $Root @('merge-base','--is-ancestor','HEAD','origin/main')).code -ne 0) { throw 'REPAIR_BLOCKED_DIVERGED_CONTROL_RUNTIME' }
     $merge = Invoke-ArthurGitText $Root @('merge','--ff-only','origin/main')
     if ($merge.code -ne 0) { throw "REPAIR_BLOCKED_CONTROL_RUNTIME_FAST_FORWARD_FAILED:$($merge.output)" }
-    $afterStatus = Invoke-ArthurGitText $Root @('status','--porcelain')
-    if ($afterStatus.code -ne 0 -or -not [string]::IsNullOrWhiteSpace($afterStatus.output)) { throw 'REPAIR_BLOCKED_DIRTY_CONTROL_RUNTIME' }
+    $after = Invoke-ArthurGitText $Root @('status','--porcelain')
+    if ($after.code -ne 0 -or -not [string]::IsNullOrWhiteSpace($after.output)) { throw 'REPAIR_BLOCKED_DIRTY_CONTROL_RUNTIME' }
+}
+
+function Reset-ArthurSupervisorRetryState {
+    param([Parameter(Mandatory=$true)][string]$StatePath)
+    $retryPath = Join-Path $StatePath 'supervisor-state.json'
+    if (Test-Path -LiteralPath $retryPath -PathType Leaf) {
+        $backup = Join-Path $StatePath ("supervisor-state.json.backup-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        Copy-Item -LiteralPath $retryPath -Destination $backup -ErrorAction Stop
+        Remove-Item -LiteralPath $retryPath -Force -ErrorAction Stop
+    }
 }
 
 function Invoke-ArthurApprovedRepair {
-    param(
-        [Parameter(Mandatory=$true)][string]$Action,
-        [Parameter(Mandatory=$true)]$Evidence,
-        [Parameter(Mandatory=$true)]$ExpectedIdentity,
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$TaskName
-    )
+    param([Parameter(Mandatory=$true)][string]$Action,[Parameter(Mandatory=$true)]$Evidence,[Parameter(Mandatory=$true)]$ExpectedIdentity,[Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName)
     $null = Assert-ArthurRepairMutationAllowed -Evidence $Evidence -ExpectedIdentity $ExpectedIdentity -StatePath $StatePath -Root $Root
     switch ($Action) {
         'FAST_FORWARD_CONTROL_RUNTIME' { Invoke-ArthurFastForwardControlRuntime -Root $Root }
@@ -415,33 +450,17 @@ function Invoke-ArthurApprovedRepair {
             if ([string](Get-ArthurPropertyValue $probe 'exit_class' '') -ne 'PROBE_OK') { throw 'REPAIR_BLOCKED_RETRY_RESET_PROBE' }
             if (-not [bool](Get-ArthurPropertyValue $probe 'module_root_ok' $false)) { throw 'REPAIR_BLOCKED_RETRY_RESET_MODULE_ROOT' }
             if (-not [bool](Get-ArthurPropertyValue $probe 'model_catalog_skipped' $false)) { throw 'REPAIR_BLOCKED_RETRY_RESET_MODEL_CATALOG' }
-            $retryPath = Join-Path $StatePath 'supervisor-state.json'
-            if (Test-Path -LiteralPath $retryPath -PathType Leaf) {
-                $backup = Join-Path $StatePath ("supervisor-state.json.backup-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-                Copy-Item -LiteralPath $retryPath -Destination $backup -ErrorAction Stop
-                Remove-Item -LiteralPath $retryPath -Force -ErrorAction Stop
-            }
+            Reset-ArthurSupervisorRetryState -StatePath $StatePath
         }
         default { throw 'REPAIR_BLOCKED_UNAPPROVED_ACTION' }
     }
-    $afterState = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
-    if (-not $afterState) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_MISSING' }
-    $afterIdentity = Get-ArthurRuntimeStateIdentity $afterState
-    if (-not (Test-ArthurRuntimeStateIdentity $ExpectedIdentity $afterIdentity)) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
-    return $afterIdentity
+    $after = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
+    if (-not $after -or -not (Test-ArthurRuntimeStateIdentity $ExpectedIdentity (Get-ArthurRuntimeStateIdentity $after))) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
+    return Get-ArthurRuntimeStateIdentity $after
 }
 
 function New-ArthurRepairStatus {
-    param(
-        [Parameter(Mandatory=$true)]$Evidence,
-        [Parameter(Mandatory=$true)][string]$CurrentMode,
-        [Parameter(Mandatory=$true)][string]$FailureClass,
-        [Parameter(Mandatory=$true)][string]$Fingerprint,
-        [string]$Action=$null,
-        [int]$AttemptCount=0,
-        [string]$FinalResult=$null,
-        [string]$Status='DIAGNOSING'
-    )
+    param([Parameter(Mandatory=$true)]$Evidence,[Parameter(Mandatory=$true)][string]$CurrentMode,[Parameter(Mandatory=$true)][string]$FailureClass,[Parameter(Mandatory=$true)][string]$Fingerprint,[string]$Action=$null,[int]$AttemptCount=0,[string]$FinalResult=$null,[string]$Status='DIAGNOSING',[double]$HealthySeconds=0,[int]$HeartbeatAdvances=0)
     $identity = Get-ArthurPropertyValue $Evidence 'runtime_state_identity'
     $git = Get-ArthurPropertyValue $Evidence 'git'
     $probe = Get-ArthurPropertyValue $Evidence 'probe'
@@ -462,6 +481,7 @@ function New-ArthurRepairStatus {
         actual_model = Get-ArthurPropertyValue $probe 'effective_model'
         supervisor_pid = Get-ArthurPropertyValue $process 'supervisor_pid'
         codex_pid = Get-ArthurPropertyValue $process 'codex_pid'
+        heartbeat_observations = [ordered]@{ healthy_seconds=$HealthySeconds; heartbeat_advances=$HeartbeatAdvances }
         runtime_state_identity = $identity
         failure_fingerprint = $Fingerprint
         final_result = $FinalResult
@@ -469,35 +489,24 @@ function New-ArthurRepairStatus {
 }
 
 function Invoke-ArthurRepairDiagnostic {
-    param(
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$TaskName,
-        [Parameter(Mandatory=$true)][string]$CurrentMode
-    )
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName,[Parameter(Mandatory=$true)][string]$CurrentMode)
     $evidence = Get-ArthurRepairEvidence -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName
     $failureClass = Get-ArthurRepairFailureClass $evidence
     $fingerprint = Get-ArthurFailureFingerprint $evidence
     $final = if ($failureClass -eq 'UNKNOWN_FAILURE') { 'REPAIR_BLOCKED_UNKNOWN_FAILURE' } else { 'DIAGNOSTIC_COMPLETE' }
     $status = New-ArthurRepairStatus -Evidence $evidence -CurrentMode $CurrentMode -FailureClass $failureClass -Fingerprint $fingerprint -FinalResult $final
     $eventsPath = Join-Path $StatePath 'repair-events.jsonl'
-    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_cycle_started' -Data ([ordered]@{ mode = $CurrentMode; failure_fingerprint = $fingerprint })
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_cycle_started' -Data ([ordered]@{ mode=$CurrentMode; failure_fingerprint=$fingerprint })
     Write-ArthurRepairStatus -Path (Join-Path $StatePath 'repair-status.json') -Status $status
-    Add-ArthurRepairEvent -Path $eventsPath -Event 'diagnostic_terminal' -Data ([ordered]@{ failure_class = $failureClass; final_result = $final })
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'diagnostic_terminal' -Data ([ordered]@{ failure_class=$failureClass; final_result=$final })
     Write-Host 'WINDOWS_REPAIR_DIAGNOSIS=PASS'
     Write-Host "WINDOWS_REPAIR_CLASS=$failureClass"
-    return [pscustomobject]@{ evidence = $evidence; status = [pscustomobject]$status }
+    return [pscustomobject]@{ evidence=$evidence; status=[pscustomobject]$status }
 }
 
-function Invoke-ArthurWhitelistRepairCycle {
-    param(
-        [Parameter(Mandatory=$true)][string]$StatePath,
-        [Parameter(Mandatory=$true)][string]$Root,
-        [Parameter(Mandatory=$true)][string]$PythonExe,
-        [Parameter(Mandatory=$true)][string]$TaskName
-    )
-    $diagnostic = Invoke-ArthurRepairDiagnostic -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName -CurrentMode 'WhitelistRepair'
+function Invoke-ArthurRepairPreparationCycle {
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName,[Parameter(Mandatory=$true)][string]$CurrentMode)
+    $diagnostic = Invoke-ArthurRepairDiagnostic -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName -CurrentMode $CurrentMode
     $evidence = $diagnostic.evidence
     $failureClass = [string]$diagnostic.status.failure_class
     $action = Get-ArthurApprovedRepairAction $failureClass
@@ -505,7 +514,16 @@ function Invoke-ArthurWhitelistRepairCycle {
     $identity = Get-ArthurPropertyValue $evidence 'runtime_state_identity'
     if (-not $identity) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_MISSING' }
     $eventsPath = Join-Path $StatePath 'repair-events.jsonl'
-    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_action_started' -Data ([ordered]@{ failure_fingerprint = $diagnostic.status.failure_fingerprint; action = $action })
+    $decision = Get-ArthurRepairAttemptDecision -Events (Read-ArthurRepairEvents $eventsPath) -Fingerprint ([string]$diagnostic.status.failure_fingerprint)
+    if (-not $decision.allowed) {
+        $exhausted = New-ArthurRepairStatus -Evidence $evidence -CurrentMode $CurrentMode -FailureClass $failureClass -Fingerprint ([string]$diagnostic.status.failure_fingerprint) -Action $action -AttemptCount $decision.attempt_count -FinalResult 'REPAIR_EXHAUSTED' -Status 'REPAIR_EXHAUSTED'
+        Write-ArthurRepairStatus -Path (Join-Path $StatePath 'repair-status.json') -Status $exhausted
+        Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_exhausted' -Data ([ordered]@{ failure_fingerprint=$diagnostic.status.failure_fingerprint; attempt_count=$decision.attempt_count })
+        Write-Host 'WINDOWS_REPAIR_CLASS=REPAIR_EXHAUSTED'
+        return [pscustomobject]@{ exhausted=$true; status=[pscustomobject]$exhausted }
+    }
+    $attemptNumber = [int]$decision.attempt_count + 1
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_action_started' -Data ([ordered]@{ failure_fingerprint=$diagnostic.status.failure_fingerprint; action=$action; attempt=$attemptNumber })
     Write-Host "WINDOWS_REPAIR_ACTION=$action"
     $null = Invoke-ArthurApprovedRepair -Action $action -Evidence $evidence -ExpectedIdentity $identity -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName
     $probe = Invoke-ArthurRuntimeProbe -Root $Root -PythonExe $PythonExe -ExpectedModel $script:ExpectedHeadlessModel
@@ -514,16 +532,110 @@ function Invoke-ArthurWhitelistRepairCycle {
     if (-not [bool](Get-ArthurPropertyValue $probe 'model_binding_ok' $false)) { throw 'REPAIR_BLOCKED_PROBE_MODEL' }
     if (-not [bool](Get-ArthurPropertyValue $probe 'model_catalog_skipped' $false)) { throw 'REPAIR_BLOCKED_PROBE_MODEL_CATALOG' }
     Write-Host 'WINDOWS_REPAIR_PROBE=PASS'
-    $afterState = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
-    $afterIdentity = if ($afterState) { Get-ArthurRuntimeStateIdentity $afterState } else { $null }
-    if (-not $afterIdentity -or -not (Test-ArthurRuntimeStateIdentity $identity $afterIdentity)) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
+    $after = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
+    if (-not $after -or -not (Test-ArthurRuntimeStateIdentity $identity (Get-ArthurRuntimeStateIdentity $after))) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
     Write-Host 'WINDOWS_REPAIR_RUNTIME_STATE_PRESERVED=PASS'
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_action_completed' -Data ([ordered]@{ failure_fingerprint=$diagnostic.status.failure_fingerprint; action=$action; result='REPAIR_PREPARED' })
+    return [pscustomobject]@{
+        exhausted=$false; evidence=$evidence; identity=$identity; probe=$probe; action=$action
+        failure_class=$failureClass; fingerprint=[string]$diagnostic.status.failure_fingerprint; attempt_count=$attemptNumber
+    }
+}
+
+function Invoke-ArthurWhitelistRepairCycle {
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName)
+    $prepared = Invoke-ArthurRepairPreparationCycle -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName -CurrentMode 'WhitelistRepair'
+    if ($prepared.exhausted) { return $prepared.status }
     $afterEvidence = Get-ArthurRepairEvidence -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName
-    $afterEvidence.probe = $probe
-    $result = New-ArthurRepairStatus -Evidence $afterEvidence -CurrentMode 'WhitelistRepair' -FailureClass $failureClass -Fingerprint $diagnostic.status.failure_fingerprint -Action $action -AttemptCount 1 -FinalResult 'WHITELIST_REPAIR_APPLIED' -Status 'PROBING'
+    $afterEvidence.probe = $prepared.probe
+    $result = New-ArthurRepairStatus -Evidence $afterEvidence -CurrentMode 'WhitelistRepair' -FailureClass $prepared.failure_class -Fingerprint $prepared.fingerprint -Action $prepared.action -AttemptCount $prepared.attempt_count -FinalResult 'WHITELIST_REPAIR_APPLIED' -Status 'PROBING'
     Write-ArthurRepairStatus -Path (Join-Path $StatePath 'repair-status.json') -Status $result
-    Add-ArthurRepairEvent -Path $eventsPath -Event 'repair_action_completed' -Data ([ordered]@{ failure_fingerprint = $diagnostic.status.failure_fingerprint; action = $action; result = 'WHITELIST_REPAIR_APPLIED' })
     return [pscustomobject]$result
+}
+
+function Get-ArthurCurrentRecoveryObservation {
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$TaskName)
+    $now = [DateTimeOffset]::UtcNow
+    $taskRunning = $false
+    if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        $taskRunning = ($task -and [string]$task.State -eq 'Running')
+    }
+    $process = Get-ArthurProcessEvidence -StatePath $StatePath
+    $runtimeStatus = Read-JsonFile (Join-Path $StatePath 'runtime-status.json')
+    $heartbeat = if ($runtimeStatus) { [string](Get-ArthurPropertyValue $runtimeStatus 'heartbeat_at' '') } else { '' }
+    return [pscustomobject]@{
+        at=$now
+        task_running=$taskRunning
+        supervisor_alive=[bool](Get-ArthurPropertyValue $process 'supervisor_alive' $false)
+        codex_alive=[bool](Get-ArthurPropertyValue $process 'codex_alive' $false)
+        heartbeat=$heartbeat
+    }
+}
+
+function Test-ArthurSingleRecoveryObservationHealthy {
+    param([Parameter(Mandatory=$true)]$Observation)
+    $result = Test-ArthurRepairRecoveryWindow -Observations @($Observation,$Observation)
+    if (-not [bool](Get-ArthurPropertyValue $Observation 'task_running' $false)) { return $false }
+    if (-not [bool](Get-ArthurPropertyValue $Observation 'supervisor_alive' $false)) { return $false }
+    if (-not [bool](Get-ArthurPropertyValue $Observation 'codex_alive' $false)) { return $false }
+    $raw = [string](Get-ArthurPropertyValue $Observation 'heartbeat' '')
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $false }
+    try { $hb=[datetimeoffset]$raw; $at=[datetimeoffset](Get-ArthurPropertyValue $Observation 'at') } catch { return $false }
+    return (($at-$hb).TotalSeconds -le 120 -and ($hb-$at).TotalSeconds -le 30)
+}
+
+function Invoke-ArthurFullRecoveryCycle {
+    param([Parameter(Mandatory=$true)][string]$StatePath,[Parameter(Mandatory=$true)][string]$Root,[Parameter(Mandatory=$true)][string]$PythonExe,[Parameter(Mandatory=$true)][string]$TaskName)
+    $prepared = Invoke-ArthurRepairPreparationCycle -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName -CurrentMode 'FullRecovery'
+    if ($prepared.exhausted) { return $prepared.status }
+
+    $preSupervisor = Get-ArthurPropertyValue $prepared.evidence 'supervisor'
+    if ([string](Get-ArthurPropertyValue $preSupervisor 'status' '') -eq 'CRASH_LOOP_BLOCKED' -and $prepared.action -ne 'RESET_SUPERVISOR_RETRY_STATE') {
+        Reset-ArthurSupervisorRetryState -StatePath $StatePath
+    }
+    $afterReset = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
+    if (-not $afterReset -or -not (Test-ArthurRuntimeStateIdentity $prepared.identity (Get-ArthurRuntimeStateIdentity $afterReset))) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
+
+    if (-not (Get-Command Start-ScheduledTask -ErrorAction SilentlyContinue)) { throw 'REPAIR_BLOCKED_SCHEDULED_TASK_UNAVAILABLE' }
+    Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+    $eventsPath = Join-Path $StatePath 'repair-events.jsonl'
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'supervisor_restart_started' -Data ([ordered]@{ failure_fingerprint=$prepared.fingerprint; task=$TaskName })
+
+    $healthy = @()
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes(5)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $runtime = Read-JsonFile (Join-Path $StatePath 'runtime-state.json')
+        if (-not $runtime) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_MISSING' }
+        if (Test-ArthurRepairProtectedState $runtime) { throw 'REPAIR_BLOCKED_SAFETY_STATE' }
+        if (-not (Test-ArthurRuntimeStateIdentity $prepared.identity (Get-ArthurRuntimeStateIdentity $runtime))) { throw 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' }
+
+        $observation = Get-ArthurCurrentRecoveryObservation -StatePath $StatePath -TaskName $TaskName
+        if (Test-ArthurSingleRecoveryObservationHealthy $observation) {
+            $healthy += $observation
+            $window = Test-ArthurRepairRecoveryWindow -Observations $healthy
+            if ($window.passed) {
+                $finalEvidence = Get-ArthurRepairEvidence -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName
+                $finalEvidence.probe = $prepared.probe
+                $status = New-ArthurRepairStatus -Evidence $finalEvidence -CurrentMode 'FullRecovery' -FailureClass $prepared.failure_class -Fingerprint $prepared.fingerprint -Action $prepared.action -AttemptCount $prepared.attempt_count -FinalResult 'CODEX_RUNTIME_RECOVERED' -Status 'CODEX_RUNTIME_RECOVERED' -HealthySeconds $window.healthy_seconds -HeartbeatAdvances $window.heartbeat_advances
+                Write-ArthurRepairStatus -Path (Join-Path $StatePath 'repair-status.json') -Status $status
+                Add-ArthurRepairEvent -Path $eventsPath -Event 'recovery_terminal' -Data ([ordered]@{ result='CODEX_RUNTIME_RECOVERED'; healthy_seconds=$window.healthy_seconds; heartbeat_advances=$window.heartbeat_advances })
+                Write-Host ("WINDOWS_REPAIR_HEALTH_WINDOW=PASS seconds={0}" -f [int]$window.healthy_seconds)
+                Write-Host 'CODEX_RUNTIME_RECOVERED=PASS'
+                return [pscustomobject]$status
+            }
+        }
+        else {
+            $healthy = @()
+        }
+        Start-Sleep -Seconds 30
+    }
+
+    $timeoutEvidence = Get-ArthurRepairEvidence -StatePath $StatePath -Root $Root -PythonExe $PythonExe -TaskName $TaskName
+    $timeoutStatus = New-ArthurRepairStatus -Evidence $timeoutEvidence -CurrentMode 'FullRecovery' -FailureClass $prepared.failure_class -Fingerprint $prepared.fingerprint -Action $prepared.action -AttemptCount $prepared.attempt_count -FinalResult 'REPAIR_BLOCKED_HEALTH_WINDOW_TIMEOUT' -Status 'REPAIR_BLOCKED_HEALTH_WINDOW_TIMEOUT'
+    Write-ArthurRepairStatus -Path (Join-Path $StatePath 'repair-status.json') -Status $timeoutStatus
+    Add-ArthurRepairEvent -Path $eventsPath -Event 'recovery_terminal' -Data ([ordered]@{ result='REPAIR_BLOCKED_HEALTH_WINDOW_TIMEOUT' })
+    throw 'REPAIR_BLOCKED_HEALTH_WINDOW_TIMEOUT'
 }
 
 if ($env:ARTHUR_REPAIR_CONTROLLER_IMPORT_ONLY -eq '1') { return }
@@ -536,10 +648,8 @@ $lockPath = Join-Path $statePath 'repair-controller.lock'
 $lock = $null
 try {
     try { $lock = [IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
-    catch [IO.IOException] {
-        Write-Host 'REPAIR_CONTROLLER_ALREADY_RUNNING=PASS'
-        exit 0
-    }
+    catch [IO.IOException] { Write-Host 'REPAIR_CONTROLLER_ALREADY_RUNNING=PASS'; exit 0 }
+
     if ($Mode -eq 'DiagnosticOnly') {
         $null = Invoke-ArthurRepairDiagnostic -StatePath $statePath -Root $controlPath -PythonExe $pythonPath -TaskName $SupervisorTaskName -CurrentMode $Mode
         exit 0
@@ -548,29 +658,11 @@ try {
         $null = Invoke-ArthurWhitelistRepairCycle -StatePath $statePath -Root $controlPath -PythonExe $pythonPath -TaskName $SupervisorTaskName
         exit 0
     }
-    $blocked = [ordered]@{
-        schema_version = 1
-        status = 'DIAGNOSING'
-        mode = $Mode
-        failure_class = 'UNKNOWN_FAILURE'
-        evidence_timestamp = [DateTimeOffset]::UtcNow.ToString('o')
-        repair_attempt_count = 0
-        selected_repair_action = $null
-        source_sha = $null
-        control_runtime_sha = $null
-        expected_module_root = $controlPath
-        actual_module_root = $null
-        expected_model = $script:ExpectedHeadlessModel
-        actual_model = $null
-        supervisor_pid = $null
-        codex_pid = $null
-        runtime_state_identity = $null
-        failure_fingerprint = $null
-        final_result = 'REPAIR_BLOCKED_MODE_NOT_IMPLEMENTED'
+    if ($Mode -eq 'FullRecovery') {
+        $null = Invoke-ArthurFullRecoveryCycle -StatePath $statePath -Root $controlPath -PythonExe $pythonPath -TaskName $SupervisorTaskName
+        exit 0
     }
-    Write-ArthurRepairStatus -Path (Join-Path $statePath 'repair-status.json') -Status $blocked
-    Write-Host 'WINDOWS_REPAIR_CLASS=UNKNOWN_FAILURE'
-    exit 2
+    throw 'REPAIR_BLOCKED_INVALID_MODE'
 }
 finally {
     if ($lock) { $lock.Dispose() }
