@@ -45,10 +45,43 @@ def _emit_failure_evidence(root):
     print("RECOVERY_SUPERVISOR_LOG_TAIL_END", flush=True)
 
 
+def _emit_already_running_evidence(root):
+    status_path = root / "supervisor-status.json"
+    status = "UNKNOWN"
+    child_pid = None
+    daemon_pid = None
+    if status_path.exists():
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                status = str(payload.get("status") or "UNKNOWN")
+                child_pid = payload.get("child_pid")
+                daemon_pid = payload.get("daemon_pid")
+        except (OSError, ValueError, TypeError):
+            status = "INVALID_STATUS_JSON"
+    print(
+        "RECOVERY_SUPERVISOR_ALREADY_RUNNING=PASS status=%s child_pid=%s daemon_pid=%s"
+        % (status, child_pid, daemon_pid),
+        flush=True,
+    )
+
+
 def _run():
-    root = _state_dir(sys.argv[1:])
+    argv = sys.argv[1:]
+    root = _state_dir(argv)
     try:
         code = main()
+    except RuntimeError as exc:
+        # The long-lived Windows Scheduled Task intentionally owns supervisor.lock.
+        # A later GitHub Actions --once health tick seeing that live owner is an
+        # idempotent handoff success, not a second-supervisor failure. Persistent
+        # invocations without --once remain fail-closed on any lock conflict.
+        if str(exc) == "SUPERVISOR_ALREADY_RUNNING" and "--once" in argv:
+            _emit_already_running_evidence(root)
+            return 0
+        traceback.print_exc()
+        _emit_failure_evidence(root)
+        return 1
     except Exception:
         traceback.print_exc()
         _emit_failure_evidence(root)
