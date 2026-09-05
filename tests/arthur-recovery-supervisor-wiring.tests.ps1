@@ -49,6 +49,12 @@ Assert-Contains $shim 'RECOVERY_SUPERVISOR_STATUS=' 'Supervisor shim must print 
 Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_BEGIN' 'Supervisor shim must print the persisted supervisor log tail before returning a failed wakeup'
 Assert-Contains $shim 'RECOVERY_SUPERVISOR_LOG_TAIL_END' 'Supervisor shim must delimit the persisted supervisor log tail in Actions'
 
+# Once the Windows-owned supervisor is running, later five-minute --once wakeups must
+# treat the supervisor lock as a successful handoff instead of a failure. Otherwise
+# every scheduled wakeup would report false failure after persistence is fixed.
+Assert-Contains $shim 'SUPERVISOR_ALREADY_RUNNING' 'one-shot shim must recognize the existing supervisor lock as an expected persistent-owner condition'
+Assert-Contains $shim 'RECOVERY_SUPERVISOR_ALREADY_RUNNING=PASS' 'one-shot shim must emit explicit success evidence when the persistent supervisor already owns the lock'
+
 # The detached runtime must use the pinned persistent Python/Codex environment prepared by the runner workflow.
 Assert-Contains $wakeup 'HEADLESS_PYTHON_EXE' 'runner wakeup must retain the verified persistent headless interpreter evidence'
 Assert-Contains $windowsProcess 'HEADLESS_PYTHON_EXE' 'supervisor child interpreter selection must reuse the verified persistent headless Python when available'
@@ -95,5 +101,6 @@ Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be art
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_TASK_CONTRACT=PASS'
+Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_IDEMPOTENT_WAKEUP_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_RUNTIME_PYTHON_CACHE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
