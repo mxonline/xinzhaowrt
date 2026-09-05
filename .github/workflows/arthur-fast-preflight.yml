@@ -66,6 +66,17 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-firmware-resume.tests.ps1
 
+      - name: Enforce append-only Arthur firmware event history
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            $baseRef = '${{ github.event.pull_request.base.sha }}'
+          }
+          else {
+            $baseRef = (git rev-parse HEAD^).Trim()
+          }
+          ./scripts/check-firmware-event-ledger-history.ps1 -BaseRef $baseRef
+
       - name: Parse LIVE_PREVIEW and control-plane PowerShell
         shell: pwsh
         run: |
@@ -82,6 +93,7 @@ jobs:
             'scripts/arthur-control-plane-gate.ps1',
             'scripts/arthur-firmware-event-ledger.ps1',
             'scripts/arthur-firmware-resume.ps1',
+            'scripts/check-firmware-event-ledger-history.ps1',
             'scripts/arthur-control-plane.ps1'
           )) {
             if (-not (Test-Path $file)) {
@@ -146,6 +158,7 @@ jobs:
             echo
             echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
             echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
+            echo '- Firmware event history is append-only; historical ledger rewrites fail closed.'
             echo '- LIVE_PREVIEW is a pre-Candidate development aid and never counts as formal REAL_DEVICE_VERIFY.'
             echo '- Mature AdGuard Home and official QuickStart sources are pinned separately from Known-Good firmware refs.'
             echo '- Mature ADH LIVE_PREVIEW uses safe UI-only fallback; DNS/firewall/start-stop runtime mutation tests are deferred to formal REAL_DEVICE_VERIFY.'
