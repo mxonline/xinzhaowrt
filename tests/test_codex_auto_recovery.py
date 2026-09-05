@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -205,58 +204,43 @@ class CodexModelCacheBypassContractTests(unittest.TestCase):
         with patch.object(adapters, "_import_sdk", return_value=module):
             probe = asyncio.run(executor.preflight(include_models=False))
 
-        self.assertEqual({"type": "chatgpt"}, probe["account"])
+        self.assertTrue(probe["model_catalog_skipped"])
+        self.assertEqual("gpt-5.6-terra", probe["executor_model"])
         self.assertEqual(0, fake.models_called)
 
-    def test_build_runtime_uses_explicit_chatgpt_model_without_models_list(self):
-        executor_calls = []
-        controller_calls = []
+    def test_build_runtime_has_explicit_chatgpt_model_without_models_list(self):
+        executor_fake = _FakeCodex()
+        controller_fake = _FakeCodex()
+        module = SimpleNamespace()
 
-        class FakeExecutor:
-            def __init__(self, cwd, model=None):
-                self.cwd = str(cwd)
-                self.model = model
-                self.preflight_flags = []
-                executor_calls.append(self)
-
-            async def preflight(self, include_models=True):
-                self.preflight_flags.append(include_models)
-                if include_models:
-                    raise AssertionError("executor model discovery path was used")
-                return {"sdk": "openai_codex", "account": {"type": "chatgpt"}}
-
-        class FakeController:
-            def __init__(self, cwd, model, codex_factory=None):
-                self.cwd = str(cwd)
-                self.model = model
-                self.preflight_flags = []
-                controller_calls.append(self)
-
-            async def preflight(self, include_models=True):
-                self.preflight_flags.append(include_models)
-                if include_models:
-                    raise AssertionError("controller model discovery path was used")
-                return {
-                    "sdk": "openai_codex",
-                    "account": {"type": "chatgpt"},
-                    "controller_model": self.model,
-                }
-
-        env = dict(os.environ)
-        env.pop("OPENAI_API_KEY", None)
-        env["HEADLESS_CODEX_MODEL"] = "gpt-5.6-terra"
-        with (
-            patch.dict(os.environ, env, clear=True),
-            patch.object(cli, "AsyncCodexExecutor", FakeExecutor),
-            patch.object(cli, "CodexThreadController", FakeController),
-        ):
-            executor, controller, report = asyncio.run(cli._build_sdk_runtime(Path.cwd()))
-
+        executor = adapters.AsyncCodexExecutor(
+            Path.cwd(),
+            codex_factory=lambda _module: executor_fake,
+        )
         self.assertEqual("gpt-5.6-terra", executor.model)
-        self.assertEqual([False], executor.preflight_flags)
-        self.assertEqual("gpt-5.6-terra", controller.model)
-        self.assertEqual([False], controller.preflight_flags)
-        self.assertEqual("gpt-5.6-terra", report["controller_probe"]["controller_model"])
+
+        with patch.object(adapters, "_import_sdk", return_value=module):
+            executor_probe = asyncio.run(executor.preflight())
+
+        model_ids = cli._model_ids(executor_probe["models"])
+        self.assertEqual(["gpt-5.6-terra"], model_ids)
+        selection = adapters.choose_controller_backend(None, model_ids)
+        self.assertEqual("codex_thread", selection.kind)
+        self.assertEqual("gpt-5.6-terra", selection.model)
+
+        controller = adapters.CodexThreadController(
+            Path.cwd(),
+            selection.model,
+            codex_factory=lambda _module: controller_fake,
+        )
+        with patch.object(adapters, "_import_sdk", return_value=module):
+            controller_probe = asyncio.run(controller.preflight())
+
+        self.assertTrue(executor_probe["model_catalog_skipped"])
+        self.assertTrue(controller_probe["model_catalog_skipped"])
+        self.assertEqual("gpt-5.6-terra", controller_probe["controller_model"])
+        self.assertEqual(0, executor_fake.models_called)
+        self.assertEqual(0, controller_fake.models_called)
 
 
 if __name__ == "__main__":
