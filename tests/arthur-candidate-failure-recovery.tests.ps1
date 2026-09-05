@@ -37,6 +37,17 @@ Assert-Contains $controllerText 'BUILD_CLOSURE_PASS_ALLOW_CANDIDATE' 'Candidate 
 $processStart = $controllerText.IndexOf('function Process-V3Run')
 if ($processStart -lt 0) { throw 'FAIL: Process-V3Run function is missing' }
 $processText = $controllerText.Substring($processStart)
+
+$failureCircuit = $processText.IndexOf('if ($round -ge $MaxRepairRounds)')
+$repairEvidence = $processText.IndexOf('$repairEvidenceRunId = $currentRunId')
+if ($failureCircuit -lt 0 -or $repairEvidence -lt 0 -or $failureCircuit -ge $repairEvidence) {
+    throw 'FAIL: failure-path circuit breaker or repair evidence boundary is missing'
+}
+$preRepairCircuitText = $processText.Substring($failureCircuit, $repairEvidence - $failureCircuit)
+if ($preRepairCircuitText.Contains('Start-V3Run -RequestedMode $RequestedMode')) {
+    throw 'FAIL: MaxRepairRounds circuit breaker can bypass build closure and dispatch a Candidate directly'
+}
+
 $repairStart = $processText.IndexOf("elseif (`$action -eq 'repaired')")
 if ($repairStart -lt 0) { throw 'FAIL: repaired branch is missing from Process-V3Run' }
 $closureIndex = $processText.IndexOf('Invoke-BuildClosurePreflight', $repairStart)
