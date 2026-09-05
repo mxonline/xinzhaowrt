@@ -92,11 +92,11 @@ Assert-Contains $gate 'Get-ArthurFirmwareExecutionPermission' 'gate must use the
 Assert-Contains $gate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'gate must stop before firmware execution when permission is absent'
 Assert-Contains $gate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
 Assert-Contains $gate 'arthur-control-plane.ps1' 'authorized gate must hand off to the existing control plane rather than replace it'
-
-$controlPlane = Get-Content -Raw $ControlPlanePath
-Assert-Contains $controlPlane 'FINAL_RELEASE_RUNTIME_MIGRATION=PASS' 'control plane must explicitly migrate stale pre-build runtime state to the final BUILD checkpoint'
-Assert-Contains $controlPlane 'forensic -> root cause -> auto-fix -> rebuild -> PRE_FLASH_READY' 'migrated Codex prompt must resume the interrupted forensic-to-pre-flash task'
-Assert-Contains $controlPlane 'production\v3-request.json' 'runtime migration must be grounded in the durable final release request'
+Assert-Contains $gate 'FINAL_RELEASE_RUNTIME_MIGRATION=PASS' 'existing control-plane gate must migrate stale pre-build runtime state to the final BUILD checkpoint'
+Assert-Contains $gate 'forensic -> root cause -> auto-fix -> rebuild -> PRE_FLASH_READY' 'migrated Codex prompt must resume the interrupted forensic-to-pre-flash task'
+Assert-Contains $gate 'production\v3-request.json' 'runtime migration must be grounded in the durable final release request'
+Assert-Contains $gate 'ADH_MANAGEMENT' 'migration must recognize the known stale ADH runtime checkpoint'
+Assert-Contains $gate "phase = 'BUILD'" 'migration must set the persistent runtime phase to BUILD'
 
 $wakeup = Get-Content -Raw $WakeupPath
 Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
