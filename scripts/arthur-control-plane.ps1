@@ -94,7 +94,34 @@ try {
             return
         }
 
-        $ResumeState | Add-Member -NotePropertyName evidence_timestamp -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+        $evidenceTime = [DateTimeOffset]::UtcNow.ToString('o')
+        $ResumeState | Add-Member -NotePropertyName evidence_timestamp -NotePropertyValue $evidenceTime -Force
+        $eventLedgerPath = Join-Path $env:GITHUB_WORKSPACE 'production\firmware-events.jsonl'
+        [void](Test-ArthurFirmwareEventLedger -Path $eventLedgerPath)
+        $previousStage = if ($existingPublished -and $existingPublished.checkpoint) { [string]$existingPublished.checkpoint.current } else { '' }
+        $currentStage = if ($ResumeState.checkpoint) { [string]$ResumeState.checkpoint.current } else { '' }
+        $eventName = if ($previousStage -and $currentStage -and $previousStage -ne $currentStage) { 'CHECKPOINT_ADVANCED' } else { 'RESUME_STATE_CHANGED' }
+        $ledgerEvents = @(Get-ArthurFirmwareEvents -Path $eventLedgerPath)
+        $lastLedgerSemantic = ''
+        if ($ledgerEvents.Count -gt 0 -and $ledgerEvents[-1].data -and $ledgerEvents[-1].data.PSObject.Properties['semantic_sha256']) {
+            $lastLedgerSemantic = [string]$ledgerEvents[-1].data.semantic_sha256
+        }
+        if ($lastLedgerSemantic -ne [string]$ResumeState.semantic_sha256) {
+            $eventData = [ordered]@{
+                previous_stage = $previousStage
+                current_stage = $currentStage
+                next_action = [string]$ResumeState.next_action
+                status = [string]$ResumeState.status
+                instruction_allowed = [bool]$ResumeState.instruction_allowed
+                repository_head = [string]$ResumeState.repository_head
+                semantic_sha256 = [string]$ResumeState.semantic_sha256
+                real_device_version = if ($ResumeState.real_device) { [string]$ResumeState.real_device.version } else { '' }
+                real_device_build_id = if ($ResumeState.real_device) { [string]$ResumeState.real_device.build_id } else { '' }
+                conflicts = @($ResumeState.conflicts)
+            }
+            $null = Add-ArthurFirmwareEvent -Path $eventLedgerPath -Event $eventName -Stage $currentStage -Source 'ARTHUR_CONTROL_PLANE' -Timestamp $evidenceTime -Data $eventData
+            Log "FIRMWARE_EVENT_APPENDED=PASS event=$eventName stage=$currentStage semantic_sha256=$($ResumeState.semantic_sha256)"
+        }
         Save-Json $ResumeStatePath $ResumeState
 
         if ([string]$env:GITHUB_REF_NAME -ne 'main') {
@@ -106,13 +133,13 @@ try {
         try {
             & git config user.name 'github-actions[bot]'
             & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            & git add -- 'production/resume-state.json'
+            & git add -- 'production/resume-state.json' 'production/firmware-events.jsonl'
             & git diff --cached --quiet
             if ($LASTEXITCODE -eq 0) {
                 Log 'RESUME_STATE_PUBLISHED=UNCHANGED_GIT'
                 return
             }
-            & git commit -m 'chore(state): update Arthur resume snapshot [skip ci]'
+            & git commit -m 'chore(state): update Arthur resume snapshot and event ledger [skip ci]'
             if ($LASTEXITCODE -ne 0) { Fail 'RESUME_STATE_PUBLICATION_FAILED: git commit failed' }
             & git push origin HEAD:main
             if ($LASTEXITCODE -ne 0) { Fail 'RESUME_STATE_PUBLICATION_FAILED: non-fast-forward or push rejected; retry from fresh main' }
@@ -152,6 +179,14 @@ try {
     $resumeHelperPath = Join-Path $codeRoot 'scripts\arthur-resume-state.ps1'
     if (-not (Test-Path -LiteralPath $resumeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RESUME_HELPER_MISSING' }
     . $resumeHelperPath
+    $eventLedgerHelperPath = Join-Path $codeRoot 'scripts\arthur-firmware-event-ledger.ps1'
+    if (-not (Test-Path -LiteralPath $eventLedgerHelperPath -PathType Leaf)) { Fail 'FIRMWARE_EVENT_LEDGER_HELPER_MISSING' }
+    . $eventLedgerHelperPath
+    $eventLedgerPath = Join-Path $env:GITHUB_WORKSPACE 'production\firmware-events.jsonl'
+    if (-not (Test-Path -LiteralPath $eventLedgerPath -PathType Leaf)) { Fail 'FIRMWARE_EVENT_LEDGER_MISSING' }
+    try { [void](Test-ArthurFirmwareEventLedger -Path $eventLedgerPath) }
+    catch { Fail "FIRMWARE_EVENT_LEDGER_INVALID: $($_.Exception.Message)" }
+    Log 'FIRMWARE_EVENT_LEDGER=PASS'
 
     $headless = $false
     if (Get-Command codex -ErrorAction SilentlyContinue) { $headless = $true }
@@ -341,7 +376,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     Push-Location $env:GITHUB_WORKSPACE
     try {
-        $repositoryHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' | Out-String).Trim()
+        $repositoryHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' | Out-String).Trim()
     }
     finally { Pop-Location }
     if ([string]::IsNullOrWhiteSpace($repositoryHead)) { $repositoryHead = [string]$env:GITHUB_SHA }
@@ -443,7 +478,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     exit 0
 }
 catch {
-    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_|^STATE_RECONCILIATION_|^RESUME_STATE_|^RECOVERY_SUPERVISOR_') { Write-Error $_ }
+    if ($_.Exception.Message -notmatch '^CONTROL_PLANE_|^GITHUB_API_|^CANONICAL_|^HEADLESS_|^CHECKPOINT_|^BLOCKED_|^STATE_RECONCILIATION_|^RESUME_STATE_|^RECOVERY_SUPERVISOR_|^FIRMWARE_EVENT_') { Write-Error $_ }
     exit 1
 }
 finally {
