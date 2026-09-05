@@ -11,6 +11,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $intentHelperPath = Join-Path $root 'scripts\arthur-operator-intent.ps1'
 $intentPath = Join-Path $root 'production\operator-intent.json'
 $resumeGatePath = Join-Path $root 'scripts\arthur-firmware-resume.ps1'
+$failureRecoveryPath = Join-Path $root 'scripts\arthur-candidate-failure-recovery.ps1'
 $controlPlanePath = Join-Path $root 'scripts\arthur-control-plane.ps1'
 
 if (-not (Test-Path -LiteralPath $intentHelperPath -PathType Leaf)) {
@@ -19,6 +20,10 @@ if (-not (Test-Path -LiteralPath $intentHelperPath -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $resumeGatePath -PathType Leaf)) {
     Write-Error 'UNIFIED_RESUME_GATE_MISSING'
+    exit 1
+}
+if (-not (Test-Path -LiteralPath $failureRecoveryPath -PathType Leaf)) {
+    Write-Error 'CANDIDATE_FAILURE_RECOVERY_HELPER_MISSING'
     exit 1
 }
 if (-not (Test-Path -LiteralPath $controlPlanePath -PathType Leaf)) {
@@ -50,6 +55,20 @@ if ($resumeCode -ne 0) {
     exit $resumeCode
 }
 Write-Host 'UNIFIED_RESUME_GATE=PASS'
+
+$workspace = if ([string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) { $root } else { $env:GITHUB_WORKSPACE }
+$repairOutput = & $failureRecoveryPath -Repository $Repository -Workspace $workspace 2>&1 | Out-String
+$repairCode = $LASTEXITCODE
+if (-not [string]::IsNullOrWhiteSpace($repairOutput)) { Write-Host $repairOutput.Trim() }
+if ($repairCode -ne 0) {
+    Write-Error "CANDIDATE_FAILURE_RECOVERY_FAILED: exit_code=$repairCode"
+    exit $repairCode
+}
+if ($repairOutput -match 'CANDIDATE_FAILURE_REPAIR=(STARTED|ALREADY_RUNNING)') {
+    Write-Host 'CONTROL_PLANE_REPAIR_ROUTED=PASS'
+    Write-Host 'CONTROL_PLANE_MUTATION_SKIPPED=PASS reason=existing_v3_repair_controller_owns_failed_candidate'
+    exit 0
+}
 
 & $controlPlanePath -Repository $Repository -WorkflowRunId $WorkflowRunId
 exit $LASTEXITCODE
