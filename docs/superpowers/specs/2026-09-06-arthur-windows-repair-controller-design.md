@@ -37,9 +37,9 @@ That terminal requires all of the following to be true for at least 120 continuo
 - the runtime heartbeat advances at least twice
 - the runtime module path is the expected current `control-runtime` code
 - the repair probe confirms the configured explicit headless Codex model
-- `runtime-state.json` still represents the same release task and has not been replaced
+- the immutable release-task identity is unchanged
 
-After `CODEX_RUNTIME_RECOVERED`, the controller stops mutating recovery infrastructure and the existing Codex BUILD handoff resumes normally.
+After `CODEX_RUNTIME_RECOVERED`, the Repair Controller stops mutating recovery infrastructure. The Codex runtime may already be continuing the existing BUILD handoff during the 120-second health window; any firmware progress during that window must come only from the pre-existing Arthur runtime and its normal gates, never from the Repair Controller.
 
 ## Non-Goals and Safety Boundary
 
@@ -50,7 +50,7 @@ The Repair Controller must never:
 - call sysupgrade or any flash operation
 - modify Known-Good
 - change device acceptance evidence
-- advance `ARTIFACT`, `PRE_FLASH`, `FLASH`, `RELEASE`, or `PRODUCTION_RELEASED`
+- directly advance `ARTIFACT`, `PRE_FLASH`, `FLASH`, `RELEASE`, or `PRODUCTION_RELEASED`
 - clear a human safety gate
 - replace `runtime-state.json`
 - reset, clean, stash, or discard the mutable task workspace
@@ -64,7 +64,7 @@ The new component runs outside the Codex process tree and outside the existing S
 
 Production topology:
 
-`GitHub schedule -> Windows Repair Controller -> persistent Supervisor -> Codex runtime -> existing Arthur BUILD handoff`
+`GitHub schedule -> Windows Repair Controller Scheduled Task -> persistent Supervisor -> Codex runtime -> existing Arthur BUILD handoff`
 
 The existing Supervisor remains responsible for normal heartbeat monitoring and bounded restart attempts. The Repair Controller activates only when the Supervisor cannot restore the Codex runtime or when the runtime probe proves that the child is executing the wrong code/configuration.
 
@@ -137,7 +137,8 @@ It records:
 - Supervisor PID
 - Codex PID
 - heartbeat observations
-- runtime-state semantic identity
+- runtime-state immutable identity
+- runtime progress snapshot
 - final result
 
 A second append-only file is used for forensic history:
@@ -177,7 +178,7 @@ Repair:
 
 - re-register only the existing `XinZhaoWrt-Arthur-Persistent-Supervisor` task using the canonical action
 - preserve the existing approved interactive user principal
-- do not create a second task name
+- do not create a second Supervisor task name
 
 ### MODULE_ROOT_DRIFT
 
@@ -236,17 +237,28 @@ The controller records full evidence and performs no mutation beyond diagnostic 
 
 ## Runtime-State Preservation
 
-Before any repair mutation, the controller calculates and stores an identity tuple from `runtime-state.json`:
+Before any repair mutation, the controller stores two snapshots from `runtime-state.json`.
+
+Immutable release-task identity:
 
 - `release_task_id`
 - `repo`
 - `branch`
 - `source_sha`
 - `request_id`
+
+Progress snapshot:
+
 - `phase`
 - `candidate_sha256`
+- `active_run_id`
+- `next_action`
+- `terminal_state`
+- `pending_human_gate`
 
-After every mutation and before declaring recovery, the tuple must match exactly except for fields that the existing Codex runtime itself is allowed to advance after successful recovery. During the repair-only probe stage, no field may change.
+During diagnosis, repair, and isolated probing, both snapshots must remain byte-for-byte equivalent at the field level. Any change before the production Supervisor is restarted is `REPAIR_BLOCKED_RUNTIME_STATE_CHANGED`.
+
+After the production Supervisor is restarted, the immutable release-task identity must continue to match exactly. Progress fields may change only because the existing Arthur Codex runtime resumes its already-authorized handoff. The Repair Controller must never write those fields itself. It records before/after values in `repair-events.jsonl` for attribution and audit.
 
 The controller never deletes, rewrites, or reconstructs `runtime-state.json`.
 
@@ -281,8 +293,8 @@ The controller must observe all of the following:
 5. Runtime heartbeat timestamp advances at least twice.
 6. The first and last healthy observations are at least 120 seconds apart.
 7. Supervisor status is `HEALTHY`, or a documented active runtime state whose heartbeat is fresh and whose process is alive.
-8. No protected firmware phase or human safety gate was altered.
-9. The original release-task identity is preserved.
+8. No protected firmware phase or human safety gate was altered by the Repair Controller.
+9. The immutable release-task identity is preserved.
 
 Only then write:
 
@@ -299,22 +311,31 @@ Behavior:
 - if repair is actively running, GitHub logs `WINDOWS_REPAIR_CONTROLLER=ACTIVE` and does not create a competing repair
 - if status is `CODEX_RUNTIME_RECOVERED`, the normal Control Plane wakeup continues
 - if a repair-blocked terminal exists, GitHub publishes the evidence and fails without attempting a duplicate Supervisor restart
-- if Supervisor/Codex health is normal, the repair controller is not invoked
-- if Codex is absent, heartbeat is stale, or Supervisor is crash-loop blocked in a non-protected phase, GitHub invokes the Repair Controller once and exits; the Windows-owned controller carries the long recovery verification independently of the Actions job lifetime
+- if Supervisor/Codex health is normal, the Repair Controller is not invoked
+- if Codex is absent, heartbeat is stale, or Supervisor is crash-loop blocked in a non-protected phase, GitHub starts the Repair Controller Scheduled Task once and exits; the Windows-owned task carries the long recovery verification independently of the Actions job lifetime
 
 GitHub is an observer and trigger. It does not own the long-lived repair process.
 
-## Windows Ownership
+## Windows Ownership and Provisioning
 
-The Repair Controller must run under the same approved interactive Windows user context as the persistent Supervisor when Codex credentials are required.
+The Repair Controller uses a dedicated Scheduled Task and runs under the same approved interactive Windows user principal as the persistent Supervisor.
 
-A dedicated Scheduled Task is allowed for the Repair Controller, but it must have a different task name from the Supervisor and must use `MultipleInstances IgnoreNew`.
-
-Recommended task name:
+Required task name:
 
 `XinZhaoWrt-Arthur-Repair-Controller`
 
-The task is triggered on demand by the runner wakeup and may also use a conservative periodic trigger. It must not start more frequently than once per minute.
+Provisioning rules:
+
+- the existing Supervisor task principal is the authoritative user identity
+- the Repair Controller task is created or updated from that principal; no second user-discovery mechanism is introduced
+- `LogonType` is `Interactive`
+- `RunLevel` is `Highest`
+- `MultipleInstances` is `IgnoreNew`
+- `ExecutionTimeLimit` is unlimited so the 120-second verification window is not owned by GitHub Actions
+- the task has no firmware command or pipeline argument
+- GitHub may call `Start-ScheduledTask` for this existing task, but it does not launch the repair script as its own child process
+
+The Repair Controller task is on-demand only in version 1. The existing GitHub five-minute wakeup is the recurring trigger; no second periodic repair schedule is added.
 
 ## Observability
 
@@ -350,6 +371,7 @@ Automated tests must cover:
 - identical failure fingerprint exhaustion after three repair attempts
 - idempotent concurrent invocation behavior
 - 120-second two-heartbeat recovery gate
+- Repair Controller Scheduled Task provisioning from the existing Supervisor principal
 - GitHub wakeup behavior for ACTIVE, RECOVERED, BLOCKED, and healthy/no-repair states
 
 Windows-specific tests must execute under Windows PowerShell 5.1 in CI for Scheduled Task and quoting behavior. Python probe tests may run under the managed Python version used by the production headless runtime.
