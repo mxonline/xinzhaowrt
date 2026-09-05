@@ -1,0 +1,130 @@
+name: Temporary persistent supervisor patch
+
+on:
+  push:
+    branches:
+      - fix/arthur-persistent-supervisor-daemon-20260905
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/arthur-persistent-supervisor-daemon-20260905
+          fetch-depth: 0
+      - name: Replace one-shot supervisor with persistent daemon
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('scripts/arthur-control-plane.ps1')
+          text = path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r"    Push-Location \$env:GITHUB_WORKSPACE\n"
+              r"    try \{\n"
+              r"        \$old = \$ErrorActionPreference.*?"
+              r"    if \(\$supervisorCode -ne 0\) \{\n"
+              r"        Fail \"RECOVERY_SUPERVISOR_FAILED: exit=\$supervisorCode\"\n"
+              r"    \}\n\n"
+              r"    \$supervisorStatusPath = Join-Path \$stateDir 'supervisor-status\.json'\n",
+              re.S,
+          )
+          replacement = r'''    $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
+    $existingSupervisorPid = $null
+    if (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf) {
+        try {
+            $existingSupervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json
+            if ($existingSupervisorStatus.supervisor_pid) { $existingSupervisorPid = [int]$existingSupervisorStatus.supervisor_pid }
+        }
+        catch { $existingSupervisorPid = $null }
+    }
+    $supervisorAlive = $false
+    if ($existingSupervisorPid) {
+        $supervisorAlive = $null -ne (Get-Process -Id $existingSupervisorPid -ErrorAction SilentlyContinue)
+    }
+
+    if ($supervisorAlive) {
+        Log "RECOVERY_SUPERVISOR_DAEMON=PASS mode=REUSE pid=$existingSupervisorPid"
+    }
+    else {
+        $persistentAuthOk = $false
+        $savedGhToken = $env:GH_TOKEN
+        $savedGithubToken = $env:GITHUB_TOKEN
+        $savedTrackingId = $env:RUNNER_TRACKING_ID
+        try {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+            Remove-Item Env:RUNNER_TRACKING_ID -ErrorAction SilentlyContinue
+
+            $old = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                $persistentAuthOutput = (& gh auth status 2>&1 | Out-String).Trim()
+                $persistentAuthOk = ($LASTEXITCODE -eq 0)
+            }
+            finally { $ErrorActionPreference = $old }
+            if (-not $persistentAuthOk) {
+                if ($persistentAuthOutput) { Write-Host $persistentAuthOutput }
+                Fail 'PERSISTENT_GITHUB_AUTH_MISSING: detached supervisor cannot depend on an expiring Actions token'
+            }
+
+            $supervisorStdout = Join-Path $logDir 'supervisor-daemon.stdout.log'
+            $supervisorStderr = Join-Path $logDir 'supervisor-daemon.stderr.log'
+            $daemon = Start-Process -FilePath $runtimePython `
+                -ArgumentList @($supervisorPath, '--state-dir', $stateDir, '--interval', '30') `
+                -WorkingDirectory $env:GITHUB_WORKSPACE `
+                -WindowStyle Hidden `
+                -RedirectStandardOutput $supervisorStdout `
+                -RedirectStandardError $supervisorStderr `
+                -PassThru
+        }
+        finally {
+            if ($null -ne $savedGhToken) { $env:GH_TOKEN = $savedGhToken }
+            if ($null -ne $savedGithubToken) { $env:GITHUB_TOKEN = $savedGithubToken }
+            if ($null -ne $savedTrackingId) { $env:RUNNER_TRACKING_ID = $savedTrackingId }
+        }
+
+        Start-Sleep -Seconds 3
+        if ($daemon.HasExited) {
+            if (Test-Path -LiteralPath $supervisorStdout -PathType Leaf) { Get-Content -Tail 80 -LiteralPath $supervisorStdout | Write-Host }
+            if (Test-Path -LiteralPath $supervisorStderr -PathType Leaf) { Get-Content -Tail 80 -LiteralPath $supervisorStderr | Write-Host }
+            Fail "RECOVERY_SUPERVISOR_DAEMON_START_FAILED: exit=$($daemon.ExitCode)"
+        }
+        Log "RECOVERY_SUPERVISOR_DAEMON=PASS mode=START pid=$($daemon.Id)"
+    }
+
+    $statusDeadline = (Get-Date).AddSeconds(12)
+    do {
+        if (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf) {
+            try {
+                $candidateSupervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json
+                $candidatePid = if ($candidateSupervisorStatus.supervisor_pid) { [int]$candidateSupervisorStatus.supervisor_pid } else { 0 }
+                if ($candidatePid -and ($null -ne (Get-Process -Id $candidatePid -ErrorAction SilentlyContinue))) { break }
+            }
+            catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $statusDeadline)
+'''
+          updated, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected exactly one supervisor block, matched {count}')
+          if '--once' in updated:
+              raise SystemExit('production control plane still contains --once after patch')
+          path.write_text(updated, encoding='utf-8')
+          PY
+      - name: Remove temporary workflow and push patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/tmp-patch-persistent-supervisor.yml
+          git add scripts/arthur-control-plane.ps1
+          git commit -m 'fix: keep Arthur recovery supervisor alive locally'
+          git push origin HEAD:fix/arthur-persistent-supervisor-daemon-20260905
