@@ -50,6 +50,8 @@ Assert-NotContains $source 'Remove-Item $runtimeState' 'repair controller must n
 Assert-Contains $source 'CODEX_RUNTIME_RECOVERED=PASS' 'full recovery success marker must be explicit'
 Assert-Contains $source 'WINDOWS_REPAIR_HEALTH_WINDOW=PASS' 'full recovery must report the measured health window'
 Assert-Contains $source 'Start-ScheduledTask' 'FullRecovery must restart the existing Supervisor Scheduled Task'
+Assert-Contains $source 'Write-ArthurRepairBlockedTerminal' 'controller exceptions must persist a durable blocked terminal'
+Assert-Contains $source 'REPAIR_BLOCKED_CONTROLLER_ERROR' 'unexpected controller exceptions must map to an explicit blocked terminal'
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('arthur-repair-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -177,6 +179,28 @@ try {
     Assert-True (-not [string]::IsNullOrWhiteSpace($fingerprint1)) 'failure fingerprint must be non-empty'
     Assert-Equal $fingerprint1 $fingerprint2 'failure fingerprint must be deterministic'
 
+    $blockedStatusPath = Join-Path $tmp 'repair-status.json'
+    $seedBlockedStatus = [ordered]@{
+        schema_version = 1
+        status = 'DIAGNOSING'
+        mode = 'FullRecovery'
+        failure_class = 'MODEL_BINDING_DRIFT'
+        evidence_timestamp = '2026-09-06T00:00:00Z'
+        repair_attempt_count = 1
+        selected_repair_action = 'BIND_EXPLICIT_MODEL'
+        runtime_state_identity = $identity
+        failure_fingerprint = 'durable-fingerprint'
+        final_result = 'DIAGNOSTIC_COMPLETE'
+    }
+    Save-JsonAtomic -Path $blockedStatusPath -Value $seedBlockedStatus
+    Write-ArthurRepairBlockedTerminal -StatePath $tmp -Result 'REPAIR_BLOCKED_PROBE_FAILED' -Message 'probe failed after diagnostic'
+    $blocked = Read-JsonFile $blockedStatusPath
+    Assert-Equal $blocked.status 'REPAIR_BLOCKED_PROBE_FAILED' 'controller failure must replace stale ACTIVE/DIAGNOSING status with durable blocked terminal'
+    Assert-Equal $blocked.final_result 'REPAIR_BLOCKED_PROBE_FAILED' 'blocked terminal final_result must match status'
+    Assert-Equal $blocked.failure_fingerprint 'durable-fingerprint' 'blocked terminal must preserve existing failure fingerprint'
+    Assert-Equal $blocked.runtime_state_identity.source_sha 'abc123' 'blocked terminal must preserve diagnosed runtime identity'
+    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$blocked.terminal_error)) 'blocked terminal must retain failure evidence'
+
     $observations = @(
         [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:00:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:00Z' },
         [pscustomobject]@{ at = [datetimeoffset]'2026-09-06T00:01:00Z'; task_running=$true; supervisor_alive=$true; codex_alive=$true; heartbeat='2026-09-06T00:00:55Z' },
@@ -227,6 +251,7 @@ try {
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_WHITELIST_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_RECOVERY_WINDOW_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_ATTEMPT_BOUND_CONTRACT=PASS'
+    Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_BLOCKED_TERMINAL_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_SAFETY_BOUNDARY=PASS'
 }
 finally {
