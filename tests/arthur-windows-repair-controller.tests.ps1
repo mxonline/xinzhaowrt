@@ -20,6 +20,17 @@ function Assert-NotContains {
         throw "TEST_FAIL: $Message (unexpected '$Needle')"
     }
 }
+function Assert-ThrowsContains {
+    param([scriptblock]$Action,[string]$Needle,[string]$Message)
+    try {
+        & $Action
+    }
+    catch {
+        if ([string]$_.Exception.Message -like "*$Needle*") { return }
+        throw "TEST_FAIL: $Message wrong error='$($_.Exception.Message)'"
+    }
+    throw "TEST_FAIL: $Message expected error containing '$Needle'"
+}
 
 Assert-True (Test-Path -LiteralPath $Controller -PathType Leaf) 'Arthur Windows Repair Controller must exist'
 
@@ -41,42 +52,42 @@ try {
         protected = $false
         git = [pscustomobject]@{ dirty = $false; relation = 'BEHIND'; head = 'a'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'HEALTHY' }
     }
     $evidenceDirty = [pscustomobject]@{
         protected = $false
         git = [pscustomobject]@{ dirty = $true; relation = 'BEHIND'; head = 'a'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'HEALTHY' }
     }
     $evidenceModuleDrift = [pscustomobject]@{
         protected = $false
         git = [pscustomobject]@{ dirty = $false; relation = 'SAME'; head = 'b'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'MODULE_ROOT_DRIFT'; module_root_ok = $false; model_binding_ok = $true; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'MODULE_ROOT_DRIFT'; module_root_ok = $false; model_binding_ok = $true; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'RECOVERING' }
     }
     $evidenceModelDrift = [pscustomobject]@{
         protected = $false
         git = [pscustomobject]@{ dirty = $false; relation = 'SAME'; head = 'b'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'MODEL_BINDING_DRIFT'; module_root_ok = $true; model_binding_ok = $false; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'MODEL_BINDING_DRIFT'; module_root_ok = $true; model_binding_ok = $false; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'RECOVERING' }
     }
     $evidenceRetryExhausted = [pscustomobject]@{
         protected = $false
         git = [pscustomobject]@{ dirty = $false; relation = 'SAME'; head = 'b'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'CRASH_LOOP_BLOCKED' }
     }
     $evidenceUnknown = [pscustomobject]@{
         protected = $false
         git = [pscustomobject]@{ dirty = $false; relation = 'SAME'; head = 'b'; origin_main = 'b' }
         task = [pscustomobject]@{ launcher_drift = $false }
-        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true }
+        probe = [pscustomobject]@{ exit_class = 'PROBE_OK'; module_root_ok = $true; model_binding_ok = $true; account_preflight_ok = $true; model_catalog_skipped = $true }
         supervisor = [pscustomobject]@{ status = 'HEALTHY' }
     }
 
@@ -87,11 +98,20 @@ try {
     Assert-Equal (Get-ArthurRepairFailureClass $evidenceRetryExhausted) 'SUPERVISOR_RETRY_EXHAUSTED' 'healthy probe plus crash-loop block may reset only retry state'
     Assert-Equal (Get-ArthurRepairFailureClass $evidenceUnknown) 'UNKNOWN_FAILURE' 'unknown conditions must not mutate'
 
-    $flashState = [pscustomobject]@{ phase = 'FLASH'; human_gate = $null }
-    $humanGateState = [pscustomobject]@{ phase = 'BUILD'; human_gate = 'MANUAL_APPROVAL_REQUIRED' }
-    $buildState = [pscustomobject]@{ phase = 'BUILD'; human_gate = $null }
+    Assert-Equal (Get-ArthurApprovedRepairAction 'CONTROL_RUNTIME_STALE') 'FAST_FORWARD_CONTROL_RUNTIME' 'stale clean control code has one repair'
+    Assert-Equal (Get-ArthurApprovedRepairAction 'TASK_LAUNCHER_DRIFT') 'REREGISTER_SUPERVISOR_TASK' 'task drift reuses canonical task name'
+    Assert-Equal (Get-ArthurApprovedRepairAction 'MODULE_ROOT_DRIFT') 'REGENERATE_CANONICAL_LAUNCHER' 'module drift repairs launcher only'
+    Assert-Equal (Get-ArthurApprovedRepairAction 'MODEL_BINDING_DRIFT') 'BIND_EXPLICIT_MODEL' 'model drift binds approved model only'
+    Assert-Equal (Get-ArthurApprovedRepairAction 'SUPERVISOR_RETRY_EXHAUSTED') 'RESET_SUPERVISOR_RETRY_STATE' 'retry reset is allowed only after probe pass'
+    Assert-Equal (Get-ArthurApprovedRepairAction 'UNKNOWN_FAILURE') $null 'unknown failure has no repair action'
+
+    $flashState = [pscustomobject]@{ phase = 'FLASH'; human_gate = $null; pending_human_gate = $null }
+    $humanGateState = [pscustomobject]@{ phase = 'BUILD'; human_gate = 'MANUAL_APPROVAL_REQUIRED'; pending_human_gate = $null }
+    $pendingGateState = [pscustomobject]@{ phase = 'BUILD'; human_gate = $null; pending_human_gate = 'REAL_DEVICE_CONFIRMATION' }
+    $buildState = [pscustomobject]@{ phase = 'BUILD'; human_gate = $null; pending_human_gate = $null }
     Assert-True (Test-ArthurRepairProtectedState $flashState) 'FLASH must always be repair-protected'
     Assert-True (Test-ArthurRepairProtectedState $humanGateState) 'human safety gate must always be repair-protected'
+    Assert-True (Test-ArthurRepairProtectedState $pendingGateState) 'pending human safety gate must always be repair-protected'
     Assert-True (-not (Test-ArthurRepairProtectedState $buildState)) 'BUILD without human gate must remain repairable'
 
     $state = [pscustomobject]@{
@@ -102,11 +122,46 @@ try {
         request_id = 'req-1'
         phase = 'BUILD'
         candidate_sha256 = $null
+        pending_human_gate = $null
     }
     $identity = Get-ArthurRuntimeStateIdentity $state
     Assert-Equal $identity.release_task_id 'arthur-final' 'runtime identity must include release task id'
     Assert-Equal $identity.phase 'BUILD' 'runtime identity must include phase'
     Assert-True (Test-ArthurRuntimeStateIdentity $identity $identity) 'identical runtime identities must match'
+
+    $statePath = Join-Path $tmp 'runtime-state.json'
+    $state | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statePath -Encoding utf8
+    $different = [pscustomobject]@{
+        release_task_id = 'arthur-final'
+        repo = 'mxonline/xinzhaowrt'
+        branch = 'main'
+        source_sha = 'different-sha'
+        request_id = 'req-1'
+        phase = 'BUILD'
+        candidate_sha256 = $null
+        pending_human_gate = $null
+    }
+    $different | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statePath -Encoding utf8
+    Assert-ThrowsContains {
+        Invoke-ArthurApprovedRepair -Action 'BIND_EXPLICIT_MODEL' -Evidence $evidenceModelDrift -ExpectedIdentity $identity -StatePath $tmp -Root $Root -PythonExe ([Diagnostics.Process]::GetCurrentProcess().Path) -TaskName 'test-supervisor'
+    } 'REPAIR_BLOCKED_RUNTIME_STATE_CHANGED' 'repair must refuse changed runtime identity'
+
+    $state | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statePath -Encoding utf8
+    $protectedEvidence = [pscustomobject]@{
+        protected = $true
+        git = [pscustomobject]@{ dirty = $false; relation = 'SAME'; head = 'b'; origin_main = 'b' }
+        task = [pscustomobject]@{ launcher_drift = $false }
+        probe = $evidenceModelDrift.probe
+        supervisor = [pscustomobject]@{ status = 'RECOVERING' }
+    }
+    Assert-ThrowsContains {
+        Invoke-ArthurApprovedRepair -Action 'BIND_EXPLICIT_MODEL' -Evidence $protectedEvidence -ExpectedIdentity $identity -StatePath $tmp -Root $Root -PythonExe ([Diagnostics.Process]::GetCurrentProcess().Path) -TaskName 'test-supervisor'
+    } 'REPAIR_BLOCKED_SAFETY' 'repair must refuse protected state'
+
+    $state | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statePath -Encoding utf8
+    Assert-ThrowsContains {
+        Invoke-ArthurApprovedRepair -Action 'BIND_EXPLICIT_MODEL' -Evidence $evidenceDirty -ExpectedIdentity $identity -StatePath $tmp -Root $Root -PythonExe ([Diagnostics.Process]::GetCurrentProcess().Path) -TaskName 'test-supervisor'
+    } 'REPAIR_BLOCKED_DIRTY_CONTROL_RUNTIME' 'repair must refuse dirty control-runtime evidence'
 
     $fingerprint1 = Get-ArthurFailureFingerprint $evidenceModuleDrift
     $fingerprint2 = Get-ArthurFailureFingerprint $evidenceModuleDrift
@@ -114,6 +169,7 @@ try {
     Assert-Equal $fingerprint1 $fingerprint2 'failure fingerprint must be deterministic'
 
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_DIAGNOSTIC_CONTRACT=PASS'
+    Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_WHITELIST_CONTRACT=PASS'
     Write-Host 'ARTHUR_WINDOWS_REPAIR_CONTROLLER_SAFETY_BOUNDARY=PASS'
 }
 finally {
