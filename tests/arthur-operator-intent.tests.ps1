@@ -3,6 +3,8 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IntentPath = Join-Path $Root 'production\operator-intent.json'
+$ResumeStatePath = Join-Path $Root 'production\resume-state.json'
+$StaleChineseHandoffPath = Join-Path $Root 'handoff\arthur-luci-chinese-candidate-note.md'
 $IntentHelperPath = Join-Path $Root 'scripts\arthur-operator-intent.ps1'
 $GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
@@ -28,6 +30,8 @@ function Assert-Contains {
 }
 
 Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
+Assert-True (Test-Path $ResumeStatePath) 'machine-readable resume state must exist'
+Assert-True (-not (Test-Path $StaleChineseHandoffPath)) 'obsolete incomplete LuCI Chinese handoff must be removed after live verification'
 Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
 Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
@@ -47,9 +51,20 @@ else {
     Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'non-firmware operator intent must remain process governance'
     Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'non-firmware operator intent must remain governance-only'
 }
-Assert-Equal $current.firmware_state.current_stage 'ADH_MANAGEMENT' 'user-corrected firmware work start must be ADH_MANAGEMENT'
-Assert-Equal $current.firmware_state.next_stage 'ADH_CHINESE' 'ADH_CHINESE must be the next firmware stage'
-Assert-True (@($current.firmware_state.verified_frozen) -contains 'WIFI') 'Wi-Fi must remain VERIFIED_FROZEN'
+Assert-Equal $current.firmware_state.current_stage 'BUILD' 'completed feature work must not route back to ADH/LuCI development'
+Assert-Equal $current.firmware_state.next_stage 'ARTIFACT' 'after the final production build the next formal stage is ARTIFACT'
+foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
+    Assert-True (@($current.firmware_state.verified_frozen) -contains $frozen) "$frozen must remain verified/frozen"
+}
+
+$resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
+Assert-Equal $resume.checkpoint.current 'BUILD' 'resume checkpoint must be at the remaining production build stage'
+Assert-Equal $resume.checkpoint.next_action 'BUILD' 'resume must execute BUILD, not repeat feature development'
+Assert-Equal $resume.next_action 'BUILD' 'top-level resume action must execute BUILD'
+Assert-True (@($resume.pending) -contains 'BUILD') 'BUILD must be the only remaining current action before artifact handling'
+foreach ($frozen in @('wifi','luci_chinese','adguard_full_manager','quickstart')) {
+    Assert-True ($null -ne $resume.verified.$frozen) "$frozen evidence must be durable in resume state"
+}
 
 $stateOnly = [pscustomobject]@{
     intent_type = 'STATE_CORRECTION'
@@ -92,8 +107,6 @@ $rules = Get-Content -Raw $RulesPath
 Assert-Contains $rules 'state statement is not execution authorization' 'durable GPT rules must distinguish state correction from execution authorization'
 Assert-Contains $rules 'authorization is scope-bound' 'durable GPT rules must prevent authorization leakage across tasks'
 Assert-Contains $rules 'operator-intent.json' 'durable GPT startup must read operator intent before choosing a firmware action'
-Assert-Contains $rules 'ADH_MANAGEMENT' 'rules must record the current user-corrected work start'
-Assert-Contains $rules 'ADH_CHINESE' 'rules must record the next ADH localization stage'
 Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve the only successful terminal state'
 
 $agents = Get-Content -Raw $AgentsPath
@@ -104,4 +117,5 @@ Assert-Contains $agents 'GOVERNANCE_RULES_ONLY' 'Codex must understand governanc
 Assert-Contains $agents 'EXECUTE_FIRMWARE' 'Codex must require explicit firmware execution intent before mutating the release task'
 
 Write-Host 'ARTHUR_OPERATOR_INTENT_GATE_CONTRACT=PASS'
+Write-Host 'ARTHUR_CURRENT_RELEASE_STATE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CODEX_STARTUP_INTENT_CONTRACT=PASS'
