@@ -2,7 +2,7 @@
     "schema_version":  1,
     "status":  "RESUME_SAFE",
     "instruction_allowed":  true,
-    "repository_head":  "db57876a2481c351fc2f9b5eea58f9cf5d6122a25d",
+    "repository_head":  "5a053a664def8912a65f9bb4fb7f54d9d561dd92",
     "real_device":  {
                         "version":  "0.1.3",
                         "build_id":  "33462873812",
@@ -46,6 +46,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "0a1ae8d74d9e6ca567e7e3051a8d9a2869113c90eebf7b74d9065abf2f960b14",
+    "semantic_sha256":  "70ae341dbc441b20dc99a078363bd9dac4dbd6040a5a5f12be3f447012a3b492",
     "evidence_timestamp":  "2026-09-05T18:25:49.5853929+00:00"
 }
