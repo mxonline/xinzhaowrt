@@ -26,12 +26,22 @@ if not (marker < download < compile_):
 PY
 
 grep -Fq 'build_closure:' "$WORKFLOW" || { echo 'FAIL: Fast Preflight workflow has no build_closure dispatch input' >&2; exit 1; }
-grep -Fq 'BUILD_CLOSURE_ONLY=1' "$WORKFLOW" || { echo 'FAIL: Fast Preflight workflow does not run exact build.sh closure mode' >&2; exit 1; }
+python3 - "$WORKFLOW" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
+# Accept either shell assignment or YAML env form; both execute build.sh with closure-only=1.
+if not (re.search(r'BUILD_CLOSURE_ONLY\s*=\s*["\x27]?1', text) or re.search(r'BUILD_CLOSURE_ONLY\s*:\s*["\x27]1["\x27]', text)):
+    raise SystemExit('FAIL: Fast Preflight workflow does not run exact build.sh closure mode')
+if './scripts/build.sh' not in text:
+    raise SystemExit('FAIL: Fast Preflight closure job does not execute build.sh')
+PY
 grep -Fq 'Arthur-build-closure-' "$WORKFLOW" || { echo 'FAIL: build closure diagnostics are not persisted' >&2; exit 1; }
 
-grep -Fq 'function Start-BuildClosurePreflight' "$CONTROLLER" || { echo 'FAIL: controller cannot dispatch build closure preflight' >&2; exit 1; }
-grep -Fq 'function Invoke-BuildClosurePreflight' "$CONTROLLER" || { echo 'FAIL: controller has no unattended closure repair loop' >&2; exit 1; }
+grep -Fq 'function Invoke-BuildClosurePreflight' "$CONTROLLER" || { echo 'FAIL: controller has no unattended closure orchestration' >&2; exit 1; }
+grep -Fq 'build_closure=true' "$CONTROLLER" || { echo 'FAIL: controller does not explicitly dispatch closure mode' >&2; exit 1; }
 grep -Fq 'BUILD_CLOSURE_PREFLIGHT=PASS' "$CONTROLLER" || { echo 'FAIL: controller does not require closure PASS before replacement Candidate' >&2; exit 1; }
+grep -Fq 'BUILD_CLOSURE_FAILED_CONTINUE_REPAIR' "$CONTROLLER" || { echo 'FAIL: failed closure does not remain in repair lane' >&2; exit 1; }
+grep -Fq 'BUILD_CLOSURE_PASS_ALLOW_CANDIDATE' "$CONTROLLER" || { echo 'FAIL: controller lacks explicit closure-pass Candidate boundary' >&2; exit 1; }
 grep -Fq 'Invoke-BuildClosurePreflight -RequestedMode $RequestedMode' "$CONTROLLER" || { echo 'FAIL: failed-Candidate path does not invoke closure before replacement Candidate' >&2; exit 1; }
 
 python3 - "$CONTROLLER" <<'PY'
@@ -46,6 +56,15 @@ closure = body.rfind(needle)
 dispatch = body.rfind('$currentRunId = Start-V3Run -RequestedMode $RequestedMode')
 if closure < 0 or dispatch < 0 or closure > dispatch:
     raise SystemExit('FAIL: closure PASS must be required immediately before the failed-run replacement Candidate dispatch')
+
+# A repair-round circuit breaker is allowed to reset counters, but it must not
+# dispatch a replacement Candidate before the repair-evidence/closure lane.
+circuit = body.find('if ($round -ge $MaxRepairRounds)')
+evidence = body.find('$repairEvidenceRunId = $currentRunId')
+if circuit < 0 or evidence < 0 or circuit >= evidence:
+    raise SystemExit('FAIL: failure-path circuit breaker/evidence boundary missing')
+if '$currentRunId = Start-V3Run -RequestedMode $RequestedMode' in body[circuit:evidence]:
+    raise SystemExit('FAIL: circuit breaker bypasses build closure and starts Candidate directly')
 PY
 
 echo 'PASS: Arthur source/feed/package/defconfig closure is required before any failed-run replacement Candidate.'
