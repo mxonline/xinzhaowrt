@@ -51,6 +51,12 @@ Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_CODE_ROOT' 'runner wakeup must exp
 Assert-Contains $wakeup 'CONTROL_PLANE_CODE=PASS' 'runner wakeup must emit the exact clean control-code SHA used for each wakeup'
 Assert-Contains $wakeup '$env:ARTHUR_CONTROL_PLANE_CODE_ROOT' 'the scoped gate must execute from the clean control-code root'
 Assert-Contains $wakeup 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty task changes must still be preserved without blocking control-code updates'
+Assert-Contains $wakeup 'PYTHONDONTWRITEBYTECODE' 'clean Control Plane code must disable Python bytecode writes that would dirty the mirror'
+Assert-Contains $wakeup '__pycache__' 'wakeup may remove only known generated Python cache directories from clean control code'
+Assert-Contains $wakeup 'CONTROL_PLANE_CODE_DIRTY_FILES_BEGIN' 'unexpected control-code dirtiness must print the exact file list before fail-closed'
+Assert-Contains $wakeup 'CONTROL_PLANE_CODE_DIRTY_FILES_END' 'unexpected control-code dirtiness output must be delimited'
+Assert-NotContains $wakeup 'git clean' 'clean Control Plane recovery must not use broad git clean'
+Assert-NotContains $wakeup 'reset --hard' 'clean Control Plane recovery must not use destructive reset'
 Assert-Contains $controlPlane '$codeRoot' 'Control Plane must distinguish clean control code from the mutable task workspace'
 Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\arthur-resume-state.ps1'" 'resume-state helper must come from clean control code'
 Assert-Contains $controlPlane "Join-Path `$codeRoot 'scripts\run-supervisor.py'" 'recovery supervisor shim must come from clean control code'
@@ -64,4 +70,5 @@ Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be art
 
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
+Write-Host 'ARTHUR_CONTROL_RUNTIME_PYTHON_CACHE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
