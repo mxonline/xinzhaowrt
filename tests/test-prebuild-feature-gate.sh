@@ -15,6 +15,9 @@ grep -Fq 'FIRMWARE_BUILD_ALLOWED' "$gate" || { echo 'FAIL: prebuild gate must co
 grep -Fq 'WIFI_STATE' "$gate" || { echo 'FAIL: prebuild gate must consume frozen Wi-Fi state instead of requiring a fresh WIFI_LIVE run.' >&2; exit 1; }
 grep -Fq 'VERIFIED_FROZEN' "$gate" || { echo 'FAIL: prebuild gate must require WIFI_STATE=VERIFIED_FROZEN.' >&2; exit 1; }
 ! grep -Fq 'features.get("WIFI_LIVE") == "PASS"' "$gate" || { echo 'FAIL: prebuild gate must not require a fresh WIFI_LIVE PASS for frozen Wi-Fi.' >&2; exit 1; }
+grep -Fq 'FIRMWARE_INPUT_PATHS' "$gate" || { echo 'FAIL: prebuild gate must define a closed firmware-input fingerprint.' >&2; exit 1; }
+grep -Fq 'PREBUILD_EVIDENCE_INHERITED_FIRMWARE_FINGERPRINT' "$gate" || { echo 'FAIL: prebuild gate must expose fingerprint-based evidence inheritance.' >&2; exit 1; }
+grep -Fq 'firmware-input fingerprint does not match current source HEAD' "$gate" || { echo 'FAIL: prebuild gate must fail closed on a changed firmware input.' >&2; exit 1; }
 
 grep -Fq 'Ensure-ArthurUnattendedAccess' "$verify" || { echo 'FAIL: verifier must recover the Arthur control plane before SSH checks.' >&2; exit 1; }
 grep -Fq 'New-LuciSessionFromSsh' "$verify" || { echo 'FAIL: verifier must be able to create an authenticated LuCI session from verified root SSH without an operator cookie.' >&2; exit 1; }
