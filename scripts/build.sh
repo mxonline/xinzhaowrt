@@ -28,6 +28,7 @@ QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
 BUILD_TOOLCHAIN_BUNDLES="${BUILD_TOOLCHAIN_BUNDLES:-0}"
+BUILD_CLOSURE_ONLY="${BUILD_CLOSURE_ONLY:-0}"
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -118,6 +119,12 @@ if [[ "$BUILD_TOOLCHAIN_BUNDLES" == "1" ]]; then
   grep -qx 'CONFIG_IB_STANDALONE=y' .config || { echo 'ERROR: CONFIG_IB_STANDALONE did not survive defconfig'; exit 1; }
 fi
 cp .config "$OUT/full.config"
+
+if [[ "$BUILD_CLOSURE_ONLY" == "1" ]]; then
+  echo 'BUILD_CLOSURE_PREFLIGHT=PASS'
+  echo 'Build closure verified exact locked sources, feeds, external packages, provenance, package existence, overlay, make defconfig and required config; source download and firmware compile were not run.'
+  exit 0
+fi
 
 echo "[6/10] Download source archives"
 if ! make download -j"$JOBS"; then
