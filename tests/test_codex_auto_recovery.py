@@ -72,6 +72,25 @@ class CodexAutoRecoveryContractTests(unittest.TestCase):
         self.assertEqual("REUSE_ARTIFACT", recovered.next_action)
         self.assertEqual(state.candidate_sha256, recovered.candidate_sha256)
 
+    def test_failed_same_fingerprint_candidate_routes_to_auto_repair(self):
+        state = self.make_state()
+        supervisor = RecoverySupervisor(state)
+        recovered = supervisor.reconcile(
+            RecoveryEvidence(
+                candidate_fingerprint="arthur-build-v1:abc",
+                expected_fingerprint="arthur-build-v1:abc",
+                candidate_run_id=33969443771,
+                candidate_status="completed",
+                candidate_conclusion="failure",
+            )
+        )
+        self.assertEqual("AUTO_REPAIR_FAILED_CANDIDATE", recovered.next_action)
+        self.assertEqual("CANDIDATE_REPAIR", recovered.current_stage)
+        self.assertEqual(33969443771, recovered.active_run_id)
+        decision = recovered.observability.get("recovery_decision") or {}
+        self.assertEqual("AUTO_REPAIR_FAILED_CANDIDATE", decision.get("action"))
+        self.assertEqual("failure", decision.get("conclusion"))
+
     def test_unknown_sysupgrade_state_forces_real_device_reconcile(self):
         state = self.make_state()
         state.current_stage = "SYSUPGRADE"
