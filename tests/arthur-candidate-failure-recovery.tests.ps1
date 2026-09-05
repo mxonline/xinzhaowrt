@@ -24,6 +24,20 @@ Assert-Contains $helperText 'candidate-repair.json' 'helper must persist repair 
 Assert-Contains $gateText 'arthur-candidate-failure-recovery.ps1' 'control-plane gate must invoke failed Candidate recovery'
 Assert-Contains $gateText 'CONTROL_PLANE_REPAIR_ROUTED=PASS' 'control-plane gate must stop competing mutation when repair owns the wakeup'
 
+# A known failed formal Candidate is durable GitHub evidence and must be routed to
+# its repair controller before legacy Resume Gate state can block it. The helper
+# must operate from the clean current-main control checkout, never a preserved dirty
+# task workspace which may still point at an old source SHA.
+$repairGateIndex = $gateText.IndexOf('$repairOutput = & $failureRecoveryPath')
+$resumeGateIndex = $gateText.IndexOf('$resumeOutput = & $resumeGatePath')
+if ($repairGateIndex -lt 0 -or $resumeGateIndex -lt 0) {
+    throw 'FAIL: repair/resume gate calls are missing'
+}
+if ($repairGateIndex -ge $resumeGateIndex) {
+    throw 'FAIL: stale Resume Gate can block known failed Candidate auto-repair before it is routed'
+}
+Assert-Contains $gateText '-Workspace $root' 'failed Candidate recovery must use the clean current-main control checkout'
+
 # The repair controller must never dispatch a replacement Candidate until the exact
 # locked source/feed/package/defconfig closure passes. A failed closure must become
 # the next Codex evidence source and remain inside the repair lane.
