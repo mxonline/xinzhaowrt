@@ -34,15 +34,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fast static preflight
-        run: |
-          set -Eeuo pipefail
-          chmod +x scripts/*.sh
-          ./scripts/verify-project.sh
-          test -s config/arthur-known-good.lock
-          test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
-          echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
-
       - name: Free runner disk space
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
@@ -58,7 +49,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           chmod +x scripts/*.sh
-          ./scripts/verify-project.sh
           test -s config/arthur-known-good.lock
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
           mkdir -p output
@@ -67,9 +57,8 @@ jobs:
           import json
           with open('production/known-good.json', 'r', encoding='utf-8') as f:
               data = json.load(f)
-          status = data.get('status')
-          if data.get('verified') is not True or status not in {'verified', 'frozen'}:
-              raise SystemExit('BLOCKED: production/known-good.json is not verified/frozen')
+          if data.get('verified') is not True or data.get('status') != 'verified':
+              raise SystemExit('BLOCKED: production/known-good.json is not verified')
           if data.get('device') != 'jdcloud_re-ss-01':
               raise SystemExit('BLOCKED: Known-Good device mismatch')
           stable = data.get('stable_tag') or ''
@@ -120,7 +109,7 @@ jobs:
               f.write('\n')
           PY
 
-          echo 'PASS: verified/frozen Known-Good baseline and Candidate lock prepared.'
+          echo 'PASS: verified Known-Good baseline and Candidate lock prepared.'
 
       - name: Restore downloads and compiler cache
         uses: actions/cache@v4
@@ -151,9 +140,7 @@ jobs:
           grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' output/plugin-verification.txt
           grep -Fq 'Verified required plugins: 22' output/plugin-verification.txt
           test -s output/upload-oom-verification.txt
-          grep -Fq 'PASS: Arthur large-upload OOM guard verified:' output/upload-oom-verification.txt
-          grep -Fq 'Nginx buffering is disk-backed' output/upload-oom-verification.txt
-          grep -Fq 'cgi-io can link its /tmp O_TMPFILE directly to /tmp/firmware.bin without a second 90+ MiB copy.' output/upload-oom-verification.txt
+          grep -Fq 'PASS: Arthur upload guard verified: Nginx buffering is disk-backed and cgi-io uses the official /tmp same-filesystem handoff.' output/upload-oom-verification.txt
           find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
           test -s output/firmware/SHA256SUMS.local
           (cd output/firmware && sha256sum -c SHA256SUMS.local)

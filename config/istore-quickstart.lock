@@ -1,0 +1,9 @@
+# Official iStoreOS QuickStart source pins. Keep the LuCI frontend/RPC
+# package and the service/backend package paired to their verified upstream
+# revisions; do not float either ref to a branch tip.
+ISTORE_QUICKSTART_LUCI_REPO="https://github.com/linkease/nas-packages-luci.git"
+ISTORE_QUICKSTART_LUCI_REF="8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449"
+ISTORE_QUICKSTART_LUCI_LICENSE="Apache-2.0"
+ISTORE_QUICKSTART_REPO="https://github.com/linkease/nas-packages.git"
+ISTORE_QUICKSTART_REF="0c789dc2b88f684476f6174201105da6ca6f5133"
+ISTORE_QUICKSTART_LICENSE="GPL-3.0-only"

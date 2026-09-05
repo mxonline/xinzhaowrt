@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "checkpoint": "LUCI_CHINESE",
+  "status": "VERIFIED_FROZEN",
+  "captured_date": "2026-09-05",
+  "device": {
+    "address": "192.168.6.1",
+    "firmware_version": "0.1.3",
+    "board": "jdcloud,re-ss-01",
+    "target": "qualcommax/ipq60xx"
+  },
+  "source_fix_commit": "ef76dda800d6fa9ea02fcbee462daf03aa7d7c99",
+  "evidence": {
+    "luci_main_lang": "zh_cn",
+    "base_i18n_package": "luci-i18n-base-zh-cn",
+    "quickstart_package_runtime": "NOT_AVAILABLE_FROM_DEVICE_REPOSITORIES",
+    "quickstart_lmo": "/usr/lib/lua/luci/i18n/quickstart.zh-cn.lmo",
+    "quickstart_lmo_sha256": "9f7b910fe9dec4916add601746c8a2e3424703ee64a0bfa193a573ccdec8fb94",
+    "rendered_vue_lang": "zh-cn",
+    "rendered_vue_lang_data": "/luci-static/quickstart/i18n/zh-cn.json",
+    "authenticated_pages": [
+      "quickstart",
+      "network-guide",
+      "status/overview",
+      "network",
+      "system",
+      "services"
+    ]
+  },
+  "gates": {
+    "CHINESE_UI": "PASS",
+    "LUCI_CHINESE": "VERIFIED_FROZEN",
+    "WIFI": "VERIFIED_FROZEN",
+    "REAL_DEVICE_VERIFY": "NOT_RUN",
+    "RELEASE_ALLOWED": false
+  },
+  "next_action": "ADGUARD_FULL_MANAGER",
+  "prohibited_actions": [
+    "Candidate",
+    "Build",
+    "Flash",
+    "Release"
+  ]
+}

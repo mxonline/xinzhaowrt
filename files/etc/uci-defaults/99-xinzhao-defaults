@@ -50,9 +50,9 @@ log 'FIRSTBOOT_START' || fail log_write_start
 current_ip="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"
 case "$current_ip" in
     ''|'192.168.1.1'|'192.168.1.1/24')
-        uci set network.lan.ipaddr='192.168.6.1' || fail lan_set
+        uci set network.lan.ipaddr='192.168.6.1/24' || fail lan_set
         uci commit network || fail lan_commit
-        [ "$(uci get network.lan.ipaddr)" = '192.168.6.1' ] || fail lan_verify
+        [ "$(uci get network.lan.ipaddr)" = '192.168.6.1/24' ] || fail lan_verify
         ;;
     *)
         log "Existing LAN IP preserved: $current_ip" || fail log_write_lan_existing

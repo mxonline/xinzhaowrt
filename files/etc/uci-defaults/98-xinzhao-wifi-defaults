@@ -1,0 +1,49 @@
+#!/bin/sh
+# Apply the authoritative Arthur Wi-Fi identity on first boot of each image.
+
+set -eu
+
+wifi_default_ssid='xinzhaowrt'
+wifi_default_password='12345678'
+wifi_changed=0
+
+reload_wireless() {
+    # UCI may be committed after netifd/hostapd has already started on
+    # recovery images. Reload the running AP so its WPA key matches UCI;
+    # when networking is not up yet, normal boot will consume the commit.
+    if command -v wifi >/dev/null 2>&1; then
+        wifi reload >/dev/null 2>&1 || true
+    elif command -v ubus >/dev/null 2>&1 && ubus -q list network.wireless >/dev/null 2>&1; then
+        ubus call network reload >/dev/null 2>&1 || true
+    fi
+}
+
+wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+
+# On some Arthur images the board-generated wireless UCI is created after the
+# first uci-defaults pass. Generate it here when absent, then apply the
+# password to the real 2.4 GHz/5 GHz interfaces.
+if [ -z "$wifi_sections" ] && command -v wifi >/dev/null 2>&1; then
+    wifi config >/dev/null 2>&1 || true
+    wifi_sections="$(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p' || true)"
+fi
+
+for wifi_section in $wifi_sections; do
+    wifi_device="$(uci -q get "wireless.$wifi_section.device" 2>/dev/null || true)"
+    wifi_band="$(uci -q get "wireless.$wifi_device.band" 2>/dev/null || true)"
+    case "$wifi_band" in
+        2g|5g)
+            uci set "wireless.$wifi_section.ssid=$wifi_default_ssid"
+            uci set "wireless.$wifi_section.key=$wifi_default_password"
+            wifi_changed=1
+            ;;
+    esac
+done
+
+if [ "$wifi_changed" -eq 1 ]; then
+    uci commit wireless
+    reload_wireless
+fi
+
+logger -t xinzhaowrt 'WIFI_DEFAULTS_PASS' 2>/dev/null || true
+exit 0

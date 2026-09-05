@@ -1,0 +1,44 @@
+#!/bin/sh
+# Keep LuCI on nginx.  The ImageBuilder package set removes uhttpd; this
+# overlay remains defensive for profiles that still carry its init script.
+
+set -eu
+
+log() {
+    logger -t xinzhaowrt "$*" || true
+}
+
+fail() {
+    log "WEBSTACK_FAIL stage=$1"
+    exit 1
+}
+
+if [ -x /etc/init.d/uhttpd ]; then
+    /etc/init.d/uhttpd stop || fail uhttpd_stop
+    /etc/init.d/uhttpd disable || fail uhttpd_disable
+fi
+
+[ -x /etc/init.d/nginx ] || fail nginx_missing
+
+# Publish LuCI over plain HTTP on port 80.  The stock luci-nginx profile
+# creates an HTTPS listener plus an HTTP-to-HTTPS redirect; that redirect is
+# not the Arthur factory contract.  Remove only the redirect listener and
+# keep the generated LuCI locations unchanged.
+if uci -q get nginx._lan >/dev/null 2>&1; then
+    uci -q delete nginx._lan.listen || fail nginx_http_listen_delete
+    uci -q add_list nginx._lan.listen='0.0.0.0:80' || fail nginx_http_listen_v4
+    uci -q add_list nginx._lan.listen='[::]:80' || fail nginx_http_listen_v6
+    uci -q delete nginx._lan.uci_manage_ssl || true
+    uci -q delete nginx._lan.ssl_certificate || true
+    uci -q delete nginx._lan.ssl_certificate_key || true
+    uci -q delete nginx._lan.ssl_session_cache || true
+    uci -q delete nginx._lan.ssl_session_timeout || true
+    uci -q delete nginx._redirect2ssl || true
+    uci -q commit nginx || fail nginx_http_commit
+fi
+/etc/init.d/nginx enable || fail nginx_enable
+/etc/init.d/nginx restart || fail nginx_restart
+
+log 'WEBSTACK_NGINX_PASS'
+log 'WEBSTACK_COMPLETE'
+exit 0
