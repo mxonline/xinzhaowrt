@@ -28,14 +28,13 @@ function Get-ArthurFirmwareEvents {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
         try {
             $entry = $line | ConvertFrom-Json
-            # PowerShell 7 may auto-convert ISO 8601 JSON strings to DateTime and lose
-            # the original offset when later stringified. Preserve the exact wire value
-            # used by the hash chain so validation is stable across PS 5.1/7.x.
-            $timeMatch = [regex]::Match($line, '"time"\s*:\s*"(?<time>[^"\\]*(?:\\.[^"\\]*)*)"')
-            if (-not $timeMatch.Success) { throw 'missing time string' }
-            $timeLiteral = $timeMatch.Groups['time'].Value
-            $timeLiteral = '"' + $timeLiteral + '"' | ConvertFrom-Json
-            $entry.time = [string]$timeLiteral
+            # PowerShell 7 auto-converts ISO 8601 JSON values to DateTime. The hash
+            # chain must instead use the exact offset-bearing text stored on disk.
+            # Event timestamps are constrained to plain ISO 8601 ASCII, so retain
+            # the raw JSON literal rather than passing it through ConvertFrom-Json again.
+            $timeMatch = [regex]::Match($line, '"time"\s*:\s*"(?<time>[^"\\]+)"')
+            if (-not $timeMatch.Success) { throw 'missing plain ISO 8601 time string' }
+            $entry.time = [string]$timeMatch.Groups['time'].Value
             $events += $entry
         }
         catch { throw "FIRMWARE_EVENT_LEDGER_INVALID_JSON: $($_.Exception.Message)" }
