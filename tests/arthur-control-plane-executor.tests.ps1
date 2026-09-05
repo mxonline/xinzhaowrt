@@ -52,6 +52,9 @@ Assert-Contains $script "@(`$deviceLines | Where-Object { `$_ -match 'build-info
 Assert-Contains $script "-split '__BUILD_INFO_SCAN__', 2" 'device probe must preserve the complete multiline ubus board JSON before the build-info scan marker'
 Assert-Contains $script "PSObject.Properties['board_name']" 'device identity must read OpenWrt system board_name defensively under StrictMode'
 Assert-Contains $script 'DEVICE_PROBE reachable=' 'live device classification must emit explicit evidence before a safety decision'
+Assert-Contains $script '$env:HEADLESS_PYTHON_EXE' 'control plane must consume the verified persistent headless Python path passed by the wakeup workflow'
+Assert-Contains $script 'CONTROL_PLANE_PYTHON=PASS' 'control plane must emit which verified Python executable it selected'
+Assert-NotContains $script "foreach (`$tool in @('git', 'gh', 'python'))" 'control plane must not require a generic python command when HEADLESS_PYTHON_EXE is explicitly provided'
 
 # Current release checkpoint is ADH management first, then Chinese localization.
 Assert-Contains $script "request_id = 'arthur-adh-quickstart'" 'control-plane bootstrap must bind to the current Arthur ADH release task'
@@ -103,3 +106,4 @@ Write-Host 'ARTHUR_SINGLE_SCHEDULER_CONTRACT=PASS'
 Write-Host 'ARTHUR_GH_RELEASE_LIST_SCHEMA_CONTRACT=PASS'
 Write-Host 'ARTHUR_SCALAR_COUNT_NORMALIZATION_CONTRACT=PASS'
 Write-Host 'ARTHUR_DEVICE_PROBE_REGRESSION_CONTRACT=PASS'
+Write-Host 'ARTHUR_HEADLESS_PYTHON_BINDING_CONTRACT=PASS'
