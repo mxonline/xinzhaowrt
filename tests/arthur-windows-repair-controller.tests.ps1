@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Controller = Join-Path $Root 'scripts\arthur-windows-repair-controller.ps1'
+$ControllerWrapper = Join-Path $Root 'scripts\invoke-arthur-windows-repair-controller.ps1'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -39,8 +40,10 @@ function Assert-ThrowsContains {
 }
 
 Assert-True (Test-Path -LiteralPath $Controller -PathType Leaf) 'Arthur Windows Repair Controller must exist'
+Assert-True (Test-Path -LiteralPath $ControllerWrapper -PathType Leaf) 'Arthur Windows Repair Controller durable task wrapper must exist'
 
 $source = Get-Content -Raw -LiteralPath $Controller
+$wrapperSource = Get-Content -Raw -LiteralPath $ControllerWrapper
 Assert-NotContains $source 'sysupgrade' 'repair controller must never invoke device flashing'
 Assert-NotContains $source 'workflow run arthur-update' 'repair controller must never dispatch firmware build workflows'
 Assert-NotContains $source 'git reset --hard' 'repair controller must never hard-reset a repository'
@@ -50,14 +53,18 @@ Assert-NotContains $source 'Remove-Item $runtimeState' 'repair controller must n
 Assert-Contains $source 'CODEX_RUNTIME_RECOVERED=PASS' 'full recovery success marker must be explicit'
 Assert-Contains $source 'WINDOWS_REPAIR_HEALTH_WINDOW=PASS' 'full recovery must report the measured health window'
 Assert-Contains $source 'Start-ScheduledTask' 'FullRecovery must restart the existing Supervisor Scheduled Task'
-Assert-Contains $source 'Write-ArthurRepairBlockedTerminal' 'controller exceptions must persist a durable blocked terminal'
-Assert-Contains $source 'REPAIR_BLOCKED_CONTROLLER_ERROR' 'unexpected controller exceptions must map to an explicit blocked terminal'
+Assert-Contains $wrapperSource 'Write-ArthurRepairBlockedTerminal' 'controller task wrapper must persist a durable blocked terminal'
+Assert-Contains $wrapperSource 'REPAIR_BLOCKED_CONTROLLER_ERROR' 'unexpected controller exits must map to an explicit blocked terminal'
+Assert-Contains $wrapperSource 'repair-events.jsonl' 'blocked controller exits must append durable repair evidence'
+Assert-NotContains $wrapperSource 'sysupgrade' 'repair task wrapper must never gain firmware authority'
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('arthur-repair-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
     $env:ARTHUR_REPAIR_CONTROLLER_IMPORT_ONLY = '1'
     . $Controller -StateDir $tmp -ControlRoot $Root -HeadlessPythonExe ([Diagnostics.Process]::GetCurrentProcess().Path)
+    $env:ARTHUR_REPAIR_WRAPPER_IMPORT_ONLY = '1'
+    . $ControllerWrapper -StateDir $tmp -ControlRoot $Root -HeadlessPythonExe ([Diagnostics.Process]::GetCurrentProcess().Path)
 
     $evidenceStale = [pscustomobject]@{
         protected = $false
@@ -192,9 +199,9 @@ try {
         failure_fingerprint = 'durable-fingerprint'
         final_result = 'DIAGNOSTIC_COMPLETE'
     }
-    Save-JsonAtomic -Path $blockedStatusPath -Value $seedBlockedStatus
+    $seedBlockedStatus | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $blockedStatusPath -Encoding utf8
     Write-ArthurRepairBlockedTerminal -StatePath $tmp -Result 'REPAIR_BLOCKED_PROBE_FAILED' -Message 'probe failed after diagnostic'
-    $blocked = Read-JsonFile $blockedStatusPath
+    $blocked = Get-Content -Raw -LiteralPath $blockedStatusPath | ConvertFrom-Json
     Assert-Equal $blocked.status 'REPAIR_BLOCKED_PROBE_FAILED' 'controller failure must replace stale ACTIVE/DIAGNOSING status with durable blocked terminal'
     Assert-Equal $blocked.final_result 'REPAIR_BLOCKED_PROBE_FAILED' 'blocked terminal final_result must match status'
     Assert-Equal $blocked.failure_fingerprint 'durable-fingerprint' 'blocked terminal must preserve existing failure fingerprint'
@@ -256,5 +263,6 @@ try {
 }
 finally {
     Remove-Item Env:ARTHUR_REPAIR_CONTROLLER_IMPORT_ONLY -ErrorAction SilentlyContinue
+    Remove-Item Env:ARTHUR_REPAIR_WRAPPER_IMPORT_ONLY -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
