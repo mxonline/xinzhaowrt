@@ -58,6 +58,10 @@ jobs:
         shell: pwsh
         run: python -m unittest tests.test_arthur_codex_runtime_probe -v
 
+      - name: Test Arthur Windows repair controller diagnostic contract
+        shell: pwsh
+        run: ./tests/arthur-windows-repair-controller.tests.ps1
+
       - name: Test Windows failed Candidate recovery wiring
         shell: pwsh
         run: ./tests/arthur-candidate-failure-recovery.tests.ps1
@@ -129,7 +133,8 @@ jobs:
             'scripts/arthur-firmware-event-ledger.ps1',
             'scripts/arthur-firmware-resume.ps1',
             'scripts/check-firmware-event-ledger-history.ps1',
-            'scripts/arthur-control-plane.ps1'
+            'scripts/arthur-control-plane.ps1',
+            'scripts/arthur-windows-repair-controller.ps1'
           )) {
             if (-not (Test-Path $file)) {
               Write-Error "Required PowerShell file missing: $file"
@@ -145,7 +150,7 @@ jobs:
           }
 
       - name: Compile Arthur orchestrator Python
-        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py ai_orchestrator/supervisor.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py
+        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py ai_orchestrator/supervisor.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py scripts/arthur-codex-runtime-probe.py
 
       - name: Test runtime checkpoint synchronization
         run: python3 -m unittest tests.test_runtime_checkpoint_sync -v
