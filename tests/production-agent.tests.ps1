@@ -141,14 +141,16 @@ Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain 
 Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
 
-# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> persistent workspace -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
+# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> preserved task workspace + clean current-main governance -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
 Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
 Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
 Assert-Contains $deploy "XinZhaoWrt\ControlPlane" 'runner wakeup must use the canonical Control Plane root'
 Assert-Contains $deploy "Join-Path `$root 'workspace'" 'runner wakeup must preserve a persistent source workspace under the canonical root'
 Assert-Contains $deploy 'CONTROL_PLANE_WORKSPACE_DIRTY=PRESERVED' 'dirty headless source changes must survive the next schedule'
 Assert-Contains $deploy 'merge --ff-only' 'clean persistent main may only fast-forward'
-Assert-Contains $deploy '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE' 'resume-state, baseline and Headless Codex must execute against the persistent workspace'
+Assert-Contains $deploy '$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_CODE_ROOT' 'release governance, resume-state, event-ledger and baseline must execute against clean current main'
+Assert-Contains $deploy 'CONTROL_PLANE_TASK_WORKSPACE_PRESERVED=PASS' 'dirty persistent task workspace must remain preserved separately from release governance'
+Assert-True ($deploy -notmatch [regex]::Escape('$env:GITHUB_WORKSPACE = $env:ARTHUR_CONTROL_PLANE_WORKSPACE')) 'stale dirty task workspace must not be used as release-governance workspace'
 Assert-Contains $deploy 'scripts\arthur-control-plane-gate.ps1' 'runner wakeup must enter through the scoped operator-intent gate'
 Assert-Contains $controlPlaneGate 'scripts\arthur-control-plane.ps1' 'authorized intent gate must delegate to the existing Arthur Control Plane'
 Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'unauthorized firmware execution must stop before the Control Plane'
