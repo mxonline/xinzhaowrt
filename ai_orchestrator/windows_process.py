@@ -39,11 +39,15 @@ def runtime_python_path():
     """Choose a supported Python for resumed Runtime processes.
 
     The system ``python.exe`` on this host is 3.8, while the Codex SDK needs
-    3.10+.  Prefer the bundled workspace runtime used by the successful
-    preflight, then an explicit override, then the current interpreter.
+    3.10+. Prefer the already-verified persistent headless interpreter from the
+    runner wakeup, then an explicit override, then the known local runtimes and
+    finally the current interpreter.
     """
+    verified_headless = os.environ.get("HEADLESS_PYTHON_EXE")
     override = os.environ.get("XINZHAO_RUNTIME_PYTHON")
     candidates = []
+    if verified_headless:
+        candidates.append(Path(verified_headless))
     if override:
         candidates.append(Path(override))
     candidates.append(Path.home() / "AppData" / "Local" / "Programs" / "Python" / "Python314" / "python.exe")
@@ -62,7 +66,7 @@ def runtime_python_path():
                 if sys.version_info >= (3, 10) and candidate == Path(sys.executable):
                     return candidate
                 probe = subprocess.run(
-                    [str(candidate), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"],
+                    [str(candidate), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,
@@ -77,7 +81,7 @@ def runtime_python_path():
 def hidden_codex_launch_args():
     """Return SDK ``CodexConfig.launch_args_override`` without a console.
 
-    The SDK owns the outer Popen call and does not expose creation flags.  The
+    The SDK owns the outer Popen call and does not expose creation flags. The
     GUI-subsystem pythonw process is therefore the adapter boundary; it then
     starts codex.exe with CREATE_NO_WINDOW and inherited stdio.
     """
