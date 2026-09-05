@@ -5,6 +5,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IntentPath = Join-Path $Root 'production\operator-intent.json'
 $RequestPath = Join-Path $Root 'production\v3-request.json'
 $ResumeStatePath = Join-Path $Root 'production\resume-state.json'
+$ResumeHelperPath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
 $IntentHelperPath = Join-Path $Root 'scripts\arthur-operator-intent.ps1'
 $GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
@@ -32,6 +33,7 @@ function Assert-Contains {
 Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
 Assert-True (Test-Path $RequestPath) 'final Arthur v3 release request must exist'
 Assert-True (Test-Path $ResumeStatePath) 'machine-readable resume state must exist'
+Assert-True (Test-Path $ResumeHelperPath) 'resume semantic-hash helper must exist'
 Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
 Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
@@ -40,6 +42,7 @@ Assert-True (Test-Path $WakeupPath) 'runner wakeup workflow must exist'
 Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
 
 . $IntentHelperPath
+. $ResumeHelperPath
 
 $current = Get-Content -Raw $IntentPath | ConvertFrom-Json
 $request = Get-Content -Raw $RequestPath | ConvertFrom-Json
@@ -72,6 +75,18 @@ Assert-True (@($resume.pending).Count -eq 1 -and @($resume.pending)[0] -eq 'BUIL
 foreach ($frozen in @('wifi','luci_chinese','adguard_full_manager','quickstart')) {
     Assert-True ($null -ne $resume.verified.$frozen) "$frozen evidence must remain durable in resume state"
 }
+
+# Publish-ResumeState runs under Set-StrictMode and reads semantic_sha256 from the
+# checked-in snapshot before it can publish a regenerated one. The durable snapshot
+# must therefore always carry a valid semantic hash, and that hash must describe the
+# snapshot content excluding the non-semantic evidence timestamp and hash field.
+Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256 for strict-mode publication'
+Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic_sha256 must be a lowercase SHA-256 hex digest'
+$resumeForHash = ($resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
+$resumeForHash.PSObject.Properties.Remove('semantic_sha256')
+$resumeForHash.PSObject.Properties.Remove('evidence_timestamp')
+$expectedResumeHash = Get-ArthurResumeSemanticHash $resumeForHash
+Assert-Equal ([string]$resume.semantic_sha256) $expectedResumeHash 'durable resume semantic hash must match its semantic content'
 
 $stateOnly = [pscustomobject]@{
     intent_type = 'STATE_CORRECTION'
