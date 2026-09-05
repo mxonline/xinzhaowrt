@@ -31,7 +31,7 @@ done < config/required-plugins.txt
 for test_script in \
   tests/test-first-boot-defaults.sh \
   tests/test-preserved-upgrade-luci-convergence.sh \
-  tests/test-adguard-overlay-precedence.sh \
+  tests/test-adguard-source-of-truth.sh \
   tests/test-version-identity.sh \
   tests/test-final-rootfs-identity.sh \
   tests/test-functional-acceptance.sh; do

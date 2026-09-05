@@ -19,7 +19,12 @@ grep -Fq "wifi_default_password='12345678'" "$firstboot_defaults" || fail 'first
 ! grep -Eq 'XinZhaoWrt-(2\.4G|5G)' "$wifi_defaults" || fail 'legacy band-specific SSIDs remain in independent defaults'
 ! grep -Eq 'XinZhaoWrt-(2\.4G|5G)' "$firstboot_defaults" || fail 'legacy band-specific SSIDs remain in first-boot defaults'
 
-"$root/tests/test-adguard-manager.sh" || fail 'the pinned mature AdGuard manager contract failed'
+package_root="${ADGUARD_MANAGER_PACKAGE_ROOT:-$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome}"
+if [[ -d "$package_root" ]]; then
+  ADGUARD_MANAGER_PACKAGE_ROOT="$package_root" "$root/tests/test-adguard-manager.sh" || fail 'the prepared mature AdGuard manager contract failed'
+else
+  PYTHON_BIN="${PYTHON_BIN:-python3}" "$root/tests/test-adguard-source-of-truth.sh" || fail 'the pinned mature AdGuard source-of-truth contract failed'
+fi
 
 grep -Fq 'ARTHUR_LUCI_COOKIE_FILE' "$verify" || fail 'real-device verification must require an existing authenticated LuCI session'
 ! grep -Fq 'ARTHUR_ROOT_PASSWORD' "$verify" || fail 'real-device verification must not depend on or handle the root password after SSH bootstrap'

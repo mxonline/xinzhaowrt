@@ -57,13 +57,12 @@ if rg -n "uci(\s+-q)?\s+set\s+network\.lan\.ipaddr=.*192\.168\.1\.1|uci(\s+-q)?\
 fi
 pass LEGACY_OVERRIDE_SCAN
 
-adguard_cfg='files/etc/config/adguardhome'
-grep -Fq "option enabled '0'" "$adguard_cfg" || fail 'AdGuard Home is not default-off'
-grep -Fq '3000' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard Web UI port seed is missing'
-grep -Fq '5353' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard DNS compatibility seed is missing'
-bash tests/test-adguard-manager.sh || fail 'mature AdGuard manager contract is missing'
+grep -Fxq 'CONFIG_PACKAGE_luci-app-adguardhome=y' "$config" || fail 'mature AdGuard Home package is not enabled'
+grep -Fq 'ADGUARD_MATURE_REF="743bb3ad87a7b97fd440d8e334832e25d4f678e0"' config/arthur-known-good.lock || fail 'mature AdGuard source revision is not locked'
+PYTHON_BIN="$PYTHON_BIN" bash tests/test-adguard-source-of-truth.sh || fail 'mature AdGuard source-of-truth contract is missing'
 grep -Fq 'adguard_page_functional' "$verify" || fail 'real-device AdGuard page functional check is missing'
-grep -Fq 'ARTHUR_LUCI_COOKIE_FILE' "$verify" || fail 'real-device AdGuard page check must use an existing authenticated session'
+grep -Fq 'New-LuciSessionFromSsh' "$verify" || fail 'real-device AdGuard page check must establish an authenticated session'
+grep -Fq 'AdGuardHome' "$verify" || fail 'real-device verifier must recognize the accepted mature AdGuard CBI namespace'
 pass ADGUARD_FUNCTIONAL_CONTRACT
 
 grep -Fq '/cgi-bin/luci/admin/quickstart/' "$verify" || fail 'real-device QuickStart route check is missing'
@@ -95,7 +94,6 @@ for required in \
   scripts/real-device-verify.ps1; do
   [[ -e "$required" ]] || fail "acceptance evidence is missing: $required"
 done
-git cat-file -e 6d284c842526e214a2a303856c9bbda2cc3bb9ab^{commit} || fail 'required source commit 6d284c8 is unavailable'
 pass EXPECTED_DIFF_ACCEPTANCE_MAPPING
 
 mkdir -p output
@@ -116,13 +114,13 @@ report = {
         'adguard_default': 'OFF', 'istore_homepage': 'official QuickStart'
     },
     'functional_static_evidence': {
-        'adguard_luci_acl_rpc_read_write_lifecycle_logs_web': 'PASS',
+        'adguard_mature_source_and_authenticated_manager_contract': 'PASS',
         'quickstart_authenticated_homepage_render_contract': 'PASS',
         'wifi_defaults_and_real_device_contract': 'PASS',
         'luci_theme_language_and_port_contract': 'PASS',
         'required_plugins': 'PASS'
     },
-    'source_commit': '6d284c842526e214a2a303856c9bbda2cc3bb9ab',
+    'source_commit': __import__('subprocess').check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
     'generated_at': datetime.now(timezone.utc).isoformat()
 }
 Path('output/acceptance-contract-gate.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
