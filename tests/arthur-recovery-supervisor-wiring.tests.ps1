@@ -75,6 +75,21 @@ Assert-Contains $persistentSupervisorTask 'HEADLESS_PYTHON_EXE' 'persistent supe
 Assert-Contains $persistentSupervisorTask 'ARTHUR_CONTROL_PLANE_CODE_ROOT' 'persistent supervisor launcher must use the clean current-main control-code checkout'
 Assert-NotContains $persistentSupervisorTask '--once' 'persistent Scheduled Task must not inherit the one-shot Actions wakeup mode'
 
+# Live self-hosted evidence on 2026-09-06 showed Win32_ComputerSystem.UserName can be
+# empty from the runner service even while an interactive desktop is logged on. The
+# installer must reuse an already-registered task without redetecting a user, and a
+# first-time install must have a non-localized explorer.exe owner fallback rather than
+# fail immediately or guess a username.
+$existingTaskIndex = $persistentSupervisorTask.IndexOf('$existing = Get-ScheduledTask',[System.StringComparison]::OrdinalIgnoreCase)
+$interactiveLookupIndex = $persistentSupervisorTask.IndexOf('$interactiveUser =',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($existingTaskIndex -ge 0 -and $interactiveLookupIndex -ge 0 -and $existingTaskIndex -lt $interactiveLookupIndex) 'existing persistent task must be reusable before interactive-user detection is required'
+Assert-Contains $persistentSupervisorTask 'Win32_ComputerSystem' 'interactive-user detection may use the console-user fast path'
+Assert-Contains $persistentSupervisorTask 'Win32_Process' 'interactive-user detection must fall back to process ownership when console user is unavailable'
+Assert-Contains $persistentSupervisorTask 'explorer.exe' 'fallback must identify an actual interactive desktop shell rather than invent a username'
+Assert-Contains $persistentSupervisorTask 'GetOwner' 'fallback must resolve explorer.exe owner through CIM without localized text parsing'
+Assert-Contains $persistentSupervisorTask 'PERSISTENT_SUPERVISOR_INTERACTIVE_USER_FALLBACK=PASS' 'fallback user detection must emit explicit evidence'
+Assert-Contains $persistentSupervisorTask 'PERSISTENT_SUPERVISOR_INTERACTIVE_USER_AMBIGUOUS' 'multiple desktop users must fail closed rather than select one arbitrarily'
+
 # Control code must stay up to date even while the task workspace is intentionally dirty.
 Assert-Contains $wakeup 'control-runtime' 'runner wakeup must maintain a separate clean control-code checkout'
 Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_CODE_ROOT' 'runner wakeup must export the clean control-code root separately from the task workspace'
@@ -102,5 +117,6 @@ Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_TASK_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_IDEMPOTENT_WAKEUP_CONTRACT=PASS'
+Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_INTERACTIVE_USER_DISCOVERY_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_RUNTIME_PYTHON_CACHE_CONTRACT=PASS'
 Write-Host 'ARTHUR_CONTROL_CODE_TASK_WORKSPACE_SEPARATION_CONTRACT=PASS'
