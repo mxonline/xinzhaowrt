@@ -6,6 +6,7 @@ $LedgerPath = Join-Path $Root 'production\firmware-events.jsonl'
 $LedgerLibPath = Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1'
 $HistoryGuardPath = Join-Path $Root 'scripts\check-firmware-event-ledger-history.ps1'
 $ResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
+$GitShaHelperPath = Join-Path $Root 'scripts\arthur-git-sha.ps1'
 $RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
 $AgentsPath = Join-Path $Root 'AGENTS.md'
 $ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
@@ -39,9 +40,20 @@ Assert-True (Test-Path $LedgerPath) 'append-only firmware event ledger must exis
 Assert-True (Test-Path $LedgerLibPath) 'firmware event ledger helper must exist'
 Assert-True (Test-Path $HistoryGuardPath) 'git history guard must enforce append-only ledger changes'
 Assert-True (Test-Path $ResumePath) 'unified firmware resume gate must exist'
+Assert-True (Test-Path $GitShaHelperPath) 'canonical Git SHA helper must exist'
 Assert-True (Test-Path $ControlPlaneGatePath) 'control-plane entry gate must exist'
 
 . $LedgerLibPath
+. $GitShaHelperPath
+
+# Windows self-hosted evidence showed a valid 40-hex durable repository_head being
+# classified as RESUME_REPOSITORY_HEAD_INVALID. Canonicalize before validation so
+# whitespace/serialization artifacts cannot turn a valid SHA into a hard conflict.
+$knownSha = 'db57876a2481c351fc1e1bb9dcc7e44247aee1dc'
+Assert-Equal (ConvertTo-ArthurCanonicalGitSha $knownSha) $knownSha 'valid lowercase SHA must round-trip'
+Assert-Equal (ConvertTo-ArthurCanonicalGitSha ('  ' + $knownSha.ToUpperInvariant() + "`r`n")) $knownSha 'valid SHA must normalize case and surrounding whitespace'
+Assert-Equal (ConvertTo-ArthurCanonicalGitSha 'not-a-sha') '' 'invalid SHA must fail closed'
+Assert-Equal (ConvertTo-ArthurCanonicalGitSha '') '' 'empty SHA must fail closed'
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("arthur-firmware-events-{0}.jsonl" -f ([Guid]::NewGuid().ToString('N')))
 try {
@@ -83,6 +95,8 @@ $resume = Get-Content -Raw $ResumePath
 Assert-Contains $resume 'production\operator-intent.json' 'resume gate must read durable operator intent'
 Assert-Contains $resume 'production\resume-state.json' 'resume gate must read canonical resume snapshot'
 Assert-Contains $resume 'production\firmware-events.jsonl' 'resume gate must read immutable event history'
+Assert-Contains $resume 'arthur-git-sha.ps1' 'resume gate must load canonical Git SHA normalization'
+Assert-Contains $resume 'ConvertTo-ArthurCanonicalGitSha' 'resume gate must normalize both effective and durable source identities before comparison'
 Assert-Contains $resume 'git log -1' 'resume gate must inspect effective repository HEAD'
 Assert-Contains $resume 'gh run list' 'resume gate must inspect current GitHub workflow evidence when external checks are enabled'
 Assert-Contains $resume 'REPOSITORY_HEAD_MISMATCH' 'resume gate must detect stale snapshot source identity'
@@ -114,3 +128,4 @@ Assert-Contains $controlPlane "git add -- 'production/resume-state.json' 'produc
 
 Write-Host 'ARTHUR_FIRMWARE_EVENT_LEDGER_CONTRACT=PASS'
 Write-Host 'ARTHUR_UNIFIED_RESUME_GATE_CONTRACT=PASS'
+Write-Host 'ARTHUR_GIT_SHA_CANONICALIZATION_CONTRACT=PASS'
