@@ -15,7 +15,7 @@ function Write-RepairResult([string]$Status,[long]$RunId = 0,[int]$ProcessId = 0
     if ($RunId -gt 0) { $parts += "run_id=$RunId" }
     if ($ProcessId -gt 0) { $parts += "pid=$ProcessId" }
     if ($Detail) { $parts += "detail=$Detail" }
-    Write-Host ($parts -join ' ')
+    Write-Output ($parts -join ' ')
 }
 
 function Parse-Resolver([string]$Text) {
