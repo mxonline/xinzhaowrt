@@ -54,6 +54,10 @@ jobs:
       - name: Test Codex auto-recovery state transitions
         run: python3 -m unittest tests.test_codex_auto_recovery -v
 
+      - name: Test Arthur Codex runtime probe
+        shell: pwsh
+        run: python -m unittest tests.test_arthur_codex_runtime_probe -v
+
       - name: Test Windows failed Candidate recovery wiring
         shell: pwsh
         run: ./tests/arthur-candidate-failure-recovery.tests.ps1
