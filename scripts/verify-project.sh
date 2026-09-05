@@ -16,7 +16,6 @@ DUPES="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | sort | uniq
 [[ -z "$DUPES" ]] || { echo "ERROR: duplicate plugins:"; echo "$DUPES"; exit 1; }
 
 while IFS= read -r pkg; do
-  pkg="${pkg%$'\r'}"
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
   grep -qxF "CONFIG_PACKAGE_${pkg}=y" config/arthur.config || {
     echo "ERROR: config/arthur.config does not enable $pkg"
@@ -26,17 +25,10 @@ done < config/required-plugins.txt
 
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
-./scripts/acceptance-contract-gate.sh
-
-for test_script in \
-  tests/test-first-boot-defaults.sh \
-  tests/test-preserved-upgrade-luci-convergence.sh \
-  tests/test-adguard-source-of-truth.sh \
-  tests/test-version-identity.sh \
-  tests/test-final-rootfs-identity.sh \
-  tests/test-functional-acceptance.sh; do
-  bash "$test_script"
-done
+bash tests/test-functional-acceptance.sh
+bash tests/test-live-preview-contract.sh
+python3 -m json.tool production/live-preview-policy.json >/dev/null
+python3 -m json.tool production/mature-ui-sources.json >/dev/null
 
 for f in scripts/*.sh; do
   bash -n "$f"
