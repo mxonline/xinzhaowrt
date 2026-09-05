@@ -28,6 +28,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
       - name: Sync persistent task workspace and clean Control Plane code
@@ -100,8 +101,21 @@ jobs:
           else {
             git -C $controlRoot remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
             if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize clean Control Plane code origin.' }
+
+            # Python imports may leave deterministic bytecode artifacts in this disposable clean mirror.
+            # Remove only those generated caches; any other change remains a hard fail with evidence.
+            Get-ChildItem -LiteralPath $controlRoot -Recurse -Directory -Filter '__pycache__' -Force -ErrorAction SilentlyContinue |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            Get-ChildItem -LiteralPath $controlRoot -Recurse -File -Filter '*.pyc' -Force -ErrorAction SilentlyContinue |
+              Remove-Item -Force -ErrorAction SilentlyContinue
+
             $controlDirty = (& git -C $controlRoot status --porcelain | Out-String).Trim()
-            if ($controlDirty) { throw 'CONTROL_PLANE_CODE_DIRTY: clean control-runtime must never carry task changes.' }
+            if ($controlDirty) {
+              Write-Host 'CONTROL_PLANE_CODE_DIRTY_FILES_BEGIN'
+              Write-Host $controlDirty
+              Write-Host 'CONTROL_PLANE_CODE_DIRTY_FILES_END'
+              throw 'CONTROL_PLANE_CODE_DIRTY: clean control-runtime contains unexpected non-cache changes.'
+            }
             git -C $controlRoot fetch --prune origin main
             if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into clean Control Plane code checkout.' }
             $controlBranch = (& git -C $controlRoot branch --show-current).Trim()
