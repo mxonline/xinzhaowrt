@@ -68,11 +68,14 @@ assert_source() {
   fi
 }
 
-# Verify iStoreX/QuickStart use Kenzok8 and store uses official linkease/istore.
+# Verify each package against the same pinned source exposed by add-custom-packages.sh.
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
 ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
+ISTOREOS_LUCI_SOURCE="$SRC/.xinzhao-sources/istoreos-luci"
+ADGUARD_MATURE_SOURCE="$SRC/.xinzhao-sources/kenzok8-adguardhome"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
-assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstart"
+assert_source luci-app-quickstart "$ISTOREOS_LUCI_SOURCE/luci/luci-app-quickstart"
+assert_source luci-app-adguardhome "$ADGUARD_MATURE_SOURCE/luci-app-adguardhome"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
 assert_istore_source() {
   local pkg="$1" expected="$2" actual
@@ -96,7 +99,7 @@ fi
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
-for pkg in luci-app-adguardhome luci-app-autoreboot luci-app-firewall luci-app-package-manager luci-app-pbr luci-app-samba4; do
+for pkg in luci-app-autoreboot luci-app-firewall luci-app-package-manager luci-app-pbr luci-app-samba4; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
 
