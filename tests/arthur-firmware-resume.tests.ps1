@@ -1,0 +1,97 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$LedgerPath = Join-Path $Root 'production\firmware-events.jsonl'
+$LedgerLibPath = Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1'
+$ResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
+$RulesPath = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
+$AgentsPath = Join-Path $Root 'AGENTS.md'
+$ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
+
+function Assert-True {
+    param([bool]$Condition,[string]$Message)
+    if (-not $Condition) { throw "TEST_FAIL: $Message" }
+}
+
+function Assert-Equal {
+    param($Actual,$Expected,[string]$Message)
+    if ($Actual -ne $Expected) { throw "TEST_FAIL: $Message (actual='$Actual' expected='$Expected')" }
+}
+
+function Assert-Contains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "TEST_FAIL: $Message (missing '$Needle')"
+    }
+}
+
+function Assert-Throws {
+    param([scriptblock]$Action,[string]$Message)
+    $threw = $false
+    try { & $Action } catch { $threw = $true }
+    if (-not $threw) { throw "TEST_FAIL: $Message" }
+}
+
+Assert-True (Test-Path $LedgerPath) 'append-only firmware event ledger must exist'
+Assert-True (Test-Path $LedgerLibPath) 'firmware event ledger helper must exist'
+Assert-True (Test-Path $ResumePath) 'unified firmware resume gate must exist'
+
+. $LedgerLibPath
+
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("arthur-firmware-events-{0}.jsonl" -f ([Guid]::NewGuid().ToString('N')))
+try {
+    [IO.File]::WriteAllText($temp, '', [Text.UTF8Encoding]::new($false))
+    $first = Add-ArthurFirmwareEvent -Path $temp -Event 'TEST_STARTED' -Stage 'ADH_MANAGEMENT' -Source 'TEST' -Timestamp '2026-09-05T18:50:00+08:00' -Data @{ marker = 'a' }
+    $second = Add-ArthurFirmwareEvent -Path $temp -Event 'TEST_VERIFIED' -Stage 'ADH_MANAGEMENT' -Source 'TEST' -Timestamp '2026-09-05T18:51:00+08:00' -Data @{ marker = 'b' }
+
+    $events = @(Get-ArthurFirmwareEvents -Path $temp)
+    Assert-Equal $events.Count 2 'ledger must retain both events rather than overwrite the first'
+    Assert-Equal $events[0].seq 1 'first event sequence must be one'
+    Assert-Equal $events[1].seq 2 'second event sequence must increment monotonically'
+    Assert-Equal $events[1].prev_hash $events[0].event_hash 'second event must chain to first event hash'
+    Assert-True ([bool](Test-ArthurFirmwareEventLedger -Path $temp)) 'untampered ledger must validate'
+
+    $raw = Get-Content -LiteralPath $temp
+    $tampered = ($raw[0] | ConvertFrom-Json)
+    $tampered.event = 'TAMPERED'
+    $raw[0] = ($tampered | ConvertTo-Json -Compress -Depth 20)
+    [IO.File]::WriteAllLines($temp, $raw, [Text.UTF8Encoding]::new($false))
+    Assert-Throws { Test-ArthurFirmwareEventLedger -Path $temp | Out-Null } 'tampered historical event must fail hash-chain validation'
+}
+finally {
+    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+}
+
+$ledgerLines = @(Get-Content -LiteralPath $LedgerPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+Assert-True ($ledgerLines.Count -ge 1) 'repository ledger must contain a bootstrap event'
+foreach ($line in $ledgerLines) { $null = $line | ConvertFrom-Json }
+Assert-True ([bool](Test-ArthurFirmwareEventLedger -Path $LedgerPath)) 'repository ledger must have a valid hash chain'
+
+$resume = Get-Content -Raw $ResumePath
+Assert-Contains $resume 'production\operator-intent.json' 'resume gate must read durable operator intent'
+Assert-Contains $resume 'production\resume-state.json' 'resume gate must read canonical resume snapshot'
+Assert-Contains $resume 'production\firmware-events.jsonl' 'resume gate must read immutable event history'
+Assert-Contains $resume 'git log -1' 'resume gate must inspect effective repository HEAD'
+Assert-Contains $resume 'gh run list' 'resume gate must inspect current GitHub workflow evidence when external checks are enabled'
+Assert-Contains $resume 'RESUME_GATE_SAFE' 'resume gate must emit an explicit safe result'
+Assert-Contains $resume 'RESUME_GATE_CONFLICT' 'resume gate must fail closed on conflicting state'
+
+$rules = Get-Content -Raw $RulesPath
+Assert-Contains $rules 'firmware-events.jsonl' 'GPT rules must require reading the event ledger'
+Assert-Contains $rules 'ISO 8601' 'GPT rules must forbid relative-time state as machine truth'
+Assert-Contains $rules 'today' 'GPT rules must explicitly demote today/yesterday-style relative time'
+Assert-Contains $rules 'event ledger' 'GPT rules must describe the historical event source'
+
+$agents = Get-Content -Raw $AgentsPath
+Assert-Contains $agents 'production/firmware-events.jsonl' 'Codex startup must read firmware event history before executable action selection'
+Assert-Contains $agents 'scripts/arthur-firmware-resume.ps1' 'Codex must use the unified resume gate'
+
+$controlPlane = Get-Content -Raw $ControlPlanePath
+Assert-Contains $controlPlane 'arthur-firmware-event-ledger.ps1' 'Control Plane must load event-ledger helper'
+Assert-Contains $controlPlane 'Add-ArthurFirmwareEvent' 'Control Plane must append state-transition evidence'
+Assert-Contains $controlPlane "':(exclude)production/firmware-events.jsonl'" 'state-only event commits must not become effective firmware source HEAD'
+Assert-Contains $controlPlane "git add -- 'production/resume-state.json' 'production/firmware-events.jsonl'" 'resume snapshot and event history must publish atomically in one state commit'
+
+Write-Host 'ARTHUR_FIRMWARE_EVENT_LEDGER_CONTRACT=PASS'
+Write-Host 'ARTHUR_UNIFIED_RESUME_GATE_CONTRACT=PASS'
