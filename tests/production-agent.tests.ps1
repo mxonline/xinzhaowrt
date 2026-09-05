@@ -41,11 +41,11 @@ $fetchPath = Join-Path $Root 'scripts/fetch-production-artifact.ps1'
 $gatePath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
-$deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
-$controlPlaneGatePath = Join-Path $Root 'scripts/arthur-control-plane-gate.ps1'
-$operatorIntentPath = Join-Path $Root 'production/operator-intent.json'
-$configPath = Join-Path $Root 'production/production-agent.json'
-$flashProfilePath = Join-Path $Root 'production/arthur-flash-profile.json'
+$deployPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
+$controlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
+$operatorIntentPath = Join-Path $Root 'production\operator-intent.json'
+$configPath = Join-Path $Root 'production\production-agent.json'
+$flashProfilePath = Join-Path $Root 'production\arthur-flash-profile.json'
 
 $agent = Get-Content -Raw $agentPath
 $fetch = Get-Content -Raw $fetchPath
@@ -172,9 +172,25 @@ Assert-True ($deploy -notmatch '(?i)install-production-agent\.ps1') 'active wake
 Assert-True ($deploy -notmatch '(?i)recover-existing-bridge-context\.ps1') 'active wakeup must not recover the GUI Codex user context'
 Assert-True ($deploy -notmatch '(?i)PRODUCTION_AGENT_AUTHENTICATED_CONTINUATION') 'active wakeup must not contain the legacy ten-minute continuation loop'
 
+# The GitHub wakeup may observe and trigger the independent Windows Repair Controller,
+# but must never become the long-lived recovery owner.
+Assert-Contains $deploy 'repair-status.json' 'runner wakeup must observe durable repair status before ordinary resume'
+Assert-Contains $deploy 'ensure-arthur-windows-repair-controller.ps1' 'runner wakeup must install the canonical Windows repair task'
+Assert-Contains $deploy 'XinZhaoWrt-Arthur-Repair-Controller' 'runner wakeup must trigger the stable Windows repair task name'
+Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=ACTIVE' 'active Windows repair must suppress duplicate runner recovery'
+Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=RECOVERED' 'verified Windows recovery must hand control back to ordinary runner flow'
+Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=BLOCKED' 'repair terminal failures must be surfaced explicitly'
+Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=TRIGGERED' 'broken non-protected runtime must trigger Windows repair asynchronously'
+Assert-True ($deploy -notmatch '(?i)Start-Sleep\s+-Seconds\s+120') 'GitHub Actions must never own the 120-second recovery health window'
+Assert-True ($deploy -notmatch '(?i)Remove-Item[^\r\n]*supervisor-state\.json') 'GitHub wakeup must never delete Supervisor retry state directly'
+$repairIndex = $deploy.IndexOf('repair-status.json',[System.StringComparison]::OrdinalIgnoreCase)
+$resumeIndex = $deploy.IndexOf('Reconcile and resume Arthur Control Plane',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($repairIndex -ge 0 -and $resumeIndex -ge 0 -and $repairIndex -lt $resumeIndex) 'repair observer/trigger must execute before ordinary Control Plane resume'
+
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
 Write-Host 'AUTO_FLASH_POLICY_CONTRACT=PASS'
 Write-Host 'PRODUCTION_AGENT_LEGACY_SAFETY_CONTRACT=PASS'
 Write-Host 'RUNNER_CONTROL_PLANE_WAKEUP_CONTRACT=PASS'
+Write-Host 'WINDOWS_REPAIR_OBSERVER_CONTRACT=PASS'
 Write-Host 'OPERATOR_INTENT_SCOPE_CONTRACT=PASS'
