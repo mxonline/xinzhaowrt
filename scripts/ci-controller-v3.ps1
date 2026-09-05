@@ -925,12 +925,10 @@ function Process-V3Run {
         }
 
         if ($round -ge $MaxRepairRounds) {
-            Write-ControllerLog "CIRCUIT_BREAKER: $MaxRepairRounds repair rounds reached with no terminal release. Switching to a clean GitHub runner execution instead of stopping."
+            Write-ControllerLog "CIRCUIT_BREAKER: $MaxRepairRounds repair rounds reached. Resetting the Codex round counter; replacement Candidate remains forbidden until exact build closure passes."
             Reset-RepairChanges
             Sync-Branch
             $round = 0
-            $currentRunId = Start-V3Run -RequestedMode $RequestedMode
-            continue
         }
 
         $repairEvidenceRunId = $currentRunId
