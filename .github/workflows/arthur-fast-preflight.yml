@@ -37,6 +37,10 @@ jobs:
       - name: Test Codex auto-recovery state transitions
         run: python3 -m unittest tests.test_codex_auto_recovery -v
 
+      - name: Test Windows failed Candidate recovery wiring
+        shell: pwsh
+        run: ./tests/arthur-candidate-failure-recovery.tests.ps1
+
       - name: Test LIVE_PREVIEW safety contract
         run: ./tests/test-live-preview-contract.sh
 
@@ -97,6 +101,7 @@ jobs:
             'scripts/arthur-resume-state.ps1',
             'scripts/arthur-operator-intent.ps1',
             'scripts/arthur-control-plane-gate.ps1',
+            'scripts/arthur-candidate-failure-recovery.ps1',
             'scripts/arthur-firmware-event-ledger.ps1',
             'scripts/arthur-firmware-resume.ps1',
             'scripts/check-firmware-event-ledger-history.ps1',
