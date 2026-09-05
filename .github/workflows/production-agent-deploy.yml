@@ -243,6 +243,24 @@ jobs:
             $env:GITHUB_WORKSPACE = $actionsWorkspace
           }
 
+      - name: Ensure Windows-owned persistent Arthur supervisor
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $helper = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\ensure-arthur-persistent-supervisor.ps1'
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "PERSISTENT_SUPERVISOR_HELPER_MISSING: $helper"
+          }
+          $stateDir = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\state'
+          & $helper `
+            -StateDir $stateDir `
+            -ControlRoot $env:ARTHUR_CONTROL_PLANE_CODE_ROOT `
+            -HeadlessPythonExe $env:HEADLESS_PYTHON_EXE
+          if ($LASTEXITCODE -ne 0) {
+            throw "PERSISTENT_SUPERVISOR_TASK_FAILED: exit=$LASTEXITCODE"
+          }
+          Write-Host 'PERSISTENT_SUPERVISOR_TASK=PASS'
+
       - name: Publish wakeup summary
         if: always()
         shell: powershell
