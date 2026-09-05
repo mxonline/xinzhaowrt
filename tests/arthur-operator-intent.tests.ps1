@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IntentPath = Join-Path $Root 'production\operator-intent.json'
+$RequestPath = Join-Path $Root 'production\v3-request.json'
 $IntentHelperPath = Join-Path $Root 'scripts\arthur-operator-intent.ps1'
 $GatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
@@ -28,6 +29,7 @@ function Assert-Contains {
 }
 
 Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
+Assert-True (Test-Path $RequestPath) 'final Arthur v3 release request must exist'
 Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
 Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
 Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
@@ -38,18 +40,24 @@ Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
 . $IntentHelperPath
 
 $current = Get-Content -Raw $IntentPath | ConvertFrom-Json
+$request = Get-Content -Raw $RequestPath | ConvertFrom-Json
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
 if ($current.firmware_execution_authorized -eq $true) {
     Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'authorized firmware execution must use EXECUTE_FIRMWARE intent'
     Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'authorized firmware execution must stay scoped to FIRMWARE_RELEASE'
 }
 else {
-    Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'non-firmware operator intent must remain process governance'
+    Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'non-firmware operator intent must remain process governance-only'
     Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'non-firmware operator intent must remain governance-only'
 }
-Assert-Equal $current.firmware_state.current_stage 'ADH_MANAGEMENT' 'user-corrected firmware work start must be ADH_MANAGEMENT'
-Assert-Equal $current.firmware_state.next_stage 'ADH_CHINESE' 'ADH_CHINESE must be the next firmware stage'
-Assert-True (@($current.firmware_state.verified_frozen) -contains 'WIFI') 'Wi-Fi must remain VERIFIED_FROZEN'
+
+Assert-Equal $current.firmware_state.current_stage 'BUILD' 'final release must resume at BUILD instead of repeating ADH/LuCI development'
+Assert-Equal $current.firmware_state.next_stage 'ARTIFACT' 'after BUILD the next formal release stage is ARTIFACT'
+foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
+    Assert-True (@($current.firmware_state.verified_frozen) -contains $frozen) "$frozen must remain accepted/frozen"
+}
+Assert-Contains ([string]$request.reason) 'Do not repeat feature development' 'final release request must forbid repeating accepted feature development'
+Assert-Contains ([string]$request.reason) 'replacement Candidate' 'final release request must continue via one replacement Candidate'
 
 $stateOnly = [pscustomobject]@{
     intent_type = 'STATE_CORRECTION'
@@ -84,6 +92,11 @@ Assert-Contains $gate 'Get-ArthurFirmwareExecutionPermission' 'gate must use the
 Assert-Contains $gate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'gate must stop before firmware execution when permission is absent'
 Assert-Contains $gate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
 Assert-Contains $gate 'arthur-control-plane.ps1' 'authorized gate must hand off to the existing control plane rather than replace it'
+Assert-Contains $gate 'FINAL_RELEASE_RUNTIME_MIGRATION=PASS' 'existing control-plane gate must migrate stale pre-build runtime state to the final BUILD checkpoint'
+Assert-Contains $gate 'forensic -> root cause -> auto-fix -> rebuild -> PRE_FLASH_READY' 'migrated Codex prompt must resume the interrupted forensic-to-pre-flash task'
+Assert-Contains $gate 'production\v3-request.json' 'runtime migration must be grounded in the durable final release request'
+Assert-Contains $gate 'ADH_MANAGEMENT' 'migration must recognize the known stale ADH runtime checkpoint'
+Assert-Contains $gate "phase = 'BUILD'" 'migration must set the persistent runtime phase to BUILD'
 
 $wakeup = Get-Content -Raw $WakeupPath
 Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
@@ -92,8 +105,6 @@ $rules = Get-Content -Raw $RulesPath
 Assert-Contains $rules 'state statement is not execution authorization' 'durable GPT rules must distinguish state correction from execution authorization'
 Assert-Contains $rules 'authorization is scope-bound' 'durable GPT rules must prevent authorization leakage across tasks'
 Assert-Contains $rules 'operator-intent.json' 'durable GPT startup must read operator intent before choosing a firmware action'
-Assert-Contains $rules 'ADH_MANAGEMENT' 'rules must record the current user-corrected work start'
-Assert-Contains $rules 'ADH_CHINESE' 'rules must record the next ADH localization stage'
 Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve the only successful terminal state'
 
 $agents = Get-Content -Raw $AgentsPath
@@ -104,4 +115,5 @@ Assert-Contains $agents 'GOVERNANCE_RULES_ONLY' 'Codex must understand governanc
 Assert-Contains $agents 'EXECUTE_FIRMWARE' 'Codex must require explicit firmware execution intent before mutating the release task'
 
 Write-Host 'ARTHUR_OPERATOR_INTENT_GATE_CONTRACT=PASS'
+Write-Host 'ARTHUR_FINAL_RELEASE_RUNTIME_MIGRATION_CONTRACT=PASS'
 Write-Host 'ARTHUR_CODEX_STARTUP_INTENT_CONTRACT=PASS'
