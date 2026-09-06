@@ -43,7 +43,8 @@ Assert-NotContains $source 'Stop-Process' 'ensure helper must not kill an existi
 
 $processProbeIndex = $source.IndexOf('Get-CimInstance Win32_Process',[System.StringComparison]::OrdinalIgnoreCase)
 $scheduledTaskIndex = $source.IndexOf('$existing = Get-ScheduledTask',[System.StringComparison]::OrdinalIgnoreCase)
-$trackingIndex = $source.IndexOf("$env:RUNNER_TRACKING_ID = ''",[System.StringComparison]::OrdinalIgnoreCase)
+$trackingNeedle = '$env:RUNNER_TRACKING_ID = ' + "''"
+$trackingIndex = $source.IndexOf($trackingNeedle,[System.StringComparison]::OrdinalIgnoreCase)
 $spawnIndex = $source.IndexOf('Start-Process',[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($processProbeIndex -ge 0 -and $scheduledTaskIndex -ge 0 -and $processProbeIndex -lt $scheduledTaskIndex) 'real process reuse must be checked before Scheduled Task discovery'
 Assert-True ($trackingIndex -ge 0 -and $spawnIndex -ge 0 -and $trackingIndex -lt $spawnIndex) 'RUNNER_TRACKING_ID must be cleared before spawning the detached process'

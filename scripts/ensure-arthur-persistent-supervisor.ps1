@@ -59,6 +59,107 @@ function Quote-PsLiteral([string]$Value) {
     return "'" + $Value.Replace("'", "''") + "'"
 }
 
+function Normalize-CommandLinePath([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ''
+    }
+    return $Value.Replace('/', '\').TrimEnd('\')
+}
+
+function Get-MatchingSupervisorProcess {
+    param(
+        [Parameter(Mandatory=$true)][string]$StatePath,
+        [Parameter(Mandatory=$true)][string]$ControlPath
+    )
+
+    $stateNeedle = Normalize-CommandLinePath $StatePath
+    $controlNeedle = Normalize-CommandLinePath $ControlPath
+    $processes = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    foreach ($process in $processes) {
+        $commandLine = [string]$process.CommandLine
+        $normalizedCommandLine = Normalize-CommandLinePath $commandLine
+        if ($normalizedCommandLine.IndexOf('run-supervisor.py',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            continue
+        }
+        if ($normalizedCommandLine.IndexOf($stateNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            continue
+        }
+        if ($normalizedCommandLine.IndexOf($controlNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            continue
+        }
+
+        [pscustomobject]@{
+            ProcessId = [int]$process.ProcessId
+            CommandLine = $commandLine
+        }
+    }
+}
+
+function Invoke-DetachedSupervisorFallback {
+    param(
+        [Parameter(Mandatory=$true)][string]$StatePath,
+        [Parameter(Mandatory=$true)][string]$ControlPath,
+        [Parameter(Mandatory=$true)][string]$PythonPath,
+        [Parameter(Mandatory=$true)][string]$ShimPath
+    )
+
+    $hadRunnerTrackingId = Test-Path -LiteralPath 'Env:RUNNER_TRACKING_ID'
+    $originalRunnerTrackingId = [Environment]::GetEnvironmentVariable('RUNNER_TRACKING_ID','Process')
+    $hadHeadlessModel = Test-Path -LiteralPath 'Env:HEADLESS_CODEX_MODEL'
+    $originalHeadlessModel = [Environment]::GetEnvironmentVariable('HEADLESS_CODEX_MODEL','Process')
+    $hadControlRoot = Test-Path -LiteralPath 'Env:ARTHUR_CONTROL_PLANE_CODE_ROOT'
+    $originalControlRoot = [Environment]::GetEnvironmentVariable('ARTHUR_CONTROL_PLANE_CODE_ROOT','Process')
+    $hadStateDir = Test-Path -LiteralPath 'Env:ARTHUR_CONTROL_PLANE_STATE_DIR'
+    $originalStateDir = [Environment]::GetEnvironmentVariable('ARTHUR_CONTROL_PLANE_STATE_DIR','Process')
+    $hadHeadlessPython = Test-Path -LiteralPath 'Env:HEADLESS_PYTHON_EXE'
+    $originalHeadlessPython = [Environment]::GetEnvironmentVariable('HEADLESS_PYTHON_EXE','Process')
+
+    try {
+        $env:RUNNER_TRACKING_ID = ''
+        $env:HEADLESS_CODEX_MODEL = 'gpt-5.6-terra'
+        $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $ControlPath
+        $env:ARTHUR_CONTROL_PLANE_STATE_DIR = $StatePath
+        $env:HEADLESS_PYTHON_EXE = $PythonPath
+
+        $child = Start-Process `
+            -FilePath $PythonPath `
+            -ArgumentList @(
+                ('"' + $ShimPath + '"'),
+                '--state-dir',
+                ('"' + $StatePath + '"'),
+                '--interval',
+                '30'
+            ) `
+            -WindowStyle Hidden `
+            -PassThru `
+            -ErrorAction Stop
+    }
+    finally {
+        if ($hadRunnerTrackingId) { $env:RUNNER_TRACKING_ID = $originalRunnerTrackingId } else { Remove-Item -LiteralPath 'Env:RUNNER_TRACKING_ID' -ErrorAction SilentlyContinue }
+        if ($hadHeadlessModel) { $env:HEADLESS_CODEX_MODEL = $originalHeadlessModel } else { Remove-Item -LiteralPath 'Env:HEADLESS_CODEX_MODEL' -ErrorAction SilentlyContinue }
+        if ($hadControlRoot) { $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $originalControlRoot } else { Remove-Item -LiteralPath 'Env:ARTHUR_CONTROL_PLANE_CODE_ROOT' -ErrorAction SilentlyContinue }
+        if ($hadStateDir) { $env:ARTHUR_CONTROL_PLANE_STATE_DIR = $originalStateDir } else { Remove-Item -LiteralPath 'Env:ARTHUR_CONTROL_PLANE_STATE_DIR' -ErrorAction SilentlyContinue }
+        if ($hadHeadlessPython) { $env:HEADLESS_PYTHON_EXE = $originalHeadlessPython } else { Remove-Item -LiteralPath 'Env:HEADLESS_PYTHON_EXE' -ErrorAction SilentlyContinue }
+    }
+
+    $deadline = (Get-Date).AddSeconds(20)
+    $detached = $null
+    while ((Get-Date) -lt $deadline) {
+        $detached = @(Get-MatchingSupervisorProcess -StatePath $StatePath -ControlPath $ControlPath)
+        if ($detached.Count -gt 0) {
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+    if ($detached.Count -eq 0) {
+        Fail "PERSISTENT_SUPERVISOR_DETACHED_NOT_RUNNING: python=$PythonPath shim=$ShimPath"
+    }
+
+    $supervisorPid = [int]$detached[0].ProcessId
+    Write-Host "PERSISTENT_SUPERVISOR_DETACHED=PASS pid=$supervisorPid"
+    Write-Host 'PERSISTENT_SUPERVISOR_TASK=PASS'
+}
+
 function New-CanonicalSupervisorTask {
     param(
         [Parameter(Mandatory=$true)][string]$UserId,
@@ -85,6 +186,14 @@ $controlPath = [IO.Path]::GetFullPath($ControlRoot)
 $pythonPath = [IO.Path]::GetFullPath($HeadlessPythonExe)
 $shimPath = Join-Path $controlPath 'scripts\run-supervisor.py'
 
+$matchingSupervisor = @(Get-MatchingSupervisorProcess -StatePath $statePath -ControlPath $controlPath)
+if ($matchingSupervisor.Count -gt 0) {
+    $supervisorPid = [int]$matchingSupervisor[0].ProcessId
+    Write-Host "PERSISTENT_SUPERVISOR_DETACHED=REUSE pid=$supervisorPid"
+    Write-Host 'PERSISTENT_SUPERVISOR_TASK=PASS'
+    exit 0
+}
+
 if (-not (Test-Path -LiteralPath $statePath -PathType Container)) {
     New-Item -ItemType Directory -Force -Path $statePath | Out-Null
 }
@@ -98,7 +207,21 @@ if (-not (Test-Path -LiteralPath $shimPath -PathType Leaf)) {
     Fail "PERSISTENT_SUPERVISOR_SHIM_MISSING: $shimPath"
 }
 
-$existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+$existing = $null
+$taskLookupError = $null
+try {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+}
+catch {
+    $taskLookupError = $_
+}
+
+if ($env:GITHUB_ACTIONS -eq 'true' -and ($taskLookupError -or -not $existing)) {
+    Invoke-DetachedSupervisorFallback -StatePath $statePath -ControlPath $controlPath -PythonPath $pythonPath -ShimPath $shimPath
+    exit 0
+}
+
+try {
 $interactiveUser = ''
 if ($existing -and $existing.Principal -and -not [string]::IsNullOrWhiteSpace([string]$existing.Principal.UserId)) {
     $interactiveUser = [string]$existing.Principal.UserId
@@ -194,3 +317,11 @@ if (-not $running) {
 
 Write-Host "PERSISTENT_SUPERVISOR_TASK=PASS task=$TaskName user=$interactiveUser launcher=$launcherPath state=$($taskNow.State)"
 exit 0
+}
+catch {
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        Invoke-DetachedSupervisorFallback -StatePath $statePath -ControlPath $controlPath -PythonPath $pythonPath -ShimPath $shimPath
+        exit 0
+    }
+    throw
+}
