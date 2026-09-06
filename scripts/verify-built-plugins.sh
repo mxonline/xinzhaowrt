@@ -81,11 +81,14 @@ while IFS= read -r pkg; do
 done < "$REQUIRED_FILE"
 
 language_archive=''
+language_resource_ok=0
 while IFS= read -r candidate; do
   language_archive="$candidate"
   break
 done < <(
-  find "$SRC/bin" -type f -name "${language_package}_*.ipk" -print 2>/dev/null | sort
+  find "$SRC/bin" -type f \
+    \( -name "${language_package}_*.ipk" -o -name "${language_package}-*.apk" \) \
+    -print 2>/dev/null | sort
 )
 
 language_manifest=''
@@ -99,13 +102,32 @@ done
 if [[ -z "$language_archive" ]]; then
   echo "MISSING_BUILT_PACKAGE: $language_package" | tee -a "$REPORT"
   missing_archive=1
-else
+elif [[ "$language_archive" == *.ipk ]]; then
   data_member="$(ar t "$language_archive" | awk '/^data\.tar/{print; exit}')"
   if [[ -z "$data_member" ]] || ! ar p "$language_archive" "$data_member" | tar -tzf - | sed 's#^\./##' | grep -qxF "$language_resource"; then
     echo "MISSING_TRANSLATION_RESOURCE: $language_resource in $language_package" | tee -a "$REPORT"
     missing_archive=1
   else
+    language_resource_ok=1
     echo "PASS: $language_package contains $language_resource" >> "$REPORT"
+  fi
+elif [[ "$language_archive" == *.apk ]]; then
+  language_rootfs=''
+  while IFS= read -r candidate; do
+    if [[ -f "$candidate/$language_resource" ]]; then
+      language_rootfs="$candidate"
+      break
+    fi
+  done < <(
+    find "$SRC/build_dir" -type d -name "root-${DEVICE_TARGET}" -print 2>/dev/null | sort
+  )
+
+  if [[ -z "$language_rootfs" ]]; then
+    echo "MISSING_TRANSLATION_RESOURCE: $language_resource in target rootfs" | tee -a "$REPORT"
+    missing_archive=1
+  else
+    language_resource_ok=1
+    echo "PASS: $language_package rootfs contains $language_resource" >> "$REPORT"
   fi
 fi
 
@@ -114,6 +136,11 @@ if [[ -z "$language_manifest" ]]; then
   missing_manifest=1
 else
   echo "PASS: $language_package | manifest=$language_manifest" >> "$REPORT"
+fi
+
+if [[ -n "$language_archive" && -n "$language_manifest" && "$language_resource_ok" -eq 1 ]]; then
+  echo "LANGUAGE_PACKAGE_ARCHIVE=PASS" | tee -a "$REPORT"
+  echo "LANGUAGE_RESOURCE=PASS" | tee -a "$REPORT"
 fi
 
 {
