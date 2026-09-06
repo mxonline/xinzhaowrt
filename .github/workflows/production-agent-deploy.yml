@@ -425,22 +425,32 @@ jobs:
           Write-Host "LOCK_OWNER_PID=$lockOwnerPid"
           $inventory = Get-Inventory
           $ownerProcess = @($inventory | Where-Object { [int]$_.ProcessId -eq $lockOwnerPid } | Select-Object -First 1)
-          if ($ownerProcess.Count -ne 1) { throw "LOCK_OWNER_PROCESS_MISSING=$lockOwnerPid" }
-          $ownerProcess = $ownerProcess[0]
-          Emit-Process 'OLD_LOCK_OWNER' $ownerProcess
-          if ([string]$ownerProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$ownerProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'LOCK_OWNER_NOT_CANONICAL_SUPERVISOR' }
-          $parentPid = [int]$ownerProcess.ParentProcessId
-          $parentProcess = @($inventory | Where-Object { [int]$_.ProcessId -eq $parentPid } | Select-Object -First 1)
-          if ($parentProcess.Count -ne 1) { throw "SUPERVISOR_CHAIN_PARENT_MISSING=$parentPid" }
-          $parentProcess = $parentProcess[0]
-          Emit-Process 'OLD_SUPERVISOR_PARENT' $parentProcess
-          if ([string]$parentProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$parentProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'SUPERVISOR_CHAIN_PARENT_NOT_CANONICAL' }
-          if ([int]$parentProcess.ParentProcessId -eq $lockOwnerPid) { throw 'SUPERVISOR_CHAIN_DIRECTION_INVALID' }
-          $outerParent = @($inventory | Where-Object { [int]$_.ProcessId -eq [int]$parentProcess.ParentProcessId } | Select-Object -First 1)
-          if ($outerParent.Count -eq 1) { Emit-Process 'SUPERVISOR_CHAIN_OUTER_PARENT' $outerParent[0] }
-          $otherSupervisors = @(Get-RunSupervisorRows $inventory | Where-Object { [int]$_.ProcessId -notin @($lockOwnerPid,$parentPid) })
-          if ($otherSupervisors.Count -gt 0) { throw "UNEXPECTED_CANONICAL_SUPERVISORS=$($otherSupervisors.ProcessId -join ',')" }
-          Write-Host 'SUPERVISOR_CHAIN=VENv_LAUNCHER_TO_BASE_PYTHON'
+          $parentPid = 0
+          $chainNeedsStop = $false
+          if ($ownerProcess.Count -eq 1) {
+            $chainNeedsStop = $true
+            $ownerProcess = $ownerProcess[0]
+            Emit-Process 'OLD_LOCK_OWNER' $ownerProcess
+            if ([string]$ownerProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$ownerProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'LOCK_OWNER_NOT_CANONICAL_SUPERVISOR' }
+            $parentPid = [int]$ownerProcess.ParentProcessId
+            $parentProcess = @($inventory | Where-Object { [int]$_.ProcessId -eq $parentPid } | Select-Object -First 1)
+            if ($parentProcess.Count -ne 1) { throw "SUPERVISOR_CHAIN_PARENT_MISSING=$parentPid" }
+            $parentProcess = $parentProcess[0]
+            Emit-Process 'OLD_SUPERVISOR_PARENT' $parentProcess
+            if ([string]$parentProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$parentProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'SUPERVISOR_CHAIN_PARENT_NOT_CANONICAL' }
+            if ([int]$parentProcess.ParentProcessId -eq $lockOwnerPid) { throw 'SUPERVISOR_CHAIN_DIRECTION_INVALID' }
+            $outerParent = @($inventory | Where-Object { [int]$_.ProcessId -eq [int]$parentProcess.ParentProcessId } | Select-Object -First 1)
+            if ($outerParent.Count -eq 1) { Emit-Process 'SUPERVISOR_CHAIN_OUTER_PARENT' $outerParent[0] }
+            $otherSupervisors = @(Get-RunSupervisorRows $inventory | Where-Object { [int]$_.ProcessId -notin @($lockOwnerPid,$parentPid) })
+            if ($otherSupervisors.Count -gt 0) { throw "UNEXPECTED_CANONICAL_SUPERVISORS=$($otherSupervisors.ProcessId -join ',')" }
+            Write-Host 'SUPERVISOR_CHAIN=VENv_LAUNCHER_TO_BASE_PYTHON'
+          }
+          else {
+            $remainingSupervisors = @(Get-RunSupervisorRows $inventory)
+            if ($remainingSupervisors.Count -gt 0) { throw "LOCK_OWNER_PROCESS_MISSING_BUT_SUPERVISOR_REMAINS=$($remainingSupervisors.ProcessId -join ',')" }
+            Write-Host 'OLD_LOCK_OWNER=MISSING_ALREADY_STOPPED'
+            Write-Host 'SUPERVISOR_CHAIN=ALREADY_STOPPED_AFTER_PRIOR_CONTROLLED_HANDOFF'
+          }
           Write-Host 'OLD_SUPERVISOR_PRECEDES_OBSERVATION=PASS'
 
           $runtimeState = Read-Json $runtimeStatePath
@@ -471,8 +481,11 @@ jobs:
           if ($childPidBefore -match '^\d+$' -and @($inventory | Where-Object { [int]$_.ProcessId -eq [int]$childPidBefore }).Count -gt 0) { throw "SAFETY_BLOCK_STATE_CHILD_ALIVE=$childPidBefore" }
           Write-Host "SAFETY_CODEX_CHILD=DEAD state_child_pid=$childPidBefore live_resume_children=0"
 
-          Stop-Process -Id $lockOwnerPid -Force -ErrorAction Stop
-          if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) { Stop-Process -Id $parentPid -Force -ErrorAction Stop }
+          if ($chainNeedsStop) {
+            Stop-Process -Id $lockOwnerPid -Force -ErrorAction Stop
+            $parentStillRunning = @(Get-CimInstance Win32_Process -Filter "ProcessId=$parentPid" -ErrorAction SilentlyContinue)
+            if ($parentStillRunning.Count -gt 0) { Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue }
+          }
           $stopDeadline = (Get-Date).AddSeconds(20)
           do {
             Start-Sleep -Milliseconds 500
