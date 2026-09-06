@@ -99,6 +99,15 @@ jobs:
           git clone --depth=1 --branch "$REF" "$IMMORTAL_SOURCE_REPO" "$SRC"
           cd "$SRC"
 
+          source "$GITHUB_WORKSPACE/config/arthur-known-good.lock"
+          cat > feeds.conf <<EOF
+          src-git packages https://github.com/immortalwrt/packages.git^$PACKAGES_REF
+          src-git luci https://github.com/immortalwrt/luci.git^$LUCI_REF
+          src-git routing https://github.com/openwrt/routing.git^$ROUTING_REF
+          src-git telephony https://github.com/openwrt/telephony.git^$TELEPHONY_REF
+          src-git video https://github.com/openwrt/video.git^$VIDEO_REF
+          EOF
+
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           "$GITHUB_WORKSPACE/scripts/add-custom-packages.sh" "$SRC"
@@ -111,6 +120,8 @@ jobs:
 
       - name: Build firmware
         env:
+          USE_KNOWN_GOOD_LOCK: '1'
+          KNOWN_GOOD_LOCK: ${{ github.workspace }}/config/arthur-known-good.lock
           JOBS: '2'
           QUIET_BUILD: '1'
           REUSE_SOURCE: '0'
