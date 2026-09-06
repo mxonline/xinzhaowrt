@@ -67,35 +67,98 @@ jobs:
             if ([string]::IsNullOrWhiteSpace($value)) { return $Default }
             return $value
           }
-          function Processes {
-            $rows = @()
-            foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
-              $command = [string]$process.CommandLine
-              if ([string]::IsNullOrWhiteSpace($command) -or $command.IndexOf($state,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-              if ($command -match '(?i)run-supervisor\.py') {
-                $rows += [pscustomobject]@{ kind='SUPERVISOR'; pid=[string]$process.ProcessId; parent=[string]$process.ParentProcessId; command=(Redact $command) }
-              }
-              elseif ($command -match '(?i)ai_orchestrator.*\bresume\b') {
-                $rows += [pscustomobject]@{ kind='CODEX_RESUME'; pid=[string]$process.ProcessId; parent=[string]$process.ParentProcessId; command=(Redact $command) }
+          function ProcessOwner($Process) {
+            try {
+              $owner = Invoke-CimMethod -InputObject $Process -MethodName GetOwner -ErrorAction Stop
+              if ($owner.ReturnValue -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$owner.User)) {
+                if ([string]::IsNullOrWhiteSpace([string]$owner.Domain)) { return [string]$owner.User }
+                return "$($owner.Domain)\$($owner.User)"
               }
             }
-            return @($rows)
+            catch { }
+            return 'UNKNOWN'
+          }
+          function ProcessDetails {
+            $inventory = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+            $matches = @($inventory | Where-Object {
+              $command = [string]$_.CommandLine
+              -not [string]::IsNullOrWhiteSpace($command) -and
+                $command.IndexOf($state,[System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                (($command -match '(?i)run-supervisor\.py') -or ($command -match '(?i)ai_orchestrator.*\bresume\b'))
+            })
+            $ids = New-Object 'System.Collections.Generic.HashSet[int]'
+            $queue = New-Object 'System.Collections.Generic.Queue[int]'
+            foreach ($process in $matches) {
+              $id = [int]$process.ProcessId
+              if ($ids.Add($id)) { $queue.Enqueue($id) }
+            }
+            while ($queue.Count -gt 0) {
+              $id = $queue.Dequeue()
+              $current = @($inventory | Where-Object { [int]$_.ProcessId -eq $id } | Select-Object -First 1)
+              if ($current.Count -gt 0) {
+                $parent = [int]$current[0].ParentProcessId
+                if ($parent -gt 0 -and $ids.Add($parent)) { $queue.Enqueue($parent) }
+              }
+              foreach ($child in @($inventory | Where-Object { [int]$_.ParentProcessId -eq $id })) {
+                $childId = [int]$child.ProcessId
+                if ($ids.Add($childId)) { $queue.Enqueue($childId) }
+              }
+            }
+            $rows = @()
+            foreach ($process in $inventory) {
+              $id = [int]$process.ProcessId
+              if (-not $ids.Contains($id)) { continue }
+              $command = [string]$process.CommandLine
+              $kind = 'RELATED'
+              if ($command -match '(?i)run-supervisor\.py') { $kind = 'SUPERVISOR' }
+              elseif ($command -match '(?i)ai_orchestrator.*\bresume\b') { $kind = 'CODEX_RESUME' }
+              $rows += [pscustomobject]@{
+                kind=$kind
+                pid=[string]$process.ProcessId
+                parent=[string]$process.ParentProcessId
+                creation=[string]$process.CreationDate
+                executable=(Redact ([string]$process.ExecutablePath))
+                session=[string]$process.SessionId
+                owner=(ProcessOwner $process)
+                command=(Redact $command)
+              }
+            }
+            return @($rows | Sort-Object @{Expression={ if ($_.kind -eq 'SUPERVISOR') { 0 } elseif ($_.kind -eq 'CODEX_RESUME') { 1 } else { 2 } }}, pid)
+          }
+          function SupervisorTopology($Rows) {
+            $supervisors = @($Rows | Where-Object kind -eq 'SUPERVISOR')
+            if ($supervisors.Count -le 1) { return 'SINGLE_LOGICAL_SUPERVISOR_INTERPRETER_CHAIN' }
+            foreach ($candidate in $supervisors) {
+              if (@($supervisors | Where-Object { [string]$_.pid -eq [string]$candidate.parent }).Count -gt 0) {
+                return 'SINGLE_LOGICAL_SUPERVISOR_INTERPRETER_CHAIN'
+              }
+            }
+            return 'TWO_LOGICAL_SUPERVISORS'
+          }
+          function ErrorClass([string]$Text) {
+            if ([string]::IsNullOrWhiteSpace($Text)) { return 'UNKNOWN' }
+            $match = [regex]::Match($Text, '(?m)\b([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception))\b')
+            if ($match.Success) { return $match.Groups[1].Value }
+            return 'UNKNOWN'
           }
           function Snapshot {
             $supervisor = Json (Join-Path $state 'supervisor-status.json')
             $runtimeStatus = Json (Join-Path $state 'runtime-status.json')
             $runtimeState = Json (Join-Path $state 'runtime-state.json')
             $heartbeat = Json (Join-Path $root 'heartbeat.json')
-            $rows = @(Processes)
+            $rows = @(ProcessDetails)
             $supervisorProcess = @($rows | Where-Object kind -eq 'SUPERVISOR' | Select-Object -First 1)
             $childProcess = @($rows | Where-Object kind -eq 'CODEX_RESUME' | Select-Object -First 1)
+            $lastCommandProperty = $supervisor.PSObject.Properties['last_child_command']
+            $lastCommand = if ($null -eq $lastCommandProperty -or $null -eq $lastCommandProperty.Value) { @('UNKNOWN') } else { @($lastCommandProperty.Value) }
             [pscustomobject]@{
               status=(Value $supervisor 'status'); restart_count=(Value $supervisor 'restart_count'); child_pid_state=(Value $supervisor 'child_pid')
               child_pid=if ($childProcess.Count -gt 0) { [string]$childProcess[0].pid } else { 'UNKNOWN' }
               supervisor_pid=if ($supervisorProcess.Count -gt 0) { [string]$supervisorProcess[0].pid } else { 'UNKNOWN' }
               heartbeat_at=(Value $runtimeStatus 'heartbeat_at'); heartbeat_sequence=(Value $heartbeat 'sequence')
               phase=(Value $runtimeState 'phase'); release_task_id=(Value $runtimeState 'release_task_id'); turn_count=(Value $runtimeState 'turn_count'); terminal_state=(Value $runtimeState 'terminal_state')
-              supervisor_alive=($supervisorProcess.Count -gt 0); child_alive=($childProcess.Count -gt 0); rows=$rows; supervisor_json=$supervisor
+              last_child_pid=(Value $supervisor 'last_child_pid'); last_child_exit_code=(Value $supervisor 'last_child_exit_code'); last_child_exit_at=(Value $supervisor 'last_child_exit_at'); last_child_start_at=(Value $supervisor 'last_child_start_at'); last_child_command=$lastCommand; last_child_error_tail=(Value $supervisor 'last_child_error_tail')
+              supervisor_alive=($supervisorProcess.Count -gt 0); child_alive=($childProcess.Count -gt 0); topology=(SupervisorTopology $rows); rows=$rows; supervisor_json=$supervisor
             }
           }
           function Emit([string]$Label,$Snapshot) {
@@ -110,7 +173,16 @@ jobs:
             Write-Host "${Label}_RELEASE_TASK_ID=$($Snapshot.release_task_id)"
             Write-Host "${Label}_TURN_COUNT=$($Snapshot.turn_count)"
             Write-Host "${Label}_TERMINAL_STATE=$($Snapshot.terminal_state)"
-            foreach ($row in @($Snapshot.rows)) { Write-Host "${Label}_PROCESS kind=$($row.kind) PID=$($row.pid) ParentProcessId=$($row.parent) CommandLine=$($row.command)" }
+            Write-Host "${Label}_SUPERVISOR_TOPOLOGY=$($Snapshot.topology)"
+            Write-Host "${Label}_LAST_CHILD_PID=$($Snapshot.last_child_pid)"
+            Write-Host "${Label}_LAST_CHILD_EXIT_CODE=$($Snapshot.last_child_exit_code)"
+            Write-Host "${Label}_LAST_CHILD_EXIT_AT=$($Snapshot.last_child_exit_at)"
+            Write-Host "${Label}_LAST_CHILD_START_AT=$($Snapshot.last_child_start_at)"
+            Write-Host "${Label}_LAST_CHILD_COMMAND=$([string]($Snapshot.last_child_command -join ' '))"
+            Write-Host "${Label}_LAST_CHILD_ERROR_CLASS=$(ErrorClass (Redact ([string]$Snapshot.last_child_error_tail)))"
+            $tail = (Redact ([string]$Snapshot.last_child_error_tail)) -replace "`r?`n", '\\n'
+            Write-Host "${Label}_LAST_CHILD_ERROR_TAIL=$tail"
+            foreach ($row in @($Snapshot.rows)) { Write-Host "${Label}_PROCESS kind=$($row.kind) PID=$($row.pid) ParentProcessId=$($row.parent) CreationDate=$($row.creation) ExecutablePath=$($row.executable) SessionId=$($row.session) Owner=$($row.owner) CommandLine=$($row.command)" }
           }
           function FailureEvidence([string]$Root,[string]$StateDir,$Snapshot) {
             Write-Host 'RUNTIME_GATE_FAILURE_EVIDENCE_BEGIN'
@@ -119,6 +191,12 @@ jobs:
             Write-Host "FAILURE_LAST_FAILURE=$(Redact (Value $failure 'last_failure'))"
             Write-Host "FAILURE_EXIT_CODE=$(Redact (Value $failure 'exit_code'))"
             Write-Host "FAILURE_NEXT_RETRY_AT=$(Value $failure 'next_retry_at')"
+            Write-Host "FAILURE_CHILD_PID=$(Value $failure 'last_child_pid')"
+            Write-Host "FAILURE_CHILD_EXIT_CODE=$(Value $failure 'last_child_exit_code')"
+            Write-Host "FAILURE_CHILD_EXIT_AT=$(Value $failure 'last_child_exit_at')"
+            $failureTail = Redact (Value $failure 'last_child_error_tail')
+            Write-Host "FAILURE_CHILD_ERROR_CLASS=$(ErrorClass $failureTail)"
+            Write-Host "FAILURE_CHILD_ERROR_TAIL=$($failureTail -replace "`r?`n", '\\n')"
             $logs = @(Get-ChildItem -LiteralPath $StateDir -Recurse -File -Force -ErrorAction SilentlyContinue |
               Where-Object { $_.Name -match '(?i)(supervisor|codex|stdout|stderr|exception|runtime)' -and $_.Extension -in @('.log','.txt','.jsonl','.stderr','.stdout','.exception') } |
               Sort-Object LastWriteTime -Descending | Select-Object -First 8)
@@ -134,6 +212,9 @@ jobs:
           if ($identity -ine 'CYCHAN\xinzhaowrt-runner' -or $machine -ine 'CYCHAN') { throw "RUNTIME_GATE_IDENTITY_MISMATCH identity=$identity machine=$machine" }
           foreach ($path in @($root,$state,$control,$python,$probe)) { if (-not (Test-Path -LiteralPath $path)) { throw "RUNTIME_GATE_PATH_MISSING=$path" } }
           Write-Host "RUNTIME_GATE_PATHS=PASS control=$control state=$state python=$python"
+          $lockPath = Join-Path $state 'supervisor.lock'
+          $lockOwner = if (Test-Path -LiteralPath $lockPath -PathType Leaf) { (Get-Content -Raw -LiteralPath $lockPath).Trim() } else { 'UNKNOWN' }
+          Write-Host "LOCK_OWNER_PID=$lockOwner"
 
           $t0 = Snapshot; Emit 'T0' $t0
           Push-Location $control

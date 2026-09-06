@@ -159,8 +159,16 @@ class RuntimeSupervisor:
         payload.setdefault("restart_times", [])
         payload.setdefault("restart_count", 0)
         payload.setdefault("child_pid", None)
+        payload.setdefault("child_command", None)
+        payload.setdefault("child_start_at", None)
         payload.setdefault("last_start_at", None)
         payload.setdefault("next_retry_at", 0.0)
+        payload.setdefault("last_child_pid", None)
+        payload.setdefault("last_child_command", None)
+        payload.setdefault("last_child_start_at", None)
+        payload.setdefault("last_child_exit_code", None)
+        payload.setdefault("last_child_exit_at", None)
+        payload.setdefault("last_child_error_tail", None)
         return payload
 
     def _save_supervisor_state(self, payload):
@@ -171,6 +179,51 @@ class RuntimeSupervisor:
         record = {"timestamp": utc_now(), "event": event, **values}
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _read_log_tail(self, limit=60):
+        try:
+            lines = self.log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return ""
+        return "\n".join(lines[-limit:])
+
+    def _observe_child_exit(self, supervisor_state):
+        process = self._process
+        if process is None:
+            return False
+        try:
+            exit_code = process.poll()
+        except (OSError, ValueError):
+            return False
+        if exit_code is None:
+            return False
+        child_pid = getattr(process, "pid", None)
+        if child_pid is None:
+            return False
+        if (
+            supervisor_state.get("last_child_pid") == child_pid
+            and supervisor_state.get("last_child_exit_at")
+        ):
+            return False
+
+        exit_at = utc_now()
+        error_tail = self._read_log_tail()
+        supervisor_state["last_child_pid"] = child_pid
+        supervisor_state["last_child_command"] = supervisor_state.get("child_command")
+        supervisor_state["last_child_start_at"] = supervisor_state.get("child_start_at")
+        supervisor_state["last_child_exit_code"] = exit_code
+        supervisor_state["last_child_exit_at"] = exit_at
+        supervisor_state["last_child_error_tail"] = error_tail
+        self._append_log(
+            "runtime_child_exit",
+            child_pid=child_pid,
+            child_command=supervisor_state.get("child_command"),
+            child_start_at=supervisor_state.get("child_start_at"),
+            exit_code=exit_code,
+            exit_at=exit_at,
+            error_tail=error_tail,
+        )
+        return True
 
     def _write_status(self, payload):
         atomic_json_write(self.status_path, payload)
@@ -271,6 +324,8 @@ class RuntimeSupervisor:
     def run_once(self):
         status, state = self._load_runtime()
         supervisor_state = self._load_supervisor_state()
+        if self._observe_child_exit(supervisor_state):
+            self._save_supervisor_state(supervisor_state)
         self._prune_restart_times(supervisor_state)
         health = self._runtime_healthy(status, state, supervisor_state)
         now = self.now()
@@ -283,6 +338,14 @@ class RuntimeSupervisor:
             "daemon_alive": health["daemon_alive"],
             "child_pid": health["child_pid"],
             "child_alive": health["child_alive"],
+            "child_command": supervisor_state.get("child_command"),
+            "child_start_at": supervisor_state.get("child_start_at"),
+            "last_child_pid": supervisor_state.get("last_child_pid"),
+            "last_child_command": supervisor_state.get("last_child_command"),
+            "last_child_start_at": supervisor_state.get("last_child_start_at"),
+            "last_child_exit_code": supervisor_state.get("last_child_exit_code"),
+            "last_child_exit_at": supervisor_state.get("last_child_exit_at"),
+            "last_child_error_tail": supervisor_state.get("last_child_error_tail"),
             "restart_count": supervisor_state.get("restart_count", 0),
             "heartbeat_timeout_seconds": self.heartbeat_timeout,
             "updated_at": utc_now(),
@@ -329,6 +392,8 @@ class RuntimeSupervisor:
             return self._write_status({**base, "status": "RECOVERING", "action": "launch_failed", "error": type(exc).__name__, "next_retry_at": supervisor_state["next_retry_at"]})
         self._process = process
         supervisor_state["child_pid"] = getattr(process, "pid", None)
+        supervisor_state["child_command"] = list(self._runtime_command())
+        supervisor_state["child_start_at"] = utc_now()
         supervisor_state["last_start_at"] = utc_now()
         supervisor_state["restart_times"].append(now)
         supervisor_state["restart_count"] += 1
@@ -336,7 +401,7 @@ class RuntimeSupervisor:
         supervisor_state["next_retry_at"] = now + delay
         self._save_supervisor_state(supervisor_state)
         self._append_log("runtime_started", child_pid=supervisor_state["child_pid"], backoff_seconds=delay)
-        return self._write_status({**base, "status": "RECOVERING", "action": "resume_persisted_handoff", "child_pid": supervisor_state["child_pid"], "next_retry_at": supervisor_state["next_retry_at"]})
+        return self._write_status({**base, "status": "RECOVERING", "action": "resume_persisted_handoff", "child_pid": supervisor_state["child_pid"], "child_command": supervisor_state["child_command"], "child_start_at": supervisor_state["child_start_at"], "next_retry_at": supervisor_state["next_retry_at"]})
 
     def run_forever(self):
         startup = ensure_windows_startup(self.project_root, self.root)
