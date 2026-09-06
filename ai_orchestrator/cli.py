@@ -105,7 +105,7 @@ async def _run(state_dir, adapter_name, max_turns, request_id):
         )
     state = await runtime.run(request_id=request_id, max_turns=max_turns)
     print(json.dumps(state.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
-    return 0 if state.terminal_state in (None, "PRODUCTION_RELEASED") else 2
+    return 0 if not state.terminal_state or state.terminal_state == "PRODUCTION_RELEASED" else 2
 
 
 async def _build_sdk_runtime(root):
