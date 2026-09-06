@@ -21,119 +21,63 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Read effective LSA account rights
+      - name: Read LSA status codes for runner rights
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
           Write-Host ("DIAG_IDENTITY={0}" -f (whoami))
-
           $source = @'
           using System;
           using System.Collections.Generic;
           using System.Runtime.InteropServices;
           using System.Security.Principal;
-
-          public static class ArthurLsaRights {
-              [StructLayout(LayoutKind.Sequential)]
-              struct LSA_OBJECT_ATTRIBUTES {
-                  public int Length;
-                  public IntPtr RootDirectory;
-                  public IntPtr ObjectName;
-                  public uint Attributes;
-                  public IntPtr SecurityDescriptor;
-                  public IntPtr SecurityQualityOfService;
-              }
-              [StructLayout(LayoutKind.Sequential)]
-              struct LSA_UNICODE_STRING {
-                  public ushort Length;
-                  public ushort MaximumLength;
-                  public IntPtr Buffer;
-              }
+          public static class ArthurLsaProbe {
+              [StructLayout(LayoutKind.Sequential)] struct LSA_OBJECT_ATTRIBUTES { public int Length; public IntPtr RootDirectory; public IntPtr ObjectName; public uint Attributes; public IntPtr SecurityDescriptor; public IntPtr SecurityQualityOfService; }
+              [StructLayout(LayoutKind.Sequential)] struct LSA_UNICODE_STRING { public ushort Length; public ushort MaximumLength; public IntPtr Buffer; }
               const uint POLICY_LOOKUP_NAMES = 0x00000800;
-
-              [DllImport("advapi32.dll", SetLastError=true)]
-              static extern uint LsaOpenPolicy(IntPtr SystemName, ref LSA_OBJECT_ATTRIBUTES ObjectAttributes, uint DesiredAccess, out IntPtr PolicyHandle);
-              [DllImport("advapi32.dll")]
-              static extern uint LsaEnumerateAccountRights(IntPtr PolicyHandle, IntPtr AccountSid, out IntPtr UserRights, out uint CountOfRights);
-              [DllImport("advapi32.dll")]
-              static extern uint LsaNtStatusToWinError(uint Status);
-              [DllImport("advapi32.dll")]
-              static extern uint LsaClose(IntPtr ObjectHandle);
-              [DllImport("advapi32.dll")]
-              static extern uint LsaFreeMemory(IntPtr Buffer);
-
-              public static string[] GetRights(string sidText) {
-                  var attrs = new LSA_OBJECT_ATTRIBUTES();
-                  attrs.Length = Marshal.SizeOf(typeof(LSA_OBJECT_ATTRIBUTES));
-                  IntPtr policy;
-                  uint status = LsaOpenPolicy(IntPtr.Zero, ref attrs, POLICY_LOOKUP_NAMES, out policy);
-                  if (status != 0) throw new System.ComponentModel.Win32Exception((int)LsaNtStatusToWinError(status), "LsaOpenPolicy failed");
+              [DllImport("advapi32.dll")] static extern uint LsaOpenPolicy(IntPtr SystemName, ref LSA_OBJECT_ATTRIBUTES ObjectAttributes, uint DesiredAccess, out IntPtr PolicyHandle);
+              [DllImport("advapi32.dll")] static extern uint LsaEnumerateAccountRights(IntPtr PolicyHandle, IntPtr AccountSid, out IntPtr UserRights, out uint CountOfRights);
+              [DllImport("advapi32.dll")] static extern uint LsaNtStatusToWinError(uint Status);
+              [DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr ObjectHandle);
+              [DllImport("advapi32.dll")] static extern uint LsaFreeMemory(IntPtr Buffer);
+              public static string Probe(string sidText) {
+                  var attrs = new LSA_OBJECT_ATTRIBUTES(); attrs.Length = Marshal.SizeOf(typeof(LSA_OBJECT_ATTRIBUTES));
+                  IntPtr policy; uint openStatus = LsaOpenPolicy(IntPtr.Zero, ref attrs, POLICY_LOOKUP_NAMES, out policy);
+                  if (openStatus != 0) return "OPEN_NT="+openStatus+";OPEN_WIN="+LsaNtStatusToWinError(openStatus);
                   try {
-                      var sid = new SecurityIdentifier(sidText);
-                      byte[] sidBytes = new byte[sid.BinaryLength];
-                      sid.GetBinaryForm(sidBytes,0);
-                      IntPtr sidPtr = Marshal.AllocHGlobal(sidBytes.Length);
+                      var sid = new SecurityIdentifier(sidText); byte[] bytes = new byte[sid.BinaryLength]; sid.GetBinaryForm(bytes,0);
+                      IntPtr sidPtr = Marshal.AllocHGlobal(bytes.Length);
                       try {
-                          Marshal.Copy(sidBytes,0,sidPtr,sidBytes.Length);
-                          IntPtr rightsPtr;
-                          uint count;
-                          status = LsaEnumerateAccountRights(policy,sidPtr,out rightsPtr,out count);
-                          if (status != 0) {
-                              uint win = LsaNtStatusToWinError(status);
-                              if (win == 2 || win == 1168) return new string[0];
-                              throw new System.ComponentModel.Win32Exception((int)win, "LsaEnumerateAccountRights failed");
+                          Marshal.Copy(bytes,0,sidPtr,bytes.Length);
+                          IntPtr rightsPtr = IntPtr.Zero; uint count = 0; uint st = LsaEnumerateAccountRights(policy,sidPtr,out rightsPtr,out count); uint win = LsaNtStatusToWinError(st);
+                          var names = new List<string>();
+                          if (st == 0 && rightsPtr != IntPtr.Zero) {
+                              try {
+                                  int size = Marshal.SizeOf(typeof(LSA_UNICODE_STRING));
+                                  for (int i=0;i<count;i++) {
+                                      var item=(LSA_UNICODE_STRING)Marshal.PtrToStructure(IntPtr.Add(rightsPtr,i*size),typeof(LSA_UNICODE_STRING));
+                                      if (item.Buffer!=IntPtr.Zero && item.Length>0) names.Add(Marshal.PtrToStringUni(item.Buffer,item.Length/2));
+                                  }
+                              } finally { LsaFreeMemory(rightsPtr); }
                           }
-                          try {
-                              var list = new List<string>();
-                              int size = Marshal.SizeOf(typeof(LSA_UNICODE_STRING));
-                              for (int i=0;i<count;i++) {
-                                  var itemPtr = IntPtr.Add(rightsPtr,i*size);
-                                  var item = (LSA_UNICODE_STRING)Marshal.PtrToStructure(itemPtr,typeof(LSA_UNICODE_STRING));
-                                  string value = item.Buffer == IntPtr.Zero ? "" : Marshal.PtrToStringUni(item.Buffer,item.Length/2);
-                                  if (!String.IsNullOrEmpty(value)) list.Add(value);
-                              }
-                              return list.ToArray();
-                          } finally {
-                              if (rightsPtr != IntPtr.Zero) LsaFreeMemory(rightsPtr);
-                          }
-                      } finally {
-                          Marshal.FreeHGlobal(sidPtr);
-                      }
-                  } finally {
-                      LsaClose(policy);
-                  }
+                          return "ENUM_NT="+st+";ENUM_WIN="+win+";COUNT="+count+";RIGHTS="+String.Join(",",names.ToArray());
+                      } finally { Marshal.FreeHGlobal(sidPtr); }
+                  } finally { LsaClose(policy); }
               }
           }
           '@
           Add-Type -TypeDefinition $source -ErrorAction Stop
-
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
           $targets = New-Object System.Collections.Generic.List[object]
-          $targets.Add([pscustomobject]@{ Kind='USER'; Sid=$identity.User.Value; Name=$identity.Name })
-          foreach ($groupSid in $identity.Groups) {
-            $name = $groupSid.Value
-            try { $name = $groupSid.Translate([Security.Principal.NTAccount]).Value } catch {}
-            $targets.Add([pscustomobject]@{ Kind='GROUP'; Sid=$groupSid.Value; Name=$name })
+          $targets.Add([pscustomobject]@{Kind='USER';Sid=$identity.User.Value;Name=$identity.Name})
+          foreach ($sid in $identity.Groups) {
+            $name=$sid.Value
+            try {$name=$sid.Translate([Security.Principal.NTAccount]).Value} catch {}
+            $targets.Add([pscustomobject]@{Kind='GROUP';Sid=$sid.Value;Name=$name})
           }
-
-          $effective = New-Object System.Collections.Generic.HashSet[string]([StringComparer]::OrdinalIgnoreCase)
           foreach ($target in $targets) {
-            try {
-              $rights = @([ArthurLsaRights]::GetRights([string]$target.Sid))
-              Write-Host ("LSA_TARGET_KIND={0}:NAME={1}:SID={2}:RIGHT_COUNT={3}" -f $target.Kind,$target.Name,$target.Sid,$rights.Count)
-              foreach ($right in $rights) {
-                [void]$effective.Add([string]$right)
-                Write-Host ("LSA_RIGHT={0}:SOURCE={1}" -f $right,$target.Name)
-              }
-            }
-            catch {
-              Write-Host ("LSA_QUERY_ERROR={0}:SID={1}:MESSAGE={2}" -f $target.Name,$target.Sid,$_.Exception.Message)
-            }
+            $probe=[ArthurLsaProbe]::Probe([string]$target.Sid)
+            Write-Host ("LSA_PROBE_KIND={0}:NAME={1}:SID={2}:{3}" -f $target.Kind,$target.Name,$target.Sid,$probe)
           }
-
-          Write-Host ("EFFECTIVE_HAS_SEBATCHLOGONRIGHT={0}" -f $effective.Contains('SeBatchLogonRight'))
-          Write-Host ("EFFECTIVE_HAS_SEDENYBATCHLOGONRIGHT={0}" -f $effective.Contains('SeDenyBatchLogonRight'))
-          Write-Host ("EFFECTIVE_HAS_SESERVICELOGONRIGHT={0}" -f $effective.Contains('SeServiceLogonRight'))
-          Write-Host ("EFFECTIVE_HAS_SEDENYSERVICELOGONRIGHT={0}" -f $effective.Contains('SeDenyServiceLogonRight'))
-          Write-Host 'LSA_RIGHTS_DIAGNOSTIC=PASS'
+          Write-Host 'LSA_STATUS_DIAGNOSTIC=PASS'
