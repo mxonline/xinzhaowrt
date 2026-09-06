@@ -1,0 +1,2 @@
+Fast Preflight parses scripts/ensure-arthur-persistent-supervisor.ps1.
+This file is a marker for the admin bootstrap repair branch and has no runtime effect.
