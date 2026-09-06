@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      supervisor_handoff:
+        description: 'Run one safety-gated Supervisor-only controlled handoff on CYCHAN'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,7 +30,7 @@ concurrency:
 
 jobs:
   runtime-gate:
-    if: ${{ inputs.runtime_gate == true }}
+    if: ${{ inputs.runtime_gate == true && inputs.supervisor_handoff != true }}
     runs-on:
       - self-hosted
       - windows
@@ -239,8 +244,360 @@ jobs:
           }
           Write-Host 'RUNTIME_GATE=PASS'
 
+  supervisor-handoff:
+    if: ${{ inputs.supervisor_handoff == true }}
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: '1'
+      HEADLESS_CODEX_MODEL: gpt-5.6-terra
+    steps:
+      - name: Controlled Supervisor handoff and child-exit observation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          $root = 'C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\ControlPlane'
+          $state = Join-Path $root 'state'
+          $control = Join-Path $root 'control-runtime'
+          $workspace = Join-Path $root 'workspace'
+          $python = 'C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe'
+          $runSupervisor = Join-Path $control 'scripts\run-supervisor.py'
+          $runtimeStatePath = Join-Path $state 'runtime-state.json'
+          $supervisorStatePath = Join-Path $state 'supervisor-state.json'
+          $supervisorStatusPath = Join-Path $state 'supervisor-status.json'
+          $heartbeatPath = Join-Path $root 'heartbeat.json'
+          $lockPath = Join-Path $state 'supervisor.lock'
+
+          function Redact([string]$Text) {
+            if ($null -eq $Text) { return '' }
+            $value = [regex]::Replace($Text, '(?i)(authorization|token|cookie|secret|api[_-]?key|password)(\s*[:=]\s*)[^\s,;]+', '$1$2<REDACTED>')
+            return [regex]::Replace($value, '(?i)(Bearer\s+)[^\s]+', '$1<REDACTED>')
+          }
+          function Read-Json([string]$Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "MISSING_JSON=$Path" }
+            return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+          }
+          function Get-PropertyValue($Object,[string]$Name) {
+            if ($null -eq $Object) { return $null }
+            $property = $Object.PSObject.Properties[$Name]
+            if ($null -eq $property) { return $null }
+            return $property.Value
+          }
+          function Get-ProcessOwner($Process) {
+            try {
+              $owner = Invoke-CimMethod -InputObject $Process -MethodName GetOwner -ErrorAction Stop
+              if ($owner.ReturnValue -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$owner.User)) {
+                if ([string]::IsNullOrWhiteSpace([string]$owner.Domain)) { return [string]$owner.User }
+                return "$($owner.Domain)\$($owner.User)"
+              }
+            }
+            catch { }
+            return 'UNKNOWN'
+          }
+          function Get-Inventory {
+            return @(Get-CimInstance Win32_Process -ErrorAction Stop)
+          }
+          function Get-RunSupervisorRows($Inventory) {
+            return @($Inventory | Where-Object {
+              $command = [string]$_.CommandLine
+              -not [string]::IsNullOrWhiteSpace($command) -and
+                $command -match '(?i)run-supervisor\.py' -and
+                $command.IndexOf($state,[System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                $command.IndexOf($control,[System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            })
+          }
+          function Get-ResumeRows($Inventory) {
+            return @($Inventory | Where-Object {
+              $command = [string]$_.CommandLine
+              -not [string]::IsNullOrWhiteSpace($command) -and
+                $command -match '(?i)ai_orchestrator.*\bresume\b' -and
+                $command.IndexOf($state,[System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            })
+          }
+          function Emit-Process([string]$Label,$Process) {
+            if ($null -eq $Process) {
+              Write-Host "${Label}=MISSING"
+              return
+            }
+            Write-Host "${Label}_PID=$($Process.ProcessId)"
+            Write-Host "${Label}_PARENT_PID=$($Process.ParentProcessId)"
+            Write-Host "${Label}_CREATION_DATE=$($Process.CreationDate)"
+            Write-Host "${Label}_EXECUTABLE_PATH=$(Redact ([string]$Process.ExecutablePath))"
+            Write-Host "${Label}_COMMAND_LINE=$(Redact ([string]$Process.CommandLine))"
+            Write-Host "${Label}_SESSION_ID=$($Process.SessionId)"
+            Write-Host "${Label}_OWNER=$(Get-ProcessOwner $Process)"
+          }
+          function Get-ErrorClass([string]$Text) {
+            if ([string]::IsNullOrWhiteSpace($Text)) { return 'UNKNOWN' }
+            $match = [regex]::Match($Text, '(?m)\b([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception))\b')
+            if ($match.Success) { return $match.Groups[1].Value }
+            return 'EXIT_CODE_ONLY'
+          }
+          function Get-HeartbeatSequence {
+            if (-not (Test-Path -LiteralPath $heartbeatPath -PathType Leaf)) { return $null }
+            try { return Get-PropertyValue (Read-Json $heartbeatPath) 'sequence' } catch { return $null }
+          }
+          function Get-Snapshot {
+            $inventory = Get-Inventory
+            $supervisors = @(Get-RunSupervisorRows $inventory)
+            $children = @(Get-ResumeRows $inventory)
+            $status = Read-Json $supervisorStatusPath
+            $supervisorState = Read-Json $supervisorStatePath
+            [pscustomobject]@{
+              inventory=$inventory
+              supervisors=$supervisors
+              children=$children
+              status=$status
+              supervisor_state=$supervisorState
+              status_name=[string](Get-PropertyValue $status 'status')
+              supervisor_pid=[string](Get-PropertyValue $status 'supervisor_pid')
+              child_pid=[string](Get-PropertyValue $status 'child_pid')
+              last_child_pid=[string](Get-PropertyValue $status 'last_child_pid')
+              last_child_exit_code=[string](Get-PropertyValue $status 'last_child_exit_code')
+              last_child_exit_at=[string](Get-PropertyValue $status 'last_child_exit_at')
+              last_child_error_tail=[string](Get-PropertyValue $status 'last_child_error_tail')
+              restart_count=[string](Get-PropertyValue $status 'restart_count')
+              heartbeat_sequence=[string](Get-HeartbeatSequence)
+            }
+          }
+          function Emit-ChildEvidence($Snapshot) {
+            $tail = Redact ([string]$Snapshot.last_child_error_tail)
+            $tailOneLine = $tail -replace "`r?`n", '\\n'
+            $exitCode = [string]$Snapshot.last_child_exit_code
+            $errorClass = Get-ErrorClass $tail
+            Write-Host "CHILD_PID=$($Snapshot.last_child_pid)"
+            Write-Host "CHILD_EXIT_CODE=$exitCode"
+            Write-Host "CHILD_ERROR_CLASS=$errorClass"
+            Write-Host "CHILD_ERROR_TAIL=$tailOneLine"
+            Write-Host "ROOT_CAUSE=$errorClass"
+          }
+          function Assert-Empty([string]$Label,[string]$Value) {
+            if (-not [string]::IsNullOrWhiteSpace($Value)) { throw "$Label=$Value" }
+          }
+
+          if ((whoami).Trim() -ine 'CYCHAN\xinzhaowrt-runner' -or (hostname).Trim() -ine 'CYCHAN') {
+            throw "RUNNER_IDENTITY_MISMATCH identity=$((whoami).Trim()) machine=$((hostname).Trim())"
+          }
+          Write-Host "RUNNER_IDENTITY=$((whoami).Trim())"
+          Write-Host "RUNNER_MACHINE=$((hostname).Trim())"
+          foreach ($path in @($root,$state,$control,$workspace,$python,$runSupervisor,$runtimeStatePath,$supervisorStatePath,$supervisorStatusPath)) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "HANDOFF_PATH_MISSING=$path" }
+          }
+
+          $beforeHead = (& git -C $control rev-parse HEAD).Trim()
+          $beforeBranch = (& git -C $control branch --show-current).Trim()
+          $beforeDirty = (& git -C $control status --porcelain | Out-String).Trim()
+          Write-Host "CONTROL_RUNTIME_HEAD_BEFORE=$beforeHead"
+          Write-Host "CONTROL_RUNTIME_BRANCH_BEFORE=$beforeBranch"
+          if ($beforeDirty) { throw "CONTROL_RUNTIME_DIRTY=$beforeDirty" }
+          gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_AUTH_SETUP_FAILED' }
+          git -C $control fetch --prune origin main
+          if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_FETCH_FAILED' }
+          if ($beforeBranch -ne 'main') {
+            git -C $control switch main
+            if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_SWITCH_MAIN_FAILED' }
+          }
+          git -C $control merge --ff-only origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_FAST_FORWARD_FAILED' }
+          $controlHead = (& git -C $control rev-parse HEAD).Trim()
+          $controlOriginHead = (& git -C $control rev-parse origin/main).Trim()
+          if ($controlHead -ne $controlOriginHead) { throw "CONTROL_RUNTIME_NOT_CURRENT head=$controlHead origin_main=$controlOriginHead" }
+          $observationCommit = (& git -C $control log -1 --format='%H|%cI' -S 'last_child_exit_code' -- ai_orchestrator/supervisor.py).Trim()
+          if ($observationCommit -notmatch '^[0-9a-f]{40}\|') { throw 'CHILD_EXIT_OBSERVATION_COMMIT_NOT_FOUND' }
+          $observationSha,$observationTime = $observationCommit -split '\|',2
+          Write-Host "CONTROL_RUNTIME_HEAD=$controlHead"
+          Write-Host "CHILD_EXIT_OBSERVATION_COMMIT=$observationSha"
+          Write-Host "CHILD_EXIT_OBSERVATION_COMMIT_TIME=$observationTime"
+          if (-not (Select-String -LiteralPath (Join-Path $control 'ai_orchestrator\supervisor.py') -Pattern 'last_child_exit_code' -Quiet)) { throw 'CHILD_EXIT_OBSERVATION_CODE_MISSING' }
+
+          $lockOwnerText = (Get-Content -Raw -LiteralPath $lockPath).Trim()
+          if ($lockOwnerText -notmatch '^\d+$') { throw "LOCK_OWNER_INVALID=$lockOwnerText" }
+          $lockOwnerPid = [int]$lockOwnerText
+          Write-Host "LOCK_OWNER_PID=$lockOwnerPid"
+          $inventory = Get-Inventory
+          $ownerProcess = @($inventory | Where-Object { [int]$_.ProcessId -eq $lockOwnerPid } | Select-Object -First 1)
+          if ($ownerProcess.Count -ne 1) { throw "LOCK_OWNER_PROCESS_MISSING=$lockOwnerPid" }
+          $ownerProcess = $ownerProcess[0]
+          Emit-Process 'OLD_LOCK_OWNER' $ownerProcess
+          if ([string]$ownerProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$ownerProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'LOCK_OWNER_NOT_CANONICAL_SUPERVISOR' }
+          $parentPid = [int]$ownerProcess.ParentProcessId
+          $parentProcess = @($inventory | Where-Object { [int]$_.ProcessId -eq $parentPid } | Select-Object -First 1)
+          if ($parentProcess.Count -ne 1) { throw "SUPERVISOR_CHAIN_PARENT_MISSING=$parentPid" }
+          $parentProcess = $parentProcess[0]
+          Emit-Process 'OLD_SUPERVISOR_PARENT' $parentProcess
+          if ([string]$parentProcess.CommandLine -notmatch '(?i)run-supervisor\.py' -or [string]$parentProcess.CommandLine -notmatch [regex]::Escape($state)) { throw 'SUPERVISOR_CHAIN_PARENT_NOT_CANONICAL' }
+          if ([int]$parentProcess.ParentProcessId -eq $lockOwnerPid) { throw 'SUPERVISOR_CHAIN_DIRECTION_INVALID' }
+          $outerParent = @($inventory | Where-Object { [int]$_.ProcessId -eq [int]$parentProcess.ParentProcessId } | Select-Object -First 1)
+          if ($outerParent.Count -eq 1) { Emit-Process 'SUPERVISOR_CHAIN_OUTER_PARENT' $outerParent[0] }
+          $otherSupervisors = @(Get-RunSupervisorRows $inventory | Where-Object { [int]$_.ProcessId -notin @($lockOwnerPid,$parentPid) })
+          if ($otherSupervisors.Count -gt 0) { throw "UNEXPECTED_CANONICAL_SUPERVISORS=$($otherSupervisors.ProcessId -join ',')" }
+          Write-Host 'SUPERVISOR_CHAIN=VENv_LAUNCHER_TO_BASE_PYTHON'
+          Write-Host 'OLD_SUPERVISOR_PRECEDES_OBSERVATION=PASS'
+
+          $runtimeState = Read-Json $runtimeStatePath
+          $phase = [string](Get-PropertyValue $runtimeState 'phase')
+          $candidate = [string](Get-PropertyValue $runtimeState 'candidate_sha256')
+          if ($phase -ne 'BUILD') { throw "SAFETY_BLOCK_RUNTIME_PHASE=$phase" }
+          Assert-Empty 'SAFETY_BLOCK_CANDIDATE_SHA256' $candidate
+          foreach ($gateName in @('human_gate','pending_human_gate','humanGate','pendingHumanGate')) {
+            Assert-Empty "SAFETY_BLOCK_$($gateName.ToUpperInvariant())" ([string](Get-PropertyValue $runtimeState $gateName))
+          }
+          $activeFlashNames = @('active_flash','flash_in_progress','flash_active','flash_pid','flash_status','flash_task_id','active_flash_task_id')
+          foreach ($flashName in $activeFlashNames) {
+            $flashValue = Get-PropertyValue $runtimeState $flashName
+            if ($null -eq $flashValue) { continue }
+            $flashText = ([string]$flashValue).Trim()
+            if ($flashValue -is [bool] -and [bool]$flashValue) { throw "SAFETY_BLOCK_ACTIVE_FLASH=$flashName" }
+            if ($flashText -and $flashText.ToLowerInvariant() -notin @('false','0','none','null','inactive','not_started','completed')) { throw "SAFETY_BLOCK_ACTIVE_FLASH=$flashName" }
+          }
+          $runtimeReleaseTask = [string](Get-PropertyValue $runtimeState 'release_task_id')
+          $runtimePhase = $phase
+          Write-Host "SAFETY_RUNTIME_STATE=PASS phase=$runtimePhase release_task_id=$runtimeReleaseTask candidate_sha256=EMPTY active_flash=NONE pending_human_gate=NONE"
+
+          $supervisorStateBefore = Read-Json $supervisorStatePath
+          $restartBeforeText = [string](Get-PropertyValue $supervisorStateBefore 'restart_count')
+          $childPidBefore = [string](Get-PropertyValue $supervisorStateBefore 'child_pid')
+          $resumeRows = @(Get-ResumeRows $inventory)
+          if ($resumeRows.Count -gt 0) { throw "SAFETY_BLOCK_LIVE_CODEX_CHILD=$($resumeRows.ProcessId -join ',')" }
+          if ($childPidBefore -match '^\d+$' -and @($inventory | Where-Object { [int]$_.ProcessId -eq [int]$childPidBefore }).Count -gt 0) { throw "SAFETY_BLOCK_STATE_CHILD_ALIVE=$childPidBefore" }
+          Write-Host "SAFETY_CODEX_CHILD=DEAD state_child_pid=$childPidBefore live_resume_children=0"
+
+          Stop-Process -Id $lockOwnerPid -Force -ErrorAction Stop
+          if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) { Stop-Process -Id $parentPid -Force -ErrorAction Stop }
+          $stopDeadline = (Get-Date).AddSeconds(20)
+          do {
+            Start-Sleep -Milliseconds 500
+            $remaining = @(Get-Inventory | Where-Object { [int]$_.ProcessId -in @($lockOwnerPid,$parentPid) })
+          } while ($remaining.Count -gt 0 -and (Get-Date) -lt $stopDeadline)
+          if ($remaining.Count -gt 0) { throw "OLD_SUPERVISOR_CHAIN_DID_NOT_EXIT=$($remaining.ProcessId -join ',')" }
+          $postStopInventory = Get-Inventory
+          $postStopOther = @(Get-RunSupervisorRows $postStopInventory)
+          if ($postStopOther.Count -gt 0) { throw "CANONICAL_SUPERVISOR_REMAINS=$($postStopOther.ProcessId -join ',')" }
+          if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { throw 'SUPERVISOR_LOCK_DISAPPEARED_UNEXPECTEDLY' }
+          $staleLockText = (Get-Content -Raw -LiteralPath $lockPath).Trim()
+          if ($staleLockText -ne [string]$lockOwnerPid) { throw "STALE_LOCK_OWNER_CHANGED=$staleLockText expected=$lockOwnerPid" }
+          if (@(Get-Inventory | Where-Object { [int]$_.ProcessId -eq $lockOwnerPid }).Count -gt 0) { throw 'STALE_LOCK_OWNER_STILL_ALIVE' }
+          Remove-Item -LiteralPath $lockPath -Force -ErrorAction Stop
+          Write-Host "STALE_SUPERVISOR_LOCK_REMOVED=PASS owner_pid=$lockOwnerPid"
+
+          $hadTracking = Test-Path -LiteralPath 'Env:RUNNER_TRACKING_ID'
+          $oldTracking = [Environment]::GetEnvironmentVariable('RUNNER_TRACKING_ID','Process')
+          try {
+            $env:RUNNER_TRACKING_ID = ''
+            $env:HEADLESS_CODEX_MODEL = 'gpt-5.6-terra'
+            $env:ARTHUR_CONTROL_PLANE_CODE_ROOT = $control
+            $env:ARTHUR_CONTROL_PLANE_STATE_DIR = $state
+            $env:PYTHONDONTWRITEBYTECODE = '1'
+            $launcher = Start-Process -FilePath $python -ArgumentList @($runSupervisor,'--state-dir',$state,'--interval','30') -WorkingDirectory $workspace -WindowStyle Hidden -PassThru -ErrorAction Stop
+          }
+          finally {
+            if ($hadTracking) { $env:RUNNER_TRACKING_ID = $oldTracking } else { Remove-Item -LiteralPath 'Env:RUNNER_TRACKING_ID' -ErrorAction SilentlyContinue }
+          }
+          $newDeadline = (Get-Date).AddSeconds(30)
+          $newLockPid = $null
+          $newSupervisorRows = @()
+          while ((Get-Date) -lt $newDeadline) {
+            Start-Sleep -Seconds 1
+            if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) { continue }
+            $candidateLock = (Get-Content -Raw -LiteralPath $lockPath).Trim()
+            if ($candidateLock -notmatch '^\d+$') { continue }
+            $candidatePid = [int]$candidateLock
+            $newInventory = Get-Inventory
+            $candidateRow = @($newInventory | Where-Object { [int]$_.ProcessId -eq $candidatePid } | Select-Object -First 1)
+            if ($candidateRow.Count -eq 1 -and [string]$candidateRow[0].CommandLine -match '(?i)run-supervisor\.py' -and [string]$candidateRow[0].CommandLine -match [regex]::Escape($state)) {
+              $newLockPid = $candidatePid
+              $newSupervisorRows = @(Get-RunSupervisorRows $newInventory)
+              break
+            }
+          }
+          if ($null -eq $newLockPid) { throw "NEW_SUPERVISOR_NOT_RUNNING launcher_pid=$($launcher.Id)" }
+          if ($newSupervisorRows.Count -ne 2) { throw "NEW_SUPERVISOR_CHAIN_UNEXPECTED_COUNT=$($newSupervisorRows.Count)" }
+          Write-Host "NEW_SUPERVISOR_PID=$newLockPid"
+          Write-Host "SUPERVISOR_CODE_HEAD=$controlHead"
+          Write-Host "SUPERVISOR_LOCK_OWNER_PID=$newLockPid"
+          Write-Host 'DETACHED_SUPERVISOR=PASS'
+
+          $handoffState = Read-Json $runtimeStatePath
+          if ([string](Get-PropertyValue $handoffState 'phase') -ne $runtimePhase -or [string](Get-PropertyValue $handoffState 'release_task_id') -ne $runtimeReleaseTask -or [string](Get-PropertyValue $handoffState 'candidate_sha256')) { throw 'RUNTIME_STATE_IDENTITY_CHANGED_DURING_HANDOFF' }
+          $restartAfterText = [string](Get-PropertyValue (Read-Json $supervisorStatePath) 'restart_count')
+          if ($restartBeforeText -match '^\d+$' -and $restartAfterText -match '^\d+$' -and [int64]$restartAfterText -lt [int64]$restartBeforeText) { throw "RESTART_COUNT_WAS_RESET before=$restartBeforeText after=$restartAfterText" }
+          Write-Host "RESTART_COUNT_PRESERVED before=$restartBeforeText after=$restartAfterText"
+
+          $stableStart = $null
+          $stablePid = $null
+          $stableRestart = $null
+          $stableHeartbeat = $null
+          $observeDeadline = (Get-Date).AddSeconds(420)
+          while ((Get-Date) -lt $observeDeadline) {
+            Start-Sleep -Seconds 10
+            $snapshot = Get-Snapshot
+            $exitCodeNumber = 0
+            $lastPidNumber = 0
+            $hasExit = [int]::TryParse([string]$snapshot.last_child_exit_code,[ref]$exitCodeNumber) -and [int]::TryParse([string]$snapshot.last_child_pid,[ref]$lastPidNumber)
+            if ($hasExit) {
+              Emit-ChildEvidence $snapshot
+              exit 0
+            }
+            if ($snapshot.status_name -eq 'CRASH_LOOP_BLOCKED') {
+              Write-Host "CHILD_PID=$($snapshot.last_child_pid)"
+              Write-Host 'CHILD_EXIT_CODE=UNKNOWN'
+              Write-Host 'CHILD_ERROR_CLASS=UNKNOWN'
+              Write-Host 'CHILD_ERROR_TAIL=UNKNOWN'
+              Write-Host 'ROOT_CAUSE=CRASH_LOOP_BLOCKED_WITHOUT_NEW_CHILD_EXIT_OBSERVATION'
+              throw 'BLOCKED_EVIDENCE_INCOMPLETE'
+            }
+            $liveChildren = @($snapshot.children)
+            if ($liveChildren.Count -eq 1) {
+              $currentPid = [string]$liveChildren[0].ProcessId
+              $currentRestart = [string]$snapshot.restart_count
+              $currentHeartbeat = [string]$snapshot.heartbeat_sequence
+              if ($null -eq $stableStart -or $stablePid -ne $currentPid) {
+                $stableStart = Get-Date
+                $stablePid = $currentPid
+                $stableRestart = $currentRestart
+                $stableHeartbeat = $currentHeartbeat
+                Write-Host "CHILD_OBSERVATION_T0 pid=$stablePid restart_count=$stableRestart heartbeat_sequence=$stableHeartbeat"
+              }
+              elseif (((Get-Date) - $stableStart).TotalSeconds -ge 130) {
+                $restartDelta = ([int64]$currentRestart - [int64]$stableRestart)
+                $heartbeatDelta = ([int64]$currentHeartbeat - [int64]$stableHeartbeat)
+                Write-Host "CHILD_OBSERVATION_T1 pid=$currentPid restart_count=$currentRestart heartbeat_sequence=$currentHeartbeat"
+                Write-Host "RESTART_COUNT_DELTA=$restartDelta"
+                Write-Host "HEARTBEAT_ADVANCES=$heartbeatDelta"
+                if ($currentPid -eq $stablePid -and $restartDelta -eq 0 -and $heartbeatDelta -ge 2 -and $snapshot.status_name -notin @('BACKOFF','CRASH_LOOP_BLOCKED') -and @($snapshot.supervisors | Where-Object { [int]$_.ProcessId -eq $newLockPid }).Count -gt 0) {
+                  Write-Host "CHILD_PID=$currentPid"
+                  Write-Host 'CHILD_EXIT_CODE=NOT_EXITED'
+                  Write-Host 'CHILD_ERROR_CLASS=NONE'
+                  Write-Host 'CHILD_ERROR_TAIL=NONE'
+                  Write-Host 'ROOT_CAUSE=NONE_HEALTHY_130S'
+                  Write-Host 'CODEX_RUNTIME_RECOVERED=PASS'
+                  exit 0
+                }
+              }
+            }
+            else {
+              $stableStart = $null
+              $stablePid = $null
+            }
+          }
+          Write-Host 'CHILD_PID=UNKNOWN'
+          Write-Host 'CHILD_EXIT_CODE=UNKNOWN'
+          Write-Host 'CHILD_ERROR_CLASS=UNKNOWN'
+          Write-Host 'CHILD_ERROR_TAIL=UNKNOWN'
+          Write-Host 'ROOT_CAUSE=NO_CHILD_EXIT_OBSERVED_WITHIN_CONTROLLED_WINDOW'
+          throw 'BLOCKED_EVIDENCE_INCOMPLETE'
+
   wakeup:
-    if: ${{ inputs.runtime_gate != true }}
+    if: ${{ inputs.runtime_gate != true && inputs.supervisor_handoff != true }}
     runs-on:
       - self-hosted
       - windows
