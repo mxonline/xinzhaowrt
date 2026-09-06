@@ -25,9 +25,11 @@ Assert-True (Test-Path -LiteralPath $InstallerPath -PathType Leaf) 'Arthur Windo
 $installer = Get-Content -Raw -LiteralPath $InstallerPath
 Assert-Contains $installer 'XinZhaoWrt-Arthur-Repair-Controller' 'repair task name must be stable'
 Assert-Contains $installer 'XinZhaoWrt-Arthur-Persistent-Supervisor' 'repair task principal must be inherited from supervisor task'
-Assert-Contains $installer 'Principal.UserId' 'repair task must read the approved Supervisor principal directly'
-Assert-Contains $installer 'LogonType Interactive' 'repair task must use Codex credential-bearing interactive context'
-Assert-Contains $installer 'RunLevel Highest' 'repair task must retain the approved elevated interactive context'
+Assert-Contains $installer 'Principal.UserId' 'repair task must read the approved Supervisor principal user directly'
+Assert-Contains $installer 'Principal.LogonType' 'repair task must inherit Supervisor logon type so runner-owned S4U remains S4U'
+Assert-Contains $installer 'Principal.RunLevel' 'repair task must inherit Supervisor run level instead of inventing elevation'
+Assert-Contains $installer '-LogonType $runtimeLogonType' 'repair task principal must use inherited logon type'
+Assert-Contains $installer '-RunLevel $runtimeRunLevel' 'repair task principal must use inherited run level'
 Assert-Contains $installer 'MultipleInstances IgnoreNew' 'repair task must be single-instance'
 Assert-Contains $installer 'invoke-arthur-windows-repair-controller.ps1' 'task must invoke the durable repair controller wrapper'
 Assert-Contains $installer 'XinZhaoWrt\RepairController' 'launcher must live under canonical ProgramData RepairController directory'
@@ -38,6 +40,8 @@ Assert-Contains $installer 'HEADLESS_CODEX_MODEL' 'repair launcher must bind exp
 Assert-Contains $installer 'gpt-5.6-terra' 'repair launcher must use the approved explicit model'
 Assert-Contains $installer 'REPAIR_CONTROLLER_TASK_REREGISTERED=PASS' 'drifted repair task must be re-registered under the same name'
 Assert-Contains $installer 'repairTaskDrift' 'repair installer must compare existing action with canonical action'
+Assert-Contains $installer 'runtimeLogonType' 'principal drift must include logon type'
+Assert-Contains $installer 'runtimeRunLevel' 'principal drift must include run level'
 Assert-NotContains $installer 'sysupgrade' 'task installer must not gain firmware authority'
 Assert-NotContains $installer 'arthur-update' 'task installer must not dispatch firmware builds'
 
@@ -62,4 +66,5 @@ finally {
 }
 
 Write-Host 'ARTHUR_WINDOWS_REPAIR_TASK_CONTRACT=PASS'
+Write-Host 'ARTHUR_WINDOWS_REPAIR_TASK_PRINCIPAL_INHERITANCE_CONTRACT=PASS'
 Write-Host 'ARTHUR_WINDOWS_REPAIR_TASK_DRIFT_CONTRACT=PASS'
