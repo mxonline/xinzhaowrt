@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      runtime_gate:
+        description: 'Run one read-only 120-second Arthur runtime gate on CYCHAN'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -18,7 +24,142 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  runtime-gate:
+    if: ${{ inputs.runtime_gate == true }}
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      HEADLESS_CODEX_MODEL: gpt-5.6-terra
+      ARTHUR_CONTROL_PLANE_CODE_ROOT: C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\ControlPlane\control-runtime
+      ARTHUR_CONTROL_PLANE_STATE_DIR: C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\ControlPlane\state
+      HEADLESS_PYTHON_EXE: C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe
+
+    steps:
+      - name: Verify runtime and observe one gate window
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\ControlPlane'
+          $state = Join-Path $root 'state'
+          $control = Join-Path $root 'control-runtime'
+          $python = 'C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\HeadlessPython\.venv\Scripts\python.exe'
+          $probe = Join-Path $control 'scripts\arthur-codex-runtime-probe.py'
+
+          function Redact([string]$Text) {
+            if ($null -eq $Text) { return '' }
+            $value = [regex]::Replace($Text, '(?i)(authorization|token|cookie|secret|api[_-]?key|password)(\s*[:=]\s*)[^\s,;]+', '$1$2<REDACTED>')
+            return [regex]::Replace($value, '(?i)(Bearer\s+)[^\s]+', '$1<REDACTED>')
+          }
+          function Json([string]$Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "RUNTIME_GATE_MISSING=$Path" }
+            return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+          }
+          function Value($Object,[string]$Name,[string]$Default = 'UNKNOWN') {
+            if ($null -eq $Object) { return $Default }
+            $property = $Object.PSObject.Properties[$Name]
+            if ($null -eq $property -or $null -eq $property.Value) { return $Default }
+            $value = [string]$property.Value
+            if ([string]::IsNullOrWhiteSpace($value)) { return $Default }
+            return $value
+          }
+          function Processes {
+            $rows = @()
+            foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+              $command = [string]$process.CommandLine
+              if ([string]::IsNullOrWhiteSpace($command) -or $command.IndexOf($state,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+              if ($command -match '(?i)run-supervisor\.py') {
+                $rows += [pscustomobject]@{ kind='SUPERVISOR'; pid=[string]$process.ProcessId; parent=[string]$process.ParentProcessId; command=(Redact $command) }
+              }
+              elseif ($command -match '(?i)ai_orchestrator.*\bresume\b') {
+                $rows += [pscustomobject]@{ kind='CODEX_RESUME'; pid=[string]$process.ProcessId; parent=[string]$process.ParentProcessId; command=(Redact $command) }
+              }
+            }
+            return @($rows)
+          }
+          function Snapshot {
+            $supervisor = Json (Join-Path $state 'supervisor-status.json')
+            $runtimeStatus = Json (Join-Path $state 'runtime-status.json')
+            $runtimeState = Json (Join-Path $state 'runtime-state.json')
+            $heartbeat = Json (Join-Path $root 'heartbeat.json')
+            $rows = @(Processes)
+            $supervisorProcess = @($rows | Where-Object kind -eq 'SUPERVISOR' | Select-Object -First 1)
+            $childProcess = @($rows | Where-Object kind -eq 'CODEX_RESUME' | Select-Object -First 1)
+            [pscustomobject]@{
+              status=(Value $supervisor 'status'); restart_count=(Value $supervisor 'restart_count'); child_pid_state=(Value $supervisor 'child_pid')
+              child_pid=if ($childProcess.Count -gt 0) { [string]$childProcess[0].pid } else { 'UNKNOWN' }
+              supervisor_pid=if ($supervisorProcess.Count -gt 0) { [string]$supervisorProcess[0].pid } else { 'UNKNOWN' }
+              heartbeat_at=(Value $runtimeStatus 'heartbeat_at'); heartbeat_sequence=(Value $heartbeat 'sequence')
+              phase=(Value $runtimeState 'phase'); release_task_id=(Value $runtimeState 'release_task_id'); turn_count=(Value $runtimeState 'turn_count'); terminal_state=(Value $runtimeState 'terminal_state')
+              supervisor_alive=($supervisorProcess.Count -gt 0); child_alive=($childProcess.Count -gt 0); rows=$rows; supervisor_json=$supervisor
+            }
+          }
+          function Emit([string]$Label,$Snapshot) {
+            Write-Host "${Label}_STATUS=$($Snapshot.status)"
+            Write-Host "${Label}_SUPERVISOR_PID=$($Snapshot.supervisor_pid)"
+            Write-Host "${Label}_CODEX_CHILD_PID=$($Snapshot.child_pid)"
+            Write-Host "${Label}_STATE_CHILD_PID=$($Snapshot.child_pid_state)"
+            Write-Host "${Label}_RESTART_COUNT=$($Snapshot.restart_count)"
+            Write-Host "${Label}_HEARTBEAT_AT=$($Snapshot.heartbeat_at)"
+            Write-Host "${Label}_HEARTBEAT_SEQUENCE=$($Snapshot.heartbeat_sequence)"
+            Write-Host "${Label}_RUNTIME_PHASE=$($Snapshot.phase)"
+            Write-Host "${Label}_RELEASE_TASK_ID=$($Snapshot.release_task_id)"
+            Write-Host "${Label}_TURN_COUNT=$($Snapshot.turn_count)"
+            Write-Host "${Label}_TERMINAL_STATE=$($Snapshot.terminal_state)"
+            foreach ($row in @($Snapshot.rows)) { Write-Host "${Label}_PROCESS kind=$($row.kind) PID=$($row.pid) ParentProcessId=$($row.parent) CommandLine=$($row.command)" }
+          }
+          function FailureEvidence([string]$Root,$Snapshot) {
+            Write-Host 'RUNTIME_GATE_FAILURE_EVIDENCE_BEGIN'
+            $failure = $Snapshot.supervisor_json
+            Write-Host "FAILURE_EXCEPTION_TYPE=$(Redact (Value $failure 'exception_type'))"
+            Write-Host "FAILURE_LAST_FAILURE=$(Redact (Value $failure 'last_failure'))"
+            Write-Host "FAILURE_EXIT_CODE=$(Redact (Value $failure 'exit_code'))"
+            Write-Host "FAILURE_NEXT_RETRY_AT=$(Value $failure 'next_retry_at')"
+            $logs = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '(?i)(supervisor|codex|stdout|stderr|exception|runtime)' -and $_.Extension -in @('.log','.txt','.jsonl','.stderr','.stdout','.exception') } |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 8)
+            foreach ($log in $logs) {
+              Write-Host "FAILURE_LOG_PATH=$($log.FullName)"
+              foreach ($line in @(Get-Content -LiteralPath $log.FullName -Tail 200 -ErrorAction SilentlyContinue)) { Write-Host (Redact ([string]$line)) }
+            }
+            Write-Host 'RUNTIME_GATE_FAILURE_EVIDENCE_END'
+          }
+
+          $identity = (whoami).Trim(); $machine = (hostname).Trim()
+          Write-Host "RUNNER_IDENTITY=$identity"; Write-Host "RUNNER_MACHINE=$machine"
+          if ($identity -ine 'CYCHAN\xinzhaowrt-runner' -or $machine -ine 'CYCHAN') { throw "RUNTIME_GATE_IDENTITY_MISMATCH identity=$identity machine=$machine" }
+          foreach ($path in @($root,$state,$control,$python,$probe)) { if (-not (Test-Path -LiteralPath $path)) { throw "RUNTIME_GATE_PATH_MISSING=$path" } }
+          Write-Host "RUNTIME_GATE_PATHS=PASS control=$control state=$state python=$python"
+
+          $t0 = Snapshot; Emit 'T0' $t0
+          Push-Location $control
+          try { $probeOutput = (& $python $probe 2>&1 | Out-String).Trim(); $probeExit = $LASTEXITCODE }
+          finally { Pop-Location }
+          try { $probeData = $probeOutput | ConvertFrom-Json } catch { throw "RUNTIME_GATE_PROBE_OUTPUT_INVALID exit=$probeExit" }
+          $probeExitClass=[string]$probeData.exit_class; $configured=[string]$probeData.configured_model; $effective=[string]$probeData.effective_model
+          $catalogSkipped=([string]$probeData.model_catalog_skipped).ToLowerInvariant(); $account=([string]$probeData.account_preflight_ok).ToLowerInvariant(); $module=[string]$probeData.ai_orchestrator_file
+          Write-Host "exit_class=$probeExitClass"; Write-Host "configured_model=$configured"; Write-Host "effective_model=$effective"; Write-Host "model_catalog_skipped=$catalogSkipped"; Write-Host "account_preflight_ok=$account"; Write-Host "ai_orchestrator_file=$module"
+          if ($probeExit -ne 0 -or $probeExitClass -ne 'PROBE_OK' -or $configured -ne 'gpt-5.6-terra' -or $effective -ne 'gpt-5.6-terra' -or $catalogSkipped -ne 'true' -or $account -ne 'true' -or -not $module.StartsWith($control,[System.StringComparison]::OrdinalIgnoreCase)) { throw "RUNTIME_GATE_PROBE_FAILED exit=$probeExit exit_class=$probeExitClass configured=$configured effective=$effective catalog=$catalogSkipped account=$account module=$module" }
+
+          Start-Sleep -Seconds 130
+          $t1 = Snapshot; Emit 'T1' $t1
+          $r0=0L; $r1=0L; $s0=0L; $s1=0L
+          $restartKnown=[long]::TryParse([string]$t0.restart_count,[ref]$r0) -and [long]::TryParse([string]$t1.restart_count,[ref]$r1)
+          $sequenceKnown=[long]::TryParse([string]$t0.heartbeat_sequence,[ref]$s0) -and [long]::TryParse([string]$t1.heartbeat_sequence,[ref]$s1)
+          $restartDelta=if ($restartKnown) { $r1-$r0 } else { 'UNKNOWN' }; $heartbeatAdvances=if ($sequenceKnown) { $s1-$s0 } else { 'UNKNOWN' }
+          Write-Host "RESTART_COUNT_DELTA=$restartDelta"; Write-Host "HEARTBEAT_ADVANCES=$heartbeatAdvances"
+          if (-not ($t0.supervisor_alive -and $t1.supervisor_alive -and $t0.child_alive -and $t1.child_alive -and $t0.child_pid -eq $t1.child_pid -and $restartKnown -and $restartDelta -eq 0 -and $sequenceKnown -and $heartbeatAdvances -ge 2 -and $t1.status -notin @('BACKOFF','CRASH_LOOP_BLOCKED'))) {
+            FailureEvidence $root $t1
+            throw "RUNTIME_GATE_FAILED status=$($t1.status) child_t0=$($t0.child_pid) child_t1=$($t1.child_pid) restart_delta=$restartDelta heartbeat_advances=$heartbeatAdvances"
+          }
+          Write-Host 'RUNTIME_GATE=PASS'
+
   wakeup:
+    if: ${{ inputs.runtime_gate != true }}
     runs-on:
       - self-hosted
       - windows
