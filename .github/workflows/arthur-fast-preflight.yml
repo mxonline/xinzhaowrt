@@ -66,6 +66,10 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-windows-repair-task.tests.ps1
 
+      - name: Test Arthur Windows administrator bootstrap contract
+        shell: pwsh
+        run: ./tests/arthur-admin-bootstrap.tests.ps1
+
       - name: Test Windows failed Candidate recovery wiring
         shell: pwsh
         run: ./tests/arthur-candidate-failure-recovery.tests.ps1
@@ -139,6 +143,7 @@ jobs:
             'scripts/check-firmware-event-ledger-history.ps1',
             'scripts/arthur-control-plane.ps1',
             'scripts/arthur-windows-repair-controller.ps1',
+            'scripts/bootstrap-arthur-windows-admin.ps1',
             'scripts/ensure-arthur-persistent-supervisor.ps1',
             'scripts/ensure-arthur-windows-repair-controller.ps1'
           )) {
