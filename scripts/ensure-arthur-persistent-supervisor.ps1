@@ -62,10 +62,18 @@ function Quote-PsLiteral([string]$Value) {
 function New-CanonicalSupervisorTask {
     param(
         [Parameter(Mandatory=$true)][string]$UserId,
-        [Parameter(Mandatory=$true)]$Action
+        [Parameter(Mandatory=$true)]$Action,
+        [Parameter(Mandatory=$true)][string]$taskLogonType,
+        [Parameter(Mandatory=$true)][string]$taskRunLevel
     )
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserId
-    $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Highest
+
+    if ($taskLogonType -eq 'S4U') {
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+    }
+    else {
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserId
+    }
+    $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType $taskLogonType -RunLevel $taskRunLevel
     $settings = New-ScheduledTaskSettingsSet `
         -StartWhenAvailable `
         -ExecutionTimeLimit ([TimeSpan]::Zero) `
@@ -100,9 +108,17 @@ if (-not (Test-Path -LiteralPath $shimPath -PathType Leaf)) {
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $interactiveUser = ''
+$taskLogonType = 'Interactive'
+$taskRunLevel = 'Highest'
 if ($existing -and $existing.Principal -and -not [string]::IsNullOrWhiteSpace([string]$existing.Principal.UserId)) {
     $interactiveUser = [string]$existing.Principal.UserId
-    Write-Host "PERSISTENT_SUPERVISOR_INTERACTIVE_USER=REUSE user=$interactiveUser source=ScheduledTaskPrincipal"
+    if (-not [string]::IsNullOrWhiteSpace([string]$existing.Principal.LogonType)) {
+        $taskLogonType = [string]$existing.Principal.LogonType
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$existing.Principal.RunLevel)) {
+        $taskRunLevel = [string]$existing.Principal.RunLevel
+    }
+    Write-Host "PERSISTENT_SUPERVISOR_INTERACTIVE_USER=REUSE user=$interactiveUser source=ScheduledTaskPrincipal logon=$taskLogonType runlevel=$taskRunLevel"
 }
 else {
     $interactiveUser = Get-InteractiveDesktopUser
@@ -149,25 +165,25 @@ if ($existing) {
 }
 
 if (-not $existing) {
-    $task = New-CanonicalSupervisorTask -UserId $interactiveUser -Action $action
+    $task = New-CanonicalSupervisorTask -UserId $interactiveUser -Action $action -taskLogonType $taskLogonType -taskRunLevel $taskRunLevel
     Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force -ErrorAction Stop | Out-Null
-    Write-Host "PERSISTENT_SUPERVISOR_TASK_REGISTERED=PASS task=$TaskName user=$interactiveUser"
+    Write-Host "PERSISTENT_SUPERVISOR_TASK_REGISTERED=PASS task=$TaskName user=$interactiveUser logon=$taskLogonType runlevel=$taskRunLevel"
 }
 elseif ($launcherDrift) {
     if ([string]$existing.State -eq 'Running') {
         Stop-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     }
-    $task = New-CanonicalSupervisorTask -UserId $interactiveUser -Action $action
+    $task = New-CanonicalSupervisorTask -UserId $interactiveUser -Action $action -taskLogonType $taskLogonType -taskRunLevel $taskRunLevel
     Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force -ErrorAction Stop | Out-Null
-    Write-Host "PERSISTENT_SUPERVISOR_TASK_REREGISTERED=PASS task=$TaskName user=$interactiveUser"
+    Write-Host "PERSISTENT_SUPERVISOR_TASK_REREGISTERED=PASS task=$TaskName user=$interactiveUser logon=$taskLogonType runlevel=$taskRunLevel"
 }
 else {
-    Write-Host "PERSISTENT_SUPERVISOR_TASK_REGISTERED=REUSE task=$TaskName user=$interactiveUser state=$($existing.State)"
+    Write-Host "PERSISTENT_SUPERVISOR_TASK_REGISTERED=REUSE task=$TaskName user=$interactiveUser state=$($existing.State) logon=$taskLogonType runlevel=$taskRunLevel"
 }
 
 if ($DoNotStart) {
     $prepared = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-    Write-Host "PERSISTENT_SUPERVISOR_TASK_PREPARED=PASS task=$TaskName user=$interactiveUser launcher=$launcherPath state=$($prepared.State)"
+    Write-Host "PERSISTENT_SUPERVISOR_TASK_PREPARED=PASS task=$TaskName user=$interactiveUser launcher=$launcherPath state=$($prepared.State) logon=$taskLogonType runlevel=$taskRunLevel"
     exit 0
 }
 
@@ -192,5 +208,5 @@ if (-not $running) {
     Fail "PERSISTENT_SUPERVISOR_TASK_NOT_RUNNING: task=$TaskName state=$($taskNow.State) last_result=$result"
 }
 
-Write-Host "PERSISTENT_SUPERVISOR_TASK=PASS task=$TaskName user=$interactiveUser launcher=$launcherPath state=$($taskNow.State)"
+Write-Host "PERSISTENT_SUPERVISOR_TASK=PASS task=$TaskName user=$interactiveUser launcher=$launcherPath state=$($taskNow.State) logon=$taskLogonType runlevel=$taskRunLevel"
 exit 0
