@@ -112,15 +112,15 @@ jobs:
             Write-Host "${Label}_TERMINAL_STATE=$($Snapshot.terminal_state)"
             foreach ($row in @($Snapshot.rows)) { Write-Host "${Label}_PROCESS kind=$($row.kind) PID=$($row.pid) ParentProcessId=$($row.parent) CommandLine=$($row.command)" }
           }
-          function FailureEvidence([string]$Root,$Snapshot) {
+          function FailureEvidence([string]$Root,[string]$StateDir,$Snapshot) {
             Write-Host 'RUNTIME_GATE_FAILURE_EVIDENCE_BEGIN'
             $failure = $Snapshot.supervisor_json
             Write-Host "FAILURE_EXCEPTION_TYPE=$(Redact (Value $failure 'exception_type'))"
             Write-Host "FAILURE_LAST_FAILURE=$(Redact (Value $failure 'last_failure'))"
             Write-Host "FAILURE_EXIT_CODE=$(Redact (Value $failure 'exit_code'))"
             Write-Host "FAILURE_NEXT_RETRY_AT=$(Value $failure 'next_retry_at')"
-            $logs = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match '(?i)(supervisor|codex|stdout|stderr|exception|runtime)' -and $_.Extension -in @('.log','.txt','.jsonl','.stderr','.stdout','.exception') } |
+            $logs = @(Get-ChildItem -LiteralPath $StateDir -Recurse -File -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match '(?i)(supervisor|codex|stdout|stderr|exception|runtime)' -and $_.Extension -in @('.log','.txt','.jsonl','.stderr','.stdout','.exception') } |
               Sort-Object LastWriteTime -Descending | Select-Object -First 8)
             foreach ($log in $logs) {
               Write-Host "FAILURE_LOG_PATH=$($log.FullName)"
@@ -153,7 +153,7 @@ jobs:
           $restartDelta=if ($restartKnown) { $r1-$r0 } else { 'UNKNOWN' }; $heartbeatAdvances=if ($sequenceKnown) { $s1-$s0 } else { 'UNKNOWN' }
           Write-Host "RESTART_COUNT_DELTA=$restartDelta"; Write-Host "HEARTBEAT_ADVANCES=$heartbeatAdvances"
           if (-not ($t0.supervisor_alive -and $t1.supervisor_alive -and $t0.child_alive -and $t1.child_alive -and $t0.child_pid -eq $t1.child_pid -and $restartKnown -and $restartDelta -eq 0 -and $sequenceKnown -and $heartbeatAdvances -ge 2 -and $t1.status -notin @('BACKOFF','CRASH_LOOP_BLOCKED'))) {
-            FailureEvidence $root $t1
+            FailureEvidence $root $state $t1
             throw "RUNTIME_GATE_FAILED status=$($t1.status) child_t0=$($t0.child_pid) child_t1=$($t1.child_pid) restart_delta=$restartDelta heartbeat_advances=$heartbeatAdvances"
           }
           Write-Host 'RUNTIME_GATE=PASS'
