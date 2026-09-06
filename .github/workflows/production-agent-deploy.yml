@@ -486,12 +486,15 @@ jobs:
             $parentStillRunning = @(Get-CimInstance Win32_Process -Filter "ProcessId=$parentPid" -ErrorAction SilentlyContinue)
             if ($parentStillRunning.Count -gt 0) { Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue }
           }
-          $stopDeadline = (Get-Date).AddSeconds(20)
-          do {
-            Start-Sleep -Milliseconds 500
-            $remaining = @(Get-Inventory | Where-Object { [int]$_.ProcessId -in @($lockOwnerPid,$parentPid) })
-          } while ($remaining.Count -gt 0 -and (Get-Date) -lt $stopDeadline)
-          if ($remaining.Count -gt 0) { throw "OLD_SUPERVISOR_CHAIN_DID_NOT_EXIT=$($remaining.ProcessId -join ',')" }
+          $remaining = @()
+          if ($chainNeedsStop) {
+            $stopDeadline = (Get-Date).AddSeconds(20)
+            do {
+              Start-Sleep -Milliseconds 500
+              $remaining = @(Get-Inventory | Where-Object { [int]$_.ProcessId -in @($lockOwnerPid,$parentPid) })
+            } while ($remaining.Count -gt 0 -and (Get-Date) -lt $stopDeadline)
+            if ($remaining.Count -gt 0) { throw "OLD_SUPERVISOR_CHAIN_DID_NOT_EXIT=$($remaining.ProcessId -join ',')" }
+          }
           $postStopInventory = Get-Inventory
           $postStopOther = @(Get-RunSupervisorRows $postStopInventory)
           if ($postStopOther.Count -gt 0) { throw "CANONICAL_SUPERVISOR_REMAINS=$($postStopOther.ProcessId -join ',')" }
