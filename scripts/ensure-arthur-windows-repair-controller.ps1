@@ -64,8 +64,12 @@ if (-not $supervisor) {
 if (-not $supervisor.Principal -or [string]::IsNullOrWhiteSpace([string]$supervisor.Principal.UserId)) {
     Fail "REPAIR_CONTROLLER_SUPERVISOR_PRINCIPAL_MISSING: $SupervisorTaskName"
 }
-$interactiveUser = [string]$supervisor.Principal.UserId
-Write-Host "REPAIR_CONTROLLER_INTERACTIVE_USER=PASS user=$interactiveUser source=SupervisorPrincipal"
+$runtimeUser = [string]$supervisor.Principal.UserId
+$runtimeLogonType = [string]$supervisor.Principal.LogonType
+$runtimeRunLevel = [string]$supervisor.Principal.RunLevel
+if ([string]::IsNullOrWhiteSpace($runtimeLogonType)) { Fail "REPAIR_CONTROLLER_SUPERVISOR_LOGON_TYPE_MISSING: $SupervisorTaskName" }
+if ([string]::IsNullOrWhiteSpace($runtimeRunLevel)) { Fail "REPAIR_CONTROLLER_SUPERVISOR_RUN_LEVEL_MISSING: $SupervisorTaskName" }
+Write-Host "REPAIR_CONTROLLER_RUNTIME_PRINCIPAL=PASS user=$runtimeUser logon=$runtimeLogonType runlevel=$runtimeRunLevel source=SupervisorPrincipal"
 
 $launcherRoot = Join-Path $env:ProgramData 'XinZhaoWrt\RepairController'
 $launcherPath = Join-Path $launcherRoot 'run-arthur-repair-controller.ps1'
@@ -97,7 +101,7 @@ $canonicalAction = New-ScheduledTaskAction `
     -Execute $expectedExecute `
     -Argument $expectedArguments `
     -WorkingDirectory $expectedWorkingDirectory
-$canonicalPrincipal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Highest
+$canonicalPrincipal = New-ScheduledTaskPrincipal -UserId $runtimeUser -LogonType $runtimeLogonType -RunLevel $runtimeRunLevel
 $canonicalSettings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
@@ -112,7 +116,12 @@ if ($existingRepairTask) {
         -ExpectedExecute $expectedExecute `
         -ExpectedArguments $expectedArguments `
         -ExpectedWorkingDirectory $expectedWorkingDirectory
-    if (-not $existingRepairTask.Principal -or [string]$existingRepairTask.Principal.UserId -ine $interactiveUser) {
+    if (
+        -not $existingRepairTask.Principal -or
+        [string]$existingRepairTask.Principal.UserId -ine $runtimeUser -or
+        [string]$existingRepairTask.Principal.LogonType -ine $runtimeLogonType -or
+        [string]$existingRepairTask.Principal.RunLevel -ine $runtimeRunLevel
+    ) {
         $repairTaskDrift = $true
     }
 }
@@ -128,14 +137,14 @@ if (-not $existingRepairTask -or $repairTaskDrift) {
         -Description 'Independent Windows-owned Arthur Codex runtime repair controller. It repairs runtime infrastructure only and has no firmware release authority.'
     Register-ScheduledTask -TaskName $RepairTaskName -InputObject $task -Force -ErrorAction Stop | Out-Null
     if ($existingRepairTask) {
-        Write-Host "REPAIR_CONTROLLER_TASK_REREGISTERED=PASS task=$RepairTaskName user=$interactiveUser"
+        Write-Host "REPAIR_CONTROLLER_TASK_REREGISTERED=PASS task=$RepairTaskName user=$runtimeUser logon=$runtimeLogonType runlevel=$runtimeRunLevel"
     }
     else {
-        Write-Host "REPAIR_CONTROLLER_TASK_REGISTERED=PASS task=$RepairTaskName user=$interactiveUser"
+        Write-Host "REPAIR_CONTROLLER_TASK_REGISTERED=PASS task=$RepairTaskName user=$runtimeUser logon=$runtimeLogonType runlevel=$runtimeRunLevel"
     }
 }
 else {
-    Write-Host "REPAIR_CONTROLLER_TASK_REGISTERED=REUSE task=$RepairTaskName user=$interactiveUser state=$($existingRepairTask.State)"
+    Write-Host "REPAIR_CONTROLLER_TASK_REGISTERED=REUSE task=$RepairTaskName user=$runtimeUser state=$($existingRepairTask.State) logon=$runtimeLogonType runlevel=$runtimeRunLevel"
 }
 
 if ($Start) {
@@ -146,7 +155,7 @@ if ($Start) {
     Write-Host "REPAIR_CONTROLLER_TASK_TRIGGERED=PASS task=$RepairTaskName mode=$Mode"
 }
 else {
-    Write-Host "REPAIR_CONTROLLER_TASK=PASS task=$RepairTaskName user=$interactiveUser launcher=$launcherPath mode=$Mode"
+    Write-Host "REPAIR_CONTROLLER_TASK=PASS task=$RepairTaskName user=$runtimeUser launcher=$launcherPath mode=$Mode logon=$runtimeLogonType runlevel=$runtimeRunLevel"
 }
 
 exit 0
