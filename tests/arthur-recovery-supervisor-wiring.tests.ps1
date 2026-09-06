@@ -65,6 +65,8 @@ Assert-Contains $persistentSupervisorTask 'HEADLESS_CODEX_MODEL' 'persistent sup
 Assert-NotContains $persistentSupervisorTask '--once' 'persistent Scheduled Task must not inherit the one-shot Actions wakeup mode'
 Assert-Contains $persistentSupervisorTask 'PERSISTENT_SUPERVISOR_TASK_REREGISTERED=PASS' 'drifted existing Supervisor task must be re-registered under the same task name'
 Assert-Contains $persistentSupervisorTask 'launcherDrift' 'persistent task helper must compare existing action against canonical launcher binding'
+Assert-NotContains $persistentSupervisorTask 'elif (' 'PowerShell helper must never use bash-style elif because it parses as a command and fails only at runtime'
+Assert-Contains $persistentSupervisorTask 'elseif (' 'persistent Supervisor drift branch must use native PowerShell elseif syntax'
 
 # GitHub wakeup is only an observer/trigger for the independent Windows Repair Controller.
 # It must inspect durable repair state before ordinary Control Plane/Supervisor recovery,
