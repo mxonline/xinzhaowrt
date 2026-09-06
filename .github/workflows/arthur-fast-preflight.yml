@@ -139,6 +139,7 @@ jobs:
             'scripts/check-firmware-event-ledger-history.ps1',
             'scripts/arthur-control-plane.ps1',
             'scripts/arthur-windows-repair-controller.ps1',
+            'scripts/ensure-arthur-persistent-supervisor.ps1',
             'scripts/ensure-arthur-windows-repair-controller.ps1'
           )) {
             if (-not (Test-Path $file)) {
