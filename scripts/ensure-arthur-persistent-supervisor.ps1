@@ -153,7 +153,7 @@ if (-not $existing) {
     Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force -ErrorAction Stop | Out-Null
     Write-Host "PERSISTENT_SUPERVISOR_TASK_REGISTERED=PASS task=$TaskName user=$interactiveUser"
 }
-elif ($launcherDrift) {
+elseif ($launcherDrift) {
     if ([string]$existing.State -eq 'Running') {
         Stop-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     }
