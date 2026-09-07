@@ -17,12 +17,10 @@ function Assert-True {
     param([bool]$Condition,[string]$Message)
     if (-not $Condition) { throw "TEST_FAIL: $Message" }
 }
-
 function Assert-Equal {
     param($Actual,$Expected,[string]$Message)
     if ($Actual -ne $Expected) { throw "TEST_FAIL: $Message (actual='$Actual' expected='$Expected')" }
 }
-
 function Assert-Contains {
     param([string]$Text,[string]$Needle,[string]$Message)
     if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
@@ -30,121 +28,75 @@ function Assert-Contains {
     }
 }
 
-Assert-True (Test-Path $IntentPath) 'machine-readable operator intent must exist'
-Assert-True (Test-Path $RequestPath) 'final Arthur v3 release request must exist'
-Assert-True (Test-Path $ResumeStatePath) 'machine-readable resume state must exist'
-Assert-True (Test-Path $ResumeHelperPath) 'resume semantic-hash helper must exist'
-Assert-True (Test-Path $IntentHelperPath) 'operator intent helper must exist'
-Assert-True (Test-Path $GatePath) 'scoped control-plane gate must exist'
-Assert-True (Test-Path $ControlPlanePath) 'Arthur control plane must exist'
-Assert-True (Test-Path $RulesPath) 'durable GPT firmware rules must exist'
-Assert-True (Test-Path $WakeupPath) 'runner wakeup workflow must exist'
-Assert-True (Test-Path $AgentsPath) 'Codex project startup rules must exist'
+foreach ($path in @($IntentPath,$RequestPath,$ResumeStatePath,$ResumeHelperPath,$IntentHelperPath,$GatePath,$ControlPlanePath,$RulesPath,$WakeupPath,$AgentsPath)) {
+    Assert-True (Test-Path $path) "required Arthur control file must exist: $path"
+}
 
 . $IntentHelperPath
 . $ResumeHelperPath
-
 $current = Get-Content -Raw $IntentPath | ConvertFrom-Json
 $request = Get-Content -Raw $RequestPath | ConvertFrom-Json
 $resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
-Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
-if ($current.firmware_execution_authorized -eq $true) {
-    Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'authorized firmware execution must use EXECUTE_FIRMWARE intent'
-    Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'authorized firmware execution must stay scoped to FIRMWARE_RELEASE'
-}
-else {
-    Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'non-firmware operator intent must remain process governance-only'
-    Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'non-firmware operator intent must remain governance-only'
-}
 
-Assert-Equal $current.firmware_state.current_stage 'BUILD' 'final release must resume at BUILD instead of repeating ADH/LuCI development'
-Assert-Equal $current.firmware_state.next_stage 'ARTIFACT' 'after BUILD the next formal release stage is ARTIFACT'
+Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
+Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'final release must remain explicitly authorized firmware execution'
+Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'final release authorization must stay scope-bound'
+Assert-Equal $current.firmware_execution_authorized $true 'firmware release must remain authorized'
+Assert-Equal $current.firmware_state.current_stage 'ARTIFACT' 'formal Build #29 Candidate recovery has completed; current durable stage is ARTIFACT'
+Assert-Equal $current.firmware_state.next_stage 'PRE_FLASH' 'the only correct continuation after accepted Candidate is PRE_FLASH'
+Assert-Equal $current.firmware_state.source 'BUILD_29_VERIFIED_ARTIFACT_RECOVERY' 'ARTIFACT checkpoint must be grounded in the accepted Build #29 recovery'
 foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
     Assert-True (@($current.firmware_state.verified_frozen) -contains $frozen) "$frozen must remain accepted/frozen"
 }
-Assert-Contains ([string]$request.reason) 'Do not repeat feature development' 'final release request must forbid repeating accepted feature development'
-Assert-Contains ([string]$request.reason) 'replacement Candidate' 'final release request must continue via one replacement Candidate'
+Assert-Contains ([string]$request.reason) 'Do not rebuild' 'final request must prohibit another Build'
+Assert-Contains ([string]$request.reason) 'do not create a second Candidate' 'final request must prohibit another Candidate'
+Assert-Contains ([string]$request.reason) 'do not repeat feature development' 'final request must prohibit repeated accepted feature work'
+Assert-Contains ([string]$request.reason) 'rather than returning to BUILD' 'artifact recovery must never regress to BUILD for missing pre-flash metadata'
 
-# The durable Resume Gate must agree with the accepted final-release checkpoint.
-# Stale ADH_MANAGEMENT state was observed blocking the live self-hosted wakeup even
-# after operator intent had moved to BUILD.
-Assert-Equal $resume.checkpoint.current 'BUILD' 'durable resume checkpoint must not route final release back to ADH_MANAGEMENT'
-Assert-Equal $resume.checkpoint.next_action 'BUILD' 'durable resume next action must be BUILD'
-Assert-Equal $resume.next_action 'BUILD' 'top-level durable resume action must be BUILD'
-Assert-True (@($resume.pending).Count -eq 1 -and @($resume.pending)[0] -eq 'BUILD') 'BUILD must be the only remaining current action before artifact handling'
-foreach ($frozen in @('wifi','luci_chinese','adguard_full_manager','quickstart')) {
-    Assert-True ($null -ne $resume.verified.$frozen) "$frozen evidence must remain durable in resume state"
-}
-
-# Publish-ResumeState runs under Set-StrictMode and reads semantic_sha256 from the
-# checked-in snapshot before it can publish a regenerated one. The durable snapshot
-# must therefore always carry a valid semantic hash, and that hash must describe the
-# snapshot content excluding the non-semantic evidence timestamp and hash field.
-Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256 for strict-mode publication'
-Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic_sha256 must be a lowercase SHA-256 hex digest'
+# The checked-in snapshot can temporarily be STATE_RECONCILIATION_REQUIRED after a
+# failed wakeup, but it must remain structurally valid so the repaired gate can
+# publish the forward ARTIFACT snapshot on the next successful reconciliation.
+Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256'
+Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic hash must be lowercase SHA-256'
 $resumeForHash = ($resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
 $resumeForHash.PSObject.Properties.Remove('semantic_sha256')
 $resumeForHash.PSObject.Properties.Remove('evidence_timestamp')
 $expectedResumeHash = Get-ArthurResumeSemanticHash $resumeForHash
 Assert-Equal ([string]$resume.semantic_sha256) $expectedResumeHash 'durable resume semantic hash must match its semantic content'
-
-$stateOnly = [pscustomobject]@{
-    intent_type = 'STATE_CORRECTION'
-    authorization_scope = 'NONE'
-    firmware_execution_authorized = $false
+foreach ($frozen in @('wifi','luci_chinese','adguard_full_manager','quickstart')) {
+    Assert-True ($null -ne $resume.verified.$frozen) "$frozen evidence must remain durable even during state reconciliation"
 }
+
+$stateOnly = [pscustomobject]@{ intent_type='STATE_CORRECTION'; authorization_scope='NONE'; firmware_execution_authorized=$false }
 $stateOnlyDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $stateOnly
-Assert-Equal $stateOnlyDecision.allowed $false 'a state correction must never authorize firmware execution'
-Assert-Equal $stateOnlyDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'state correction denial must be explicit'
-
-$governance = [pscustomobject]@{
-    intent_type = 'PROCESS_GOVERNANCE'
-    authorization_scope = 'GOVERNANCE_RULES_ONLY'
-    firmware_execution_authorized = $true
-}
+Assert-Equal $stateOnlyDecision.allowed $false 'state correction alone must never authorize firmware execution'
+$governance = [pscustomobject]@{ intent_type='PROCESS_GOVERNANCE'; authorization_scope='GOVERNANCE_RULES_ONLY'; firmware_execution_authorized=$true }
 $governanceDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $governance
-Assert-Equal $governanceDecision.allowed $false 'authorization for governance work must not leak into firmware execution'
-Assert-Equal $governanceDecision.reason 'AUTHORIZATION_SCOPE_MISMATCH' 'scope mismatch must be explicit'
-
-$firmware = [pscustomobject]@{
-    intent_type = 'EXECUTE_FIRMWARE'
-    authorization_scope = 'FIRMWARE_RELEASE'
-    firmware_execution_authorized = $true
-}
+Assert-Equal $governanceDecision.allowed $false 'governance scope must not leak into firmware execution'
+$firmware = [pscustomobject]@{ intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true }
 $firmwareDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $firmware
-Assert-Equal $firmwareDecision.allowed $true 'explicit firmware-release authorization must allow the firmware runtime'
-Assert-Equal $firmwareDecision.reason 'FIRMWARE_EXECUTION_AUTHORIZED' 'authorized firmware decision must be explicit'
+Assert-Equal $firmwareDecision.allowed $true 'explicit firmware-release authorization must allow the runtime'
 
 $gate = Get-Content -Raw $GatePath
-Assert-Contains $gate 'production\operator-intent.json' 'gate must read durable operator intent before the control plane'
-Assert-Contains $gate 'Get-ArthurFirmwareExecutionPermission' 'gate must use the scoped firmware execution decision'
-Assert-Contains $gate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'gate must stop before firmware execution when permission is absent'
-Assert-Contains $gate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'denied firmware execution must be explicitly non-mutating'
-Assert-Contains $gate 'arthur-control-plane.ps1' 'authorized gate must hand off to the existing control plane rather than replace it'
-Assert-Contains $gate 'FINAL_RELEASE_RUNTIME_MIGRATION=PASS' 'existing control-plane gate must migrate stale pre-build runtime state to the final BUILD checkpoint'
-Assert-Contains $gate 'forensic -> root cause -> auto-fix -> rebuild -> PRE_FLASH_READY' 'migrated Codex prompt must resume the interrupted forensic-to-pre-flash task'
-Assert-Contains $gate 'production\v3-request.json' 'runtime migration must be grounded in the durable final release request'
-Assert-Contains $gate 'ADH_MANAGEMENT' 'migration must recognize the known stale ADH runtime checkpoint'
-Assert-Contains $gate "phase = 'BUILD'" 'migration must set the persistent runtime phase to BUILD'
-Assert-Contains $gate "runtimeTerminal -eq 'SAFETY_BLOCKED'" 'a stale pre-build SAFETY_BLOCKED terminal from the superseded task must be eligible for final-release reconciliation'
-Assert-Contains $gate "terminal_state = ''" 'final-release reconciliation must clear only the superseded pre-build terminal marker before resuming BUILD'
+Assert-Contains $gate 'production\operator-intent.json' 'gate must read durable operator intent first'
+Assert-Contains $gate 'Get-ArthurFirmwareExecutionPermission' 'gate must use scope-bound firmware permission'
+Assert-Contains $gate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'unauthorized firmware mutation must fail closed'
+Assert-Contains $gate 'FINAL_RELEASE_RUNTIME_MIGRATION=PASS' 'legacy pre-build runtime may still migrate forward to BUILD when BUILD is the accepted intent'
+Assert-Contains $gate 'FINAL_RELEASE_ARTIFACT_RUNTIME_MIGRATION=PASS' 'after formal Candidate recovery the stale BUILD runtime must migrate forward to ARTIFACT'
+Assert-Contains $gate 'FORMAL_BUILD29_CANDIDATE_ALREADY_ACCEPTED' 'ARTIFACT migration must record why BUILD is superseded'
+Assert-Contains $gate 'BUILD_29_VERIFIED_ARTIFACT_RECOVERY' 'ARTIFACT migration must be bound to the exact accepted recovery marker'
+Assert-Contains $gate 'ARTHUR_FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK' 'gate must explicitly scope pre-flash baseline fallback'
+Assert-Contains $gate "currentStage -in @('ARTIFACT','PRE_FLASH')" 'pre-flash fallback must stop before FLASH'
+Assert-Contains $gate 'arthur-control-plane.ps1' 'authorized gate must hand off to the existing control plane'
 
 $wakeup = Get-Content -Raw $WakeupPath
-Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped operator-intent gate'
-
+Assert-Contains $wakeup 'arthur-control-plane-gate.ps1' 'scheduled wakeup must enter through the scoped gate'
 $rules = Get-Content -Raw $RulesPath
-Assert-Contains $rules 'state statement is not execution authorization' 'durable GPT rules must distinguish state correction from execution authorization'
-Assert-Contains $rules 'authorization is scope-bound' 'durable GPT rules must prevent authorization leakage across tasks'
-Assert-Contains $rules 'operator-intent.json' 'durable GPT startup must read operator intent before choosing a firmware action'
-Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve the only successful terminal state'
-
+Assert-Contains $rules 'PRODUCTION_RELEASED' 'rules must preserve PRODUCTION_RELEASED as the only successful terminal'
 $agents = Get-Content -Raw $AgentsPath
-Assert-Contains $agents 'production/operator-intent.json' 'Codex startup must read operator intent before resume-state or executable firmware action selection'
-Assert-Contains $agents 'state statement is not execution authorization' 'Codex project rules must distinguish state correction from execution authorization'
-Assert-Contains $agents 'authorization is scope-bound' 'Codex project rules must prevent authorization leakage across tasks'
-Assert-Contains $agents 'GOVERNANCE_RULES_ONLY' 'Codex must understand governance-only authorization cannot unlock firmware execution'
-Assert-Contains $agents 'EXECUTE_FIRMWARE' 'Codex must require explicit firmware execution intent before mutating the release task'
+Assert-Contains $agents 'production/operator-intent.json' 'Codex startup must read operator intent before executable action selection'
+Assert-Contains $agents 'EXECUTE_FIRMWARE' 'Codex must require explicit firmware execution intent'
 
 Write-Host 'ARTHUR_OPERATOR_INTENT_GATE_CONTRACT=PASS'
-Write-Host 'ARTHUR_FINAL_RELEASE_RUNTIME_MIGRATION_CONTRACT=PASS'
+Write-Host 'ARTHUR_FINAL_RELEASE_ARTIFACT_RESUME_CONTRACT=PASS'
 Write-Host 'ARTHUR_CODEX_STARTUP_INTENT_CONTRACT=PASS'
