@@ -122,10 +122,14 @@ function Resolve-ArthurResumeState {
         $phase -eq 'BUILD' -and
         [string]$env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK -eq '1'
     )
+    $finalReleasePreFlashFallback = (
+        $phase -in @('ARTIFACT','PRE_FLASH') -and
+        [string]$env:ARTHUR_FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK -eq '1'
+    )
     $useBaselineFallback = (
         ($null -eq $LiveDevice) -and
         $activeBaseline -eq $true -and
-        ($AllowBaselineFallbackForMissingLiveDevice -or $adhPreviewPhase -or $finalReleaseBuildFallback)
+        ($AllowBaselineFallbackForMissingLiveDevice -or $adhPreviewPhase -or $finalReleaseBuildFallback -or $finalReleasePreFlashFallback)
     )
     if ($useBaselineFallback) {
         $LiveDevice = [pscustomobject]@{
