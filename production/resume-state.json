@@ -15,8 +15,8 @@
                               "source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
                           },
     "checkpoint":  {
-                       "current":  "BUILD",
-                       "next_action":  "BUILD",
+                       "current":  "ARTIFACT",
+                       "next_action":  "ARTIFACT",
                        "turn_count":  5
                    },
     "verified":  {
@@ -24,12 +24,16 @@
                      "wifi":  "VERIFIED_FROZEN",
                      "luci_chinese":  "VERIFIED_FROZEN",
                      "adguard_full_manager":  "LIVE_BROWSER_VERIFIED",
-                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED"
+                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED",
+                     "build_29":  "PASS",
+                     "build_29_run_id":  34056525562,
+                     "build_29_artifact_id":  9998837025,
+                     "build_29_source_sha":  "750f62dcdd26b9227cfa6c857427f430340b8c9a"
                  },
     "pending":  [
-                    "BUILD"
+                    "ARTIFACT"
                 ],
-    "next_action":  "BUILD",
+    "next_action":  "ARTIFACT",
     "conflicts":  [
 
                   ],
@@ -47,5 +51,5 @@
                                           "chat/model narrative"
                                       ],
     "semantic_sha256":  "bd244dd2f8a8681c4c7ba0e73f010d9626d65b935514916870357e762a9620ca",
-    "evidence_timestamp":  "2026-09-06T19:59:30.7458351+00:00"
+    "evidence_timestamp":  "2026-09-06T23:00:24Z"
 }
