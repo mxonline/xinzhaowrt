@@ -1,53 +1,51 @@
 {
-  "schema_version": 1,
-  "status": "RESUME_SAFE",
-  "instruction_allowed": true,
-  "repository_head": "f9e905f4c8a34053e73aae2a6f014e8d62376dc4",
-  "real_device": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "git_commit": "e27bafa",
-    "evidence": "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
-  },
-  "accepted_baseline": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
-  },
-  "checkpoint": {
-    "current": "ARTIFACT",
-    "next_action": "ARTIFACT",
-    "turn_count": 5
-  },
-  "verified": {
-    "real_device_baseline": "MATCHED",
-    "wifi": "VERIFIED_FROZEN",
-    "luci_chinese": "VERIFIED_FROZEN",
-    "adguard_full_manager": "LIVE_BROWSER_VERIFIED",
-    "quickstart": "AUTHENTICATED_RENDER_VERIFIED",
-    "build_29": "PASS",
-    "build_29_run_id": 34056525562,
-    "build_29_artifact_id": 9998837025,
-    "build_29_source_sha": "750f62dcdd26b9227cfa6c857427f430340b8c9a"
-  },
-  "pending": [
-    "ARTIFACT"
-  ],
-  "next_action": "ARTIFACT",
-  "conflicts": [],
-  "source_precedence": [
-    "LIVE_DEVICE",
-    "REAL_DEVICE_BASELINE",
-    "AI_ORCHESTRATOR_RUNTIME",
-    "GITHUB_HEAD",
-    "HISTORICAL_DOCS_AUXILIARY_ONLY"
-  ],
-  "legacy_source_policy": "AUXILIARY_ONLY",
-  "ignored_current_state_sources": [
-    "knowledge/PROJECT-STATE.md historical sections",
-    "production/v4-state.json historical controller snapshot",
-    "chat/model narrative"
-  ],
-  "semantic_sha256": "d5abd99724c4c597fdf5be2fd6f80a1901e5117e52827013bea1eb18767a1335",
-  "evidence_timestamp": "2026-09-07T01:20:00+00:00"
+    "schema_version":  1,
+    "status":  "RESUME_SAFE",
+    "instruction_allowed":  true,
+    "repository_head":  "80ffd46e1374f1cfe5dfc1085c039d4a363330b7",
+    "real_device":  {
+                        "version":  "0.1.3",
+                        "build_id":  "33462873812",
+                        "git_commit":  "e27bafa",
+                        "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+                    },
+    "accepted_baseline":  {
+                              "version":  "0.1.3",
+                              "build_id":  "33462873812",
+                              "source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
+                          },
+    "checkpoint":  {
+                       "current":  "ARTIFACT",
+                       "next_action":  "ARTIFACT",
+                       "turn_count":  5
+                   },
+    "verified":  {
+                     "real_device_baseline":  "MATCHED",
+                     "wifi":  "VERIFIED_FROZEN",
+                     "luci_chinese":  "VERIFIED_FROZEN",
+                     "adguard_full_manager":  "LIVE_BROWSER_VERIFIED",
+                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED"
+                 },
+    "pending":  [
+                    "ARTIFACT"
+                ],
+    "next_action":  "ARTIFACT",
+    "conflicts":  [
+
+                  ],
+    "source_precedence":  [
+                              "LIVE_DEVICE",
+                              "REAL_DEVICE_BASELINE",
+                              "AI_ORCHESTRATOR_RUNTIME",
+                              "GITHUB_HEAD",
+                              "HISTORICAL_DOCS_AUXILIARY_ONLY"
+                          ],
+    "legacy_source_policy":  "AUXILIARY_ONLY",
+    "ignored_current_state_sources":  [
+                                          "knowledge/PROJECT-STATE.md historical sections",
+                                          "production/v4-state.json historical controller snapshot",
+                                          "chat/model narrative"
+                                      ],
+    "semantic_sha256":  "d869825d5d20138c62e0d4f627ea761a08456fbfdbf443ea2ca62f268c078dc8",
+    "evidence_timestamp":  "2026-09-07T01:23:06.5573587+00:00"
 }
