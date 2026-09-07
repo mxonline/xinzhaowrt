@@ -181,11 +181,17 @@ Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=ACTIVE' 'active Windows repai
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=RECOVERED' 'verified Windows recovery must hand control back to ordinary runner flow'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=BLOCKED' 'repair terminal failures must be surfaced explicitly'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=TRIGGERED' 'broken non-protected runtime must trigger Windows repair asynchronously'
+Assert-Contains $deploy 'RELEASE_GATE_STOPPED_RUNTIME_HANDOFF' 'RELEASE_GATE must permit only a stopped non-crash-loop runtime to continue to the existing persistent Supervisor handoff'
+Assert-Contains $deploy "`$phase -eq 'RELEASE_GATE'" 'RELEASE_GATE runtime handoff must remain phase-scoped'
+Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=PASS reason=release_gate_stopped_runtime_handoff' 'RELEASE_GATE stopped-runtime path must not invoke the Windows repair controller'
 Assert-True ($deploy -notmatch '(?i)Start-Sleep\s+-Seconds\s+120') 'GitHub Actions must never own the 120-second recovery health window'
 Assert-True ($deploy -notmatch '(?i)Remove-Item[^\r\n]*supervisor-state\.json') 'GitHub wakeup must never delete Supervisor retry state directly'
 $repairIndex = $deploy.IndexOf('repair-status.json',[System.StringComparison]::OrdinalIgnoreCase)
 $resumeIndex = $deploy.IndexOf('Reconcile and resume Arthur Control Plane',[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($repairIndex -ge 0 -and $resumeIndex -ge 0 -and $repairIndex -lt $resumeIndex) 'repair observer/trigger must execute before ordinary Control Plane resume'
+$releaseGateHandoffIndex = $deploy.IndexOf('RELEASE_GATE_STOPPED_RUNTIME_HANDOFF',[System.StringComparison]::OrdinalIgnoreCase)
+$protectedRuntimeIndex = $deploy.IndexOf('reason=protected_runtime',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($releaseGateHandoffIndex -ge 0 -and $protectedRuntimeIndex -ge 0 -and $releaseGateHandoffIndex -lt $protectedRuntimeIndex) 'RELEASE_GATE stopped-runtime handoff must precede the protected-phase fail-closed branch'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'

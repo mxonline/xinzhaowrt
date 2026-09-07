@@ -527,6 +527,19 @@ jobs:
             exit 0
           }
 
+          $releaseGateStoppedRuntimeHandoff = (
+            $phase -eq 'RELEASE_GATE' -and
+            [string]::IsNullOrWhiteSpace($humanGate) -and
+            -not $supervisorAlive -and
+            -not $codexAlive -and
+            -not $crashLoop
+          )
+          if ($releaseGateStoppedRuntimeHandoff) {
+            Write-Host "WINDOWS_REPAIR_CONTROLLER=PASS reason=release_gate_stopped_runtime_handoff phase=$phase"
+            "ARTHUR_WINDOWS_REPAIR_STATE=RELEASE_GATE_STOPPED_RUNTIME_HANDOFF" >> $env:GITHUB_ENV
+            exit 0
+          }
+
           if ($protected) {
             Write-Host "WINDOWS_REPAIR_CONTROLLER=BLOCKED reason=protected_runtime phase=$phase human_gate=$humanGate evidence=$runtimeStatePath"
             "ARTHUR_WINDOWS_REPAIR_STATE=BLOCKED" >> $env:GITHUB_ENV
