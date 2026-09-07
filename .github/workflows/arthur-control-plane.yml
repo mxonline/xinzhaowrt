@@ -1,6 +1,11 @@
 name: Arthur Control Plane
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/arthur-control-plane.yml'
   workflow_dispatch:
     inputs:
       source_ref:
@@ -41,9 +46,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:ARTHUR_CONTROL_PLANE_WORKSPACE = $env:GITHUB_WORKSPACE
-          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-control-plane.ps1'
+          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-control-plane-gate.ps1'
           if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
-            throw "CONTROL_PLANE_INSTALL_FAILED: missing $script"
+            throw "CONTROL_PLANE_GATE_INSTALL_FAILED: missing $script"
           }
           & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
