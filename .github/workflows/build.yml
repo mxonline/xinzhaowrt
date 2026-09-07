@@ -96,7 +96,16 @@ jobs:
           REF="$IMMORTAL_SOURCE_REF"
           SRC="$GITHUB_WORKSPACE/work/feed-check/immortalwrt"
           rm -rf "$SRC"
-          git clone --depth=1 --branch "$REF" "$IMMORTAL_SOURCE_REPO" "$SRC"
+          if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+            git init "$SRC"
+            git -C "$SRC" remote add origin "$IMMORTAL_SOURCE_REPO"
+            git -C "$SRC" fetch --no-tags --depth=1 origin "$REF"
+            git -C "$SRC" -c advice.detachedHead=false checkout --detach FETCH_HEAD
+            actual="$(git -C "$SRC" rev-parse HEAD)"
+            [[ "$actual" == "$REF" ]] || { echo "ERROR: pinned source checkout mismatch: expected $REF got $actual" >&2; exit 1; }
+          else
+            git clone --depth=1 --branch "$REF" "$IMMORTAL_SOURCE_REPO" "$SRC"
+          fi
           cd "$SRC"
 
           source "$GITHUB_WORKSPACE/config/arthur-known-good.lock"
