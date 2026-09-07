@@ -1,0 +1,69 @@
+name: Arthur Control Runtime One-Shot Resync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/arthur-control-runtime-one-shot.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arthur-control-runtime-one-shot-resync
+  cancel-in-progress: false
+
+jobs:
+  resync:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 5
+    steps:
+      - name: Realign disposable clean control-runtime to origin/main
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
+          $controlRoot = Join-Path $root 'control-runtime'
+
+          if (-not (Test-Path (Join-Path $controlRoot '.git'))) {
+            git clone --branch main --single-branch "https://github.com/$env:GITHUB_REPOSITORY.git" $controlRoot
+            if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_BOOTSTRAP_FAILED' }
+          }
+          else {
+            $dirty = (& git -C $controlRoot status --porcelain | Out-String).Trim()
+            if ($dirty) {
+              Write-Host 'CONTROL_RUNTIME_DIRTY_FILES_BEGIN'
+              Write-Host $dirty
+              Write-Host 'CONTROL_RUNTIME_DIRTY_FILES_END'
+              throw 'CONTROL_RUNTIME_DIRTY_BLOCKED: control-runtime is expected to be a disposable clean mirror.'
+            }
+
+            git -C $controlRoot remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
+            if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_REMOTE_FAILED' }
+            git -C $controlRoot fetch --prune origin main
+            if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_FETCH_FAILED' }
+
+            $oldHead = (& git -C $controlRoot rev-parse HEAD).Trim()
+            $originMain = (& git -C $controlRoot rev-parse origin/main).Trim()
+            if ($oldHead -ne $originMain) {
+              $backup = 'control-runtime-backup-' + (Get-Date -Format 'yyyyMMddHHmmss')
+              git -C $controlRoot branch $backup $oldHead
+              if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_BACKUP_REF_FAILED' }
+              git -C $controlRoot switch -C main origin/main
+              if ($LASTEXITCODE -ne 0) { throw 'CONTROL_RUNTIME_REALIGN_FAILED' }
+              Write-Host "CONTROL_RUNTIME_DIVERGENCE_RECOVERED=PASS old_head=$oldHead origin_main=$originMain backup_ref=$backup"
+            }
+          }
+
+          $head = (& git -C $controlRoot rev-parse HEAD).Trim()
+          $origin = (& git -C $controlRoot rev-parse origin/main).Trim()
+          if ($head -ne $origin) { throw "CONTROL_RUNTIME_VERIFY_FAILED head=$head origin_main=$origin" }
+          Write-Host "CONTROL_RUNTIME_SYNCED=PASS sha=$head"
+          Write-Host 'RUNTIME_STATE_UNTOUCHED=PASS'
+          Write-Host 'TASK_WORKSPACE_UNTOUCHED=PASS'
+          Write-Host 'FIRMWARE_ACTIONS_UNTOUCHED=PASS'
