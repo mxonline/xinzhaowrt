@@ -5,8 +5,8 @@
   "authorization_scope": "FIRMWARE_RELEASE",
   "firmware_execution_authorized": true,
   "firmware_state": {
-    "current_stage": "BUILD",
-    "next_stage": "ARTIFACT",
+    "current_stage": "ARTIFACT",
+    "next_stage": "PRE_FLASH",
     "verified_frozen": [
       "WIFI",
       "LUCI_CHINESE",
@@ -19,7 +19,7 @@
       "AdGuard Home full manager",
       "official iStoreOS QuickStart"
     ],
-    "source": "FINAL_RELEASE_REQUEST_20260906"
+    "source": "BUILD_29_VERIFIED_ARTIFACT_RECOVERY"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
@@ -31,6 +31,6 @@
   "governance_task": {
     "authorized": false,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Firmware execution is explicitly authorized. Preserve accepted feature checkpoints and resume only the remaining BUILD -> ARTIFACT -> PRE_FLASH -> at-most-once sysupgrade -> PostFlash real-device verification -> Release path."
+    "goal": "Firmware execution is explicitly authorized. Reuse the verified Build #29 artifact (run 34056525562, artifact 9998837025, source 750f62dcdd26b9227cfa6c857427f430340b8c9a) without rebuilding. Preserve accepted feature checkpoints and resume only ARTIFACT -> PRE_FLASH -> at-most-once sysupgrade -> PostFlash real-device verification -> Release -> PRODUCTION_RELEASED."
   }
 }
