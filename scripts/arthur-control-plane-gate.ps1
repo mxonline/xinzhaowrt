@@ -39,6 +39,7 @@ $decision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $operatorInten
 $firmwareState = $operatorIntent.firmware_state
 $currentStage = if ($firmwareState) { [string]$firmwareState.current_stage } else { '' }
 $nextStage = if ($firmwareState) { [string]$firmwareState.next_stage } else { '' }
+$firmwareStateSource = if ($firmwareState -and $firmwareState.PSObject.Properties['source']) { [string]$firmwareState.source } else { '' }
 Write-Host "OPERATOR_INTENT=PASS intent_type=$($decision.intent_type) scope=$($decision.authorization_scope) current_stage=$currentStage next_stage=$nextStage"
 
 if (-not $decision.allowed) {
@@ -49,13 +50,8 @@ if (-not $decision.allowed) {
 
 Write-Host 'FIRMWARE_EXECUTION_AUTHORIZED=PASS'
 $isFinalRelease = $false
-
-# The durable final-release request supersedes stale pre-build AI runtime phases.
-# Migrate only forward to the existing BUILD phase. A SAFETY_BLOCKED marker may be
-# cleared only when it belongs to one of those obsolete pre-build phases and the
-# explicit final-release request has already moved operator intent to BUILD. No
-# BUILD-or-later, flash, device-verification, or release terminal can be rewritten.
-if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
+$finalRequest = $null
+if (Test-Path -LiteralPath $requestPath -PathType Leaf) {
     try { $finalRequest = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json }
     catch {
         Write-Error "FINAL_RELEASE_REQUEST_INVALID: $($_.Exception.Message)"
@@ -68,21 +64,32 @@ if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathTyp
         $requestId -like 'arthur-final-release-*' -and
         [string]$finalRequest.device -eq 'jdcloud_re-ss-01' -and
         [string]$finalRequest.feature_id -eq 'arthur-adh-quickstart' -and
-        $requestReason -match '(?i)Do not repeat feature development' -and
-        $requestReason -match '(?i)replacement Candidate'
+        $requestReason -match '(?i)already successful Build #29 artifact' -and
+        $requestReason -match '(?i)Do not rebuild' -and
+        $requestReason -match '(?i)do not create a second Candidate' -and
+        $requestReason -match '(?i)do not repeat feature development' -and
+        $requestReason -match '(?i)ARTIFACT.*PRE_FLASH'
     )
+}
 
-    if ($isFinalRelease -and -not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        $runtimeStatePath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\state\runtime-state.json'
-        if (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf) {
-            try { $runtimeState = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json }
-            catch {
-                Write-Error "FINAL_RELEASE_RUNTIME_STATE_INVALID: $($_.Exception.Message)"
-                exit 1
-            }
+# Reconcile only the exact durable final-release task, and only forward. The BUILD
+# migration handles obsolete pre-build runtime state. After the formal Build #29
+# Candidate has been recovered, operator intent advances to ARTIFACT; a stale BUILD
+# runtime must follow that accepted checkpoint instead of dispatching another Build.
+if ($isFinalRelease -and -not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $runtimeStatePath = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\state\runtime-state.json'
+    if (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf) {
+        try { $runtimeState = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json }
+        catch {
+            Write-Error "FINAL_RELEASE_RUNTIME_STATE_INVALID: $($_.Exception.Message)"
+            exit 1
+        }
 
-            $runtimePhase = [string]$runtimeState.phase
-            $runtimeTerminal = [string]$runtimeState.terminal_state
+        $requestId = [string]$finalRequest.request_id
+        $runtimePhase = [string]$runtimeState.phase
+        $runtimeTerminal = [string]$runtimeState.terminal_state
+
+        if ($currentStage -eq 'BUILD') {
             $stalePreBuildPhases = @(
                 'FORENSICS',
                 'ADH_MANAGEMENT',
@@ -101,7 +108,7 @@ if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathTyp
             $supersededSafetyBlock = $stalePreBuild -and $runtimeTerminal -eq 'SAFETY_BLOCKED'
 
             if ($stalePreBuild -and ([string]::IsNullOrWhiteSpace($runtimeTerminal) -or $supersededSafetyBlock)) {
-                $resumePrompt = 'Resume the interrupted Arthur final release: forensic -> root cause -> auto-fix -> rebuild -> PRE_FLASH_READY. Preserve the accepted ADH full manager, LuCI Chinese, official iStoreOS QuickStart and WIFI=VERIFIED_FROZEN. Do not repeat feature development and do not duplicate Build, Candidate, or Flash. Continue automatically through the existing safe production gates.'
+                $resumePrompt = 'Resume the interrupted Arthur final release at BUILD. Preserve the accepted ADH full manager, LuCI Chinese, official iStoreOS QuickStart and WIFI=VERIFIED_FROZEN. Do not repeat feature development and do not duplicate Build, Candidate, or Flash. Continue automatically through the existing safe production gates.'
 
                 $runtimeState.phase = 'BUILD'
                 if ($runtimeState.PSObject.Properties['current_stage']) { $runtimeState.current_stage = 'BUILD' }
@@ -110,9 +117,7 @@ if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathTyp
                 $runtimeState.next_codex_prompt = $resumePrompt
                 if ($runtimeState.PSObject.Properties['pending_human_gate']) { $runtimeState.pending_human_gate = $null }
                 else { $runtimeState | Add-Member -NotePropertyName pending_human_gate -NotePropertyValue $null }
-                if ($supersededSafetyBlock) {
-                    $runtimeState.terminal_state = ''
-                }
+                if ($supersededSafetyBlock) { $runtimeState.terminal_state = '' }
 
                 $migration = [ordered]@{
                     request_id = $requestId
@@ -141,23 +146,71 @@ if ($currentStage -eq 'BUILD' -and (Test-Path -LiteralPath $requestPath -PathTyp
                 Write-Host "FINAL_RELEASE_RUNTIME_MIGRATION=SKIPPED phase=$runtimePhase terminal_state=$runtimeTerminal request_id=$requestId"
             }
         }
-        else {
-            Write-Host "FINAL_RELEASE_RUNTIME_MIGRATION=SKIPPED reason=RUNTIME_STATE_MISSING request_id=$requestId"
+        elseif (
+            $currentStage -eq 'ARTIFACT' -and
+            $nextStage -eq 'PRE_FLASH' -and
+            $firmwareStateSource -eq 'BUILD_29_VERIFIED_ARTIFACT_RECOVERY' -and
+            $runtimePhase -eq 'BUILD' -and
+            [string]::IsNullOrWhiteSpace($runtimeTerminal)
+        ) {
+            $runtimeState.phase = 'ARTIFACT'
+            if ($runtimeState.PSObject.Properties['current_stage']) { $runtimeState.current_stage = 'ARTIFACT' }
+            else { $runtimeState | Add-Member -NotePropertyName current_stage -NotePropertyValue 'ARTIFACT' }
+            $runtimeState.next_action = 'ARTIFACT'
+            $runtimeState.next_codex_prompt = 'Build #29 recovery and the formal production Candidate are already complete. Resume at ARTIFACT, validate the existing production Candidate, then continue PRE_FLASH -> AUTO_FLASH_SAFETY_GATE -> at-most-once FLASH -> post-flash real-device verification -> RELEASE -> PRODUCTION_RELEASED. Do not rebuild, do not create another Candidate, and preserve all accepted frozen features.'
+
+            $migration = [ordered]@{
+                request_id = $requestId
+                from = 'BUILD'
+                to = 'ARTIFACT'
+                cleared_terminal_state = ''
+                reason = 'FORMAL_BUILD29_CANDIDATE_ALREADY_ACCEPTED'
+            }
+            if ($runtimeState.PSObject.Properties['observability'] -and $runtimeState.observability) {
+                $runtimeState.observability | Add-Member -NotePropertyName final_release_runtime_migration -NotePropertyValue $migration -Force
+            }
+            else {
+                $runtimeState | Add-Member -NotePropertyName observability -NotePropertyValue ([pscustomobject]@{ final_release_runtime_migration = $migration }) -Force
+            }
+
+            $tmp = "$runtimeStatePath.$PID.tmp"
+            $json = $runtimeState | ConvertTo-Json -Depth 30
+            [IO.File]::WriteAllText($tmp, $json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+            Move-Item -LiteralPath $tmp -Destination $runtimeStatePath -Force
+            Write-Host "FINAL_RELEASE_ARTIFACT_RUNTIME_MIGRATION=PASS from=BUILD to=ARTIFACT request_id=$requestId"
         }
+        elseif ($currentStage -eq 'ARTIFACT' -and $runtimePhase -eq 'ARTIFACT') {
+            Write-Host "FINAL_RELEASE_ARTIFACT_RUNTIME_MIGRATION=ALREADY_CURRENT phase=ARTIFACT request_id=$requestId"
+        }
+    }
+    else {
+        Write-Host "FINAL_RELEASE_RUNTIME_MIGRATION=SKIPPED reason=RUNTIME_STATE_MISSING request_id=$([string]$finalRequest.request_id)"
     }
 }
 
-# The accepted 0.1.3 device is reachable and positively identified, but that legacy
-# image may not expose build-info.json. Only the exact final-release BUILD recovery
-# path may reuse the accepted baseline identity to start the provenance repair. The
-# resolver itself is phase-bound to BUILD, so this context cannot authorize artifact,
-# flash, post-flash, release, or PRODUCTION_RELEASED identity verification.
+# Missing build-info on the still-unflashed accepted 0.1.3 baseline must not route an
+# already-published Candidate backward to BUILD. The fallback is explicitly scoped
+# to the exact final-release ARTIFACT/PRE_FLASH checkpoint. FLASH and every post-flash
+# identity gate remain fail-closed and require live device evidence.
 $env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK = $(if ($isFinalRelease -and $currentStage -eq 'BUILD') { '1' } else { '0' })
 if ($env:ARTHUR_FINAL_RELEASE_BUILD_BASELINE_FALLBACK -eq '1') {
     Write-Host 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=PASS scope=BUILD_ONLY evidence=EXACT_FINAL_RELEASE_REQUEST'
 }
 else {
     Write-Host 'FINAL_RELEASE_BUILD_BASELINE_FALLBACK_AUTH=DENIED'
+}
+
+$preFlashFallbackAuthorized = (
+    $isFinalRelease -and
+    $firmwareStateSource -eq 'BUILD_29_VERIFIED_ARTIFACT_RECOVERY' -and
+    $currentStage -in @('ARTIFACT','PRE_FLASH')
+)
+$env:ARTHUR_FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK = $(if ($preFlashFallbackAuthorized) { '1' } else { '0' })
+if ($env:ARTHUR_FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK -eq '1') {
+    Write-Host "FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK_AUTH=PASS scope=$currentStage evidence=BUILD29_CANDIDATE_ACCEPTED"
+}
+else {
+    Write-Host 'FINAL_RELEASE_PREFLASH_BASELINE_FALLBACK_AUTH=DENIED'
 }
 
 # Durable GitHub Candidate failure evidence takes precedence over legacy local
