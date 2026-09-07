@@ -14,6 +14,11 @@ name: Arthur Known-Good Update v3
           - update_feeds
           - update_plugins
           - update_all
+      recover_run_id:
+        description: Recover the immutable Build #29 artifacts without rebuilding (fixed to 34056525562)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -25,6 +30,7 @@ concurrency:
 
 jobs:
   build-candidate:
+    if: ${{ inputs.recover_run_id == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -272,3 +278,160 @@ jobs:
 
           echo "- Candidate tag: \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
           echo '- Next hard gate: JDCloud RE-SS-01 real-device verification including large firmware upload without OOM' >> "$GITHUB_STEP_SUMMARY"
+
+  recover-candidate:
+    if: ${{ inputs.recover_run_id != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify immutable Build #29 recovery identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVER_RUN_ID: ${{ inputs.recover_run_id }}
+          RECOVER_PROJECT_SHA: 750f62dcdd26b9227cfa6c857427f430340b8c9a
+          RECOVER_FIRMWARE_ARTIFACT_ID: '9998837025'
+          RECOVER_DIAGNOSTICS_ARTIFACT_ID: '9998834768'
+        run: |
+          set -Eeuo pipefail
+          test "$RECOVER_RUN_ID" = 34056525562 || { echo 'BLOCKED: unsupported recovery run id'; exit 1; }
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVER_RUN_ID")"
+          test "$(jq -r '.head_sha' <<<"$run")" = "$RECOVER_PROJECT_SHA" || { echo 'BLOCKED: recovery run head SHA mismatch'; exit 1; }
+          jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVER_RUN_ID/jobs" --paginate)"
+          for step in 'Feed Check' 'Build firmware' 'Upload firmware artifact'; do
+            jq -e --arg step "$step" '.jobs[] | select(.name == "build") | .steps[] | select(.name == $step and .conclusion == "success")' <<<"$jobs" >/dev/null || { echo "BLOCKED: Build #29 step is not successful: $step"; exit 1; }
+          done
+          for spec in "$RECOVER_FIRMWARE_ARTIFACT_ID:XinZhaoWrt-Arthur" "$RECOVER_DIAGNOSTICS_ARTIFACT_ID:XinZhaoWrt-diagnostics-34056525562"; do
+            id="${spec%%:*}"
+            name="${spec#*:}"
+            artifact="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id")"
+            test "$(jq -r '.name' <<<"$artifact")" = "$name" || { echo "BLOCKED: artifact name mismatch for $id"; exit 1; }
+            test "$(jq -r '.workflow_run.id' <<<"$artifact")" = "$RECOVER_RUN_ID" || { echo "BLOCKED: artifact run mismatch for $id"; exit 1; }
+            test "$(jq -r '.workflow_run.head_sha' <<<"$artifact")" = "$RECOVER_PROJECT_SHA" || { echo "BLOCKED: artifact head SHA mismatch for $id"; exit 1; }
+            test "$(jq -r '.expired' <<<"$artifact")" = false || { echo "BLOCKED: artifact expired: $id"; exit 1; }
+          done
+          echo 'PASS: immutable Build #29 run and artifact identities verified.'
+
+      - name: Recover immutable firmware and diagnostics artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p output "$RUNNER_TEMP/recovery-diagnostics"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/9998837025/zip" > "$RUNNER_TEMP/firmware.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/9998834768/zip" > "$RUNNER_TEMP/diagnostics.zip"
+          unzip -q "$RUNNER_TEMP/firmware.zip" -d output
+          unzip -q "$RUNNER_TEMP/diagnostics.zip" -d "$RUNNER_TEMP/recovery-diagnostics"
+
+      - name: Recover original OOM verification evidence and Candidate lock
+        id: recovery
+        env:
+          RECOVER_PROJECT_SHA: 750f62dcdd26b9227cfa6c857427f430340b8c9a
+        run: |
+          set -Eeuo pipefail
+          build_log="$RUNNER_TEMP/recovery-diagnostics/output/logs/build.log"
+          test -s "$build_log" || { echo 'BLOCKED: Build #29 build.log missing from diagnostics artifact'; exit 1; }
+          : > output/upload-oom-verification.txt
+          while IFS= read -r required_line; do
+            grep -F -x -m 1 "$required_line" "$build_log" >> output/upload-oom-verification.txt || { echo "BLOCKED: original OOM evidence missing: $required_line"; exit 1; }
+          done <<'EOF'
+          PASS: Nginx large request bodies are buffered outside /tmp tmpfs.
+          PASS: cgi-io transient O_TMPFILE remains on /tmp so final handoff can use same-filesystem linkat().
+          PASS: LuCI final firmware handoff remains /tmp/firmware.bin on the same tmpfs as cgi-io O_TMPFILE.
+          PASS: Arthur large-upload OOM guard verified: Nginx buffering is disk-backed and cgi-io can link its /tmp O_TMPFILE directly to /tmp/firmware.bin without a second 90+ MiB copy.
+          EOF
+          git cat-file -e "$RECOVER_PROJECT_SHA:config/arthur-known-good.lock" || { echo 'BLOCKED: Build #29 Known-Good lock missing'; exit 1; }
+          git show "$RECOVER_PROJECT_SHA:config/arthur-known-good.lock" > "$RUNNER_TEMP/recovered-known-good.lock"
+          cmp -s "$RUNNER_TEMP/recovered-known-good.lock" config/arthur-known-good.lock || { echo 'BLOCKED: recovered and current Known-Good locks differ'; exit 1; }
+          cp "$RUNNER_TEMP/recovered-known-good.lock" output/candidate-lock.txt
+          cmp -s "$RUNNER_TEMP/recovered-known-good.lock" output/candidate-lock.txt || { echo 'BLOCKED: recovered and Candidate locks differ'; exit 1; }
+          cp "$RUNNER_TEMP/recovered-known-good.lock" output/arthur-known-good.lock
+          test "$(git rev-parse "$RECOVER_PROJECT_SHA:config/arthur-known-good.lock")" = 748a583c5018df9fcab7c0125d6b13be9fbbeee1 || { echo 'BLOCKED: Build #29 Known-Good lock blob mismatch'; exit 1; }
+          echo "lock_path=$RUNNER_TEMP/recovered-known-good.lock" >> "$GITHUB_OUTPUT"
+          echo "lock_sha=$(sha256sum "$RUNNER_TEMP/recovered-known-good.lock" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo 'PASS: original OOM evidence and Build #29 Known-Good lock recovered exactly.'
+
+      - name: Generate recovery update metadata
+        env:
+          LOCK_SHA: ${{ steps.recovery.outputs.lock_sha }}
+          UPDATE_MODE: ${{ inputs.mode }}
+        run: |
+          set -Eeuo pipefail
+          LOCK_SHA="$LOCK_SHA" UPDATE_MODE="$UPDATE_MODE" python3 - <<'PY'
+          import json, os, re
+          refs = {}
+          for line in open('output/candidate-lock.txt', encoding='utf-8'):
+              m = re.match(r'^([A-Z0-9_]+_REF)="([0-9a-f]{40})"$', line.strip())
+              if m:
+                  refs[m.group(1)] = m.group(2)
+          if len(refs) != 14:
+              raise SystemExit(f'BLOCKED: expected 14 pinned refs, got {len(refs)}')
+          data = {
+              'schema_version': '1.0', 'mode': os.environ['UPDATE_MODE'],
+              'project_commit': os.environ['GITHUB_SHA'],
+              'candidate_lock_sha256': os.environ['LOCK_SHA'], 'refs': refs,
+              'recovery_mode': True, 'recovered_build_run_id': 34056525562,
+              'recovered_firmware_artifact_id': 9998837025,
+              'recovered_diagnostics_artifact_id': 9998834768,
+              'recovered_project_commit': '750f62dcdd26b9227cfa6c857427f430340b8c9a',
+          }
+          with open('output/update-metadata.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, indent=2); f.write('\n')
+          PY
+          printf '%s\n' '# Immutable Build #29 Artifact recovery; no source lock delta.' > output/update-lock.diff
+
+      - name: Enforce Candidate acceptance gates
+        run: |
+          set -Eeuo pipefail
+          test -s output/plugin-verification.txt
+          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' output/plugin-verification.txt
+          grep -Fq 'Verified required plugins: 22' output/plugin-verification.txt
+          grep -Fqx 'LANGUAGE_PACKAGE_ARCHIVE=PASS' output/plugin-verification.txt
+          grep -Fqx 'LANGUAGE_RESOURCE=PASS' output/plugin-verification.txt
+          test -s output/upload-oom-verification.txt
+          grep -Fqx 'PASS: Arthur large-upload OOM guard verified: Nginx buffering is disk-backed and cgi-io can link its /tmp O_TMPFILE directly to /tmp/firmware.bin without a second 90+ MiB copy.' output/upload-oom-verification.txt
+          find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
+          test -s output/firmware/SHA256SUMS.local
+          (cd output/firmware && sha256sum -c SHA256SUMS.local)
+          test -s output/arthur-known-good.lock
+          cmp -s output/arthur-known-good.lock "${{ steps.recovery.outputs.lock_path }}"
+          echo 'PASS: recovered firmware, 22/22 plugins, original large-upload OOM guard, SHA256 and Candidate lock verified.'
+
+      - name: Upload verified Candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v3-Candidate-${{ github.run_id }}
+          path: |
+            output/firmware/*
+            output/full.config
+            output/build-info.txt
+            output/plugin-verification.txt
+            output/upload-oom-verification.txt
+            output/arthur-known-good.lock
+            output/required-plugins.txt
+            output/update-lock.diff
+            output/update-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Candidate release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_MODE: ${{ inputs.mode }}
+          LOCK_SHA: ${{ steps.recovery.outputs.lock_sha }}
+        run: |
+          set -Eeuo pipefail
+          tag="arthur-update-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            output/firmware/* output/plugin-verification.txt output/upload-oom-verification.txt \
+            output/arthur-known-good.lock output/build-info.txt output/required-plugins.txt \
+            output/update-lock.diff output/update-metadata.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Arthur Update Candidate ${GITHUB_RUN_ID}" \
+            --notes "Known-Good Update v3 immutable Build #29 recovery. Mode: ${UPDATE_MODE}. Lock SHA256: ${LOCK_SHA}. Not Stable until JDCloud RE-SS-01 real-device verification and v3 Stable promotion both pass." \
+            --prerelease
