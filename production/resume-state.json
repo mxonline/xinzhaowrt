@@ -2,12 +2,12 @@
     "schema_version":  1,
     "status":  "RESUME_SAFE",
     "instruction_allowed":  true,
-    "repository_head":  "80ffd46e1374f1cfe5dfc1085c039d4a363330b7",
+    "repository_head":  "bfeb15b56a9716bc548472e059546f75de7dcb92",
     "real_device":  {
                         "version":  "0.1.3",
                         "build_id":  "33462873812",
                         "git_commit":  "e27bafa",
-                        "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+                        "evidence":  "LIVE_BUILD_INFO"
                     },
     "accepted_baseline":  {
                               "version":  "0.1.3",
@@ -46,6 +46,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "d869825d5d20138c62e0d4f627ea761a08456fbfdbf443ea2ca62f268c078dc8",
-    "evidence_timestamp":  "2026-09-07T01:23:06.5573587+00:00"
+    "semantic_sha256":  "040166406aeab96c2f3ef3b1511eb862cd54907e389b23d368b344d8fdb7e820",
+    "evidence_timestamp":  "2026-09-07T16:07:33.9017486+00:00"
 }
