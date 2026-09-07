@@ -527,16 +527,16 @@ jobs:
             exit 0
           }
 
-          $releaseGateStoppedRuntimeHandoff = (
-            $phase -eq 'RELEASE_GATE' -and
+          $artifactStoppedRuntimeHandoff = (
+            $phase -eq 'ARTIFACT' -and
             [string]::IsNullOrWhiteSpace($humanGate) -and
             -not $supervisorAlive -and
             -not $codexAlive -and
             -not $crashLoop
           )
-          if ($releaseGateStoppedRuntimeHandoff) {
-            Write-Host "WINDOWS_REPAIR_CONTROLLER=PASS reason=release_gate_stopped_runtime_handoff phase=$phase"
-            "ARTHUR_WINDOWS_REPAIR_STATE=RELEASE_GATE_STOPPED_RUNTIME_HANDOFF" >> $env:GITHUB_ENV
+          if ($artifactStoppedRuntimeHandoff) {
+            Write-Host "WINDOWS_REPAIR_CONTROLLER=PASS reason=artifact_stopped_runtime_handoff phase=$phase"
+            "ARTHUR_WINDOWS_REPAIR_STATE=ARTIFACT_STOPPED_RUNTIME_HANDOFF" >> $env:GITHUB_ENV
             exit 0
           }
 
