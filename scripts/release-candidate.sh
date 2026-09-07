@@ -15,10 +15,21 @@ RUN_ID="${GITHUB_RUN_ID:-unknown}"
 TAG="v${BASE_VERSION}-rc.${RUN_NUMBER}"
 RELEASE_NAME="XinZhaoWrt Arthur ${TAG}"
 FIRMWARE_DIR="output/firmware"
+PROFILE_METADATA="$FIRMWARE_DIR/profiles.json"
 
-mapfile -t FIRMWARES < <(find "$FIRMWARE_DIR" -maxdepth 1 -type f -name '*jdcloud_re-ss-01*.bin' -size +0c | sort)
+if [[ ! -s "$PROFILE_METADATA" ]]; then
+  echo "ERROR: missing Arthur profile metadata: $PROFILE_METADATA"
+  exit 1
+fi
+
+if ! jq -e '.profiles["jdcloud_re-ss-01"].supported_devices | index("jdcloud,re-ss-01") != null' "$PROFILE_METADATA" >/dev/null; then
+  echo "ERROR: artifact profile metadata does not identify jdcloud_re-ss-01"
+  exit 1
+fi
+
+mapfile -t FIRMWARES < <(find "$FIRMWARE_DIR" -maxdepth 1 -type f -name '*sysupgrade.bin' -size +0c | sort)
 if (( ${#FIRMWARES[@]} == 0 )); then
-  echo "ERROR: no non-empty jdcloud_re-ss-01 firmware found in $FIRMWARE_DIR"
+  echo "ERROR: no non-empty Arthur sysupgrade firmware found in $FIRMWARE_DIR"
   exit 1
 fi
 
