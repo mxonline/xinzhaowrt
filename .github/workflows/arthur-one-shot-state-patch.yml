@@ -1,0 +1,36 @@
+name: Arthur One-Shot State Patch
+
+'on':
+  push:
+    branches:
+      - codex/arthur-unified-state-evidence
+    paths:
+      - 'scripts/apply-unified-state-patch.py'
+      - '.github/workflows/arthur-one-shot-state-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'apply unified state implementation') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/arthur-unified-state-evidence
+          fetch-depth: 0
+      - name: Apply deterministic patch
+        run: python3 scripts/apply-unified-state-patch.py
+      - name: Verify changed files are expected
+        run: |
+          git diff --check
+          git diff --name-only
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/feature-handoff-lib.ps1 scripts/feature-handoff.ps1 scripts/arthur-resume-state.ps1 scripts/arthur-control-plane.ps1 scripts/production-agent.ps1
+          git commit -m 'feat(state): apply unified state implementation'
+          git push origin HEAD:codex/arthur-unified-state-evidence
