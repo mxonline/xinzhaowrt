@@ -1,0 +1,27 @@
+name: Arthur Resume State V2
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/arthur-resume-state.ps1'
+      - 'scripts/arthur-state-contract.ps1'
+      - 'tests/arthur-resume-state-v2.tests.ps1'
+      - '.github/workflows/arthur-resume-state-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  resume-state-v2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Run resume-state v2 migration contract
+        shell: pwsh
+        run: ./tests/arthur-resume-state-v2.tests.ps1

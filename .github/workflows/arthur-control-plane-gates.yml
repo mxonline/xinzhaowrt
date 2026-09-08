@@ -1,0 +1,30 @@
+name: Arthur Control Plane Gates
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/arthur-state-contract.ps1'
+      - 'scripts/arthur-resume-state.ps1'
+      - 'scripts/arthur-control-plane.ps1'
+      - 'scripts/arthur-firmware-resume.ps1'
+      - 'scripts/arthur-evidence-index.ps1'
+      - 'tests/arthur-control-plane-gates.tests.ps1'
+      - '.github/workflows/arthur-control-plane-gates.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  control-plane-gates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Run control-plane gate arbitration contract
+        shell: pwsh
+        run: ./tests/arthur-control-plane-gates.tests.ps1

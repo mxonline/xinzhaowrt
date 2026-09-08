@@ -122,6 +122,20 @@ try {
             $null = Add-ArthurFirmwareEvent -Path $eventLedgerPath -Event $eventName -Stage $currentStage -Source 'ARTHUR_CONTROL_PLANE' -Timestamp $evidenceTime -Data $eventData
             Log "FIRMWARE_EVENT_APPENDED=PASS event=$eventName stage=$currentStage semantic_sha256=$($ResumeState.semantic_sha256)"
         }
+        if ($ResumeState.gates) {
+            foreach ($gateProperty in @($ResumeState.gates.PSObject.Properties)) {
+                $gateId = [string]$gateProperty.Name
+                $newGate = $gateProperty.Value
+                $newStatus = [string]$newGate.status
+                $oldStatus = ''
+                if ($existingPublished -and $existingPublished.gates -and $existingPublished.gates.PSObject.Properties[$gateId]) { $oldStatus = [string]$existingPublished.gates.PSObject.Properties[$gateId].Value.status }
+                $gateEvent = if ($newStatus -eq 'PASS' -and $oldStatus -ne 'PASS') { 'GATE_PASSED' } elseif ($newStatus -eq 'STALE' -and $oldStatus -ne 'STALE') { 'GATE_STALE' } else { '' }
+                if ($gateEvent) {
+                    $null = Add-ArthurFirmwareEvent -Path $eventLedgerPath -Event $gateEvent -Stage $gateId -Source 'ARTHUR_CONTROL_PLANE' -Timestamp $evidenceTime -Data ([ordered]@{ execution_id=[string]$ResumeState.execution_id; gate_id=$gateId; previous_status=$oldStatus; status=$newStatus; evidence_refs=@($newGate.evidence_refs) })
+                    Log "FIRMWARE_GATE_EVENT=PASS event=$gateEvent gate=$gateId execution=$($ResumeState.execution_id)"
+                }
+            }
+        }
         Save-Json $ResumeStatePath $ResumeState
 
         if ([string]$env:GITHUB_REF_NAME -ne 'main') {
@@ -134,6 +148,7 @@ try {
             & git config user.name 'github-actions[bot]'
             & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             & git add -- 'production/resume-state.json' 'production/firmware-events.jsonl'
+            & git add -- 'production/evidence/*/index.json' 2>$null
             & git diff --cached --quiet
             if ($LASTEXITCODE -eq 0) {
                 Log 'RESUME_STATE_PUBLISHED=UNCHANGED_GIT'
@@ -179,6 +194,9 @@ try {
     $resumeHelperPath = Join-Path $codeRoot 'scripts\arthur-resume-state.ps1'
     if (-not (Test-Path -LiteralPath $resumeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RESUME_HELPER_MISSING' }
     . $resumeHelperPath
+    $evidenceIndexHelperPath = Join-Path $codeRoot 'scripts\arthur-evidence-index.ps1'
+    if (-not (Test-Path -LiteralPath $evidenceIndexHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_EVIDENCE_HELPER_MISSING' }
+    . $evidenceIndexHelperPath
     $eventLedgerHelperPath = Join-Path $codeRoot 'scripts\arthur-firmware-event-ledger.ps1'
     if (-not (Test-Path -LiteralPath $eventLedgerHelperPath -PathType Leaf)) { Fail 'FIRMWARE_EVENT_LEDGER_HELPER_MISSING' }
     . $eventLedgerHelperPath
@@ -376,13 +394,20 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     Push-Location $env:GITHUB_WORKSPACE
     try {
-        $repositoryHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' | Out-String).Trim()
+        $repositoryHead = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' ':(exclude)production/evidence/**' | Out-String).Trim()
     }
     finally { Pop-Location }
     if ([string]::IsNullOrWhiteSpace($repositoryHead)) { $repositoryHead = [string]$env:GITHUB_SHA }
 
     $runtimeBefore = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
-    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState
+    $previousGateRecords = @(Get-ArthurGateRecordsFromResumeState -ResumeState $previousResumeState)
+    $currentSubjects = Get-ArthurCurrentSubjectsForRepositoryHead -GateRecords $previousGateRecords -RepositoryHead $repositoryHead
+    $activeExecutionId = if ($previousResumeState -and $previousResumeState.PSObject.Properties['execution_id']) { [string]$previousResumeState.execution_id } else { '' }
+    $v3RequestPath = Join-Path $codeRoot 'production\v3-request.json'
+    if (-not $activeExecutionId -and (Test-Path -LiteralPath $v3RequestPath -PathType Leaf)) {
+        try { $v3Request = Get-Content -Raw -LiteralPath $v3RequestPath | ConvertFrom-Json; if ($v3Request.PSObject.Properties['execution_id']) { $activeExecutionId = [string]$v3Request.execution_id } } catch {}
+    }
+    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects
     Publish-ResumeState $resumeState $resumeStatePath
     if (-not $resumeState.instruction_allowed) {
         Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($resumeState.conflicts) -join ','))

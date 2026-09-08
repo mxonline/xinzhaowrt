@@ -1,0 +1,28 @@
+name: Arthur State Contract
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/arthur-state-contract.ps1'
+      - 'tests/arthur-state-contract.tests.ps1'
+      - '.github/workflows/arthur-state-contract.yml'
+      - 'docs/superpowers/specs/2026-09-08-arthur-unified-state-evidence-design.md'
+      - 'docs/superpowers/plans/2026-09-08-arthur-unified-state-evidence.md'
+
+permissions:
+  contents: read
+
+jobs:
+  state-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Run Arthur state-contract test
+        shell: pwsh
+        run: ./tests/arthur-state-contract.tests.ps1

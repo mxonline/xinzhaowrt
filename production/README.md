@@ -16,6 +16,12 @@ Use the production files by responsibility rather than treating one historical s
 
 `resume-state.json` is intentionally fail-closed. A live-version/baseline mismatch, runtime phase inconsistency, or checkpoint regression produces `STATE_RECONCILIATION_REQUIRED` and `instruction_allowed=false`. The control plane must reconcile and republish the snapshot before headless Codex/runtime dispatch continues.
 
+## Unified execution state and evidence
+
+`resume-state.json` schema v2 binds one end-to-end Arthur task with `execution_id`. Its `gates` map records `PENDING`, `RUNNING`, `PASS`, `FAIL`, `BLOCKED`, `STALE`, or `SKIPPED`. `production/evidence/<execution_id>/index.json` stores identity-matched evidence references, while `firmware-events.jsonl` remains the append-only history.
+
+The Arthur Control Plane is the only Gate arbiter. Executors submit observations and evidence; they do not independently establish global PASS. A Gate cannot be PASS without valid evidence or explicit immutable-baseline provenance. `STALE` is incomplete and reruns only the dependency chain invalidated by source, artifact, device, or requirement identity changes. State/evidence-only commits are `FAST_GATE` control-plane changes and must not request a firmware Candidate build.
+
 ## Production principle
 
 The only successful end state is `PRODUCTION_RELEASED`.

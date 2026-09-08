@@ -36,7 +36,7 @@ $tail = @($events | Select-Object -Last ([Math]::Max(1,$EventTail)))
 
 Push-Location $root
 try {
-    $effectiveHeadRaw = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' | Out-String)
+    $effectiveHeadRaw = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' ':(exclude)production/evidence/**' | Out-String)
 }
 finally { Pop-Location }
 $effectiveHead = ConvertTo-ArthurCanonicalGitSha $effectiveHeadRaw
@@ -74,7 +74,12 @@ if ($resume.instruction_allowed -ne $true) { $conflicts += 'RESUME_INSTRUCTION_N
 if ([string]::IsNullOrWhiteSpace($effectiveHead)) { $conflicts += 'EFFECTIVE_GITHUB_HEAD_INVALID' }
 if (-not $SkipExternal -and -not $github.checked) { $conflicts += "GITHUB_EVIDENCE_UNAVAILABLE:$($github.status)" }
 
-$resumeHead = ConvertTo-ArthurCanonicalGitSha $resume.repository_head
+$resumeHeadValue = if ($resume.PSObject.Properties['source'] -and $resume.source -and $resume.source.PSObject.Properties['repository_head']) {
+    [string]$resume.source.repository_head
+} else {
+    [string]$resume.repository_head
+}
+$resumeHead = ConvertTo-ArthurCanonicalGitSha $resumeHeadValue
 if ([string]::IsNullOrWhiteSpace($resumeHead)) {
     $conflicts += 'RESUME_REPOSITORY_HEAD_INVALID'
 }
@@ -90,7 +95,7 @@ if ($headDrift) {
 }
 
 $intentStage = if ($intent.firmware_state -and $intent.firmware_state.current_stage) { [string]$intent.firmware_state.current_stage } else { '' }
-$resumeStage = if ($resume.checkpoint -and $resume.checkpoint.current) { [string]$resume.checkpoint.current } else { '' }
+$resumeStage = if ($resume.PSObject.Properties['current_gate'] -and $resume.current_gate) { [string]$resume.current_gate } elseif ($resume.checkpoint -and $resume.checkpoint.current) { [string]$resume.checkpoint.current } else { '' }
 $resumeNext = if ($resume.next_action) { [string]$resume.next_action } else { '' }
 if ($intentStage -and $resumeStage -and $intentStage -ne $resumeStage -and $intentStage -ne $resumeNext) {
     $conflicts += "OPERATOR_RESUME_STAGE_MISMATCH:${intentStage}:${resumeStage}:${resumeNext}"
@@ -117,13 +122,17 @@ $result = [ordered]@{
         next_stage = if ($intent.firmware_state) { [string]$intent.firmware_state.next_stage } else { '' }
     }
     resume_state = [ordered]@{
+        schema_version = if ($resume.PSObject.Properties['schema_version']) { [int]$resume.schema_version } else { 1 }
+        execution_id = if ($resume.PSObject.Properties['execution_id']) { [string]$resume.execution_id } else { '' }
         status = [string]$resume.status
         instruction_allowed = [bool]$resume.instruction_allowed
         repository_head = $resumeHead
         current_stage = $resumeStage
+        current_gate = $resumeStage
         next_action = $resumeNext
         evidence_timestamp = if ($resume.PSObject.Properties['evidence_timestamp']) { [string]$resume.evidence_timestamp } else { '' }
-        real_device = $resume.real_device
+        real_device = if ($resume.PSObject.Properties['device']) { $resume.device } else { $resume.real_device }
+        gates = if ($resume.PSObject.Properties['gates']) { $resume.gates } else { [pscustomobject]@{} }
         verified = $resume.verified
         pending = @($resume.pending)
         conflicts = @($resume.conflicts)
