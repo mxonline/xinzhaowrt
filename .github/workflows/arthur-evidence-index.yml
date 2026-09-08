@@ -1,0 +1,32 @@
+name: Arthur Evidence Index
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/arthur-evidence-index.ps1'
+      - 'scripts/classify-build-scope.sh'
+      - 'tests/arthur-evidence-index.tests.ps1'
+      - 'tests/test-evidence-index-build-scope.sh'
+      - '.github/workflows/arthur-evidence-index.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Run evidence-index PowerShell contract
+        shell: pwsh
+        run: ./tests/arthur-evidence-index.tests.ps1
+
+      - name: Run evidence-index build-scope contract
+        shell: bash
+        run: bash ./tests/test-evidence-index-build-scope.sh
