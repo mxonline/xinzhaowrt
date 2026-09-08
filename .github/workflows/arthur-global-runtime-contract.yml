@@ -1,0 +1,33 @@
+name: Arthur Global Runtime Contract
+
+'on':
+  push:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  global-runtime-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Arthur
+        uses: actions/checkout@v4
+
+      - name: Checkout Global Runtime Contract
+        uses: actions/checkout@v4
+        with:
+          repository: mxonline/xinzhou-code-standard
+          ref: 7e0f4ae8d9c56fd28898185c13db12844d4255fe
+          path: .global-runtime-contract
+
+      - name: Test Arthur integration manifest
+        shell: pwsh
+        run: ./tests/arthur-global-runtime-contract.tests.ps1
+
+      - name: Validate Arthur Runtime bundle
+        run: python .global-runtime-contract/tools/runtime_contract.py validate --root . --manifest runtime-contract.json
