@@ -38,6 +38,28 @@ function Get-ArthurFirmwareExecutionPermission {
         }
     }
 
+    # A formal Candidate workflow that already owns BUILD is the executor for that
+    # Gate. Scheduled Control Plane wakeups must observe it, not start a duplicate
+    # Build. The workflow_run state synchronizer adds candidate_release_conclusion
+    # when that run completes, which releases this temporary ownership guard.
+    $firmwareState = Get-ArthurIntentMember $OperatorIntent 'firmware_state'
+    $guardrails = Get-ArthurIntentMember $OperatorIntent 'guardrails'
+    $currentStage = [string](Get-ArthurIntentMember $firmwareState 'current_stage')
+    $activeRunValue = Get-ArthurIntentMember $firmwareState 'active_run_id'
+    $activeRunId = 0L
+    if ($null -ne $activeRunValue) { [void][long]::TryParse([string]$activeRunValue,[ref]$activeRunId) }
+    $doNotInterrupt = (Get-ArthurIntentMember $guardrails 'do_not_interrupt_active_run') -eq $true
+    $completionMarker = Get-ArthurIntentMember $firmwareState 'candidate_release_conclusion'
+    if ($currentStage -eq 'BUILD' -and $activeRunId -gt 0 -and $doNotInterrupt -and $null -eq $completionMarker) {
+        return [pscustomobject]@{
+            allowed = $false
+            reason = 'ACTIVE_CANDIDATE_BUILD_OWNS_GATE'
+            intent_type = $intentType
+            authorization_scope = $scope
+            active_run_id = $activeRunId
+        }
+    }
+
     return [pscustomobject]@{
         allowed = $true
         reason = 'FIRMWARE_EXECUTION_AUTHORIZED'
@@ -63,7 +85,8 @@ function Read-ArthurOperatorIntent {
     if ([string](Get-ArthurIntentMember $intent 'project') -ne 'Arthur') {
         throw 'OPERATOR_INTENT_PROJECT_MISMATCH'
     }
-    if ([string](Get-ArthurIntentMember $intent 'schema_version') -ne '1.0') {
+    $schema = [string](Get-ArthurIntentMember $intent 'schema_version')
+    if ($schema -notin @('1.0','1.1')) {
         throw 'OPERATOR_INTENT_SCHEMA_UNSUPPORTED'
     }
     return $intent
