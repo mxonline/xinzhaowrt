@@ -1,0 +1,180 @@
+name: Arthur Candidate Artifact Recovery
+
+'on':
+  workflow_run:
+    workflows:
+      - Arthur Known-Good Update v3
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Existing Arthur Known-Good Update v3 run to recover without rebuilding
+        required: true
+        type: string
+      expected_source_sha:
+        description: Optional expected project source SHA for the Candidate
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: arthur-candidate-artifact-recovery-${{ github.event.workflow_run.id || inputs.source_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  recover-candidate-release:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve immutable source run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          set -Eeuo pipefail
+          if [ "$EVENT_NAME" = workflow_run ]; then
+            run_id="$EVENT_RUN_ID"
+          else
+            run_id="$INPUT_RUN_ID"
+          fi
+          [[ "$run_id" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: invalid source_run_id'; exit 1; }
+
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          test "$(jq -r '.name' <<<"$run")" = 'Arthur Known-Good Update v3' || { echo 'BLOCKED: source run is not Arthur Known-Good Update v3'; exit 1; }
+          source_sha="$(jq -r '.head_sha' <<<"$run")"
+          test -n "$source_sha" -a "$source_sha" != null || { echo 'BLOCKED: source run head SHA missing'; exit 1; }
+          if [ -n "$EXPECTED_SOURCE_SHA" ]; then
+            test "$source_sha" = "$EXPECTED_SOURCE_SHA" || { echo "BLOCKED: source SHA mismatch expected=$EXPECTED_SOURCE_SHA actual=$source_sha"; exit 1; }
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=Arthur-v3-Candidate-$run_id" >> "$GITHUB_OUTPUT"
+          echo "PASS: source run resolved run=$run_id source=$source_sha"
+
+      - name: Prove build and acceptance gates already passed
+        id: eligibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100")"
+
+          require_step_success() {
+            local step="$1"
+            jq -e --arg step "$step" '
+              .jobs[]
+              | select(.name == "build-candidate")
+              | .steps[]
+              | select(.name == $step and .conclusion == "success")
+            ' <<<"$jobs" >/dev/null || {
+              echo "BLOCKED: cannot recover without rebuild because required durable checkpoint is not PASS: $step"
+              exit 1
+            }
+          }
+
+          require_step_success 'Build Candidate from locked sources'
+          require_step_success 'Enforce Candidate acceptance gates'
+          require_step_success 'Upload verified Candidate'
+
+          release_conclusion="$(jq -r '
+            [.jobs[] | select(.name == "build-candidate") | .steps[] | select(.name == "Publish Candidate release") | .conclusion][0] // "missing"
+          ' <<<"$jobs")"
+
+          if [ "$release_conclusion" = success ]; then
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            echo 'PASS: Candidate Release already succeeded; recovery is unnecessary.'
+          else
+            echo 'skip=false' >> "$GITHUB_OUTPUT"
+            echo "PASS: build, acceptance and durable Artifact are complete; release checkpoint=$release_conclusion is recoverable without rebuild."
+          fi
+
+      - name: Locate durable Candidate Artifact
+        if: steps.eligibility.outputs.skip != 'true'
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100")"
+          artifact_id="$(jq -r --arg name "$ARTIFACT_NAME" '[.artifacts[] | select(.name == $name and .expired == false) | .id][0] // empty' <<<"$artifacts")"
+          test -n "$artifact_id" || { echo "BLOCKED: durable Candidate Artifact is missing or expired: $ARTIFACT_NAME. Automatic rebuild is forbidden."; exit 1; }
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "PASS: durable Candidate Artifact located id=$artifact_id name=$ARTIFACT_NAME"
+
+      - name: Download existing Candidate Artifact only
+        if: steps.eligibility.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          rm -rf recovered
+          mkdir -p recovered
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$ARTIFACT_NAME" --dir recovered
+          echo 'PASS: Candidate recovered from GitHub Artifact; no build command executed.'
+
+      - name: Re-verify recovered Candidate identity
+        if: steps.eligibility.outputs.skip != 'true'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          test -s recovered/plugin-verification.txt
+          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' recovered/plugin-verification.txt
+          grep -Fq 'Verified required plugins: 22' recovered/plugin-verification.txt
+          test -s recovered/upload-oom-verification.txt
+          grep -Fq 'PASS: Arthur large-upload OOM guard verified:' recovered/upload-oom-verification.txt
+          test -s recovered/build-info.txt
+          test -s recovered/update-metadata.json
+          test "$(jq -r '.project_commit' recovered/update-metadata.json)" = "$SOURCE_SHA" || { echo 'BLOCKED: recovered Candidate project_commit mismatch'; exit 1; }
+          find recovered/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
+          test -s recovered/firmware/SHA256SUMS.local
+          (cd recovered/firmware && sha256sum -c SHA256SUMS.local)
+          echo "PASS: recovered Candidate identity and SHA256 verified for source=$SOURCE_SHA run=$SOURCE_RUN_ID"
+
+      - name: Publish or repair Candidate Release from Artifact
+        if: steps.eligibility.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+        run: |
+          set -Eeuo pipefail
+          tag="arthur-update-${SOURCE_RUN_ID}"
+          title="Arthur Update Candidate ${SOURCE_RUN_ID}"
+          notes="Recovered from already-verified GitHub Actions Artifact ${ARTIFACT_ID}. Source run: ${SOURCE_RUN_ID}. Source SHA: ${SOURCE_SHA}. Build Candidate, Acceptance Gates and Candidate Artifact upload were already PASS. No rebuild was performed. Not Stable until JDCloud RE-SS-01 real-device verification and Stable promotion pass."
+
+          mapfile -t assets < <(find recovered -type f \( -path '*/firmware/*' -o -name 'plugin-verification.txt' -o -name 'upload-oom-verification.txt' -o -name 'arthur-known-good.lock' -o -name 'build-info.txt' -o -name 'required-plugins.txt' -o -name 'update-lock.diff' -o -name 'update-metadata.json' \) -print)
+          test "${#assets[@]}" -gt 0 || { echo 'BLOCKED: no Candidate release assets recovered'; exit 1; }
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "$title" --notes "$notes" --prerelease
+          else
+            gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "$title" --notes "$notes" --prerelease
+          fi
+
+          echo "PASS: Candidate Release available from existing Artifact tag=$tag source=$SOURCE_SHA; REBUILD=FORBIDDEN_AND_NOT_PERFORMED"
