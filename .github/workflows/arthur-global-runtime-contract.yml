@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mxonline/xinzhou-code-standard
-          ref: 7e0f4ae8d9c56fd28898185c13db12844d4255fe
+          ref: ae014413f6d9302cada832683a359ecffe5a4942
           path: .global-runtime-contract
 
       - name: Test Arthur integration manifest
