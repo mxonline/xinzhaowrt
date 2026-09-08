@@ -6,8 +6,8 @@
   "firmware_execution_authorized": true,
   "execution_id": "arthur-final-release-5f41c4e-20260908",
   "firmware_state": {
-    "current_stage": "ARTIFACT",
-    "next_stage": "PRE_FLASH",
+    "current_stage": "PRE_FLASH",
+    "next_stage": "AUTO_FLASH_SAFETY_GATE",
     "active_run_id": 34242450515,
     "active_source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
     "verified_frozen": [
@@ -39,6 +39,6 @@
   "governance_task": {
     "authorized": false,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Continue the already-running Arthur Known-Good Update v3 #73 (run 34242450515) from source 5f41c4e25be6eb5a24f78bc794ca1d80a036087c without interruption or duplicate build. Once BUILD and acceptance pass, bind the newly uploaded Candidate Artifact to execution arthur-final-release-5f41c4e-20260908 and continue ARTIFACT -> PRE_FLASH -> AUTO_FLASH_SAFETY_GATE -> at-most-once sysupgrade -> PostFlash real-device verification -> RELEASE -> PRODUCTION_RELEASED. If Candidate Release publication fails after Artifact upload, recover from the same Artifact and never rebuild automatically."
+    "goal": "Continue the accepted Arthur Candidate for execution arthur-final-release-5f41c4e-20260908 from PRE_FLASH. BUILD and ARTIFACT are already evidence-backed PASS for source 5f41c4e25be6eb5a24f78bc794ca1d80a036087c and run 34242450515. Continue PRE_FLASH -> AUTO_FLASH_SAFETY_GATE -> at-most-once sysupgrade -> PostFlash real-device verification -> RELEASE -> PRODUCTION_RELEASED. Never rebuild automatically when the accepted Candidate Artifact can be reused."
   }
 }

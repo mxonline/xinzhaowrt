@@ -1,0 +1,18 @@
+{
+  "contract_version": "global-runtime-v1",
+  "project": "Arthur / XinZhaoWrt",
+  "profile": "arthur-v2",
+  "bundles": [
+    {
+      "execution_id": "arthur-final-release-5f41c4e-20260908",
+      "state": "production/resume-state.json",
+      "events": "production/firmware-events.jsonl",
+      "evidence": "production/evidence/arthur-final-release-5f41c4e-20260908/index.json"
+    }
+  ],
+  "projection_paths": [
+    "Notion HANDOFF status index"
+  ],
+  "shared_validator_sha": "ae014413f6d9302cada832683a359ecffe5a4942",
+  "native_state_revision": false
+}
