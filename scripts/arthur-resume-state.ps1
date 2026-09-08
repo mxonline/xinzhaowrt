@@ -217,6 +217,13 @@ function Resolve-ArthurGateMap {
     return [pscustomobject]$map
 }
 
+function Get-ArthurLegacyVerifiedValue {
+    param([object]$GateMap,[string]$GateId,[string]$PassValue)
+    $gate = Get-ArthurResumeMember $GateMap $GateId
+    if ($null -eq $gate -or [string](Get-ArthurResumeMember $gate 'status') -ne 'PASS') { return 'REVERIFY_REQUIRED' }
+    return $PassValue
+}
+
 function Resolve-ArthurResumeState {
     [CmdletBinding()]
     param(
@@ -366,10 +373,10 @@ function Resolve-ArthurResumeState {
         }
         verified = [ordered]@{
             real_device_baseline = $(if ($safe) { 'MATCHED' } else { 'RECONCILE_REQUIRED' })
-            wifi = 'VERIFIED_FROZEN'
-            luci_chinese = 'VERIFIED_FROZEN'
-            adguard_full_manager = 'LIVE_BROWSER_VERIFIED'
-            quickstart = 'AUTHENTICATED_RENDER_VERIFIED'
+            wifi = Get-ArthurLegacyVerifiedValue -GateMap $gateMap -GateId 'WIFI' -PassValue 'VERIFIED_FROZEN'
+            luci_chinese = Get-ArthurLegacyVerifiedValue -GateMap $gateMap -GateId 'LUCI_CHINESE' -PassValue 'VERIFIED_FROZEN'
+            adguard_full_manager = Get-ArthurLegacyVerifiedValue -GateMap $gateMap -GateId 'ADGUARD_FULL_MANAGER' -PassValue 'LIVE_BROWSER_VERIFIED'
+            quickstart = Get-ArthurLegacyVerifiedValue -GateMap $gateMap -GateId 'QUICKSTART' -PassValue 'AUTHENTICATED_RENDER_VERIFIED'
         }
         pending = $(if ([string]::IsNullOrWhiteSpace($resolvedNextAction) -or $resolvedNextAction -eq 'NONE') { @() } else { @($resolvedNextAction) })
         conflicts = @($conflicts)

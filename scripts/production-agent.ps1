@@ -19,6 +19,9 @@ $RealDeviceBaselinePath = Join-Path $Root $RealDeviceBaselineRelative
 $ExpectedDiffPath = Join-Path $Root $ExpectedDiffRelative
 $SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
 . (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
+. (Join-Path $PSScriptRoot 'arthur-state-contract.ps1')
+. (Join-Path $PSScriptRoot 'arthur-evidence-index.ps1')
+$script:ProductionEvidenceTypes = @('ARTIFACT_MANIFEST','FLASH_SAFETY_REPORT','FLASH_EVENT','REAL_DEVICE_REPORT','GITHUB_RELEASE')
 $Out = Join-Path $Root 'output\production-agent'
 $StatePath = Join-Path $Out 'state.json'
 $HandoffPath = Join-Path $Out 'handoff.json'
@@ -55,7 +58,7 @@ function Log([string]$Message) {
 
 function New-State([long]$RequestedRunId) {
     return [pscustomobject]@{
-        schema_version='1.1'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId;
+        schema_version='1.2'; stage='REQUESTED'; status='LIVE'; run_id=$RequestedRunId; execution_id='';
         artifact_id=[long]0; artifact_name=''; source_sha=''; candidate_sha256=''; candidate_path='';
         remote_candidate=''; target=''; last_error=''; human_gate=$null; repair_controller_started=$false; replacement_build_requested=$false;
         updated_at=(Get-Date).ToString('o')
@@ -107,6 +110,39 @@ function Save-State($State,[string]$Stage,[string]$Status='LIVE',[string]$Messag
 
 function Stage-Index([string]$Stage) { return [array]::IndexOf($Stages,$Stage) }
 function At-Or-After($State,[string]$Stage) { return (Stage-Index ([string]$State.stage)) -ge (Stage-Index $Stage) }
+
+function Ensure-ProductionExecutionId($State) {
+    if ($State.PSObject.Properties.Name -notcontains 'execution_id') { $State | Add-Member -NotePropertyName execution_id -NotePropertyValue '' }
+    if ([string]$State.execution_id) { return [string]$State.execution_id }
+    foreach ($candidatePath in @((Join-Path $Root 'production\v3-request.json'),(Join-Path $Root 'production\resume-state.json'))) {
+        if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+            try {
+                $candidate = Get-Content -Raw -LiteralPath $candidatePath | ConvertFrom-Json
+                if ($candidate.PSObject.Properties['execution_id'] -and [string]$candidate.execution_id) { $State.execution_id=[string]$candidate.execution_id; return [string]$State.execution_id }
+            } catch {}
+        }
+    }
+    if ([string]$State.source_sha -match '^[0-9a-fA-F]{40}$') {
+        $State.execution_id = New-ArthurExecutionId -TaskSlug 'production' -AcceptedSourceSha ([string]$State.source_sha).ToLowerInvariant() -Date (Get-Date)
+        return [string]$State.execution_id
+    }
+    return ''
+}
+
+function Write-ProductionEvidence($State,[string]$GateId,[string]$Type,[string]$EvidenceId,[string]$Ref,[string]$Result,[string]$ContentSha='',[string]$DeviceBuildId='') {
+    $executionId = Ensure-ProductionExecutionId $State
+    if (-not $executionId) { throw 'PRODUCTION_EVIDENCE_EXECUTION_ID_UNRESOLVED' }
+    $path = Get-ArthurEvidenceIndexPath -Root $Root -ExecutionId $executionId
+    $record = [ordered]@{
+        evidence_id=$EvidenceId; gate_id=$GateId; type=$Type; producer='scripts/production-agent.ps1';
+        source_sha=[string]$State.source_sha; github_run_id=[long]$State.run_id; artifact_id=[long]$State.artifact_id;
+        candidate_sha256=[string]$State.candidate_sha256; device_build_id=$DeviceBuildId; ref=$Ref; sha256=$ContentSha;
+        observed_at=[DateTimeOffset]::UtcNow.ToString('o'); result=$Result
+    }
+    Add-ArthurEvidenceRecord -Path $path -Record $record | Out-Null
+    Save-State $State ([string]$State.stage) ([string]$State.status)
+    Log "EVIDENCE_RECORDED execution=$executionId gate=$GateId type=$Type result=$Result"
+}
 
 function Invoke-Process([string]$File,[string[]]$ProcessArgs,[switch]$AllowFailure) {
     $text = (& $File @ProcessArgs 2>&1 | Out-String).Trim()
@@ -219,6 +255,7 @@ function Ensure-Artifact($State) {
     $State.candidate_path = [string]$manifest.candidate_path
     $State.source_sha = [string]$manifest.source_sha
     Save-State $State 'CANDIDATE_VERIFIED' 'VERIFIED'
+    Write-ProductionEvidence $State 'ARTIFACT' 'ARTIFACT_MANIFEST' ("artifact-$($State.run_id)-$($State.artifact_id)") ("github-artifact:$($State.artifact_id)") 'PASS' ([string]$State.candidate_sha256)
 }
 
 function Request-CurrentSourceRebuild($State,[string]$Reason) {
@@ -297,6 +334,9 @@ function Invoke-SafetyGate($State,[string]$Target,[string]$Rollback,[string]$Rem
     if ($LASTEXITCODE -ne 0) { throw "AUTO_FLASH_SAFETY_GATE failed exit=$LASTEXITCODE" }
     Write-Host 'AUTO_FLASH_SAFETY_GATE=PASS'
     Save-State $State 'AUTO_FLASH_SAFETY_GATE' 'VERIFIED'
+    $safetyLog = Join-Path $Out 'auto-flash-safety-gate.log'
+    $safetyHash = if (Test-Path $safetyLog) { (Get-FileHash -Algorithm SHA256 $safetyLog).Hash.ToLowerInvariant() } else { '' }
+    Write-ProductionEvidence $State 'AUTO_FLASH_SAFETY_GATE' 'FLASH_SAFETY_REPORT' ("flash-safety-$($State.run_id)") 'output/production-agent/auto-flash-safety-gate.log' 'PASS' $safetyHash
 }
 
 function Invoke-VerifiedSysupgrade($State,[string]$Target,[string]$Remote) {
@@ -308,6 +348,7 @@ function Invoke-VerifiedSysupgrade($State,[string]$Target,[string]$Remote) {
     }
     $args = ([string]$Profile.argument_template).Replace('{remote_candidate}',$Remote)
     $command = "$( [string]$Profile.remote_upgrade_binary ) $args"
+    Write-ProductionEvidence $State 'FLASH' 'FLASH_EVENT' ("flash-start-$($State.run_id)") ("target:$Target") 'STARTED'
     Save-State $State 'FLASH_STARTED' 'LIVE'
     Log "Executing historically verified standard sysupgrade on $Target"
     $result = Invoke-Process 'ssh.exe' @('-o','BatchMode=yes','-o','ConnectTimeout=10',$Target,$command) -AllowFailure
@@ -364,6 +405,9 @@ function Invoke-RealDeviceVerify($State,[string]$Target) {
         throw 'REAL_DEVICE_VERIFY_FAILED_REPAIR_STARTED'
     }
     $State.repair_controller_started = $false
+    $reportHash = (Get-FileHash -Algorithm SHA256 $report).Hash.ToLowerInvariant()
+    $deviceBuildId = if ($result.PSObject.Properties['build_id']) { [string]$result.build_id } elseif ($result.PSObject.Properties['device_build_id']) { [string]$result.device_build_id } else { '' }
+    Write-ProductionEvidence $State 'REAL_DEVICE_VERIFY' 'REAL_DEVICE_REPORT' ("real-device-$($State.run_id)") 'output/real-device/real-device-verification.json' 'PASS' $reportHash $deviceBuildId
     Save-State $State 'RELEASE_GATE' 'VERIFIED'
 }
 
@@ -374,6 +418,7 @@ function Complete-Release($State) {
         $create = Invoke-Process 'gh' @('release','create',$tag,[string]$State.candidate_path,'--repo',[string]$Config.repository,'--title',"XinZhaoWrt Arthur Production $($State.run_id)",'--notes',"Verified Arthur production release. Source $($State.source_sha); SHA256 $($State.candidate_sha256).") -AllowFailure
         if ($create.ExitCode -ne 0) { throw "GitHub Release failed: $($create.Output)" }
     }
+    Write-ProductionEvidence $State 'RELEASE' 'GITHUB_RELEASE' ("release-$($State.run_id)") ("github-release:$tag") 'PASS'
     Save-State $State 'PRODUCTION_RELEASED' 'VERIFIED'
     Write-Host 'PRODUCTION_RELEASED=YES'
 }

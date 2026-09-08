@@ -1,5 +1,9 @@
 Set-StrictMode -Version Latest
 
+$stateContractPath = Join-Path $PSScriptRoot 'arthur-state-contract.ps1'
+if (-not (Test-Path -LiteralPath $stateContractPath -PathType Leaf)) { throw 'FEATURE_HANDOFF_STATE_CONTRACT_MISSING' }
+. $stateContractPath
+
 $script:FeatureHandoffStages = @(
     'PREVIEW_ACCEPTED','LOCAL_CHANGES_CAPTURED','STATIC_VERIFIED','SOURCE_FROZEN',
     'REMOTE_INTEGRATED','BUILD_DISPATCHED','CONTROLLER_ATTACHED','PRODUCTION_RUNNING','PRODUCTION_RELEASED'
@@ -45,12 +49,14 @@ function New-FeatureHandoffState {
     [pscustomobject][ordered]@{
         schema_version = 1
         feature_id = $FeatureId
+        execution_id = New-ArthurExecutionId -TaskSlug (($FeatureId.ToLowerInvariant() -replace '[^a-z0-9-]','-').Trim('-')) -AcceptedSourceSha $AcceptedPreviewSourceSha -Date (Get-Date)
         dispatch_key = Get-FeatureHandoffKey -FeatureId $FeatureId -AcceptedPreviewSourceSha $AcceptedPreviewSourceSha
         accepted_preview_source_sha = $AcceptedPreviewSourceSha
         accepted_diff_sha256 = $AcceptedDiffSha256
         preview_manifest_sha256 = $PreviewManifestSha256
         preview_manifest_path = $PreviewManifestPath
         preview_evidence = $PreviewEvidence
+        preview_observation = [ordered]@{ scope='LIVE_PREVIEW'; result='PASS'; producer='feature-handoff'; evidence=$PreviewEvidence }
         changed_paths = @()
         frozen_files = @()
         current_stage = 'PREVIEW_ACCEPTED'
@@ -80,8 +86,27 @@ function Add-HandoffStateDefault($State,[string]$Name,$Value) {
     }
 }
 
+function Ensure-FeatureHandoffExecutionIdentity {
+    param([Parameter(Mandatory)]$State)
+    if ($State.PSObject.Properties.Name -notcontains 'execution_id' -or [string]::IsNullOrWhiteSpace([string]$State.execution_id)) {
+        $created = Get-Date
+        if ($State.PSObject.Properties.Name -contains 'created_at' -and [string]$State.created_at) {
+            $parsed = [datetime]::MinValue
+            if ([datetime]::TryParse([string]$State.created_at,[ref]$parsed)) { $created = $parsed }
+        }
+        $slug = (([string]$State.feature_id).ToLowerInvariant() -replace '[^a-z0-9-]','-').Trim('-')
+        $id = New-ArthurExecutionId -TaskSlug $slug -AcceptedSourceSha ([string]$State.accepted_preview_source_sha) -Date $created
+        Add-HandoffStateDefault $State 'execution_id' $id
+    }
+    if ($State.PSObject.Properties.Name -notcontains 'preview_observation') {
+        Add-HandoffStateDefault $State 'preview_observation' ([pscustomobject][ordered]@{ scope='LIVE_PREVIEW'; result='PASS'; producer='feature-handoff'; evidence=$State.preview_evidence })
+    }
+    return $State
+}
+
 function Normalize-FeatureHandoffState {
     param([Parameter(Mandatory)]$State)
+    Ensure-FeatureHandoffExecutionIdentity -State $State | Out-Null
     $stage = [string]$State.current_stage
     if ($script:FeatureHandoffProgressAliases.ContainsKey($stage)) {
         $State.current_stage = [string]$script:FeatureHandoffProgressAliases[$stage]
@@ -98,6 +123,7 @@ function Save-FeatureHandoffState {
     if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     Add-HandoffStateDefault $State 'dispatch_started_at' ''
     Add-HandoffStateDefault $State 'dispatch_accepted' $false
+    Ensure-FeatureHandoffExecutionIdentity -State $State | Out-Null
     $State.updated_at = (Get-Date).ToString('o')
     $tmp = "$StatePath.tmp"
     $State | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $tmp -Encoding UTF8

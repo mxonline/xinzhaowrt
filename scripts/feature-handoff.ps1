@@ -416,7 +416,7 @@ function Get-CurrentV3RequestRaw {
 function Test-CurrentV3RequestMatches($State,[string]$Raw) {
     if (-not $Raw) { return $false }
     try { $r=$Raw | ConvertFrom-Json -Depth 20 } catch { return $false }
-    return ([string]$r.request_id -eq [string]$State.request_id -and [string]$r.mode -eq [string]$State.v3_mode -and [string]$r.source_ref -eq [string]$State.source_ref -and [string]$r.source_sha -eq [string]$State.merge_sha -and [string]$r.accepted_diff_sha256 -eq [string]$State.accepted_diff_sha256)
+    return ([string]$r.request_id -eq [string]$State.request_id -and [string]$r.execution_id -eq [string]$State.execution_id -and [string]$r.mode -eq [string]$State.v3_mode -and [string]$r.source_ref -eq [string]$State.source_ref -and [string]$r.source_sha -eq [string]$State.merge_sha -and [string]$r.accepted_diff_sha256 -eq [string]$State.accepted_diff_sha256)
 }
 
 function Get-LatestV3RequestCommit {
@@ -438,6 +438,7 @@ function Write-HandoffV3Request($State) {
     $request=[ordered]@{
         schema_version='1.0'
         request_id=[string]$State.request_id
+        execution_id=[string]$State.execution_id
         mode=[string]$State.v3_mode
         base_stable=[string]$known.stable_tag
         device='jdcloud_re-ss-01'
@@ -586,6 +587,7 @@ if ($Mode -eq 'Status') {
     Write-Host "FEATURE_ID=$($state.feature_id)"
     Write-Host "ACCEPTED_SOURCE_SHA=$($state.accepted_preview_source_sha)"
     Write-Host "REQUEST_ID=$($state.request_id)"
+    Write-Host "EXECUTION_ID=$($state.execution_id)"
     Write-Host "SOURCE_REF=$($state.source_ref)"
     Write-Host "RUN_ID=$($state.dispatched_run_id)"
     Write-Host "PRODUCTION_STAGE=$($state.production_stage)"
