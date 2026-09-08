@@ -3,8 +3,8 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Helper = Join-Path $Root 'scripts\arthur-git-remote.ps1'
-$Repair = Join-Path $Root 'scripts\arthur-windows-repair-controller.ps1'
-$Agents = Join-Path $Root 'AGENTS.md'
+$Resume = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
+$Rules = Join-Path $Root 'production\GPT-FIRMWARE-EXECUTION-RULES.md'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -57,12 +57,14 @@ Assert-Contains $helperSource 'http.sslBackend=openssl' 'helper must retry Git w
 Assert-Contains $helperSource "@('api'" 'helper must support GitHub API fallback'
 Assert-Contains $helperSource 'SEC_E_NO_CREDENTIALS' 'helper must classify the observed Schannel error explicitly'
 
-$repairSource = Get-Content -Raw -LiteralPath $Repair
-Assert-Contains $repairSource 'arthur-git-remote.ps1' 'Windows repair controller must load resilient Git transport helper'
-Assert-Contains $repairSource 'Invoke-ArthurGitFetchResilient' 'control-runtime fetch must use resilient Git transport path'
+$resumeSource = Get-Content -Raw -LiteralPath $Resume
+Assert-Contains $resumeSource 'arthur-git-remote.ps1' 'canonical Resume Gate must load resilient remote helper'
+Assert-Contains $resumeSource 'Get-ArthurRemoteMainHead' 'canonical Resume Gate must use resilient remote-main verification'
+Assert-Contains $resumeSource 'remote_main' 'Resume Gate output must preserve remote-main transport evidence'
 
-$agentsSource = Get-Content -Raw -LiteralPath $Agents
-Assert-Contains $agentsSource 'SEC_E_NO_CREDENTIALS' 'agent policy must forbid treating known Schannel transport failure as terminal remote-main failure'
-Assert-Contains $agentsSource 'arthur-git-remote.ps1' 'agent policy must name the canonical resilient remote helper'
+$rulesSource = Get-Content -Raw -LiteralPath $Rules
+Assert-Contains $rulesSource 'SEC_E_NO_CREDENTIALS' 'firmware execution rules must classify known Schannel failure as transport recovery, not human credential provisioning'
+Assert-Contains $rulesSource 'arthur-git-remote.ps1' 'firmware execution rules must name the canonical remote verification helper'
+Assert-Contains $rulesSource 'NEW_CREDENTIAL_PROVISIONING' 'rules must explicitly forbid Schannel-only failure from creating the credential human gate'
 
 Write-Host 'Arthur Git remote fallback tests passed.'
