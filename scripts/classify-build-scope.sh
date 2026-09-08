@@ -49,6 +49,7 @@ while IFS= read -r path; do
     scripts/production-agent.ps1|scripts/install-production-agent.ps1|scripts/uninstall-production-agent.ps1|\
     scripts/start-production-agent.ps1|scripts/production-agent-status.ps1|scripts/ci-controller-v3.ps1|scripts/ci-controller-v3-core.ps1|\
     scripts/arthur-control-plane.ps1|scripts/arthur-control-plane-gate.ps1|scripts/arthur-candidate-failure-recovery.ps1|\
+    scripts/arthur-state-contract.ps1|scripts/arthur-evidence-index.ps1|scripts/arthur-state-consistency.ps1|\
     scripts/arthur-resume-state.ps1|scripts/arthur-operator-intent.ps1|scripts/arthur-firmware-event-ledger.ps1|\
     scripts/arthur-firmware-resume.ps1|scripts/arthur-git-remote.ps1|scripts/check-firmware-event-ledger-history.ps1|\
     scripts/feature-handoff.ps1|scripts/feature-handoff-lib.ps1|scripts/install-feature-handoff.ps1|scripts/feature-handoff-status.ps1|\

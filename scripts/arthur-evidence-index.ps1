@@ -26,7 +26,9 @@ function Read-ArthurEvidenceIndex {
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
     try {
-        $index = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json -Depth 30
+        # Keep this helper compatible with Windows PowerShell 5.1. ConvertFrom-Json
+        # there does not support the PowerShell 7 -Depth parameter.
+        $index = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
     }
     catch {
         throw "ARTHUR_EVIDENCE_INDEX_INVALID_JSON=$Path $($_.Exception.Message)"

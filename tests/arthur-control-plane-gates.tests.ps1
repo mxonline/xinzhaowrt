@@ -6,6 +6,7 @@ $ContractPath = Join-Path $Root 'scripts\arthur-state-contract.ps1'
 $ResumePath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $FirmwareResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
+$ConsistencyPath = Join-Path $Root 'scripts\arthur-state-consistency.ps1'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -24,6 +25,8 @@ function Assert-Contains {
 
 . $ContractPath
 . $ResumePath
+Assert-True (Test-Path -LiteralPath $ConsistencyPath -PathType Leaf) 'runtime consistency helper must exist'
+. $ConsistencyPath
 
 $baseline = [pscustomobject]@{
     active_development_baseline = $true
@@ -61,6 +64,63 @@ $previousState = [pscustomobject]@{ gates=[pscustomobject]@{ BUILD=$build; WIFI=
 $extracted = @(Get-ArthurGateRecordsFromResumeState -ResumeState $previousState)
 Assert-Equal $extracted.Count 2 'schema-v2 gate map must round-trip into gate records'
 
+# Runtime consistency must bind state, Gate order, evidence index, and the latest execution-aware ledger event.
+$executionId = 'arthur-release-aaaaaaa-20260908'
+$consistencyBuild = New-ArthurGateRecord -GateId 'BUILD' -RequirementRef 'x#build' -RequirementDigest $digest -Status 'RUNNING' -Subject @{ source_sha=('c' * 40); github_run_id=12 } -EvidenceRefs @('evidence:build-run-12')
+$consistencyArtifact = New-ArthurGateRecord -GateId 'ARTIFACT' -RequirementRef 'x#artifact' -RequirementDigest $digest -Status 'PENDING' -Subject @{ source_sha=('c' * 40); github_run_id=12 }
+$consistencyState = [pscustomobject]@{
+    schema_version = 2
+    execution_id = $executionId
+    current_gate = 'BUILD'
+    next_action = 'BUILD'
+    gates = [pscustomobject]@{ BUILD=$consistencyBuild; ARTIFACT=$consistencyArtifact }
+}
+$consistencyEvidence = [pscustomobject]@{
+    schema_version = 1
+    execution_id = $executionId
+    evidence = @([pscustomobject]@{ evidence_id='build-run-12'; gate_id='BUILD'; result='RUNNING' })
+}
+$consistencyEvents = @([pscustomobject]@{
+    event='GATE_STARTED'; stage='BUILD'; data=[pscustomobject]@{ execution_id=$executionId; gate_id='BUILD' }
+})
+$consistent = Test-ArthurRuntimeStateConsistency -ResumeState $consistencyState -Events $consistencyEvents -EvidenceIndex $consistencyEvidence
+Assert-True $consistent.consistent 'matching execution state, evidence, and ledger must be consistent'
+Assert-Equal $consistent.expected_gate 'BUILD' 'consistency gate must derive expected current Gate from Gate status, not legacy verified/checkpoint strings'
+
+$wrongEvidence = [pscustomobject]@{ schema_version=1; execution_id='arthur-other-aaaaaaa-20260908'; evidence=@() }
+$wrongEvidenceResult = Test-ArthurRuntimeStateConsistency -ResumeState $consistencyState -Events $consistencyEvents -EvidenceIndex $wrongEvidence
+Assert-True (-not $wrongEvidenceResult.consistent) 'evidence from another execution must fail closed'
+Assert-True (@($wrongEvidenceResult.conflicts) -contains 'EVIDENCE_EXECUTION_ID_MISMATCH') 'execution mismatch must be explicit'
+
+$missingEvidence = [pscustomobject]@{ schema_version=1; execution_id=$executionId; evidence=@() }
+$missingEvidenceResult = Test-ArthurRuntimeStateConsistency -ResumeState $consistencyState -Events $consistencyEvents -EvidenceIndex $missingEvidence
+Assert-True (-not $missingEvidenceResult.consistent) 'Gate evidence ref missing from durable index must fail closed'
+Assert-True (@($missingEvidenceResult.conflicts) -contains 'GATE_EVIDENCE_REF_MISSING:BUILD:build-run-12') 'missing evidence id must identify the affected Gate'
+
+$wrongLedgerEvents = @([pscustomobject]@{
+    event='GATE_STARTED'; stage='BUILD'; data=[pscustomobject]@{ execution_id='arthur-other-aaaaaaa-20260908'; gate_id='BUILD' }
+})
+$wrongLedger = Test-ArthurRuntimeStateConsistency -ResumeState $consistencyState -Events $wrongLedgerEvents -EvidenceIndex $consistencyEvidence
+Assert-True (-not $wrongLedger.consistent) 'latest execution-aware ledger event from another execution must fail closed'
+Assert-True (@($wrongLedger.conflicts) -contains 'LEDGER_LATEST_EXECUTION_ID_MISMATCH') 'ledger execution mismatch must be explicit'
+
+$wrongGateState = [pscustomobject]@{
+    schema_version=2; execution_id=$executionId; current_gate='ARTIFACT'; next_action='ARTIFACT';
+    gates=[pscustomobject]@{ BUILD=$consistencyBuild; ARTIFACT=$consistencyArtifact }
+}
+$wrongGate = Test-ArthurRuntimeStateConsistency -ResumeState $wrongGateState -Events $consistencyEvents -EvidenceIndex $consistencyEvidence
+Assert-True (-not $wrongGate.consistent) 'current_gate may not contradict first incomplete Gate'
+Assert-True (@($wrongGate.conflicts) -contains 'CURRENT_GATE_MISMATCH:ARTIFACT:BUILD') 'Gate mismatch must name claimed and expected Gates'
+
+# PR #73 behavior is frozen: stale REAL_DEVICE_VERIFY canonical checkpoints normalize to ADH_MANAGEMENT.
+$stale73 = [pscustomobject]@{
+    production_task='arthur-adh-quickstart'
+    checkpoint=[pscustomobject]@{ current='REAL_DEVICE_VERIFY'; next_action='REAL_DEVICE_VERIFY'; status='BLOCKED_BUILD_INFO_PROVENANCE' }
+}
+$frozen73 = Resolve-ArthurControlPlaneCheckpoint -ExistingCanonical $stale73
+Assert-Equal $frozen73.current 'ADH_MANAGEMENT' '#73 stale checkpoint normalization must remain unchanged'
+Assert-Equal $frozen73.next_action 'ADH_MANAGEMENT' '#73 next action must remain ADH_MANAGEMENT'
+
 $controlPlane = Get-Content -Raw $ControlPlanePath
 Assert-Contains $controlPlane 'arthur-evidence-index.ps1' 'Control Plane must load evidence-index helper'
 Assert-Contains $controlPlane 'Get-ArthurGateRecordsFromResumeState' 'Control Plane must reconcile previous Gate records'
@@ -74,5 +134,7 @@ Assert-Contains $firmwareResume 'production/evidence/**' 'resume gate effective 
 Assert-Contains $firmwareResume 'resume.source.repository_head' 'resume gate must prefer schema-v2 nested source identity'
 Assert-Contains $firmwareResume 'execution_id' 'resume gate output must expose execution identity'
 Assert-Contains $firmwareResume 'gates' 'resume gate output must expose reconciled Gate state'
+Assert-Contains $firmwareResume 'arthur-state-consistency.ps1' 'resume gate must load runtime consistency helper'
+Assert-Contains $firmwareResume 'Test-ArthurRuntimeStateConsistency' 'resume gate must fail closed on cross-store state inconsistency'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'
