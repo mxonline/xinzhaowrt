@@ -22,8 +22,9 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) ("handoff-execution-{0}.json" -f ([
 try {
     Save-FeatureHandoffState -State $state -StatePath $temp
     $loaded = Load-FeatureHandoffState -StatePath $temp
+    $expectedDispatchKey = "adh-cn:$sha"
     Assert-Equal ([string]$loaded.execution_id) ([string]$state.execution_id) 'restart/resume must preserve execution_id'
-    Assert-Equal ([string]$loaded.dispatch_key) 'adh-cn:' + $sha 'existing feature+accepted-sha idempotency key must remain unchanged'
+    Assert-Equal ([string]$loaded.dispatch_key) $expectedDispatchKey 'existing feature+accepted-sha idempotency key must remain unchanged'
 }
 finally { Remove-Item -Force -ErrorAction SilentlyContinue $temp }
 
