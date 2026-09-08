@@ -1,0 +1,193 @@
+name: Arthur Production State Sync
+
+'on':
+  workflow_run:
+    workflows:
+      - Arthur Known-Good Update v3
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Existing Arthur Known-Good Update v3 run to reconcile into durable production state
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: arthur-production-state-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout current production state
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve source run and durable evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -Eeuo pipefail
+          run_id="$EVENT_RUN_ID"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then run_id="$INPUT_RUN_ID"; fi
+          [[ "$run_id" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: invalid source run id'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > /tmp/arthur-run.json
+          test "$(jq -r '.name' /tmp/arthur-run.json)" = 'Arthur Known-Good Update v3' || { echo 'BLOCKED: wrong source workflow'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" > /tmp/arthur-jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" > /tmp/arthur-artifacts.json
+          echo "SOURCE_RUN_ID=$run_id" >> "$GITHUB_ENV"
+
+      - name: Reconcile Gate and Evidence state
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          run = json.load(open('/tmp/arthur-run.json', encoding='utf-8'))
+          jobs = json.load(open('/tmp/arthur-jobs.json', encoding='utf-8'))
+          artifacts = json.load(open('/tmp/arthur-artifacts.json', encoding='utf-8'))
+          run_id = int(run['id'])
+          source_sha = str(run['head_sha']).lower()
+          resume_path = Path('production/resume-state.json')
+          intent_path = Path('production/operator-intent.json')
+          resume = json.load(open(resume_path, encoding='utf-8'))
+          intent = json.load(open(intent_path, encoding='utf-8'))
+          if int(resume.get('schema_version', 0)) != 2:
+              raise SystemExit('BLOCKED: production resume state is not schema v2')
+          if int(resume.get('production', {}).get('github_run_id', 0)) != run_id:
+              print(f'SKIP: durable execution is bound to another run: {resume.get("production", {}).get("github_run_id")}')
+              raise SystemExit(0)
+          if resume.get('source', {}).get('accepted_source_sha', '').lower() != source_sha:
+              raise SystemExit('BLOCKED: source SHA differs from durable execution')
+          execution_id = resume['execution_id']
+          evidence_path = Path('production/evidence') / execution_id / 'index.json'
+          evidence = json.load(open(evidence_path, encoding='utf-8'))
+
+          build_job = next((j for j in jobs.get('jobs', []) if j.get('name') == 'build-candidate'), None)
+          if not build_job:
+              raise SystemExit('BLOCKED: build-candidate job missing')
+          steps = {s.get('name'): s.get('conclusion') for s in build_job.get('steps', [])}
+          build_result = steps.get('Build Candidate from locked sources')
+          acceptance = steps.get('Enforce Candidate acceptance gates')
+          upload = steps.get('Upload verified Candidate')
+          release = steps.get('Publish Candidate release')
+          now = run.get('updated_at') or datetime.now(timezone.utc).isoformat()
+
+          def ev(eid):
+              return next((x for x in evidence['evidence'] if x.get('evidence_id') == eid), None)
+          build_ev = ev(f'build-run-{run_id}')
+          if not build_ev:
+              raise SystemExit('BLOCKED: BUILD evidence record missing')
+          build_ev['observed_at'] = now
+          build_ev['result'] = 'PASS' if build_result == 'success' else 'FAIL'
+
+          build_gate = resume['gates']['BUILD']
+          artifact_gate = resume['gates']['ARTIFACT']
+          if build_result != 'success':
+              build_gate['status'] = 'FAIL'
+              build_gate['verified_at'] = now
+              resume['current_gate'] = 'BUILD'
+              resume['next_action'] = 'BUILD'
+              resume['checkpoint']['current'] = 'BUILD'
+              resume['checkpoint']['next_action'] = 'BUILD'
+              resume['pending'] = ['BUILD']
+              intent['firmware_state']['current_stage'] = 'BUILD'
+              intent['firmware_state']['next_stage'] = 'BUILD'
+          else:
+              build_gate['status'] = 'PASS'
+              build_gate['verified_at'] = now
+              artifact_name = f'Arthur-v3-Candidate-{run_id}'
+              artifact = next((a for a in artifacts.get('artifacts', []) if a.get('name') == artifact_name and not a.get('expired')), None)
+              if acceptance == 'success' and upload == 'success' and artifact:
+                  artifact_id = int(artifact['id'])
+                  digest = str(artifact.get('digest') or '')
+                  archive_sha = digest.split(':',1)[1] if digest.startswith('sha256:') else ''
+                  artifact_eid = f'artifact-run-{run_id}'
+                  if not ev(artifact_eid):
+                      evidence['evidence'].append({
+                          'evidence_id': artifact_eid,
+                          'gate_id': 'ARTIFACT',
+                          'type': 'GITHUB_ACTIONS_ARTIFACT',
+                          'producer': 'ARTHUR_KNOWN_GOOD_UPDATE_V3',
+                          'source_sha': source_sha,
+                          'github_run_id': run_id,
+                          'artifact_id': artifact_id,
+                          'candidate_sha256': '',
+                          'device_build_id': '',
+                          'ref': f'github-actions:{os.environ["GITHUB_REPOSITORY"]}/artifacts/{artifact_id}',
+                          'sha256': archive_sha,
+                          'observed_at': now,
+                          'result': 'PASS'
+                      })
+                  artifact_gate['status'] = 'PASS'
+                  artifact_gate['evidence_refs'] = [f'evidence:{artifact_eid}']
+                  artifact_gate['verified_at'] = now
+                  resume['production']['artifact_id'] = artifact_id
+                  resume['current_gate'] = 'PRE_FLASH'
+                  resume['next_action'] = 'PRE_FLASH'
+                  resume['checkpoint']['current'] = 'PRE_FLASH'
+                  resume['checkpoint']['next_action'] = 'PRE_FLASH'
+                  resume['pending'] = ['PRE_FLASH']
+                  intent['firmware_state']['current_stage'] = 'ARTIFACT'
+                  intent['firmware_state']['next_stage'] = 'PRE_FLASH'
+                  intent['firmware_state']['active_artifact_id'] = artifact_id
+              else:
+                  artifact_gate['status'] = 'FAIL'
+                  resume['current_gate'] = 'ARTIFACT'
+                  resume['next_action'] = 'ARTIFACT'
+                  resume['checkpoint']['current'] = 'ARTIFACT'
+                  resume['checkpoint']['next_action'] = 'ARTIFACT'
+                  resume['pending'] = ['ARTIFACT']
+                  intent['firmware_state']['current_stage'] = 'ARTIFACT'
+                  intent['firmware_state']['next_stage'] = 'ARTIFACT'
+
+          resume['checkpoint']['turn_count'] = int(resume['checkpoint'].get('turn_count', 0)) + 1
+          resume['status'] = 'RESUME_SAFE'
+          resume['instruction_allowed'] = True
+          resume['conflicts'] = []
+          resume.pop('semantic_sha256', None)
+          compact = json.dumps(resume, separators=(',', ':'), ensure_ascii=False)
+          resume['semantic_sha256'] = hashlib.sha256(compact.encode()).hexdigest()
+
+          intent['firmware_state']['active_run_id'] = run_id
+          intent['firmware_state']['active_source_sha'] = source_sha
+          intent['firmware_state']['candidate_release_conclusion'] = release or 'missing'
+          intent['guardrails']['do_not_dispatch_duplicate_build'] = True
+          intent['guardrails']['do_not_interrupt_active_run'] = True
+
+          evidence_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          resume_path.write_text(json.dumps(resume, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          intent_path.write_text(json.dumps(intent, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          print(f'PASS: durable state reconciled run={run_id} build={build_result} acceptance={acceptance} upload={upload} release={release} next={resume["next_action"]}')
+          PY
+
+      - name: Commit state-only reconciliation
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'XinZhaoWrt State Bot'
+          git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git add production/resume-state.json production/operator-intent.json production/evidence/
+          if git diff --cached --quiet; then
+            echo 'PASS: durable production state already reconciled.'
+            exit 0
+          fi
+          git commit -m "state: reconcile Arthur production execution from run ${SOURCE_RUN_ID}"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git pull --rebase origin main
+          done
+          echo 'BLOCKED: unable to persist state reconciliation after retries' >&2
+          exit 1
