@@ -14,13 +14,19 @@ $intentPath = Join-Path $root 'production\operator-intent.json'
 $resumePath = Join-Path $root 'production\resume-state.json'
 $ledgerPath = Join-Path $root 'production\firmware-events.jsonl'
 $ledgerLibPath = Join-Path $root 'scripts\arthur-firmware-event-ledger.ps1'
+$evidenceLibPath = Join-Path $root 'scripts\arthur-evidence-index.ps1'
+$consistencyLibPath = Join-Path $root 'scripts\arthur-state-consistency.ps1'
 $gitShaHelperPath = Join-Path $root 'scripts\arthur-git-sha.ps1'
 $gitRemoteHelperPath = Join-Path $root 'scripts\arthur-git-remote.ps1'
 
 if (-not (Test-Path -LiteralPath $ledgerLibPath -PathType Leaf)) { throw 'RESUME_GATE_LEDGER_HELPER_MISSING' }
+if (-not (Test-Path -LiteralPath $evidenceLibPath -PathType Leaf)) { throw 'RESUME_GATE_EVIDENCE_HELPER_MISSING' }
+if (-not (Test-Path -LiteralPath $consistencyLibPath -PathType Leaf)) { throw 'RESUME_GATE_CONSISTENCY_HELPER_MISSING' }
 if (-not (Test-Path -LiteralPath $gitShaHelperPath -PathType Leaf)) { throw 'RESUME_GATE_GIT_SHA_HELPER_MISSING' }
 if (-not (Test-Path -LiteralPath $gitRemoteHelperPath -PathType Leaf)) { throw 'RESUME_GATE_GIT_REMOTE_HELPER_MISSING' }
 . $ledgerLibPath
+. $evidenceLibPath
+. $consistencyLibPath
 . $gitShaHelperPath
 . $gitRemoteHelperPath
 
@@ -36,6 +42,21 @@ $resume = Read-JsonFile -Path $resumePath -MissingCode 'RESUME_GATE_STATE_MISSIN
 [void](Test-ArthurFirmwareEventLedger -Path $ledgerPath)
 $events = @(Get-ArthurFirmwareEvents -Path $ledgerPath)
 $tail = @($events | Select-Object -Last ([Math]::Max(1,$EventTail)))
+
+$evidenceIndex = $null
+$evidenceIndexPath = ''
+$evidenceLoadError = ''
+$resumeExecutionId = if ($resume.PSObject.Properties['execution_id']) { [string]$resume.execution_id } else { '' }
+if (-not [string]::IsNullOrWhiteSpace($resumeExecutionId)) {
+    try {
+        $evidenceIndexPath = Get-ArthurEvidenceIndexPath -Root $root -ExecutionId $resumeExecutionId
+        $evidenceIndex = Read-ArthurEvidenceIndex -Path $evidenceIndexPath
+    }
+    catch {
+        $evidenceLoadError = $_.Exception.Message
+    }
+}
+$runtimeConsistency = Test-ArthurRuntimeStateConsistency -ResumeState $resume -Events $events -EvidenceIndex $evidenceIndex
 
 Push-Location $root
 try {
@@ -94,6 +115,9 @@ if ([string]$resume.status -ne 'RESUME_SAFE') { $conflicts += "RESUME_STATUS_$([
 if ($resume.instruction_allowed -ne $true) { $conflicts += 'RESUME_INSTRUCTION_NOT_ALLOWED' }
 if ([string]::IsNullOrWhiteSpace($effectiveHead)) { $conflicts += 'EFFECTIVE_GITHUB_HEAD_INVALID' }
 if (-not $SkipExternal -and -not $github.checked) { $conflicts += "GITHUB_EVIDENCE_UNAVAILABLE:$($github.status)" }
+if (-not [string]::IsNullOrWhiteSpace($evidenceLoadError)) { $conflicts += "RUNTIME_STATE_EVIDENCE_INDEX_LOAD_FAILED:$evidenceLoadError" }
+foreach ($runtimeConflict in @($runtimeConsistency.conflicts)) { $conflicts += "RUNTIME_STATE_$runtimeConflict" }
+foreach ($runtimeWarning in @($runtimeConsistency.warnings)) { $reconciliationWarnings += "RUNTIME_STATE_$runtimeWarning" }
 
 $resumeHeadValue = if ($resume.PSObject.Properties['source'] -and $resume.source -and $resume.source.PSObject.Properties['repository_head']) {
     [string]$resume.source.repository_head
@@ -157,6 +181,16 @@ $result = [ordered]@{
         verified = $resume.verified
         pending = @($resume.pending)
         conflicts = @($resume.conflicts)
+    }
+    runtime_consistency = [ordered]@{
+        consistent = [bool]$runtimeConsistency.consistent
+        execution_id = [string]$runtimeConsistency.execution_id
+        expected_gate = [string]$runtimeConsistency.expected_gate
+        evidence_index_path = $evidenceIndexPath
+        evidence_count = [int]$runtimeConsistency.evidence_count
+        execution_aware_event_count = [int]$runtimeConsistency.execution_aware_event_count
+        warnings = @($runtimeConsistency.warnings)
+        conflicts = @($runtimeConsistency.conflicts)
     }
     effective_repository_head = $effectiveHead
     repository_head_match = (-not $headDrift)
