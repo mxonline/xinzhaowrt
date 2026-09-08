@@ -15,6 +15,12 @@ This file is the durable operator/GPT contract for deciding whether a firmware a
 9. **Machine time is absolute.** State/event evidence must use ISO 8601 timestamps with `Z` or an explicit UTC offset. Words such as `today`, `yesterday`, “今天”, “昨天”, “刚才”, and “前几天” are presentation language only and must never be used as machine truth or to order firmware events.
 10. **The event ledger is append-only.** `production/firmware-events.jsonl` records what actually happened. Existing event lines must never be edited, reordered, or deleted to make a later narrative look consistent; corrections are new events.
 
+## Unified Gate and Evidence rule
+
+For schema-v2 state, read `execution_id`, `gates`, `current_gate`, and `next_action` before using compatibility summary fields. The Arthur Control Plane alone decides Gate status. `NO EVIDENCE -> NO PASS`; `NO PASS -> NO RELEASE`.
+
+`STALE` means earlier evidence no longer proves the current source, artifact, device, or requirement identity. Only the affected dependency chain may be rerun. Codex executes the reconciled `next_action`; it must not restart a completed upstream Gate after a chat, process, controller, or computer restart. Evidence/state-only commits are control-plane changes and never justify a firmware rebuild.
+
 ## Required GPT/Codex startup sequence
 
 For firmware prompts such as “进度”, “下一步”, “继续”, “现在做什么”, “编译了吗”, “昨天做到哪里”, “修 ADH”, or “让 Codex 继续”, perform this sequence before proposing an executable action or asserting a concrete current stage:
