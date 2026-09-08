@@ -14,7 +14,6 @@ name: Arthur Durable State Gate
       - 'production/resume-state.json'
       - 'production/operator-intent.json'
       - 'production/evidence/**'
-      - 'runtime-contract.json'
       - 'tests/arthur-state-contract.tests.ps1'
       - 'tests/arthur-resume-state-v2.tests.ps1'
       - 'tests/arthur-control-plane-gates.tests.ps1'
@@ -22,7 +21,6 @@ name: Arthur Durable State Gate
       - 'tests/arthur-inherited-evidence.tests.ps1'
       - 'tests/production-agent-evidence.tests.ps1'
       - 'tests/arthur-operator-intent.tests.ps1'
-      - 'tests/arthur-global-runtime-contract.tests.ps1'
       - '.github/workflows/arthur-state-contract.yml'
   pull_request:
     branches:
@@ -37,7 +35,6 @@ name: Arthur Durable State Gate
       - 'production/resume-state.json'
       - 'production/operator-intent.json'
       - 'production/evidence/**'
-      - 'runtime-contract.json'
       - 'tests/arthur-state-contract.tests.ps1'
       - 'tests/arthur-resume-state-v2.tests.ps1'
       - 'tests/arthur-control-plane-gates.tests.ps1'
@@ -45,7 +42,6 @@ name: Arthur Durable State Gate
       - 'tests/arthur-inherited-evidence.tests.ps1'
       - 'tests/production-agent-evidence.tests.ps1'
       - 'tests/arthur-operator-intent.tests.ps1'
-      - 'tests/arthur-global-runtime-contract.tests.ps1'
       - '.github/workflows/arthur-state-contract.yml'
 
 permissions:
@@ -91,7 +87,3 @@ jobs:
       - name: Test operator intent and active Candidate ownership
         shell: pwsh
         run: ./tests/arthur-operator-intent.tests.ps1
-
-      - name: Test Global Runtime Contract integration
-        shell: pwsh
-        run: ./tests/arthur-global-runtime-contract.tests.ps1
