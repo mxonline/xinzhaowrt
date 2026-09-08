@@ -1,0 +1,46 @@
+name: Arthur State Docs Closeout
+
+'on':
+  push:
+    branches:
+      - codex/arthur-unified-state-evidence
+    paths:
+      - '.github/workflows/arthur-state-docs-closeout.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/arthur-unified-state-evidence
+          fetch-depth: 0
+      - name: Append unified state rules once
+        shell: python
+        run: |
+          from pathlib import Path
+          blocks = {
+            'production/README.md': '''\n\n## Unified execution state and evidence\n\nArthur uses `production/resume-state.json` schema v2 as the current execution snapshot. `execution_id` binds one end-to-end task; `gates` records `PENDING/RUNNING/PASS/FAIL/BLOCKED/STALE/SKIPPED`; `production/evidence/<execution_id>/index.json` records identity-matched evidence; `production/firmware-events.jsonl` remains the append-only history. The Arthur Control Plane is the only Gate arbiter. Executors submit observations/evidence only. A Gate cannot be PASS without valid evidence or explicit immutable-baseline provenance. STALE is incomplete and reruns only the affected dependency chain. State/evidence-only commits are FAST_GATE and must not trigger a Candidate build.\n''',
+            'production/GPT-FIRMWARE-EXECUTION-RULES.md': '''\n\n## Unified Gate and Evidence rule\n\nFor schema-v2 state, read `execution_id`, `gates`, `current_gate` and `next_action` before using compatibility summary fields. The Arthur Control Plane alone decides Gate status. `NO EVIDENCE -> NO PASS`, `NO PASS -> NO RELEASE`. `STALE` means earlier evidence no longer proves the current source/artifact/device/requirement identity and only dependent Gates may be rerun. Codex executes the reconciled `next_action`; it must not restart a completed upstream Gate after a chat/session/process restart. Evidence/state-only commits are control-plane changes and never justify a firmware rebuild.\n''',
+            'AGENTS.md': '''\n\n## Unified Arthur execution contract\n\n`production/resume-state.json` schema v2 is the machine current-state contract. Use its `execution_id`, Gate map and `next_action`; treat legacy `verified.*` values as compatibility display only. `production/evidence/<execution_id>/index.json` proves Gate observations, and `production/firmware-events.jsonl` proves chronology. The Arthur Control Plane is the only Gate arbiter. No evidence means no PASS; STALE means rerun only the invalidated dependency chain; state/evidence-only commits remain FAST_GATE and must not request firmware compilation. Codex and other executors must continue the reconciled `next_action` rather than restarting completed stages.\n'''
+          }
+          marker = '## Unified execution state and evidence'
+          for path, block in blocks.items():
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              own_marker = block.strip().splitlines()[0]
+              if own_marker not in text:
+                  p.write_text(text.rstrip() + block + '\n', encoding='utf-8')
+      - name: Commit documentation
+        run: |
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add production/README.md production/GPT-FIRMWARE-EXECUTION-RULES.md AGENTS.md
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs(state): document unified execution contract'
+          git push origin HEAD:codex/arthur-unified-state-evidence
