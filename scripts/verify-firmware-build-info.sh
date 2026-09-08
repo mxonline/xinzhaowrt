@@ -3,7 +3,10 @@ set -Eeuo pipefail
 IMAGE="${1:?usage: $0 <sysupgrade.bin> <unsquashfs>}"
 UNSQUASHFS="${2:?usage: $0 <sysupgrade.bin> <unsquashfs>}"
 [[ -s "$IMAGE" ]] || { echo "ERROR: missing firmware image: $IMAGE" >&2; exit 1; }
-[[ -x "$UNSQUASHFS" ]] || { echo "ERROR: missing unsquashfs: $UNSQUASHFS" >&2; exit 1; }
+if [[ ! -x "$UNSQUASHFS" ]]; then
+  UNSQUASHFS="$(command -v unsquashfs || true)"
+fi
+[[ -n "$UNSQUASHFS" && -x "$UNSQUASHFS" ]] || { echo "ERROR: missing unsquashfs verifier dependency" >&2; exit 1; }
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 member="$(tar -tf "$IMAGE" | awk '/\/root$/ { print; exit }')"
 [[ -n "$member" ]] || { echo 'ERROR: sysupgrade image has no rootfs member' >&2; exit 1; }
