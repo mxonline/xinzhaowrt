@@ -1,0 +1,46 @@
+name: Arthur Unified State Integration
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/arthur-*.ps1'
+      - 'scripts/feature-handoff*.ps1'
+      - 'scripts/production-agent.ps1'
+      - 'tests/*state*.tests.ps1'
+      - 'tests/*evidence*.tests.ps1'
+      - 'tests/feature-handoff*.tests.ps1'
+      - '.github/workflows/arthur-unified-state-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unified-state:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Gate contract
+        shell: pwsh
+        run: ./tests/arthur-state-contract.tests.ps1
+      - name: Evidence index
+        shell: pwsh
+        run: ./tests/arthur-evidence-index.tests.ps1
+      - name: Resume schema v2
+        shell: pwsh
+        run: ./tests/arthur-resume-state-v2.tests.ps1
+      - name: Control Plane arbitration
+        shell: pwsh
+        run: ./tests/arthur-control-plane-gates.tests.ps1
+      - name: Feature Handoff execution identity
+        shell: pwsh
+        run: ./tests/feature-handoff-execution.tests.ps1
+      - name: Production Agent evidence
+        shell: pwsh
+        run: ./tests/production-agent-evidence.tests.ps1
+      - name: Inherited evidence
+        shell: pwsh
+        run: ./tests/arthur-inherited-evidence.tests.ps1
