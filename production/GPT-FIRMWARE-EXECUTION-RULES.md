@@ -14,6 +14,7 @@ This file is the durable operator/GPT contract for deciding whether a firmware a
 8. On conflict, do not guess. Report the conflicting sources and require state reconciliation before firmware execution.
 9. **Machine time is absolute.** State/event evidence must use ISO 8601 timestamps with `Z` or an explicit UTC offset. Words such as `today`, `yesterday`, “今天”, “昨天”, “刚才”, and “前几天” are presentation language only and must never be used as machine truth or to order firmware events.
 10. **The event ledger is append-only.** `production/firmware-events.jsonl` records what actually happened. Existing event lines must never be edited, reordered, or deleted to make a later narrative look consistent; corrections are new events.
+11. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** If remote-main verification returns `schannel: AcquireCredentialsHandle failed`, `SEC_E_NO_CREDENTIALS`, or the equivalent Schannel credential-acquisition signature, use `scripts/arthur-git-remote.ps1`: retry the Git read with `http.sslBackend=openssl`, then fall back to authenticated `gh api` for read-only remote-main identity. A successful fallback is auditable degraded transport and must not create `NEW_CREDENTIAL_PROVISIONING`, must not block workflow dispatch, and must not trigger a rebuild. If every fallback is unavailable, remain `RETRYING`; only a real non-Schannel authentication/authorization failure may fail closed as a credential problem.
 
 ## Unified Gate and Evidence rule
 
@@ -29,7 +30,7 @@ For firmware prompts such as “进度”, “下一步”, “继续”, “现
 2. **Workflow Recovery** — read the canonical Arthur phase order from `scripts/arthur-resume-state.ps1` and the frozen RELEASE-FIRST policy.
 3. **Current-State Recovery** — read `production/resume-state.json`.
 4. **Historical Recovery** — validate and read `production/firmware-events.jsonl`; use the latest relevant events to explain how the current checkpoint was reached. Never reconstruct this from chat when the ledger exists.
-5. **External Evidence** — verify current effective Git HEAD and relevant GitHub workflow/release evidence; use live-device evidence already reconciled into the resume snapshot or fresh read-only device evidence when the action requires it.
+5. **External Evidence** — verify current effective Git HEAD and relevant GitHub workflow/release evidence. Remote `main` verification must use the canonical resilient path in `scripts/arthur-git-remote.ps1` (normally through `scripts/arthur-firmware-resume.ps1`), not a bare `git ls-remote` failure as a terminal decision. Preserve the returned remote SHA, method (`GIT`, `GIT_OPENSSL`, or `GH_API`) and degraded flag. Use live-device evidence already reconciled into the resume snapshot or fresh read-only device evidence when the action requires it.
 6. **State Reconciliation** — compare operator-corrected work start, machine checkpoint, verified-frozen items, current source SHA, candidate/build identity, event chronology, and live device state.
 7. **Authorization Check** — only explicit `EXECUTE_FIRMWARE + FIRMWARE_RELEASE + firmware_execution_authorized=true` can unlock a firmware action.
 8. **Action Check** — the proposed action must match the reconciled current stage and the next permitted stage. Otherwise stop and reconcile.
