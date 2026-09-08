@@ -1,5 +1,11 @@
 Set-StrictMode -Version Latest
 
+$stateContractPath = Join-Path $PSScriptRoot 'arthur-state-contract.ps1'
+if (-not (Test-Path -LiteralPath $stateContractPath -PathType Leaf)) {
+    throw 'ARTHUR_RESUME_STATE_CONTRACT_MISSING'
+}
+. $stateContractPath
+
 $script:ArthurResumePhaseOrder = @(
     'FORENSICS',
     'ADH_MANAGEMENT',
@@ -44,6 +50,11 @@ function Get-ArthurResumeMember {
     $property = $Value.PSObject.Properties[$Name]
     if ($property) { return $property.Value }
     return $null
+}
+
+function Get-ArthurResumeMapValue {
+    param([object]$Map,[string]$Name)
+    return (Get-ArthurResumeMember $Map $Name)
 }
 
 function Get-ArthurResumePhaseIndex {
@@ -91,6 +102,68 @@ function Get-ArthurResumeSemanticHash {
     finally { $sha.Dispose() }
 }
 
+function Resolve-ArthurMigrationExecutionId {
+    param(
+        [string]$ExplicitExecutionId,
+        [object]$PreviousResumeState,
+        [object]$BaselineFirmware
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitExecutionId)) {
+        $candidate = $ExplicitExecutionId.Trim().ToLowerInvariant()
+        if ($candidate -notmatch '^arthur-[a-z0-9-]+-[0-9a-f]{7}-\d{8}$') {
+            throw "ARTHUR_EXECUTION_ID_INVALID=$ExplicitExecutionId"
+        }
+        return $candidate
+    }
+
+    $previous = [string](Get-ArthurResumeMember $PreviousResumeState 'execution_id')
+    if (-not [string]::IsNullOrWhiteSpace($previous)) { return $previous }
+
+    $sourceSha = [string](Get-ArthurResumeMember $BaselineFirmware 'source_sha')
+    $buildDateText = [string](Get-ArthurResumeMember $BaselineFirmware 'build_date')
+    $buildDate = [datetime]'1970-01-01'
+    if (-not [string]::IsNullOrWhiteSpace($buildDateText)) {
+        $parsedDate = [datetime]::MinValue
+        if ([datetime]::TryParse($buildDateText,[ref]$parsedDate)) { $buildDate = $parsedDate }
+    }
+    return (New-ArthurExecutionId -TaskSlug 'migrated' -AcceptedSourceSha $sourceSha -Date $buildDate)
+}
+
+function Resolve-ArthurGateMap {
+    param(
+        [object[]]$GateRecords = @(),
+        [object]$CurrentSubjects = $null,
+        [object]$RequirementDigests = $null
+    )
+
+    $map = [ordered]@{}
+    foreach ($gate in @($GateRecords)) {
+        if ($null -eq $gate) { continue }
+        $gateId = [string](Get-ArthurResumeMember $gate 'gate_id')
+        if ([string]::IsNullOrWhiteSpace($gateId)) { throw 'ARTHUR_RESUME_GATE_ID_MISSING' }
+
+        $currentSubject = Get-ArthurResumeMapValue $CurrentSubjects $gateId
+        if ($null -eq $currentSubject) { $currentSubject = Get-ArthurResumeMember $gate 'subject' }
+        $currentDigest = [string](Get-ArthurResumeMapValue $RequirementDigests $gateId)
+        if ([string]::IsNullOrWhiteSpace($currentDigest)) { $currentDigest = [string](Get-ArthurResumeMember $gate 'requirement_digest') }
+
+        $status = Resolve-ArthurGateStatus -Gate $gate -CurrentSubject $currentSubject -CurrentRequirementDigest $currentDigest
+        $record = New-ArthurGateRecord `
+            -GateId $gateId `
+            -RequirementRef ([string](Get-ArthurResumeMember $gate 'requirement_ref')) `
+            -RequirementDigest ([string](Get-ArthurResumeMember $gate 'requirement_digest')) `
+            -Status $status `
+            -Subject (Get-ArthurResumeMember $gate 'subject') `
+            -EvidenceRefs @((Get-ArthurResumeMember $gate 'evidence_refs')) `
+            -Inherited ([bool](Get-ArthurResumeMember $gate 'inherited')) `
+            -InheritedFrom ([string](Get-ArthurResumeMember $gate 'inherited_from')) `
+            -VerifiedAt ([string](Get-ArthurResumeMember $gate 'verified_at'))
+        $map[$gateId] = $record
+    }
+    return [pscustomobject]$map
+}
+
 function Resolve-ArthurResumeState {
     [CmdletBinding()]
     param(
@@ -99,7 +172,12 @@ function Resolve-ArthurResumeState {
         [object]$LiveDevice = $null,
         [Parameter(Mandatory=$true)][object]$RuntimeState,
         [object]$PreviousResumeState = $null,
-        [switch]$AllowBaselineFallbackForMissingLiveDevice
+        [switch]$AllowBaselineFallbackForMissingLiveDevice,
+        [string]$ExecutionId = '',
+        [object[]]$GateRecords = @(),
+        [object]$CurrentSubjects = $null,
+        [object]$RequirementDigests = $null,
+        [object]$ProductionIdentity = $null
     )
 
     $conflicts = New-Object System.Collections.Generic.List[string]
@@ -176,18 +254,48 @@ function Resolve-ArthurResumeState {
         }
     }
 
+    $resolvedExecutionId = Resolve-ArthurMigrationExecutionId -ExplicitExecutionId $ExecutionId -PreviousResumeState $PreviousResumeState -BaselineFirmware $baselineFirmware
+    $gateMap = Resolve-ArthurGateMap -GateRecords $GateRecords -CurrentSubjects $CurrentSubjects -RequirementDigests $RequirementDigests
+
+    $productionRun = Get-ArthurResumeMember $ProductionIdentity 'github_run_id'
+    if ($null -eq $productionRun -or [string]::IsNullOrWhiteSpace([string]$productionRun)) { $productionRun = Get-ArthurResumeMember $baselineFirmware 'github_run_id' }
+    $productionArtifact = Get-ArthurResumeMember $ProductionIdentity 'artifact_id'
+    if ($null -eq $productionArtifact -or [string]::IsNullOrWhiteSpace([string]$productionArtifact)) { $productionArtifact = Get-ArthurResumeMember $baselineFirmware 'artifact_id' }
+    $productionCandidateSha = [string](Get-ArthurResumeMember $ProductionIdentity 'candidate_sha256')
+    if ([string]::IsNullOrWhiteSpace($productionCandidateSha)) { $productionCandidateSha = [string](Get-ArthurResumeMember $baselineFirmware 'sha256') }
+
     $safe = ($conflicts.Count -eq 0)
+    $source = [ordered]@{
+        repository_head = $RepositoryHead.ToLowerInvariant()
+        accepted_source_sha = $baselineSourceSha
+    }
+    $production = [ordered]@{
+        github_run_id = $(if ($null -eq $productionRun -or [string]::IsNullOrWhiteSpace([string]$productionRun)) { [long]0 } else { [long]$productionRun })
+        artifact_id = $(if ($null -eq $productionArtifact -or [string]::IsNullOrWhiteSpace([string]$productionArtifact)) { [long]0 } else { [long]$productionArtifact })
+        candidate_sha256 = $productionCandidateSha
+    }
+    $device = [ordered]@{
+        version = $liveVersion
+        build_id = $liveBuildId
+        git_commit = $liveCommit
+        evidence = $liveEvidence
+    }
+
     $state = [ordered]@{
-        schema_version = 1
+        schema_version = 2
+        execution_id = $resolvedExecutionId
         status = $(if ($safe) { 'RESUME_SAFE' } else { 'STATE_RECONCILIATION_REQUIRED' })
         instruction_allowed = $safe
-        repository_head = $RepositoryHead.ToLowerInvariant()
-        real_device = [ordered]@{
-            version = $liveVersion
-            build_id = $liveBuildId
-            git_commit = $liveCommit
-            evidence = $liveEvidence
-        }
+        source = $source
+        production = $production
+        device = $device
+        gates = $gateMap
+        current_gate = $phase
+        next_action = $nextAction
+
+        # Compatibility fields retained until all existing callers consume schema v2.
+        repository_head = $source.repository_head
+        real_device = $device
         accepted_baseline = [ordered]@{
             version = $baselineVersion
             build_id = $baselineBuildId
@@ -206,7 +314,6 @@ function Resolve-ArthurResumeState {
             quickstart = 'AUTHENTICATED_RENDER_VERIFIED'
         }
         pending = @($nextAction)
-        next_action = $nextAction
         conflicts = @($conflicts)
         source_precedence = @(
             'LIVE_DEVICE',
