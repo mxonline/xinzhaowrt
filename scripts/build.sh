@@ -27,6 +27,7 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+BUILD_ID="${BUILD_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%d%H%M%S)}}"
 BUILD_TOOLCHAIN_BUNDLES="${BUILD_TOOLCHAIN_BUNDLES:-0}"
 BUILD_CLOSURE_ONLY="${BUILD_CLOSURE_ONLY:-0}"
 
@@ -92,6 +93,10 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
+BUILD_INFO_JSON="$SRC/files/www/luci-static/xinzhao/build-info.json"
+[[ -f "$BUILD_INFO_JSON" ]] || { echo "ERROR: build-info template missing: $BUILD_INFO_JSON"; exit 1; }
+sed -i -e "s|@VERSION@|$FIRMWARE_VERSION|g" -e "s|@BUILD_DATE@|$BUILD_DATE|g" -e "s|@GIT_COMMIT@|$SOURCE_SHA|g" -e "s|@BUILD_ID@|$BUILD_ID|g" "$BUILD_INFO_JSON"
+if grep -Eq '@VERSION@|@BUILD_DATE@|@GIT_COMMIT@|@BUILD_ID@' "$BUILD_INFO_JSON"; then echo 'ERROR: build-info substitution left unresolved placeholders'; exit 1; fi
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 cp "$PROJECT_ROOT/config/arthur.config" .config
@@ -178,6 +183,10 @@ done < <(find "$TARGET_DIR" -maxdepth 1 -type f -name "*${DEVICE_PROFILE}*" -pri
 for meta in sha256sums profiles.json; do
   [[ -f "$TARGET_DIR/$meta" ]] && cp -v "$TARGET_DIR/$meta" "$OUT/firmware/"
 done
+for image in "$OUT"/firmware/*sysupgrade.bin; do
+  [[ -e "$image" ]] || continue
+  bash "$PROJECT_ROOT/scripts/verify-firmware-build-info.sh" "$image" "$SRC/staging_dir/host/bin/unsquashfs"
+done
 
 {
   echo "Firmware: $FIRMWARE_DISPLAY_NAME"
@@ -193,6 +202,7 @@ done
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
+  echo "Build ID: $BUILD_ID"
   echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
   echo "Toolchain bundles enabled: $BUILD_TOOLCHAIN_BUNDLES"
   echo "Large-upload OOM guard: disk-backed Nginx/cgi-io transient buffering; final sysupgrade handoff /tmp/firmware.bin"

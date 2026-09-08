@@ -23,7 +23,8 @@ mkdir -p \
   "$ROOTFS/www/luci-static/resources/i18n" \
   "$ROOTFS/www/luci-static/argon" \
   "$ROOTFS/www/luci-static/kucat" \
-  "$ROOTFS/www/luci-static/quickstart"
+  "$ROOTFS/www/luci-static/quickstart" \
+  "$ROOTFS/www/luci-static/xinzhao"
 
 cat > "$CONFIG" <<CONFIG
 CONFIG_VERSIONOPT=y
@@ -60,6 +61,9 @@ printf '%s\n' 'adguard zh-cn locale' > "$ROOTFS/usr/lib/lua/luci/i18n/adguardhom
 printf '%s\n' 'argon' > "$ROOTFS/www/luci-static/argon/marker"
 printf '%s\n' 'kucat' > "$ROOTFS/www/luci-static/kucat/marker"
 printf '%s\n' 'quickstart' > "$ROOTFS/www/luci-static/quickstart/index.js"
+cat > "$ROOTFS/www/luci-static/xinzhao/build-info.json" <<'BUILDINFO'
+{"Firmware": "XinZhaoWrt", "Version": "0.1.3", "Build Date": "2026-09-08", "Git Commit": "3600414bdcc98f9e4af6ad51baba5f5643e04a3f", "Build ID": "34086705566", "Target": "qualcommax/ipq60xx", "Profile": "jdcloud_re-ss-01"}
+BUILDINFO
 
 bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$CONFIG" "$ROOTFS"
 
@@ -70,6 +74,11 @@ if bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$CONFIG" "$ROOT
   exit 1
 fi
 printf '%s\n' 'mature manual' > "$ROOTFS/usr/lib/lua/luci/model/cbi/AdGuardHome/manual.lua"
+cp "$PROJECT_ROOT/files/www/luci-static/xinzhao/build-info.json" "$ROOTFS/www/luci-static/xinzhao/build-info.json"
+if bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$CONFIG" "$ROOTFS" >/dev/null 2>&1; then
+  echo 'FAIL: final rootfs verifier accepted unresolved XinZhao build-info placeholders.' >&2
+  exit 1
+fi
 
 # Fail closed if preserved-upgrade Chinese convergence is absent.
 rm -f "$ROOTFS/etc/hotplug.d/iface/95-xinzhao-luci-converge"

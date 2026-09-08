@@ -67,6 +67,15 @@ require_file_text "$ROOTFS_DIR/etc/hotplug.d/iface/95-xinzhao-luci-converge" '/u
 require_dir "$ROOTFS_DIR/www/luci-static/argon"
 require_dir "$ROOTFS_DIR/www/luci-static/kucat"
 require_file "$ROOTFS_DIR/www/luci-static/quickstart/index.js"
+build_info="$ROOTFS_DIR/www/luci-static/xinzhao/build-info.json"
+require_file "$build_info"
+if grep -Eq '@VERSION@|@BUILD_DATE@|@GIT_COMMIT@|@BUILD_ID@' "$build_info"; then
+  echo 'ERROR: final rootfs build-info still contains unresolved placeholders' >&2
+  exit 1
+fi
+require_file_text "$build_info" '"Firmware": "XinZhaoWrt"'
+require_file_text "$build_info" '"Target": "qualcommax/ipq60xx"'
+require_file_text "$build_info" '"Profile": "jdcloud_re-ss-01"'
 
 # The accepted kenzok8 package provides the complete uppercase CBI manager.
 # Require its controller, all routes/models, config, init, YAML and ACL rather
