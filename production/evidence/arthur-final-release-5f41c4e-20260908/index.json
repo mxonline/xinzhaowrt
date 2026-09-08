@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "execution_id": "arthur-final-release-5f41c4e-20260908",
+  "evidence": [
+    {
+      "evidence_id": "baseline-wifi-v1",
+      "gate_id": "WIFI",
+      "type": "INHERITED_REAL_DEVICE_BASELINE",
+      "producer": "STATE_MIGRATION",
+      "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
+      "github_run_id": 0,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "33462873812",
+      "ref": "github:blob:production/resume-state.json@dedcae7754b7e1aeecf112ce22c556daccb0f0c2",
+      "sha256": "",
+      "observed_at": "2026-09-08T23:54:00+08:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "baseline-luci-chinese-v1",
+      "gate_id": "LUCI_CHINESE",
+      "type": "INHERITED_REAL_DEVICE_BASELINE",
+      "producer": "STATE_MIGRATION",
+      "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
+      "github_run_id": 0,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "33462873812",
+      "ref": "github:blob:production/resume-state.json@dedcae7754b7e1aeecf112ce22c556daccb0f0c2",
+      "sha256": "",
+      "observed_at": "2026-09-08T23:54:00+08:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "baseline-adh-manager-v1",
+      "gate_id": "ADGUARD_FULL_MANAGER",
+      "type": "INHERITED_REAL_DEVICE_BASELINE",
+      "producer": "STATE_MIGRATION",
+      "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
+      "github_run_id": 0,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "33462873812",
+      "ref": "github:blob:production/resume-state.json@dedcae7754b7e1aeecf112ce22c556daccb0f0c2",
+      "sha256": "",
+      "observed_at": "2026-09-08T23:54:00+08:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "baseline-quickstart-v1",
+      "gate_id": "QUICKSTART",
+      "type": "INHERITED_REAL_DEVICE_BASELINE",
+      "producer": "STATE_MIGRATION",
+      "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
+      "github_run_id": 0,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "33462873812",
+      "ref": "github:blob:production/resume-state.json@dedcae7754b7e1aeecf112ce22c556daccb0f0c2",
+      "sha256": "",
+      "observed_at": "2026-09-08T23:54:00+08:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "build-run-34242450515",
+      "gate_id": "BUILD",
+      "type": "GITHUB_ACTIONS_RUN",
+      "producer": "ARTHUR_KNOWN_GOOD_UPDATE_V3",
+      "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
+      "github_run_id": 34242450515,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/34242450515",
+      "sha256": "",
+      "observed_at": "2026-09-08T23:54:00+08:00",
+      "result": "RUNNING"
+    }
+  ]
+}
