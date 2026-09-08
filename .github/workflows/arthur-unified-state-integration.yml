@@ -17,12 +17,11 @@ permissions:
   contents: read
 
 jobs:
-  unified-state:
+  foundation:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Gate contract
         shell: pwsh
         run: ./tests/arthur-state-contract.tests.ps1
@@ -32,15 +31,35 @@ jobs:
       - name: Resume schema v2
         shell: pwsh
         run: ./tests/arthur-resume-state-v2.tests.ps1
-      - name: Control Plane arbitration
-        shell: pwsh
+
+  control-plane:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
         run: ./tests/arthur-control-plane-gates.tests.ps1
-      - name: Feature Handoff execution identity
-        shell: pwsh
+
+  feature-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
         run: ./tests/feature-handoff-execution.tests.ps1
-      - name: Production Agent evidence
-        shell: pwsh
+
+  production-agent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
         run: ./tests/production-agent-evidence.tests.ps1
-      - name: Inherited evidence
-        shell: pwsh
+
+  inherited-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
         run: ./tests/arthur-inherited-evidence.tests.ps1
