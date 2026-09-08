@@ -6,8 +6,8 @@
   "firmware_execution_authorized": true,
   "execution_id": "arthur-final-release-5f41c4e-20260908",
   "firmware_state": {
-    "current_stage": "BUILD",
-    "next_stage": "ARTIFACT",
+    "current_stage": "ARTIFACT",
+    "next_stage": "PRE_FLASH",
     "active_run_id": 34242450515,
     "active_source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
     "verified_frozen": [
@@ -22,7 +22,9 @@
       "AdGuard Home full manager",
       "official iStoreOS QuickStart"
     ],
-    "source": "KNOWN_GOOD_V3_RUN_34242450515_SOURCE_5F41C4E"
+    "source": "KNOWN_GOOD_V3_RUN_34242450515_SOURCE_5F41C4E",
+    "active_artifact_id": 10068849426,
+    "candidate_release_conclusion": "success"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,

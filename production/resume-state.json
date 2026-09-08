@@ -9,7 +9,7 @@
   },
   "production": {
     "github_run_id": 34242450515,
-    "artifact_id": 0,
+    "artifact_id": 10068849426,
     "candidate_sha256": ""
   },
   "device": {
@@ -85,7 +85,7 @@
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "RUNNING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "fdf1c18405589a44782b24c80194a6700f497cb7dd0e594ac30cabdfbefdc134",
       "subject": {
@@ -97,21 +97,23 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-09-08T17:40:39Z"
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#artifact",
       "requirement_digest": "6964a74cb9e5c95b7a71a6530302675c819a9a33774afa7c55b2498008572ce8",
       "subject": {
         "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
         "github_run_id": 34242450515
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "evidence:artifact-run-34242450515"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-09-08T17:40:39Z"
     },
     "PRE_FLASH": {
       "gate_id": "PRE_FLASH",
@@ -352,8 +354,8 @@
       "verified_at": ""
     }
   },
-  "current_gate": "BUILD",
-  "next_action": "BUILD",
+  "current_gate": "PRE_FLASH",
+  "next_action": "PRE_FLASH",
   "repository_head": "b0d4df823d6c368d34329a97862a6f26690ab9b7",
   "real_device": {
     "version": "0.1.3",
@@ -367,9 +369,9 @@
     "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
   },
   "checkpoint": {
-    "current": "BUILD",
-    "next_action": "BUILD",
-    "turn_count": 6
+    "current": "PRE_FLASH",
+    "next_action": "PRE_FLASH",
+    "turn_count": 7
   },
   "verified": {
     "real_device_baseline": "MATCHED",
@@ -379,7 +381,7 @@
     "quickstart": "AUTHENTICATED_RENDER_VERIFIED"
   },
   "pending": [
-    "BUILD"
+    "PRE_FLASH"
   ],
   "conflicts": [],
   "source_precedence": [
@@ -395,5 +397,5 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "semantic_sha256": "e96ac12e2d1f28a2a7fba95f7a2b8f64d3ecc746fdccf920dea8406ad3b1829a"
+  "semantic_sha256": "dc525478e87dc8ee0f8b33588e5dadee8ade44dfcc87c826c3a889d483cd4bf6"
 }

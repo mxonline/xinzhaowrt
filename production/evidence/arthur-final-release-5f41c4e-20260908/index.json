@@ -74,8 +74,23 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/34242450515",
       "sha256": "",
-      "observed_at": "2026-09-08T23:54:00+08:00",
-      "result": "RUNNING"
+      "observed_at": "2026-09-08T17:40:39Z",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "artifact-run-34242450515",
+      "gate_id": "ARTIFACT",
+      "type": "GITHUB_ACTIONS_ARTIFACT",
+      "producer": "ARTHUR_KNOWN_GOOD_UPDATE_V3",
+      "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
+      "github_run_id": 34242450515,
+      "artifact_id": 10068849426,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/artifacts/10068849426",
+      "sha256": "5c2fe7c25a18145d7fff408d0d1b9d22c0051cf241fa6f518de4eb05a4232dd9",
+      "observed_at": "2026-09-08T17:40:39Z",
+      "result": "PASS"
     }
   ]
 }
