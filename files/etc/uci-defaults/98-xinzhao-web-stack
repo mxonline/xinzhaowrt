@@ -1,0 +1,25 @@
+#!/bin/sh
+# Enforce the real-device-verified Arthur LuCI/Nginx HTTP-only policy.
+set -eu
+
+if ! uci -q get nginx.global >/dev/null 2>&1; then
+    logger -t xinzhaowrt 'WEB_PORT_POLICY_FAIL stage=nginx_global_missing' 2>/dev/null || true
+    exit 1
+fi
+
+# Recreate the LAN server exactly as verified on the #73 real device:
+# HTTP 80 only, no HTTPS listener, no HTTP->HTTPS redirect, while preserving
+# LuCI/QuickFile locations through the standard conf.d/*.locations include.
+uci -q delete nginx._lan || true
+uci set nginx._lan='server'
+uci set nginx._lan.server_name='_lan'
+uci add_list nginx._lan.include='restrict_locally'
+uci add_list nginx._lan.include='conf.d/*.locations'
+uci set nginx._lan.access_log='off; # logd openwrt'
+uci add_list nginx._lan.listen='80 default_server'
+uci add_list nginx._lan.listen='[::]:80 default_server'
+uci set nginx.global.uci_enable='true'
+uci commit nginx
+
+logger -t xinzhaowrt 'WEB_PORT_POLICY=PASS HTTP_80_ONLY' 2>/dev/null || true
+exit 0

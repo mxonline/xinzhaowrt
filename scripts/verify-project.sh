@@ -25,6 +25,7 @@ done < config/required-plugins.txt
 
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
+./scripts/check-web-port-policy.sh
 bash tests/test-functional-acceptance.sh
 bash tests/test-live-preview-contract.sh
 bash tests/test-package-source-provenance.sh
@@ -34,6 +35,7 @@ python3 -m json.tool production/mature-ui-sources.json >/dev/null
 for f in scripts/*.sh; do
   bash -n "$f"
 done
+sh -n files/etc/uci-defaults/98-xinzhao-web-stack
 sh -n files/etc/uci-defaults/99-xinzhao-defaults
 
 [[ -x scripts/check-package-existence.sh ]] || {
