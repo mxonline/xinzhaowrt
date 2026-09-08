@@ -124,10 +124,28 @@ function Test-ArthurGateEvidenceMatch {
     }
 
     $subject = Get-ArthurStateMember $Gate 'subject'
+
+    # A positive GitHub Actions run id is an immutable source identity: GitHub never
+    # changes the head SHA of an existing run. Control-plane/state-only commits may
+    # advance repository HEAD after that run was created; those commits must not
+    # stale BUILD/ARTIFACT evidence for the same run. Candidate/artifact hashes and
+    # every other subject field are still compared normally.
+    $expectedRunId = 0L
+    $actualRunId = 0L
+    $expectedRunValue = Get-ArthurStateMember $subject 'github_run_id'
+    $actualRunValue = Get-ArthurStateMember $CurrentSubject 'github_run_id'
+    $expectedRunParsed = $null -ne $expectedRunValue -and [long]::TryParse([string]$expectedRunValue,[ref]$expectedRunId)
+    $actualRunParsed = $null -ne $actualRunValue -and [long]::TryParse([string]$actualRunValue,[ref]$actualRunId)
+    $sameImmutableRun = $expectedRunParsed -and $actualRunParsed -and $expectedRunId -gt 0 -and $expectedRunId -eq $actualRunId
+
     foreach ($name in @(Get-ArthurStatePropertyNames $subject)) {
         $expected = Get-ArthurStateMember $subject $name
         $actual = Get-ArthurStateMember $CurrentSubject $name
         if ($null -eq $actual -and $null -ne $expected) { return $false }
+
+        if ($name -eq 'source_sha' -and $sameImmutableRun) {
+            continue
+        }
 
         $expectedJson = $expected | ConvertTo-Json -Compress -Depth 20
         $actualJson = $actual | ConvertTo-Json -Compress -Depth 20
