@@ -35,6 +35,13 @@ state_scope="$(printf '%s\n' \
   production/firmware-events.jsonl | bash "$ROOT/scripts/classify-build-scope.sh")"
 [[ "$state_scope" == FAST_GATE ]] || { echo "FAIL: pure release-state files classified as $state_scope; they must not trigger a firmware Candidate" >&2; exit 1; }
 
+runtime_state_code_scope="$(printf '%s\n' \
+  scripts/arthur-state-contract.ps1 \
+  scripts/arthur-evidence-index.ps1 \
+  scripts/arthur-state-consistency.ps1 \
+  scripts/arthur-firmware-resume.ps1 | bash "$ROOT/scripts/classify-build-scope.sh")"
+[[ "$runtime_state_code_scope" == FAST_GATE ]] || { echo "FAIL: Arthur runtime-state code classified as $runtime_state_code_scope; state enforcement must never request a firmware Candidate" >&2; exit 1; }
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 git clone --shared --quiet "$ROOT" "$work/repo"
