@@ -15,11 +15,14 @@ $resumePath = Join-Path $root 'production\resume-state.json'
 $ledgerPath = Join-Path $root 'production\firmware-events.jsonl'
 $ledgerLibPath = Join-Path $root 'scripts\arthur-firmware-event-ledger.ps1'
 $gitShaHelperPath = Join-Path $root 'scripts\arthur-git-sha.ps1'
+$gitRemoteHelperPath = Join-Path $root 'scripts\arthur-git-remote.ps1'
 
 if (-not (Test-Path -LiteralPath $ledgerLibPath -PathType Leaf)) { throw 'RESUME_GATE_LEDGER_HELPER_MISSING' }
 if (-not (Test-Path -LiteralPath $gitShaHelperPath -PathType Leaf)) { throw 'RESUME_GATE_GIT_SHA_HELPER_MISSING' }
+if (-not (Test-Path -LiteralPath $gitRemoteHelperPath -PathType Leaf)) { throw 'RESUME_GATE_GIT_REMOTE_HELPER_MISSING' }
 . $ledgerLibPath
 . $gitShaHelperPath
+. $gitRemoteHelperPath
 
 function Read-JsonFile {
     param([string]$Path,[string]$MissingCode)
@@ -41,9 +44,27 @@ try {
 finally { Pop-Location }
 $effectiveHead = ConvertTo-ArthurCanonicalGitSha $effectiveHeadRaw
 
-$github = [ordered]@{ checked = $false; status = 'SKIPPED'; runs = @() }
+$github = [ordered]@{
+    checked = $false
+    status = 'SKIPPED'
+    remote_main = [ordered]@{ checked=$false; status='SKIPPED'; method=''; degraded=$false; sha=''; detail='' }
+    runs = @()
+}
 if (-not $SkipExternal) {
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    $remoteDecision = Get-ArthurRemoteMainHead -Root $root -Repository $Repository -Branch 'main'
+    $github.remote_main = [ordered]@{
+        checked = ([string]$remoteDecision.status -eq 'PASS')
+        status = [string]$remoteDecision.status
+        method = [string]$remoteDecision.method
+        degraded = [bool]$remoteDecision.degraded
+        sha = [string]$remoteDecision.remote_sha
+        detail = [string]$remoteDecision.detail
+    }
+
+    if ([string]$remoteDecision.status -ne 'PASS') {
+        $github.status = "REMOTE_MAIN_$([string]$remoteDecision.status): $([string]$remoteDecision.detail)"
+    }
+    elseif (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         $github.status = 'GH_UNAVAILABLE'
     }
     else {
