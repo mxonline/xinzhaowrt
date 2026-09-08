@@ -130,12 +130,10 @@ function Test-ArthurRuntimeStateConsistency {
             $conflicts += 'LEDGER_LATEST_EXECUTION_ID_MISMATCH'
         }
     }
-    else {
-        # Migration compatibility: the legacy append-only ledger predates execution_id.
-        # A valid hash chain with no execution-aware events is historical evidence, not
-        # authority to override the schema-v2 current snapshot.
-        $warnings += 'LEDGER_EXECUTION_ID_LEGACY_ONLY'
-    }
+    # Migration compatibility: a valid legacy hash-chained ledger may predate
+    # execution_id entirely. Absence of execution-aware events must not block or
+    # downgrade the current schema-v2 execution; only an explicit conflicting
+    # execution-aware event is authoritative enough to fail closed.
 
     return [pscustomobject][ordered]@{
         consistent = ($conflicts.Count -eq 0)
