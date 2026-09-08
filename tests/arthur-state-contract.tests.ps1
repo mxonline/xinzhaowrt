@@ -72,13 +72,40 @@ $inherited = New-ArthurGateRecord `
     -InheritedFrom 'production/wifi-frozen-baseline.json'
 Assert-Equal $inherited.status 'PASS' 'explicit inherited provenance may support PASS without a direct evidence ref'
 
-$currentChangedSource = @{
+# Run-bound evidence is immutable. A later control/state-only repository commit may
+# change current HEAD, but it cannot change the source of GitHub Actions run 12.
+$currentControlHeadChanged = @{
     source_sha = ('d' * 40)
     github_run_id = 12
     artifact_id = 34
     candidate_sha256 = ('c' * 64)
 }
-Assert-Equal (Resolve-ArthurGateStatus -Gate $gate -CurrentSubject $currentChangedSource) 'STALE' 'source change must stale source-bound artifact evidence'
+Assert-Equal (Resolve-ArthurGateStatus -Gate $gate -CurrentSubject $currentControlHeadChanged) 'PASS' 'control-only HEAD drift must not stale evidence pinned to the same immutable GitHub run'
+
+$currentChangedRun = @{
+    source_sha = ('d' * 40)
+    github_run_id = 13
+    artifact_id = 34
+    candidate_sha256 = ('c' * 64)
+}
+Assert-Equal (Resolve-ArthurGateStatus -Gate $gate -CurrentSubject $currentChangedRun) 'STALE' 'different GitHub run identity must stale run-bound evidence'
+
+$currentChangedArtifact = @{
+    source_sha = ('d' * 40)
+    github_run_id = 12
+    artifact_id = 35
+    candidate_sha256 = ('c' * 64)
+}
+Assert-Equal (Resolve-ArthurGateStatus -Gate $gate -CurrentSubject $currentChangedArtifact) 'STALE' 'artifact identity change must stale run-bound evidence even within the same run'
+
+$sourceOnlyGate = New-ArthurGateRecord `
+    -GateId 'CONFIG' `
+    -RequirementRef 'x#config' `
+    -RequirementDigest $d1 `
+    -Status 'PASS' `
+    -Subject @{ source_sha = ('b' * 40) } `
+    -EvidenceRefs @('evidence:config')
+Assert-Equal (Resolve-ArthurGateStatus -Gate $sourceOnlyGate -CurrentSubject @{ source_sha = ('d' * 40) }) 'STALE' 'ordinary source-bound Gate must still stale on source changes'
 
 $currentSameSubject = @{
     source_sha = ('b' * 40)
@@ -100,3 +127,4 @@ $nextAfterSkip = Get-ArthurNextRequiredGate -Gates @($skipped,$passed) -GateOrde
 Assert-True ($null -eq $nextAfterSkip) 'all PASS/SKIPPED gates must yield no next Gate'
 
 Write-Host 'ARTHUR_STATE_CONTRACT=PASS'
+Write-Host 'ARTHUR_RUN_BOUND_GATE_IDENTITY=PASS'
