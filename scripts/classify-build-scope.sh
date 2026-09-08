@@ -59,7 +59,7 @@ while IFS= read -r path; do
     scripts/live-preview.ps1|scripts/live-preview-mature-safe.ps1|scripts/prepare-live-preview-sources.ps1|\
     scripts/v4-controller*.sh|scripts/baseline-integrity-gate.sh|scripts/v4-pipeline-dry-run.sh|\
     production/v3-request.json|production/request.json|production/known-good-request.json|\
-    production/operator-intent.json|production/resume-state.json|production/firmware-events.jsonl|\
+    production/operator-intent.json|production/resume-state.json|production/firmware-events.jsonl|production/evidence/*/index.json|\
     production/v4-state.json|production/known-good.json|production/arthur-known-good-v1.json|\
     production/production-agent.json|production/arthur-flash-profile.json|\
     production/real-device-baseline.json|production/expected-diff.json|\
