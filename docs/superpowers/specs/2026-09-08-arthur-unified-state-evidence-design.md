@@ -20,7 +20,7 @@ The current gap is not lack of persistence. The gap is lack of one common contra
 1. what the product requires;
 2. what the current execution state claims;
 3. which concrete evidence proves each claim;
-4. whether that evidence is still valid for the current source, artifact and device identity.
+4. whether that evidence is still valid for the current source, artifact, requirement and device identity.
 
 Today, several verified fields in `resume-state.json` are emitted as fixed status strings such as `VERIFIED_FROZEN` or `LIVE_BROWSER_VERIFIED`. They are not all represented as first-class Gate records with explicit evidence references and subject identity. This makes stale PASS reuse possible and makes it harder to distinguish a valid inherited verification from an old verification that must be rerun.
 
@@ -28,13 +28,13 @@ A second problem is identity fragmentation. GitHub `run_id`, Feature Handoff ide
 
 ## 2. Goal
 
-Upgrade the existing Arthur Control Plane into the only state arbiter and add a unified execution contract that binds:
+Upgrade the existing Arthur Control Plane into the only canonical Gate arbiter and add a unified execution contract that binds:
 
 `Source of Truth -> Execution -> Gates -> Evidence -> PASS/FAIL/STALE/BLOCKED -> next_action`
 
 The implementation must preserve the existing RELEASE-FIRST architecture and production executors. It must not introduce a second orchestrator.
 
-After this change, any progress/resume/continue request must be answerable from the reconciled machine state and evidence instead of historical chat or a best-effort interpretation of several independent files.
+After this change, any progress/resume/continue request must be answerable from reconciled machine state and durable evidence instead of historical chat or best-effort interpretation of several independent files.
 
 ## 3. Non-goals
 
@@ -45,25 +45,25 @@ After this change, any progress/resume/continue request must be answerable from 
 - Do not change the verified Arthur sysupgrade command or flash safety semantics.
 - Do not add raw MTD, U-Boot, `dd`, partition-write or bootloader automation.
 - Do not automatically rerun frozen Wi-Fi verification when change impact proves Wi-Fi is unaffected.
-- Do not make normal state/ledger commits trigger firmware builds.
+- Do not make normal state/ledger/evidence-index commits trigger firmware builds.
 - Do not migrate the WeChat content-production system in this change.
 
 ## 4. Architectural rule
 
-The Arthur Control Plane becomes the only component allowed to arbitrate a Gate status.
+The Arthur Control Plane becomes the only component allowed to arbitrate the canonical status of a production Gate.
 
-Executors may produce observations and evidence, but they do not independently establish global truth.
+Executors may keep local operational stages and statuses, but those are observations, not the canonical cross-system Gate truth.
 
 Examples:
 
 - GitHub Actions may report a successful build and artifact metadata.
 - Feature Handoff may report accepted preview evidence.
 - Production Agent may report successful SHA checks or a real-device verifier result.
-- Codex may produce a repair commit and tests.
+- Codex may produce a repair commit and test results.
 
-The Control Plane consumes those inputs and decides whether the corresponding Gate is `PASS`, `FAIL`, `BLOCKED`, `STALE`, `PENDING`, `RUNNING` or `SKIPPED`.
+The Control Plane consumes those inputs and decides whether the corresponding canonical Gate is `PASS`, `FAIL`, `BLOCKED`, `STALE`, `PENDING`, `RUNNING` or `SKIPPED`.
 
-The terminal rule remains:
+The terminal rules are:
 
 `NO EVIDENCE -> NO PASS`
 
@@ -81,61 +81,67 @@ The existing project files continue to define requirements rather than transient
 - `AGENTS.md` defines execution policy and operator-scope constraints.
 - `production/known-good.json`, `production/arthur-known-good-v1.json` and `production/real-device-baseline.json` define frozen rollback/baseline identity.
 
-These documents do not directly say that the current run passed a Gate. They define what evidence a current execution must satisfy.
+These files define what a Gate must prove. They do not directly establish that the current execution passed that Gate.
+
+Every Gate stores both a `requirement_ref` and a `requirement_digest`. The digest is SHA256 over the normalized machine-readable acceptance contract for that Gate. A requirement change therefore invalidates historical evidence even if firmware bytes are unchanged.
 
 ## 6. Execution identity
 
-Add a stable string `execution_id` that spans one end-to-end Arthur task.
+Add one persisted string `execution_id` that spans an end-to-end Arthur user task.
+
+It is generated once when the execution is created and is never recomputed from later repository state.
 
 Format:
 
-`arthur-<task-slug>-<accepted-source-prefix>-<yyyymmdd>`
+`arthur-<task-slug>-<accepted-source-prefix>-<utc-yyyymmddhhmmss>`
 
 Example:
 
-`arthur-adh-cn-e27bafa-20260908`
+`arthur-adh-cn-e27bafa-20260908121731`
+
+The timestamp prevents collisions between distinct executions created from the same accepted source on the same day.
 
 `execution_id` is not a replacement for GitHub Actions `run_id`.
 
 The existing numeric GitHub `run_id` remains unchanged because current controller and Production Agent code uses it as a numeric workflow identity.
 
-The execution record may contain:
+The execution record contains concrete identities as they become available:
 
 ```json
 {
-  "execution_id": "arthur-adh-cn-e27bafa-20260908",
+  "execution_id": "arthur-adh-cn-e27bafa-20260908121731",
   "accepted_source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
   "github_run_id": 34056525562,
   "artifact_id": 9998837025,
-  "candidate_sha256": "...",
+  "candidate_sha256": "2f6f...",
   "device_build_id": "33462873812"
 }
 ```
 
-The tuple `execution_id + accepted_source_sha` is the user-task identity. `github_run_id + artifact_id + candidate_sha256` is the concrete Candidate identity.
+`execution_id + accepted_source_sha` identifies the user task and accepted starting source. `github_run_id + artifact_id + candidate_sha256` identifies one concrete Candidate.
 
-A replacement Candidate created after a valid repair remains in the same `execution_id` but receives a new GitHub `run_id`, artifact identity and Candidate SHA256. The event ledger records the replacement relationship.
+A replacement Candidate created after a valid repair remains inside the same `execution_id`, but receives a new GitHub `run_id`, artifact identity and Candidate SHA256. The event ledger records the supersession relationship.
 
 ## 7. Canonical current snapshot
 
 Keep the filename `production/resume-state.json` to avoid breaking existing callers, but migrate its schema to version 2.
 
-Schema v2 must include:
+Schema v2 contains:
 
 ```json
 {
   "schema_version": 2,
-  "execution_id": "arthur-adh-cn-e27bafa-20260908",
+  "execution_id": "arthur-adh-cn-e27bafa-20260908121731",
   "status": "RESUME_SAFE",
   "instruction_allowed": true,
   "source": {
-    "repository_head": "...",
-    "accepted_source_sha": "..."
+    "repository_head": "19ee34f...",
+    "accepted_source_sha": "e27bafa..."
   },
   "production": {
     "github_run_id": 34056525562,
     "artifact_id": 9998837025,
-    "candidate_sha256": "..."
+    "candidate_sha256": "2f6f..."
   },
   "device": {
     "version": "0.1.3",
@@ -147,11 +153,11 @@ Schema v2 must include:
   "next_action": "PRE_FLASH",
   "conflicts": [],
   "semantic_sha256": "...",
-  "evidence_timestamp": "..."
+  "evidence_timestamp": "2026-09-08T12:17:31Z"
 }
 ```
 
-Backward-compatible summary fields may remain during migration only when existing scripts require them. All new decision logic reads the Gate model.
+Backward-compatible summary fields remain only while existing callers require them. All new decision logic reads the Gate model.
 
 ## 8. Gate model
 
@@ -161,7 +167,7 @@ Allowed statuses:
 
 - `PENDING`: requirement exists and has not started.
 - `RUNNING`: an executor is actively producing evidence.
-- `PASS`: current evidence satisfies the requirement for the current subject identity.
+- `PASS`: current evidence satisfies the current requirement for the current subject identity.
 - `FAIL`: evidence proves the requirement is not met; automatic repair may continue.
 - `BLOCKED`: no safe automatic continuation exists under current policy.
 - `STALE`: the Gate previously passed, but source/artifact/device/requirement identity changed in a way that invalidates the evidence.
@@ -174,20 +180,21 @@ Gate record:
   "gate_id": "ADGUARD_FULL_MANAGER",
   "status": "PASS",
   "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#ADGUARD_HOME",
+  "requirement_digest": "9c77...",
   "subject": {
-    "source_sha": "...",
-    "candidate_sha256": "...",
-    "device_build_id": "..."
+    "source_sha": "19ee34f...",
+    "candidate_sha256": "2f6f...",
+    "device_build_id": "33462873812"
   },
   "evidence_refs": [
-    "production/evidence/arthur-adh-cn-e27bafa-20260908/index.json#ADGUARD_FULL_MANAGER"
+    "repo:production/evidence/arthur-adh-cn-e27bafa-20260908121731/index.json#ADGUARD_FULL_MANAGER"
   ],
   "inherited": false,
-  "verified_at": "2026-09-08T12:00:00Z"
+  "verified_at": "2026-09-08T12:17:31Z"
 }
 ```
 
-A `PASS` Gate must contain at least one evidence reference unless the Gate is explicitly inherited from an immutable accepted baseline and the inheritance record itself contains evidence provenance.
+A `PASS` Gate contains at least one durable evidence reference unless the Gate is explicitly inherited from an immutable accepted baseline and the inheritance record itself contains durable evidence provenance.
 
 ## 9. Evidence model
 
@@ -195,11 +202,21 @@ Create:
 
 `production/evidence/<execution_id>/index.json`
 
-Do not commit firmware binaries, large screenshots or duplicate workflow artifacts into Git.
+The index is small, durable and committed as control-plane state. It does not duplicate firmware binaries, large screenshots or workflow artifact payloads into Git.
 
-The evidence index stores references and hashes for externally stored or already-existing evidence.
+Local `output/` files are producer inputs only. A local path by itself is not durable evidence.
 
-Evidence entry fields:
+Before evidence can support `PASS`, the evidence index must point to one of these durable forms:
+
+- an immutable repository object committed under `production/evidence/<execution_id>/objects/`;
+- a GitHub workflow run plus immutable run ID and source SHA;
+- a GitHub Actions artifact plus artifact ID and content SHA256;
+- a GitHub Release/tag plus release/tag identity and asset SHA256;
+- an immutable accepted baseline record with its stored provenance.
+
+Small machine-readable reports required for future arbitration, such as normalized real-device result summaries, may be copied into `production/evidence/<execution_id>/objects/<evidence_id>.json`. Large payloads remain external and are referenced by immutable GitHub identity plus hash.
+
+Evidence entry:
 
 ```json
 {
@@ -207,14 +224,14 @@ Evidence entry fields:
   "gate_id": "REAL_DEVICE_VERIFY",
   "type": "REAL_DEVICE_REPORT",
   "producer": "scripts/real-device-verify-v3.ps1",
-  "source_sha": "...",
+  "source_sha": "19ee34f...",
   "github_run_id": 34056525562,
   "artifact_id": 9998837025,
-  "candidate_sha256": "...",
-  "device_build_id": "...",
-  "ref": "output/real-device/real-device-verification.json",
-  "sha256": "...",
-  "observed_at": "...",
+  "candidate_sha256": "2f6f...",
+  "device_build_id": "33462873812",
+  "durable_ref": "repo:production/evidence/arthur-adh-cn-e27bafa-20260908121731/objects/real-device-verify-001.json",
+  "sha256": "71b2...",
+  "observed_at": "2026-09-08T12:17:31Z",
   "result": "PASS"
 }
 ```
@@ -232,53 +249,52 @@ Valid evidence types include at minimum:
 - `GITHUB_RELEASE`
 - `INHERITED_BASELINE`
 
-An evidence reference is valid only when its identity fields match the Gate subject rules.
+An evidence reference is valid only when its requirement and subject identities match the Gate rules.
 
 ## 10. Evidence subject matching
 
-Gate-specific subject matching prevents old PASS evidence from being reused against new bytes.
-
-Examples:
+Gate-specific subject matching prevents old PASS evidence from being reused against new bytes or new acceptance criteria.
 
 ### BUILD
 
-Must match accepted source SHA and GitHub run identity.
+Must match accepted source SHA, requirement digest and GitHub run identity.
 
 ### ARTIFACT
 
-Must match GitHub run ID, artifact ID, source SHA and Candidate SHA256.
+Must match GitHub run ID, artifact ID, source SHA, requirement digest and Candidate SHA256.
 
 ### PRE_FLASH / AUTO_FLASH_SAFETY_GATE
 
-Must match Candidate SHA256, expected target/profile, rollback identity and current device identity.
+Must match Candidate SHA256, expected target/profile, rollback identity, requirement digest and current device identity.
 
 ### REAL_DEVICE_VERIFY
 
-Must match Candidate SHA256 and the post-flash device build identity.
+Must match Candidate SHA256, post-flash device build identity and current real-device acceptance requirement digest.
 
 ### RELEASE
 
-Must match the Candidate SHA256 already accepted by REAL_DEVICE_VERIFY.
+Must match the Candidate SHA256 already accepted by REAL_DEVICE_VERIFY and the current release-policy requirement digest.
 
 ### Inherited frozen Gates
 
-May remain PASS across a new execution only when change impact proves that the relevant subject is unaffected and the inherited baseline has explicit evidence provenance.
+May remain PASS across a new execution only when Change Impact proves the relevant subject is unaffected, the current requirement digest matches the accepted baseline requirement digest, and the inherited baseline has durable evidence provenance.
 
 ## 11. STALE invalidation
 
-`STALE` is mandatory when previously valid evidence no longer proves the current subject.
+`STALE` is mandatory when previously valid evidence no longer proves the current subject or requirement.
 
-The Control Plane computes invalidation using change impact and subject identity.
+The Control Plane computes invalidation using Change Impact plus subject and requirement identity.
 
 Examples:
 
-- A source change after BUILD makes BUILD and all Candidate-dependent downstream Gates stale.
+- A Candidate-producing source change after BUILD makes BUILD and Candidate-dependent downstream Gates stale.
 - A Candidate SHA change makes ARTIFACT, PRE_FLASH, flash-safety, flash, real-device verification and release evidence stale.
-- A post-flash device build ID mismatch makes REAL_DEVICE_VERIFY and RELEASE stale or failed depending on evidence.
-- A change limited to LuCI Chinese resources must not automatically invalidate unrelated frozen Wi-Fi evidence when Change Impact says Wi-Fi is unaffected.
-- A requirement change in `ARTHUR_PRODUCT_TARGETS.md` invalidates historical PASS for that requirement even if source bytes did not change.
+- A post-flash device build ID mismatch makes REAL_DEVICE_VERIFY and RELEASE stale or failed depending on observed evidence.
+- A change limited to LuCI Chinese resources does not invalidate unrelated frozen Wi-Fi evidence when Change Impact proves Wi-Fi is unaffected.
+- A Wi-Fi source/config change invalidates inherited Wi-Fi evidence.
+- A requirement digest change invalidates historical PASS for that Gate even if firmware bytes are unchanged.
 
-Stale Gates are never treated as PASS by next-action selection.
+STALE Gates are never treated as PASS by next-action selection.
 
 ## 12. State freshness gate
 
@@ -293,11 +309,17 @@ At minimum it validates:
 - accepted source SHA;
 - active runtime/controller phase;
 - current Production Agent run identity when attached;
-- live device build-info when the phase requires real-device identity.
+- live device build-info when the current phase requires real-device identity.
 
-State-only commits such as updates to `production/resume-state.json`, `production/firmware-events.jsonl` and evidence indexes must not create a false source change or trigger a firmware build.
+State-only paths are excluded from firmware source identity. At minimum these include:
 
-If the snapshot is older than the current non-state state of the repository or runtime, the Control Plane must reconcile and republish before returning `next_action`.
+- `production/resume-state.json`
+- `production/firmware-events.jsonl`
+- `production/evidence/**`
+
+The existing build-scope classifier remains responsible for excluding other established control-only files. The migration must not broaden build triggers accidentally.
+
+If the snapshot is older than the current non-state repository/runtime state, the Control Plane reconciles and republishes before returning `next_action`.
 
 If reconciliation cannot establish one unambiguous current state, set:
 
@@ -325,7 +347,7 @@ Add event types required by the new model:
 - `DEVICE_RECONCILED`
 - `RELEASED`
 
-Each event records `execution_id`, Gate where applicable, relevant subject identity and the previous event hash.
+Each event records `execution_id`, Gate where applicable, requirement digest, relevant subject identity and previous event hash.
 
 `resume-state.json` answers "where are we now?".
 
@@ -338,29 +360,29 @@ Each event records `execution_id`, Gate where applicable, relevant subject ident
 ### Feature Handoff
 
 - preserves accepted preview bytes and evidence;
-- ensures one `execution_id` is present before entering production;
-- does not arbitrate production Gate PASS beyond its own submitted observations;
-- preserves existing idempotent dispatch rules.
+- creates or adopts one persisted `execution_id` before entering production;
+- submits observations to the Control Plane;
+- preserves existing idempotent production-dispatch rules.
 
 ### GitHub Actions / v3 Controller
 
 - emits workflow/run/artifact observations;
 - preserves numeric GitHub `run_id` semantics;
-- does not mark real-device Gates PASS.
+- does not mark real-device canonical Gates PASS.
 
 ### Production Agent
 
 - keeps at-most-once sysupgrade semantics;
-- emits artifact/hash/flash/device evidence;
+- emits artifact/hash/flash/device observations and durable evidence identity;
 - does not reuse a Candidate when subject identity no longer matches the active execution;
-- reports verification evidence to the Control Plane.
+- retains local operational stages, but canonical Gate status is reconciled by the Control Plane.
 
 ### Codex
 
 - begins from reconciled `resume-state.json`;
 - performs only `next_action` or the minimum repair necessary to unblock it;
-- never claims a Gate is PASS without evidence accepted by the Control Plane;
-- does not restart a completed upstream stage merely because a session restarted.
+- never claims a canonical Gate is PASS without evidence accepted by the Control Plane;
+- does not restart a completed upstream Gate merely because the Codex session restarted.
 
 ## 15. Next-action selection
 
@@ -378,38 +400,40 @@ Priority rules:
 
 ## 16. Build dedup and impact behavior
 
-Existing build-dedup and change-impact behavior must be preserved and strengthened.
+Existing build-dedup and Change Impact behavior is preserved and strengthened.
 
-State/control-only file changes must not request a Candidate.
+State/control-only file changes do not request a Candidate.
 
 A source-changing repair invalidates only the Gates dependent on the changed subject.
 
-If a repair changes Candidate-producing source, the active execution remains the same but the previous Candidate is recorded as superseded and downstream Candidate-dependent Gates become `STALE`.
+If a repair changes Candidate-producing source, the active execution remains the same, the previous Candidate is recorded as superseded, and Candidate-dependent downstream Gates become `STALE`.
 
-The new Candidate receives a new numeric GitHub `run_id`, artifact identity and SHA256.
+The replacement Candidate receives a new numeric GitHub `run_id`, artifact identity and SHA256.
 
 ## 17. Migration strategy
 
-Migration must be additive and fail closed.
+Migration is additive and fail closed.
 
-Phase 1:
+### Phase 1: schema and arbitration foundation
 
-- add schema helpers, Gate/Evidence types and tests;
-- allow reading existing schema v1 snapshot;
-- publish schema v2 while retaining compatibility summary fields needed by existing callers.
+- add Gate, evidence, requirement-digest and execution-identity helpers with tests;
+- allow schema v1 snapshots to be read during migration;
+- publish schema v2 while retaining compatibility summary fields needed by existing callers;
+- add State Freshness reconciliation without changing firmware execution authorization.
 
-Phase 2:
+### Phase 2: explicit evidence for existing accepted features
 
 - make Control Plane decisions use Gate records;
-- record evidence indexes for new executions;
-- map existing frozen Wi-Fi, LuCI Chinese, ADH and QuickStart acceptance to explicit inherited or live evidence records.
+- create evidence indexes for new executions;
+- map existing accepted Wi-Fi, LuCI Chinese, ADH and QuickStart states to explicit inherited or live evidence records only when durable provenance can be established;
+- if durable provenance cannot be established for an old fixed VERIFIED string, represent it as `STALE`/`PENDING` according to impact and require valid verification before it can support a release.
 
-Phase 3:
+### Phase 3: executor adapters
 
-- update Feature Handoff and Production Agent adapters to submit evidence identity to the Control Plane;
+- update Feature Handoff and Production Agent adapters to submit execution/evidence identity to the Control Plane;
 - remove decision dependence on fixed `verified` strings once all callers are migrated.
 
-No phase may require a firmware rebuild merely to deploy the state-contract implementation.
+No phase requires a firmware rebuild merely to deploy the state-contract implementation.
 
 ## 18. Safety and authorization
 
@@ -417,7 +441,7 @@ Existing operator intent remains authoritative for whether firmware execution is
 
 A state statement is not execution authorization.
 
-The new state model must not broaden authorization scope.
+The new state model does not broaden authorization scope.
 
 `STATE_FRESHNESS_GATE`, evidence reconciliation and read-only diagnostics are allowed under read-only/status scope. Build, upload, flash or release actions remain gated by the existing `production/operator-intent.json` authorization contract.
 
@@ -425,36 +449,40 @@ Any ambiguity involving device identity, rollback identity, Candidate bytes, pos
 
 ## 19. Required tests
 
-Implementation uses TDD. At minimum tests must prove:
+Implementation uses TDD. At minimum tests prove:
 
-1. schema v1 is readable during migration;
-2. schema v2 contains one `execution_id` and canonical Gate map;
-3. a Gate cannot become PASS with no evidence unless it is valid explicit inheritance;
-4. evidence with a different source SHA cannot satisfy BUILD;
-5. evidence with a different Candidate SHA256 cannot satisfy Candidate-dependent Gates;
-6. source change marks dependent downstream Gates STALE;
-7. unrelated frozen Wi-Fi remains PASS when Change Impact proves it is unaffected;
-8. changed Wi-Fi source or requirement invalidates inherited Wi-Fi evidence;
-9. snapshot repository identity behind the current non-state HEAD triggers reconciliation before instruction generation;
-10. state-only commits do not trigger false firmware invalidation or build requests;
-11. an existing RUNNING GitHub/Production Agent identity is resumed instead of duplicate-dispatched;
-12. `FLASH_STARTED` recovery cannot execute a second sysupgrade before device reconciliation;
-13. replacement Candidate remains in the same `execution_id` but receives new GitHub/artifact identity;
-14. old Candidate-dependent PASS records become STALE after replacement;
-15. REAL_DEVICE_VERIFY PASS must bind Candidate SHA256 and post-flash build identity;
-16. RELEASE cannot pass without valid REAL_DEVICE_VERIFY evidence for the same Candidate;
-17. `PRODUCTION_RELEASED` remains the only success terminal and yields `next_action = NONE`;
-18. event-ledger hash chaining remains valid with new event types.
+1. schema v1 remains readable during migration;
+2. schema v2 contains one persisted `execution_id` and canonical Gate map;
+3. two executions created for the same source cannot collide;
+4. a Gate cannot become PASS with no durable evidence unless it is valid explicit inheritance;
+5. a requirement-digest mismatch invalidates historical evidence;
+6. evidence with a different source SHA cannot satisfy BUILD;
+7. evidence with a different Candidate SHA256 cannot satisfy Candidate-dependent Gates;
+8. Candidate-producing source change marks dependent downstream Gates STALE;
+9. unrelated frozen Wi-Fi remains PASS when Change Impact proves it is unaffected and requirement digest still matches;
+10. changed Wi-Fi source/config or requirement digest invalidates inherited Wi-Fi evidence;
+11. snapshot repository identity behind current non-state HEAD triggers reconciliation before instruction generation;
+12. state-only commits do not trigger false firmware invalidation or build requests;
+13. local `output/` path alone is rejected as durable PASS evidence;
+14. immutable GitHub run/artifact identity plus matching hashes can satisfy configured evidence rules;
+15. an existing RUNNING GitHub/Production Agent identity is resumed instead of duplicate-dispatched;
+16. `FLASH_STARTED` recovery cannot execute a second sysupgrade before device reconciliation;
+17. replacement Candidate remains in the same `execution_id` but receives new GitHub/artifact identity;
+18. old Candidate-dependent PASS records become STALE after replacement;
+19. REAL_DEVICE_VERIFY PASS binds Candidate SHA256, post-flash build identity and current requirement digest;
+20. RELEASE cannot pass without valid REAL_DEVICE_VERIFY evidence for the same Candidate;
+21. `PRODUCTION_RELEASED` remains the only success terminal and yields `next_action = NONE`;
+22. event-ledger hash chaining remains valid with new event types.
 
 ## 20. Success criteria
 
 The change is successful when all of the following are true:
 
 - progress/continue/next-action decisions come from one reconciled Control Plane snapshot;
-- every non-inherited PASS has explicit evidence provenance;
-- inherited PASS states have explicit baseline provenance and impact justification;
+- every non-inherited PASS has durable evidence provenance;
+- inherited PASS states have explicit accepted-baseline provenance, matching requirement digest and impact justification;
 - stale evidence is mechanically invalidated rather than trusted by narrative;
-- a stopped Codex session or restarted Windows host resumes the same execution identity and the first incomplete valid Gate;
+- a stopped Codex session or restarted Windows host resumes the same execution identity and first incomplete valid Gate;
 - completed valid Gates do not repeat without an invalidation reason;
 - old Candidate evidence cannot prove a replacement Candidate;
 - no new controller duplicates Feature Handoff, v3 Controller or Production Agent;
