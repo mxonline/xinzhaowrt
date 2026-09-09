@@ -97,6 +97,19 @@ function New-TerminalReconcileFixture {
         checkpoint = [ordered]@{ current = 'PRE_FLASH'; next_action = 'PRE_FLASH' }
         production = [ordered]@{ github_run_id = 34242450515 }
         source = [ordered]@{ accepted_source_sha = '5f41c4e25be6eb5a24f78bc794ca1d80a036087c' }
+        gates = [ordered]@{
+            PRE_FLASH = [ordered]@{
+                gate_id = 'PRE_FLASH'; status = 'PENDING'; requirement_ref = 'production/release-policy.md#pre-flash'
+                requirement_digest = ('a' * 64); subject = [ordered]@{ source_sha = '5f41c4e25be6eb5a24f78bc794ca1d80a036087c'; github_run_id = 34242450515 }
+                evidence_refs = @(); inherited = $false; inherited_from = ''; verified_at = ''
+            }
+            PRODUCTION_RELEASED = [ordered]@{
+                gate_id = 'PRODUCTION_RELEASED'; status = 'PENDING'; requirement_ref = 'production/release-policy.md#production-released'
+                requirement_digest = ('b' * 64); subject = [ordered]@{ source_sha = '5f41c4e25be6eb5a24f78bc794ca1d80a036087c'; github_run_id = 34242450515 }
+                evidence_refs = @(); inherited = $false; inherited_from = ''; verified_at = ''
+            }
+        }
+        semantic_sha256 = ('0' * 64)
     })
     Write-TestJson $paths.intent ([ordered]@{
         execution_id = $ExecutionId; intent_type = 'EXECUTE_FIRMWARE'; authorization_scope = 'FIRMWARE_RELEASE'
@@ -120,7 +133,7 @@ function New-TerminalReconcileFixture {
 }
 
 function Invoke-TestReconcile {
-    param([pscustomobject]$Fixture)
+    param([pscustomobject]$Fixture,[int]$LockTimeoutMilliseconds = 5000)
     return Invoke-ArthurTerminalReleaseReconcile `
         -StatusPath $Fixture.Paths.status `
         -KnownGoodPath $Fixture.Paths.known_good `
@@ -130,7 +143,8 @@ function Invoke-TestReconcile {
         -OperatorIntentPath $Fixture.Paths.intent `
         -RuntimeStatePath $Fixture.Paths.runtime `
         -EventLogPath $Fixture.Paths.events `
-        -ExecutionId $Fixture.TerminalExecutionId
+        -ExecutionId $Fixture.TerminalExecutionId `
+        -LockTimeoutMilliseconds $LockTimeoutMilliseconds
 }
 
 function Assert-TerminalSnapshot {
@@ -149,6 +163,15 @@ function Assert-TerminalSnapshot {
     Assert-Equal $resume.checkpoint.current 'PRODUCTION_RELEASED' 'checkpoint current must be terminal'
     Assert-Equal $resume.checkpoint.next_action 'NONE' 'checkpoint next action must be terminal'
     Assert-Equal ([long]$resume.production.github_run_id) $identity.run_id 'resume must use published production run identity'
+    Assert-Equal $resume.source.accepted_source_sha $identity.source_commit 'resume must use published production source identity'
+    Assert-Equal $resume.production.candidate_sha256 $identity.sha256 'resume must use published production firmware identity'
+    Assert-Equal $resume.gates.PRE_FLASH.status 'PASS' 'terminal reconciliation must close stale PRE_FLASH gate'
+    Assert-Equal $resume.gates.PRODUCTION_RELEASED.status 'PASS' 'terminal reconciliation must pass terminal gate'
+    $resumeForHash = $resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+    [void]$resumeForHash.PSObject.Properties.Remove('semantic_sha256')
+    Assert-Equal $resume.semantic_sha256 (Get-ArthurResumeSemanticHash $resumeForHash) 'resume semantic hash must cover the terminal snapshot'
+    $nextGate = Get-ArthurNextRequiredGate -Gates @(Get-ArthurGateRecordsFromResumeState $resume) -GateOrder $script:ArthurResumePhaseOrder
+    Assert-True ($null -eq $nextGate) 'terminalized gates must not reopen PRE_FLASH or another actionable gate'
 
     Assert-Equal $intent.firmware_execution_authorized $false 'completed execution must no longer authorize firmware mutation'
     Assert-Equal $intent.firmware_state.current_stage 'PRODUCTION_RELEASED' 'intent current stage must be terminal'
@@ -179,6 +202,7 @@ function Assert-ReconcileFailsClosed {
 
 Assert-True (Test-Path -LiteralPath $ReconcilerPath) 'Invoke-ArthurTerminalReleaseReconcile implementation must exist'
 . $ReconcilerPath
+. (Join-Path $Root 'scripts\arthur-resume-state.ps1')
 
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-terminal-reconciler-tests-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
@@ -202,6 +226,28 @@ try {
     ) | Select-Object -First 1
     Assert-True ($null -ne $forwardTerminalEvent) 'forward closure must record a terminal event'
     Assert-Equal $forwardTerminalEvent.source 'TERMINAL_RELEASE_RECONCILER' 'terminal event must identify the terminal reconciler source'
+
+    # Break caught: a contended terminal reconciliation must not partially replace a
+    # canonical state file or append a duplicate event before it owns the lock.
+    $contendedDir = Join-Path $testRoot 'contended'
+    New-Item -ItemType Directory -Path $contendedDir -Force | Out-Null
+    $contended = New-TerminalReconcileFixture -Directory $contendedDir
+    $contendedBefore = @{}
+    foreach ($path in $contended.Paths.Values) { $contendedBefore[$path] = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
+    $lockPath = "$($contended.Paths.events).terminal-release-reconcile.lock"
+    $heldLock = [IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    try {
+        $threw = $false
+        $lockError = ''
+        try { Invoke-TestReconcile $contended -LockTimeoutMilliseconds 20 | Out-Null } catch { $threw = $true; $lockError = $_.Exception.Message }
+        Assert-True $threw 'contended terminal reconciliation must fail before any write'
+        Assert-True ($lockError -match 'ARTHUR_TERMINAL_RECONCILE_LOCK_TIMEOUT') 'contended terminal reconciliation must fail because the transaction lock is held'
+        foreach ($path in $contended.Paths.Values) { Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash $contendedBefore[$path] 'contended terminal reconciliation must not partially write state' }
+    }
+    finally { $heldLock.Dispose() }
+    Invoke-TestReconcile $contended | Out-Null
+    Assert-TerminalSnapshot $contended
+    Assert-Equal (Get-TerminalEventCount -Path $contended.Paths.events -RunId $contended.Identity.run_id -StableTag $contended.Identity.stable_tag) 1 'retry after lock release must append exactly one terminal event'
 
     # Break caught: a retry that appends another terminal event or mutates a settled snapshot is not idempotent.
     $beforeResume = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.resume).Hash
