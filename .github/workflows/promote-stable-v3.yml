@@ -62,14 +62,10 @@ jobs:
               data = json.load(f)
           if str(data.get('status', '')).upper() != 'PENDING':
               raise SystemExit('BLOCKED: promotion request status is not PENDING')
-          candidate = str(data.get('candidate_tag', ''))
-          stable = str(data.get('stable_tag', ''))
-          commit = str(data.get('project_commit', ''))
-          run_id = str(data.get('run_id', ''))
-          print(f'CANDIDATE_TAG={candidate}')
-          print(f'STABLE_TAG={stable}')
-          print(f'EXPECTED_COMMIT={commit}')
-          print(f'EXPECTED_RUN_ID={run_id}')
+          print('CANDIDATE_TAG=' + str(data.get('candidate_tag', '')))
+          print('STABLE_TAG=' + str(data.get('stable_tag', '')))
+          print('EXPECTED_COMMIT=' + str(data.get('project_commit', '')))
+          print('EXPECTED_RUN_ID=' + str(data.get('run_id', '')))
           PY
             source /tmp/promotion.env
             DEVICE_VERIFIED=true
@@ -287,7 +283,6 @@ jobs:
 
       - name: Promote Candidate lock and finalize Source of Truth
         env:
-          GH_TOKEN: ${{ github.token }}
           CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
           STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
           CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
@@ -394,26 +389,33 @@ jobs:
           FACTORY_NAME: ${{ steps.verify.outputs.factory_name }}
         run: |
           set -Eeuo pipefail
-          RELEASE_JSON="$(gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,targetCommitish,isLatest,assets)"
-          python3 - "$CANDIDATE_SHA" "$SYSUPGRADE_NAME" "$FACTORY_NAME" <<'PY' <<<"$RELEASE_JSON"
+          RELEASE_JSON="$(gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,targetCommitish,assets)"
+          printf '%s' "$RELEASE_JSON" > /tmp/stable-release.json
+          python3 - "$STABLE_TAG" "$CANDIDATE_SHA" "$SYSUPGRADE_NAME" "$FACTORY_NAME" <<'PY'
           import json, sys
-          expected_sha, sysupgrade_name, factory_name = sys.argv[1:]
-          data = json.load(sys.stdin)
+          stable_tag, expected_sha, sysupgrade_name, factory_name = sys.argv[1:]
+          with open('/tmp/stable-release.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
           errors = []
-          if data.get('tagName') != sys.argv[0] and not data.get('tagName'):
-              errors.append('stable tag missing')
+          if data.get('tagName') != stable_tag:
+              errors.append(f"stable tag mismatch: {data.get('tagName')} != {stable_tag}")
           if data.get('targetCommitish') != expected_sha:
               errors.append(f"targetCommitish mismatch: {data.get('targetCommitish')} != {expected_sha}")
-          if data.get('isLatest') is not True:
-              errors.append('Stable release is not Latest')
           names = {item.get('name') for item in data.get('assets') or []}
           for required in (sysupgrade_name, factory_name, 'real-device-verification.json', 'real-device-verification.md'):
               if required not in names:
                   errors.append(f'missing Stable asset: {required}')
           if errors:
               raise SystemExit('BLOCKED: ' + '; '.join(errors))
-          print('PASS: Stable tag, Latest Release and required assets verified.')
+          print('PASS: Stable tag and required assets verified.')
           PY
+
+          LATEST_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          [[ "$LATEST_TAG" == "$STABLE_TAG" ]] || {
+            echo "BLOCKED: Latest release mismatch: $LATEST_TAG != $STABLE_TAG"
+            exit 1
+          }
+          echo 'PASS: Stable release is Latest.'
 
       - name: Stable v3 promotion summary
         run: |
