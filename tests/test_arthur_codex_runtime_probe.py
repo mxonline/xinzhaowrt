@@ -9,6 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "scripts" / "arthur-codex-runtime-probe.py"
 
 
+def is_within(path: Path, root: Path) -> bool:
+    """Return whether path is under root on Python versions before Path.is_relative_to."""
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 class ArthurCodexRuntimeProbeTests(unittest.TestCase):
     def test_probe_source_never_invokes_firmware_runtime(self):
         text = PROBE.read_text(encoding="utf-8")
@@ -31,7 +40,7 @@ class ArthurCodexRuntimeProbeTests(unittest.TestCase):
         )
         payload = json.loads(completed.stdout)
         self.assertEqual(completed.returncode, 0)
-        self.assertTrue(Path(payload["ai_orchestrator_file"]).resolve().is_relative_to(ROOT.resolve()))
+        self.assertTrue(is_within(Path(payload["ai_orchestrator_file"]).resolve(), ROOT.resolve()))
         self.assertEqual(payload["configured_model"], "gpt-5.6-terra")
         self.assertEqual(payload["effective_model"], "gpt-5.6-terra")
         self.assertTrue(payload["model_catalog_skipped"])
