@@ -207,10 +207,12 @@ try {
     $beforeResume = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.resume).Hash
     $beforeIntent = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.intent).Hash
     $beforeRuntime = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.runtime).Hash
+    $beforeEvents = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.events).Hash
     Invoke-TestReconcile $forward | Out-Null
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.resume).Hash $beforeResume 'second terminal reconciliation must not rewrite resume state'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.intent).Hash $beforeIntent 'second terminal reconciliation must not rewrite operator intent'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.runtime).Hash $beforeRuntime 'second terminal reconciliation must not rewrite runtime state'
+    Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.events).Hash $beforeEvents 'second terminal reconciliation must not rewrite the event ledger'
     Assert-Equal (Get-TerminalEventCount -Path $forward.Paths.events -RunId $forward.Identity.run_id -StableTag $forward.Identity.stable_tag) 1 'second terminal reconciliation must not append a duplicate event'
 
     # Break caught: missing server-side release proof must never manufacture a local terminal state.
@@ -252,11 +254,13 @@ try {
     $beforeNewResume = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.resume).Hash
     $beforeNewIntent = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.intent).Hash
     $beforeNewRuntime = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.runtime).Hash
+    $beforeNewEvents = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.events).Hash
     $beforeNewTerminalEvents = Get-TerminalEventCount -Path $newExecution.Paths.events -RunId $newExecution.Identity.run_id -StableTag $newExecution.Identity.stable_tag
     Invoke-TestReconcile $newExecution | Out-Null
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.resume).Hash $beforeNewResume 'terminal reconcile must not close a distinct new execution resume state'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.intent).Hash $beforeNewIntent 'terminal reconcile must not close a distinct new execution intent'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.runtime).Hash $beforeNewRuntime 'terminal reconcile must not overwrite a distinct new execution runtime'
+    Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.events).Hash $beforeNewEvents 'terminal reconcile must not mutate the event ledger for a distinct new execution'
     Assert-Equal (Get-TerminalEventCount -Path $newExecution.Paths.events -RunId $newExecution.Identity.run_id -StableTag $newExecution.Identity.stable_tag) $beforeNewTerminalEvents 'terminal reconcile must not append a terminal event for a distinct new execution'
     $newIntent = Read-TestJson $newExecution.Paths.intent
     Assert-Equal $newIntent.firmware_execution_authorized $true 'new execution remains independently eligible after prior terminal release'
