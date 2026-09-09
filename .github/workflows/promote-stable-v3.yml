@@ -106,6 +106,7 @@ jobs:
           CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
           STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
           EXPECTED_COMMIT: ${{ steps.request.outputs.expected_commit }}
+          EXPECTED_RUN_ID: ${{ steps.request.outputs.run_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
@@ -128,30 +129,44 @@ jobs:
             exit 1
           }
 
-          CANDIDATE_SHA="$CANDIDATE_SHA" CANDIDATE_TAG="$CANDIDATE_TAG" python3 - <<'PY'
+          CANDIDATE_SHA="$CANDIDATE_SHA" CANDIDATE_TAG="$CANDIDATE_TAG" EXPECTED_RUN_ID="$EXPECTED_RUN_ID" python3 - <<'PY'
           import json, os, sys
           with open('output/real-device/real-device-verification.json', 'r', encoding='utf-8-sig') as f:
               data = json.load(f)
+
           errors = []
           def require(condition, message):
               if not condition:
                   errors.append(message)
+
+          require(str(data.get('schema_version', '')).startswith('3.'), 'real-device evidence schema is not v3')
           require(data.get('candidate') == os.environ['CANDIDATE_TAG'], 'Candidate tag mismatch')
           require(data.get('commit') == os.environ['CANDIDATE_SHA'], 'Candidate commit mismatch')
           require(str(data.get('result', '')).upper() == 'PASS', 'real-device result is not PASS')
+          require(str(data.get('verification', '')).lower() == 'real-device-confirmed', 'verification marker mismatch')
+          require(str(data.get('build_id', '')) == os.environ['EXPECTED_RUN_ID'], 'build_id mismatch')
           require(data.get('required_plugins_total') == 22, 'required_plugins_total is not 22')
           require(data.get('required_plugins_passed') == 22, 'required_plugins_passed is not 22')
           require((data.get('device') or {}).get('target') == 'jdcloud_re-ss-01', 'device target mismatch')
-          for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
-              require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
-          require(len(data.get('critical_log_errors') or []) == 0, 'critical_log_errors is not empty')
+
+          checks = data.get('checks') or {}
+          for name in (
+              'local_sha256', 'router_sha256', 'sysupgrade_test', 'single_sysupgrade_n',
+              'reboot_recovery', 'lan', 'dhcp', 'gateway', 'dns', 'ssh_root_password',
+              'http_80', 'https_443_disabled', 'luci_chinese', 'wifi_2g', 'wifi_5g',
+              'adguardhome_management', 'adguardhome_default_disabled', 'quickstart',
+              'istorex', 'quickfile', 'build_info_concrete'
+          ):
+              require(str(checks.get(name, '')).upper() == 'PASS', f'{name} did not pass')
+          require(str(checks.get('http_to_https_redirect', '')).upper() == 'NONE', 'HTTP redirects to HTTPS')
           require(len(data.get('failures') or []) == 0, 'failures is not empty')
+
           if errors:
               print('BLOCKED: real-device evidence failed Stable gate:')
               for error in errors:
                   print(f'- {error}')
               sys.exit(1)
-          print('PASS: real-device evidence matches Candidate and all hard gates.')
+          print('PASS: #74 real-device evidence matches Candidate and all hard gates.')
           PY
 
           STABLE_EXISTS=false
