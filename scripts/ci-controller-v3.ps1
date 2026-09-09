@@ -38,6 +38,16 @@ $ProductionStateFile = Join-Path $RepoRoot 'output\production-agent\state.json'
 $ProductionConfigFile = Join-Path $RepoRoot 'production\production-agent.json'
 $ProductionConfig = Get-Content -Raw $ProductionConfigFile | ConvertFrom-Json
 
+# Keep the proven v3 release path unchanged, but make every task-driving retry/wait
+# finite. Watch mode itself remains intentionally persistent.
+$GithubRetryLimit = 5
+$RunDiscoveryTimeoutSeconds = 300
+$BuildClosureDiscoveryTimeoutSeconds = 300
+$BuildClosureTimeoutSeconds = 1800
+$WorkflowRunTimeoutSeconds = 25200
+$ProductionContinuationTimeoutSeconds = 14400
+$ProcessV3TimeoutSeconds = 86400
+
 $HardFiles = @(
     'config/required-plugins.txt',
     'config/arthur.config',
@@ -216,23 +226,33 @@ function Assert-KnownGoodBaseline {
 
 function Invoke-GhWithBackoff {
     param([string[]]$Arguments)
-    while ($true) {
+
+    for ($attempt = 1; $attempt -le $GithubRetryLimit; $attempt++) {
         $result = Invoke-Captured -FilePath 'gh' -Arguments $Arguments -AllowFailure
         if ($result.ExitCode -eq 0) { return $result.Output }
 
         $msg = $result.Output
-        if ($msg -match '(?i)rate limit|HTTP 403') {
-            Write-ControllerLog 'GitHub API rate limit encountered; retrying in 600 seconds.'
+        $rateLimited = ($msg -match '(?i)rate limit|HTTP 403')
+        $transient = ($msg -match '(?i)unexpected EOF|timeout|timed out|connection reset|connection refused|HTTP 5\d\d')
+        if (-not $rateLimited -and -not $transient) {
+            throw "gh command failed: $($Arguments -join ' ')`n$msg"
+        }
+
+        if ($attempt -ge $GithubRetryLimit) {
+            throw "GH_RETRY_EXHAUSTED: attempts=$GithubRetryLimit command=$($Arguments -join ' ')`n$msg"
+        }
+
+        if ($rateLimited) {
+            Write-ControllerLog "GitHub API rate limit encountered; retrying attempt $($attempt + 1)/$GithubRetryLimit in 600 seconds."
             Start-Sleep 600
             continue
         }
-        if ($msg -match '(?i)unexpected EOF|timeout|timed out|connection reset|connection refused|HTTP 5\d\d') {
-            Write-ControllerLog "Transient GitHub error; retrying in 120 seconds: $msg"
-            Start-Sleep 120
-            continue
-        }
-        throw "gh command failed: $($Arguments -join ' ')`n$msg"
+
+        Write-ControllerLog "Transient GitHub error; retrying attempt $($attempt + 1)/$GithubRetryLimit in 120 seconds: $msg"
+        Start-Sleep 120
     }
+
+    throw "GH_RETRY_EXHAUSTED: attempts=$GithubRetryLimit command=$($Arguments -join ' ')"
 }
 
 function Get-RequestUpdateMode {
@@ -300,7 +320,8 @@ function Start-V3Run {
 
     Write-ControllerLog "Triggered $Workflow mode=$RequestedMode at project commit $head."
 
-    while ($true) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($RunDiscoveryTimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep 5
         $candidate = Find-V3Run -Head $head -CreatedAfter $started
 
@@ -309,6 +330,8 @@ function Start-V3Run {
             return [long]$candidate.databaseId
         }
     }
+
+    throw "RUN_DISCOVERY_TIMEOUT: no $Workflow Run appeared for source=$head within $RunDiscoveryTimeoutSeconds seconds."
 }
 
 
@@ -333,7 +356,8 @@ function Invoke-BuildClosurePreflight {
     Write-ControllerLog "Triggered $closureWorkflow build_closure=true mode=$RequestedMode source=$head"
 
     $closureRun = $null
-    while (-not $closureRun) {
+    $discoveryDeadline = [DateTime]::UtcNow.AddSeconds($BuildClosureDiscoveryTimeoutSeconds)
+    while (-not $closureRun -and [DateTime]::UtcNow -lt $discoveryDeadline) {
         Start-Sleep 5
         $raw = Invoke-GhWithBackoff -Arguments @(
             'run','list','--repo',$Repository,'--workflow',$closureWorkflow,'--branch',$Branch,
@@ -354,10 +378,17 @@ function Invoke-BuildClosurePreflight {
             Select-Object -First 1
     }
 
+    if (-not $closureRun) {
+        throw "BUILD_CLOSURE_DISCOVERY_TIMEOUT: no $closureWorkflow Run appeared for source=$head within $BuildClosureDiscoveryTimeoutSeconds seconds."
+    }
+
     $closureRunId = [long]$closureRun.databaseId
     Write-ControllerLog "Build closure Run ID: $closureRunId source=$head"
 
-    while ($true) {
+    $status = ''
+    $conclusion = ''
+    $closureDeadline = [DateTime]::UtcNow.AddSeconds($BuildClosureTimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $closureDeadline) {
         $raw = Invoke-GhWithBackoff -Arguments @(
             'run','view',[string]$closureRunId,'--repo',$Repository,
             '--json','status,conclusion,headSha,createdAt,updatedAt,url'
@@ -368,6 +399,10 @@ function Invoke-BuildClosurePreflight {
         Write-ControllerLog "Build closure Run ${closureRunId}: status=$status conclusion=$conclusion"
         if ($status -eq 'completed') { break }
         Start-Sleep $PollSeconds
+    }
+
+    if ($status -ne 'completed') {
+        throw "BUILD_CLOSURE_TIMEOUT: Run $closureRunId did not complete within $BuildClosureTimeoutSeconds seconds."
     }
 
     $runDir = Download-RunEvidence -Id $closureRunId -Failure
@@ -419,7 +454,8 @@ function Get-LatestV3Run {
 function Wait-V3Run {
     param([long]$Id,[int]$RepairRound,[string]$RequestedMode)
 
-    while ($true) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($WorkflowRunTimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
         $raw = Invoke-GhWithBackoff -Arguments @(
             'run','view',[string]$Id,'--repo',$Repository,
             '--json','status,conclusion,url,headSha,createdAt,updatedAt'
@@ -436,6 +472,8 @@ function Wait-V3Run {
         if ($status -eq 'completed') { return $run }
         Start-Sleep $PollSeconds
     }
+
+    throw "WORKFLOW_RUN_TIMEOUT: Run $Id did not complete within $WorkflowRunTimeoutSeconds seconds."
 }
 
 function Download-RunEvidence {
@@ -833,7 +871,8 @@ function Invoke-ProductionContinuation {
         -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
         -Message 'Candidate verified; handing the same run to the persistent Production Agent and following it to PRODUCTION_RELEASED.'
 
-    while ($true) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($ProductionContinuationTimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
         $running = Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction SilentlyContinue |
             Where-Object { $_.CommandLine -match 'production-agent\.ps1' -and $_.CommandLine -match "-RunId\s+$Id(\s|$)" } |
             Select-Object -First 1
@@ -871,6 +910,13 @@ function Invoke-ProductionContinuation {
             return $false
         }
     }
+
+    $message = "PRODUCTION_CONTINUATION_TIMEOUT: Production Agent Run $Id did not reach PRODUCTION_RELEASED within $ProductionContinuationTimeoutSeconds seconds."
+    Write-ControllerLog $message
+    Set-ControllerState -Status 'blocked' -Stage 'production-agent' -Conclusion 'production-continuation-timeout' `
+        -CurrentRunId $Id -RepairRound $RepairRound -CurrentUpdateMode $RequestedMode -CandidateTag $CandidateTag `
+        -Message $message
+    return $false
 }
 
 function Process-V3Run {
@@ -878,8 +924,9 @@ function Process-V3Run {
 
     $currentRunId = $InitialRunId
     $round = $InitialRepairRound
+    $processDeadline = [DateTime]::UtcNow.AddSeconds($ProcessV3TimeoutSeconds)
 
-    while ($true) {
+    while ([DateTime]::UtcNow -lt $processDeadline) {
         $baseline = Assert-KnownGoodBaseline
         $run = Wait-V3Run -Id $currentRunId -RepairRound $round -RequestedMode $RequestedMode
         $conclusion = [string]$run.conclusion
@@ -925,24 +972,21 @@ function Process-V3Run {
         }
 
         if ($round -ge $MaxRepairRounds) {
-            Write-ControllerLog "CIRCUIT_BREAKER: $MaxRepairRounds repair rounds reached. Resetting the Codex round counter; replacement Candidate remains forbidden until exact build closure passes."
             Reset-RepairChanges
             Sync-Branch
-            $round = 0
+            $message = "REPAIR_EXHAUSTED: $MaxRepairRounds repair rounds reached for Run $currentRunId; current request is terminal and no replacement Candidate will be dispatched."
+            Write-ControllerLog $message
+            Set-ControllerState -Status 'blocked' -Stage 'codex-auto-repair' -Conclusion 'repair-exhausted' `
+                -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode -Message $message
+            return
         }
 
         $repairEvidenceRunId = $currentRunId
         $repairEvidenceDir = Download-RunEvidence -Id $currentRunId -Failure
         $repairEvidenceConclusion = $conclusion
+        $closure = $null
 
-        while ($true) {
-            if ($round -ge $MaxRepairRounds) {
-                Write-ControllerLog "CIRCUIT_BREAKER: $MaxRepairRounds repair rounds reached. Resetting the Codex round counter, but Candidate remains forbidden until build closure passes."
-                Reset-RepairChanges
-                Sync-Branch
-                $round = 0
-            }
-
+        while ($round -lt $MaxRepairRounds) {
             $round++
             Set-ControllerState -Status 'repairing' -Stage 'codex-auto-repair' -Conclusion $repairEvidenceConclusion `
                 -CurrentRunId $repairEvidenceRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
@@ -1000,15 +1044,29 @@ function Process-V3Run {
             $repairEvidenceConclusion = [string]$closure.Conclusion
         }
 
+        if (-not $closure -or -not $closure.Passed) {
+            Reset-RepairChanges
+            Sync-Branch
+            $message = "REPAIR_EXHAUSTED: $MaxRepairRounds repair rounds reached without a passing build closure; current request is terminal."
+            Write-ControllerLog $message
+            Set-ControllerState -Status 'blocked' -Stage 'codex-auto-repair' -Conclusion 'repair-exhausted' `
+                -CurrentRunId $repairEvidenceRunId -RepairRound $round -CurrentUpdateMode $RequestedMode -Message $message
+            return
+        }
+
         Set-ControllerState -Status 'retrying' -Stage 'trigger-next-run' -Conclusion '' `
             -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode `
             -Message 'Exact build closure passed; replacement Arthur v3 Candidate is now allowed.'
 
         $currentRunId = Start-V3Run -RequestedMode $RequestedMode
     }
+
+    $message = "PROCESS_V3_TIMEOUT: current request exceeded $ProcessV3TimeoutSeconds seconds without reaching a terminal state."
+    Write-ControllerLog $message
+    Set-ControllerState -Status 'blocked' -Stage 'controller' -Conclusion 'process-timeout' `
+        -CurrentRunId $currentRunId -RepairRound $round -CurrentUpdateMode $RequestedMode -Message $message
 }
 
-$restartAfterRecoverable = $false
 try {
     Write-ControllerLog "Starting Arthur v3 controller. Mode=$Mode UpdateMode=$UpdateMode MaxRepairRounds=$MaxRepairRounds"
     Assert-Tools
@@ -1072,17 +1130,9 @@ catch {
         exit 1
     }
 
-    Write-ControllerLog "RECOVERABLE_CONTROLLER_ERROR: $message"
-    Set-ControllerState -Status 'retrying' -Stage 'controller' -Conclusion 'recoverable' -CurrentRunId $RunId `
-        -RepairRound 0 -CurrentUpdateMode $UpdateMode -Message $message
-    $restartAfterRecoverable = $true
-}
-
-if ($restartAfterRecoverable) {
-    Start-Sleep -Seconds $PollSeconds
-    $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$PSCommandPath,'-Mode',$Mode,'-UpdateMode',$UpdateMode,'-MaxRepairRounds',[string]$MaxRepairRounds,'-PollSeconds',[string]$PollSeconds,'-CodexTimeoutSeconds',[string]$CodexTimeoutSeconds,'-Repository',$Repository,'-Branch',$Branch,'-Workflow',$Workflow)
-    if ($RunId -gt 0) { $args += @('-RunId',[string]$RunId) }
-    Write-ControllerLog 'RECOVERABLE_CONTROLLER_RESTART: relaunching clean execution without user intervention.'
-    & pwsh.exe @args
-    exit $LASTEXITCODE
+    $blockedMessage = "BLOCKED_CONTROLLER_ERROR: $message"
+    Write-ControllerLog $blockedMessage
+    Set-ControllerState -Status 'blocked' -Stage 'controller' -Conclusion 'controller-error' -CurrentRunId $RunId `
+        -RepairRound 0 -CurrentUpdateMode $UpdateMode -Message $blockedMessage
+    exit 1
 }

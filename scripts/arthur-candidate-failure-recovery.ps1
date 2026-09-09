@@ -127,6 +127,21 @@ if (-not $decision.ContainsKey('RUN_ID') -or -not [long]::TryParse([string]$deci
     throw 'CANDIDATE_FAILURE_REPAIR_INVALID_RUN_ID'
 }
 
+# A bounded v3 controller may deliberately terminate a failed Run as blocked.
+# Respect that durable terminal state so periodic control-plane wakeups cannot
+# resurrect the same request after REPAIR_EXHAUSTED or another controller block.
+$v3StatePath = Join-Path $Workspace 'state\ci-v3-state.json'
+if (Test-Path -LiteralPath $v3StatePath -PathType Leaf) {
+    try { $v3State = Get-Content -Raw -LiteralPath $v3StatePath | ConvertFrom-Json }
+    catch { $v3State = $null }
+    if ($v3State -and [long]$v3State.run_id -eq $runId -and [string]$v3State.status -eq 'blocked') {
+        $terminalDetail = [string]$v3State.conclusion
+        if ([string]::IsNullOrWhiteSpace($terminalDetail)) { $terminalDetail = 'blocked' }
+        Write-RepairResult -Status 'BLOCKED_TERMINAL' -RunId $runId -Detail $terminalDetail
+        exit 0
+    }
+}
+
 $existing = $null
 if (Test-Path -LiteralPath $markerPath -PathType Leaf) {
     try { $existing = Get-Content -Raw -LiteralPath $markerPath | ConvertFrom-Json }
