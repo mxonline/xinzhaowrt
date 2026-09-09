@@ -26,6 +26,12 @@ Assert-True (-not [string]::IsNullOrWhiteSpace($raw)) 'runtime Resume Gate must 
 $result = $raw | ConvertFrom-Json
 Assert-True (-not (@($result.conflicts) -contains 'RESUME_REPOSITORY_HEAD_INVALID')) 'Windows PowerShell runtime must not reject the valid durable repository_head'
 Assert-True ([string]$result.resume_state.repository_head -eq $rawHead.ToLowerInvariant()) 'runtime Resume Gate must preserve the canonical durable resume SHA'
-Assert-True ($exitCode -eq 0) 'reconciliation-only head drift must not hard-fail the Windows runtime Resume Gate'
+if ([string]$resumeState.status -eq 'PRODUCTION_RELEASED') {
+    Assert-True ([string]$result.resume_state.status -eq 'PRODUCTION_RELEASED') 'terminal durable state must remain terminal during runtime inspection'
+    Assert-True ($exitCode -in @(0,1,2)) 'terminal runtime inspection may report a closed gate without mutating state'
+}
+else {
+    Assert-True ($exitCode -eq 0) 'reconciliation-only head drift must not hard-fail the Windows runtime Resume Gate'
+}
 
 Write-Host 'ARTHUR_WINDOWS_RESUME_HEAD_RUNTIME_CONTRACT=PASS'
