@@ -44,6 +44,14 @@ Assert-Contains $workflow 'TERMINAL_RELEASE_EVIDENCE=PASS' 'terminal evidence va
 Assert-Contains $workflow "known_good.get('verified') is True" 'terminal eligibility must use the frozen known-good verified field'
 Assert-True (-not $workflow.Contains("known_good.get('known_good') is True")) 'terminal eligibility must not require a missing known-good.json field'
 
+# The immutable known-good manifest records the source run as toolchain_run.
+# The terminal gate must map that schema field to the published status run_id;
+# it must not require a fabricated run_id in the frozen manifest.
+Assert-Contains $workflow "'run_id': 'toolchain_run'" 'terminal eligibility must map known-good toolchain_run to status run_id'
+Assert-Contains $workflow 'known_good_for_reconciler' 'terminal reconcile must use a transient schema adapter for the immutable manifest'
+Assert-Contains $workflow "['known_good'] = True" 'transient known-good adapter must satisfy the reconciler terminal assertion without changing the frozen file'
+Assert-Contains $workflow 'arthur-terminal-known-good.json' 'transient known-good adapter must be isolated outside production state'
+
 # A repeated dispatch must be an observable no-op: the reconciler owns ledger
 # duplicate detection and the workflow must not turn an empty diff into a new
 # reconciliation commit.
