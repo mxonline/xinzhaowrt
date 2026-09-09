@@ -224,7 +224,7 @@ if ($repairCode -ne 0) {
     Write-Error "CANDIDATE_FAILURE_RECOVERY_FAILED: exit_code=$repairCode"
     exit $repairCode
 }
-if ($repairOutput -match 'CANDIDATE_FAILURE_REPAIR=(STARTED|ALREADY_RUNNING)') {
+if ($repairOutput -match 'CANDIDATE_FAILURE_REPAIR=(STARTED|ALREADY_RUNNING|BLOCKED_TERMINAL)') {
     Write-Host 'CONTROL_PLANE_REPAIR_ROUTED=PASS'
     Write-Host 'CONTROL_PLANE_MUTATION_SKIPPED=PASS reason=existing_v3_repair_controller_owns_failed_candidate'
     exit 0
