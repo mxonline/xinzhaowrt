@@ -200,6 +200,9 @@ try {
     $eventLedgerHelperPath = Join-Path $codeRoot 'scripts\arthur-firmware-event-ledger.ps1'
     if (-not (Test-Path -LiteralPath $eventLedgerHelperPath -PathType Leaf)) { Fail 'FIRMWARE_EVENT_LEDGER_HELPER_MISSING' }
     . $eventLedgerHelperPath
+    $terminalReconcilerPath = Join-Path $codeRoot 'scripts\arthur-terminal-release-reconciler.ps1'
+    if (-not (Test-Path -LiteralPath $terminalReconcilerPath -PathType Leaf)) { Fail 'CONTROL_PLANE_TERMINAL_RECONCILER_MISSING' }
+    . $terminalReconcilerPath
     $eventLedgerPath = Join-Path $env:GITHUB_WORKSPACE 'production\firmware-events.jsonl'
     if (-not (Test-Path -LiteralPath $eventLedgerPath -PathType Leaf)) { Fail 'FIRMWARE_EVENT_LEDGER_MISSING' }
     try { [void](Test-ArthurFirmwareEventLedger -Path $eventLedgerPath) }
@@ -391,6 +394,37 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         try { $previousResumeState = Get-Content -Raw -LiteralPath $resumeStatePath | ConvertFrom-Json }
         catch { Fail "STATE_RECONCILIATION_REQUIRED: RESUME_STATE_INVALID $($_.Exception.Message)" }
     }
+    $activeExecutionId = if ($previousResumeState -and $previousResumeState.PSObject.Properties['execution_id']) { [string]$previousResumeState.execution_id } else { '' }
+    $v3RequestPath = Join-Path $codeRoot 'production\v3-request.json'
+    if (-not $activeExecutionId -and (Test-Path -LiteralPath $v3RequestPath -PathType Leaf)) {
+        try { $v3Request = Get-Content -Raw -LiteralPath $v3RequestPath | ConvertFrom-Json; if ($v3Request.PSObject.Properties['execution_id']) { $activeExecutionId = [string]$v3Request.execution_id } } catch {}
+    }
+    $terminalResult = $null
+    $terminalStatusPath = Join-Path $codeRoot 'production\status.json'
+    if (Test-Path -LiteralPath $terminalStatusPath -PathType Leaf) {
+        try { $terminalStatus = Get-Content -Raw -LiteralPath $terminalStatusPath | ConvertFrom-Json }
+        catch { Fail "STATE_RECONCILIATION_REQUIRED: TERMINAL_STATUS_INVALID $($_.Exception.Message)" }
+        if ([string]$terminalStatus.status -eq 'PRODUCTION_RELEASED') {
+            if ([string]::IsNullOrWhiteSpace($activeExecutionId)) { Fail 'STATE_RECONCILIATION_REQUIRED: TERMINAL_EXECUTION_ID_MISSING' }
+            $terminalEvidenceRoot = Join-Path $codeRoot (Join-Path 'production\evidence' $activeExecutionId)
+            $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
+                -StatusPath $terminalStatusPath `
+                -KnownGoodPath (Join-Path $codeRoot 'production\known-good.json') `
+                -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
+                -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
+                -ResumeStatePath $resumeStatePath `
+                -OperatorIntentPath (Join-Path $codeRoot 'production\operator-intent.json') `
+                -RuntimeStatePath $runtimeStatePath `
+                -EventLogPath $eventLedgerPath `
+                -ExecutionId $activeExecutionId
+            if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
+                Log "TERMINAL_RELEASE_RECONCILE_SKIPPED=PASS execution=$activeExecutionId reason=$($terminalResult.reason)"
+            }
+            else {
+                Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$activeExecutionId result=$($terminalResult.reason)"
+            }
+        }
+    }
 
     Push-Location $env:GITHUB_WORKSPACE
     try {
@@ -400,13 +434,16 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     if ([string]::IsNullOrWhiteSpace($repositoryHead)) { $repositoryHead = [string]$env:GITHUB_SHA }
 
     $runtimeBefore = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+    if ($terminalResult -and [string]$terminalResult.reason -ne 'EXECUTION_ID_MISMATCH' -and ($runtimeBefore.terminal_state -eq 'PRODUCTION_RELEASED' -or $runtimeBefore.phase -eq 'PRODUCTION_RELEASED')) {
+        $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
+        $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
+        $state.checkpoint = [ordered]@{ current = 'PRODUCTION_RELEASED'; next_action = 'NONE'; status = 'PRODUCTION_RELEASED'; last_run_id = $WorkflowRunId }
+        Save-Json $canonicalPath $state
+        Log 'PRODUCTION_RELEASED=true'
+        exit 0
+    }
     $previousGateRecords = @(Get-ArthurGateRecordsFromResumeState -ResumeState $previousResumeState)
     $currentSubjects = Get-ArthurCurrentSubjectsForRepositoryHead -GateRecords $previousGateRecords -RepositoryHead $repositoryHead
-    $activeExecutionId = if ($previousResumeState -and $previousResumeState.PSObject.Properties['execution_id']) { [string]$previousResumeState.execution_id } else { '' }
-    $v3RequestPath = Join-Path $codeRoot 'production\v3-request.json'
-    if (-not $activeExecutionId -and (Test-Path -LiteralPath $v3RequestPath -PathType Leaf)) {
-        try { $v3Request = Get-Content -Raw -LiteralPath $v3RequestPath | ConvertFrom-Json; if ($v3Request.PSObject.Properties['execution_id']) { $activeExecutionId = [string]$v3Request.execution_id } } catch {}
-    }
     $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects
     Publish-ResumeState $resumeState $resumeStatePath
     if (-not $resumeState.instruction_allowed) {

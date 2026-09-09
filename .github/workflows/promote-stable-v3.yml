@@ -305,6 +305,7 @@ jobs:
           SYSUPGRADE_SHA256: ${{ steps.verify.outputs.sysupgrade_sha256 }}
           LOCK_SHA256: ${{ steps.verify.outputs.lock_sha256 }}
           RUN_ID: ${{ steps.request.outputs.run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           git config user.name 'XinZhaoWrt Release Bot'
@@ -338,6 +339,7 @@ jobs:
               'schema_version': '2.0',
               'status': 'frozen',
               'verified': True,
+              'known_good': True,
               'device': 'jdcloud_re-ss-01',
               'target': 'qualcommax',
               'subtarget': 'ipq60xx',
@@ -357,6 +359,7 @@ jobs:
               'verified_at': datetime.now(timezone.utc).isoformat(),
               'verification': 'real-device-confirmed',
               'toolchain_run': os.environ['RUN_ID'],
+              'run_id': int(os.environ['RUN_ID']),
               'fast_candidate_run': os.environ['RUN_ID']
           })
           with open(known_path, 'w', encoding='utf-8') as f:
@@ -387,9 +390,67 @@ jobs:
           with open(status_path, 'w', encoding='utf-8') as f:
               json.dump(status, f, ensure_ascii=False, indent=2)
               f.write('\n')
+
+          import subprocess
+          release = subprocess.run(
+              ['gh', 'release', 'view', os.environ['STABLE_TAG'], '--repo', os.environ['GITHUB_REPOSITORY'],
+               '--json', 'id,tagName,targetCommitish,isDraft,isPrerelease,url'],
+              check=True, capture_output=True, text=True).stdout
+          release = json.loads(release)
+          if (release.get('tagName') != os.environ['STABLE_TAG'] or
+                  release.get('targetCommitish') != os.environ['CANDIDATE_SHA'] or
+                  release.get('isDraft') or release.get('isPrerelease')):
+              raise SystemExit('BLOCKED: stable release identity is not eligible for terminal reconciliation')
+          execution_id = str(json.load(open('production/resume-state.json', encoding='utf-8')).get('execution_id', ''))
+          if not execution_id:
+              raise SystemExit('BLOCKED: durable terminal execution id is missing')
+          device_report_path = 'promote/assets/real-device-verification.json'
+          if not os.path.isfile(device_report_path):
+              raise SystemExit('BLOCKED: durable real-device verification report is missing from Candidate assets')
+          with open(device_report_path, 'rb') as f:
+              device_report_bytes = f.read()
+          try:
+              device_report = json.loads(device_report_bytes.decode('utf-8'))
+          except Exception as exc:
+              raise SystemExit(f'BLOCKED: durable real-device verification report is invalid: {exc}')
+          if device_report.get('result') != 'PASS':
+              raise SystemExit('BLOCKED: durable real-device verification report is not PASS')
+          device_report_sha256 = hashlib.sha256(device_report_bytes).hexdigest()
+          evidence_dir = os.path.join('production', 'evidence', execution_id)
+          os.makedirs(evidence_dir, exist_ok=True)
+          identity = {
+              'run_id': int(os.environ['RUN_ID']), 'stable_tag': os.environ['STABLE_TAG'],
+              'project_commit': os.environ['CANDIDATE_SHA'], 'source_commit': os.environ['CANDIDATE_SHA'],
+              'firmware': os.environ['SYSUPGRADE_NAME'], 'sha256': os.environ['SYSUPGRADE_SHA256']
+          }
+          release_evidence = dict(identity, verified_by='GITHUB_ACTIONS_GITHUB_TOKEN', release_exists=True,
+                                  draft=False, prerelease=False, release_id=str(release['id']),
+                                  release_url=release['url'], observed_at=datetime.now(timezone.utc).isoformat())
+          device_evidence = dict(identity, known_good=True, verified=True,
+                                 verification='real-device-confirmed', evidence_sha256=device_report_sha256,
+                                 ref=device_report_path, observed_at=datetime.now(timezone.utc).isoformat())
+          with open(os.path.join(evidence_dir, 'github-release-evidence.json'), 'w', encoding='utf-8') as f:
+              json.dump(release_evidence, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          with open(os.path.join(evidence_dir, 'real-device-evidence.json'), 'w', encoding='utf-8') as f:
+              json.dump(device_evidence, f, ensure_ascii=False, indent=2)
+              f.write('\n')
           PY
 
-          git add config/arthur-known-good.lock production/known-good.json production/status.json
+           pwsh -NoProfile -Command '
+             . ./scripts/arthur-terminal-release-reconciler.ps1
+             $resume = Get-Content -Raw ./production/resume-state.json | ConvertFrom-Json
+             $executionId = [string]$resume.execution_id
+             if ([string]::IsNullOrWhiteSpace($executionId)) { throw "TERMINAL_RELEASE_EXECUTION_ID_MISSING" }
+             $evidenceRoot = Join-Path ./production/evidence $executionId
+             $runtimeStatePath = Join-Path $env:RUNNER_TEMP "arthur-terminal-runtime-$executionId.json"
+             [ordered]@{ execution_id=$executionId; phase="RELEASE_GATE"; current_stage="RELEASE_GATE"; next_action="RELEASE"; terminal_state=$null; pending_human_gate=$null } | ConvertTo-Json | Set-Content -LiteralPath $runtimeStatePath -Encoding utf8NoBOM
+             $result = Invoke-ArthurTerminalReleaseReconcile -StatusPath ./production/status.json -KnownGoodPath ./production/known-good.json -ReleaseEvidencePath (Join-Path $evidenceRoot github-release-evidence.json) -DeviceEvidencePath (Join-Path $evidenceRoot real-device-evidence.json) -ResumeStatePath ./production/resume-state.json -OperatorIntentPath ./production/operator-intent.json -RuntimeStatePath $runtimeStatePath -EventLogPath ./production/firmware-events.jsonl -ExecutionId $executionId
+             if ([string]$result.reason -eq "EXECUTION_ID_MISMATCH") { throw "TERMINAL_RELEASE_EXECUTION_ID_MISMATCH" }
+             Write-Host "TERMINAL_RELEASE_RECONCILED=PASS execution=$executionId result=$($result.reason)"
+           '
+
+          git add config/arthur-known-good.lock production/known-good.json production/status.json production/resume-state.json production/operator-intent.json production/firmware-events.jsonl production/evidence/
           if ! git diff --cached --quiet; then
             git commit -m "release: promote ${STABLE_TAG} from verified Candidate"
             git push origin HEAD:main
