@@ -81,7 +81,6 @@ jobs:
           terminal_eligible = (
               status.get('status') == 'PRODUCTION_RELEASED' and
               status.get('known_good') is True and
-              known_good.get('known_good') is True and
               known_good.get('verified') is True and
               known_good.get('verification') == 'real-device-confirmed' and
               int(status.get('run_id', 0)) == run_id
