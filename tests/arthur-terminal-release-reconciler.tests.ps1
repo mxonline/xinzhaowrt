@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ReconcilerPath = Join-Path $Root 'scripts\arthur-terminal-release-reconciler.ps1'
+$LedgerPath = Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
@@ -189,6 +190,18 @@ try {
     Invoke-TestReconcile $forward | Out-Null
     Assert-TerminalSnapshot $forward
     Assert-Equal (Get-TerminalEventCount -Path $forward.Paths.events -RunId $forward.Identity.run_id -StableTag $forward.Identity.stable_tag) 1 'forward closure must append one semantic terminal event'
+    . $LedgerPath
+    Assert-True (Test-ArthurFirmwareEventLedger -Path $forward.Paths.events) 'terminal reconciliation event log must retain hash-chain integrity'
+    $forwardTerminalEvent = @(
+        Get-ArthurFirmwareEvents -Path $forward.Paths.events |
+            Where-Object {
+                $_.event -eq 'PRODUCTION_RELEASED' -and
+                [long]$_.data.run_id -eq $forward.Identity.run_id -and
+                $_.data.stable_tag -eq $forward.Identity.stable_tag
+            }
+    ) | Select-Object -First 1
+    Assert-True ($null -ne $forwardTerminalEvent) 'forward closure must record a terminal event'
+    Assert-Equal $forwardTerminalEvent.source 'TERMINAL_RELEASE_RECONCILER' 'terminal event must identify the terminal reconciler source'
 
     # Break caught: a retry that appends another terminal event or mutates a settled snapshot is not idempotent.
     $beforeResume = (Get-FileHash -Algorithm SHA256 -LiteralPath $forward.Paths.resume).Hash
@@ -236,11 +249,15 @@ try {
     $newExecutionDir = Join-Path $testRoot 'new-execution'
     New-Item -ItemType Directory -Path $newExecutionDir -Force | Out-Null
     $newExecution = New-TerminalReconcileFixture -Directory $newExecutionDir -ExecutionId 'arthur-new-execution-20260909'
+    $beforeNewResume = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.resume).Hash
     $beforeNewIntent = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.intent).Hash
     $beforeNewRuntime = (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.runtime).Hash
+    $beforeNewTerminalEvents = Get-TerminalEventCount -Path $newExecution.Paths.events -RunId $newExecution.Identity.run_id -StableTag $newExecution.Identity.stable_tag
     Invoke-TestReconcile $newExecution | Out-Null
+    Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.resume).Hash $beforeNewResume 'terminal reconcile must not close a distinct new execution resume state'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.intent).Hash $beforeNewIntent 'terminal reconcile must not close a distinct new execution intent'
     Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $newExecution.Paths.runtime).Hash $beforeNewRuntime 'terminal reconcile must not overwrite a distinct new execution runtime'
+    Assert-Equal (Get-TerminalEventCount -Path $newExecution.Paths.events -RunId $newExecution.Identity.run_id -StableTag $newExecution.Identity.stable_tag) $beforeNewTerminalEvents 'terminal reconcile must not append a terminal event for a distinct new execution'
     $newIntent = Read-TestJson $newExecution.Paths.intent
     Assert-Equal $newIntent.firmware_execution_authorized $true 'new execution remains independently eligible after prior terminal release'
 
