@@ -33,6 +33,7 @@ Assert-Contains $gateText 'CONTROL_PLANE_REPAIR_ROUTED=PASS' 'control-plane gate
 # five-minute candidate recovery wakeup after the controller process has exited.
 Assert-Contains $helperText 'ci-v3-state.json' 'failed Candidate recovery must consult the v3 terminal controller state'
 Assert-Contains $helperText "Write-RepairResult -Status 'BLOCKED_TERMINAL'" 'failed Candidate recovery must refuse to restart a blocked terminal Run'
+Assert-Contains $gateText 'BLOCKED_TERMINAL' 'control-plane gate must stop when the failed Candidate is already terminal'
 
 # A known failed formal Candidate is durable GitHub evidence and must be routed to
 # its repair controller before legacy Resume Gate state can block it. The helper
