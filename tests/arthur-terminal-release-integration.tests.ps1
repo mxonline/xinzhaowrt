@@ -45,9 +45,49 @@ Assert-True ($savedEvidence -ge 0) 'Complete-Release must persist production rel
 Assert-True ($terminalState -gt $savedEvidence) 'Complete-Release must preserve local terminal success after release evidence is saved'
 Assert-True ($evidenceAvailable -gt $terminalState) 'Complete-Release must evaluate durable evidence only after preserving local terminal success'
 Assert-True ($invokeReconciler -gt $evidenceAvailable) 'Complete-Release must invoke the shared reconciler only when durable evidence is available'
-Assert-Contains $completeRelease 'if (Test-ProductionTerminalEvidenceAvailable -ExecutionId $executionId)' 'available durable evidence must be the only branch that calls the shared reconciler'
+Assert-Contains $completeRelease 'if (Test-ProductionTerminalEvidenceAvailable -State $State -ExecutionId $executionId)' 'available durable evidence must be the only branch that calls the shared reconciler'
 Assert-Contains $completeRelease 'TERMINAL_RELEASE_RECONCILE_DEFERRED=PASS' 'missing server-side evidence must be explicitly deferred rather than failing local release completion'
 Assert-Contains $completeRelease 'SERVER_SIDE_EVIDENCE_PENDING' 'deferred local release must identify the missing server-side evidence condition'
+
+# Break caught: four JSON files can be structurally valid and terminal-marked while
+# describing a different run, tag, source, firmware, or SHA.  That mismatch must
+# take the same deferred branch after local Save-State, never invoke the helper.
+$availability = Get-FunctionBody -Text $agent -Name 'Test-ProductionTerminalEvidenceAvailable'
+Assert-Contains $availability 'Get-ArthurTerminalIdentity' 'availability guard must parse terminal identities rather than trusting flags alone'
+Assert-Contains $availability 'Assert-ArthurTerminalIdentityMatch' 'availability guard must compare every durable evidence identity'
+Assert-Contains $availability '[long]$State.run_id' 'availability guard must bind evidence to the local production run'
+Assert-Contains $availability 'arthur-production-$($State.run_id)' 'availability guard must bind evidence to the local stable tag'
+Assert-Contains $availability '$State.source_sha' 'availability guard must bind evidence to the local source commit'
+Assert-Contains $availability '$State.artifact_name' 'availability guard must bind evidence to the local firmware filename'
+Assert-Contains $availability '$State.candidate_sha256' 'availability guard must bind evidence to the local firmware SHA256'
+
+# Execute the production guard itself against syntactically valid evidence.  A
+# run mismatch is intentionally the only mutation: the guard must then return
+# false, which leaves Complete-Release on its already-saved local/deferred path.
+. (Join-Path $Root 'scripts\arthur-terminal-release-reconciler.ps1')
+. ([scriptblock]::Create($availability))
+$guardRoot = Join-Path ([IO.Path]::GetTempPath()) ("xinzhaowrt-terminal-availability-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path (Join-Path $guardRoot 'production\evidence\execution-123') | Out-Null
+$guardState = [pscustomobject]@{ run_id = [long]123; source_sha = ('a' * 40); artifact_name = 'Arthur-test-sysupgrade.bin'; candidate_sha256 = ('b' * 64) }
+$guardIdentity = [ordered]@{ run_id=123; stable_tag='arthur-production-123'; project_commit=('a' * 40); source_commit=('a' * 40); firmware='Arthur-test-sysupgrade.bin'; sha256=('b' * 64) }
+function Write-GuardEvidence([string]$Path,$Value) { $Value | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM }
+try {
+    Write-GuardEvidence (Join-Path $guardRoot 'production\status.json') ([ordered]@{ status='PRODUCTION_RELEASED'; known_good=$true } + $guardIdentity)
+    Write-GuardEvidence (Join-Path $guardRoot 'production\known-good.json') ([ordered]@{ known_good=$true; verified=$true; verification='real-device-confirmed' } + $guardIdentity)
+    Write-GuardEvidence (Join-Path $guardRoot 'production\evidence\execution-123\github-release-evidence.json') ([ordered]@{ verified_by='GITHUB_ACTIONS_GITHUB_TOKEN'; release_exists=$true; draft=$false; prerelease=$false } + $guardIdentity)
+    Write-GuardEvidence (Join-Path $guardRoot 'production\evidence\execution-123\real-device-evidence.json') ([ordered]@{ known_good=$true; verified=$true; verification='real-device-confirmed' } + $guardIdentity)
+    $previousRoot = $script:Root
+    $script:Root = $guardRoot
+    Assert-True (Test-ProductionTerminalEvidenceAvailable -State $guardState -ExecutionId 'execution-123') 'matching complete evidence must make the production guard eligible'
+    $mismatched = Get-Content -Raw (Join-Path $guardRoot 'production\evidence\execution-123\github-release-evidence.json') | ConvertFrom-Json
+    $mismatched.run_id = [long]124
+    Write-GuardEvidence (Join-Path $guardRoot 'production\evidence\execution-123\github-release-evidence.json') $mismatched
+    Assert-True (-not (Test-ProductionTerminalEvidenceAvailable -State $guardState -ExecutionId 'execution-123')) 'structurally valid mismatched release evidence must defer before helper invocation'
+}
+finally {
+    $script:Root = $previousRoot
+    if (Test-Path -LiteralPath $guardRoot) { Remove-Item -LiteralPath $guardRoot -Recurse -Force }
+}
 
 # Break caught: server-side promotion could manufacture terminal state without an
 # Actions-token verified release record, or commit the record without reconciling it.

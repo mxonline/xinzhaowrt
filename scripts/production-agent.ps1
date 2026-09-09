@@ -413,7 +413,7 @@ function Invoke-RealDeviceVerify($State,[string]$Target) {
 }
 
 function Test-ProductionTerminalEvidenceAvailable {
-    param([Parameter(Mandatory=$true)][string]$ExecutionId)
+    param([Parameter(Mandatory=$true)]$State,[Parameter(Mandatory=$true)][string]$ExecutionId)
 
     $evidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $ExecutionId)
     $paths = [ordered]@{
@@ -428,12 +428,25 @@ function Test-ProductionTerminalEvidenceAvailable {
         $knownGood = Get-Content -Raw -LiteralPath $paths.known_good | ConvertFrom-Json
         $releaseEvidence = Get-Content -Raw -LiteralPath $paths.github_release | ConvertFrom-Json
         $deviceEvidence = Get-Content -Raw -LiteralPath $paths.real_device | ConvertFrom-Json
-        return (
+        $terminalFlagsValid = (
             [string]$status.status -eq 'PRODUCTION_RELEASED' -and $status.known_good -eq $true -and
             $knownGood.known_good -eq $true -and $knownGood.verified -eq $true -and [string]$knownGood.verification -eq 'real-device-confirmed' -and
             [string]$releaseEvidence.verified_by -eq 'GITHUB_ACTIONS_GITHUB_TOKEN' -and $releaseEvidence.release_exists -eq $true -and $releaseEvidence.draft -eq $false -and $releaseEvidence.prerelease -eq $false -and
             $deviceEvidence.known_good -eq $true -and $deviceEvidence.verified -eq $true -and [string]$deviceEvidence.verification -eq 'real-device-confirmed'
         )
+        if (-not $terminalFlagsValid) { return $false }
+        $expectedIdentity = [pscustomobject]@{
+            run_id = [long]$State.run_id
+            stable_tag = "arthur-production-$($State.run_id)"
+            project_commit = [string]$State.source_sha
+            source_commit = [string]$State.source_sha
+            firmware = [string]$State.artifact_name
+            sha256 = [string]$State.candidate_sha256
+        }
+        foreach ($evidence in @($status,$knownGood,$releaseEvidence,$deviceEvidence)) {
+            Assert-ArthurTerminalIdentityMatch -Expected $expectedIdentity -Actual (Get-ArthurTerminalIdentity -Evidence $evidence -Label 'production_agent_terminal_evidence') -Label 'production_agent_state'
+        }
+        return $true
     }
     catch { return $false }
 }
@@ -448,7 +461,7 @@ function Complete-Release($State) {
     Write-ProductionEvidence $State 'RELEASE' 'GITHUB_RELEASE' ("release-$($State.run_id)") ("github-release:$tag") 'PASS'
     $executionId = Ensure-ProductionExecutionId $State
     Save-State $State 'PRODUCTION_RELEASED' 'VERIFIED'
-    if (Test-ProductionTerminalEvidenceAvailable -ExecutionId $executionId) {
+    if (Test-ProductionTerminalEvidenceAvailable -State $State -ExecutionId $executionId) {
         $terminalEvidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $executionId)
         $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
             -StatusPath (Join-Path $Root 'production\status.json') `
