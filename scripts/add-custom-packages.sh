@@ -223,6 +223,14 @@ clone_or_update \
   OpenClash \
   https://github.com/vernesong/OpenClash.git \
   "${OPENCLASH_REF:-master}"
+OPENCLASH_CORE_PATCH="$PROJECT_ROOT/patches/openclash/0001-core-updater-single-flight-and-private-tmp.patch"
+[[ -f "$OPENCLASH_CORE_PATCH" ]] || {
+  echo "ERROR: OpenClash safety patch missing: $OPENCLASH_CORE_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_CORE_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_CORE_PATCH"
+echo "APPLIED_PATCH: OpenClash core updater single-flight/private-tmp"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
