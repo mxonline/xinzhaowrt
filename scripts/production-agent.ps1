@@ -21,6 +21,7 @@ $SnapshotPath = Join-Path $Root 'output\real-device\real-device-snapshot.json'
 . (Join-Path $PSScriptRoot 'real-device-baseline-lib.ps1')
 . (Join-Path $PSScriptRoot 'arthur-state-contract.ps1')
 . (Join-Path $PSScriptRoot 'arthur-evidence-index.ps1')
+. (Join-Path $PSScriptRoot 'arthur-terminal-release-reconciler.ps1')
 $script:ProductionEvidenceTypes = @('ARTIFACT_MANIFEST','FLASH_SAFETY_REPORT','FLASH_EVENT','REAL_DEVICE_REPORT','GITHUB_RELEASE')
 $Out = Join-Path $Root 'output\production-agent'
 $StatePath = Join-Path $Out 'state.json'
@@ -419,7 +420,24 @@ function Complete-Release($State) {
         if ($create.ExitCode -ne 0) { throw "GitHub Release failed: $($create.Output)" }
     }
     Write-ProductionEvidence $State 'RELEASE' 'GITHUB_RELEASE' ("release-$($State.run_id)") ("github-release:$tag") 'PASS'
-    Save-State $State 'PRODUCTION_RELEASED' 'VERIFIED'
+    $executionId = Ensure-ProductionExecutionId $State
+    $terminalEvidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $executionId)
+    $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
+        -StatusPath (Join-Path $Root 'production\status.json') `
+        -KnownGoodPath (Join-Path $Root 'production\known-good.json') `
+        -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
+        -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
+        -ResumeStatePath (Join-Path $Root 'production\resume-state.json') `
+        -OperatorIntentPath (Join-Path $Root 'production\operator-intent.json') `
+        -RuntimeStatePath $StatePath `
+        -EventLogPath (Join-Path $Root 'production\firmware-events.jsonl') `
+        -ExecutionId $executionId
+    if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
+        throw 'TERMINAL_RELEASE_RECONCILE_EXECUTION_ID_MISMATCH'
+    }
+    Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$executionId result=$($terminalResult.reason)"
+    $reconciledState = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json
+    Save-State $reconciledState 'PRODUCTION_RELEASED' 'VERIFIED'
     Write-Host 'PRODUCTION_RELEASED=YES'
 }
 
