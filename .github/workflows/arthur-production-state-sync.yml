@@ -78,6 +78,14 @@ jobs:
           status = json.load(open('production/status.json', encoding='utf-8'))
           known_good = json.load(open('production/known-good.json', encoding='utf-8'))
           identity_keys = ('run_id', 'stable_tag', 'project_commit', 'source_commit', 'firmware', 'sha256')
+          known_good_identity_keys = {
+              'run_id': 'toolchain_run',
+              'stable_tag': 'stable_tag',
+              'project_commit': 'project_commit',
+              'source_commit': 'source_commit',
+              'firmware': 'firmware',
+              'sha256': 'sha256',
+          }
           terminal_eligible = (
               status.get('status') == 'PRODUCTION_RELEASED' and
               status.get('known_good') is True and
@@ -86,8 +94,8 @@ jobs:
               int(status.get('run_id', 0)) == run_id
           )
           if terminal_eligible:
-              for key in identity_keys:
-                  if str(status.get(key, '')) != str(known_good.get(key, '')):
+              for key, known_good_key in known_good_identity_keys.items():
+                  if str(status.get(key, '')) != str(known_good.get(known_good_key, '')):
                       raise SystemExit(f'BLOCKED: terminal status and known-good identity differ: {key}')
               stable_tag = str(status['stable_tag'])
               release = json.loads(subprocess.run(
@@ -149,6 +157,15 @@ jobs:
                   'execution_id': execution_id, 'phase': 'RELEASE_GATE', 'current_stage': 'RELEASE_GATE',
                   'next_action': 'RELEASE', 'terminal_state': None, 'pending_human_gate': None
               }) + '\n', encoding='utf-8')
+              # The frozen manifest uses toolchain_run and intentionally has no
+              # mutable known_good flag. Normalize only a temporary copy for
+              # the shared reconciler; production/known-good.json is never
+              # modified by State Sync.
+              known_good_for_reconciler = dict(known_good)
+              known_good_for_reconciler['run_id'] = int(known_good['toolchain_run'])
+              known_good_for_reconciler['known_good'] = True
+              Path('/tmp/arthur-terminal-known-good.json').write_text(
+                  json.dumps(known_good_for_reconciler, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
                   out.write('mode=terminal\n')
               print(f'TERMINAL_RELEASE_EVIDENCE=PASS run={run_id} stable_tag={stable_tag}')
@@ -273,7 +290,7 @@ jobs:
             $executionId = [string]$resume.execution_id
             if ([string]::IsNullOrWhiteSpace($executionId)) { throw "TERMINAL_RELEASE_EXECUTION_ID_MISSING" }
             $evidenceRoot = Join-Path ./production/evidence $executionId
-            $result = Invoke-ArthurTerminalReleaseReconcile -StatusPath ./production/status.json -KnownGoodPath ./production/known-good.json -ReleaseEvidencePath (Join-Path $evidenceRoot github-release-evidence.json) -DeviceEvidencePath (Join-Path $evidenceRoot real-device-evidence.json) -ResumeStatePath ./production/resume-state.json -OperatorIntentPath ./production/operator-intent.json -RuntimeStatePath /tmp/arthur-terminal-runtime.json -EventLogPath ./production/firmware-events.jsonl -ExecutionId $executionId
+            $result = Invoke-ArthurTerminalReleaseReconcile -StatusPath ./production/status.json -KnownGoodPath /tmp/arthur-terminal-known-good.json -ReleaseEvidencePath (Join-Path $evidenceRoot github-release-evidence.json) -DeviceEvidencePath (Join-Path $evidenceRoot real-device-evidence.json) -ResumeStatePath ./production/resume-state.json -OperatorIntentPath ./production/operator-intent.json -RuntimeStatePath /tmp/arthur-terminal-runtime.json -EventLogPath ./production/firmware-events.jsonl -ExecutionId $executionId
             if ([string]$result.reason -eq "EXECUTION_ID_MISMATCH") { throw "TERMINAL_RELEASE_EXECUTION_ID_MISMATCH" }
             if ([string]$result.reason -eq "ALREADY_RECONCILED") {
               Write-Host "ALREADY_RECONCILED=PASS NO_OP=PASS execution=$executionId"
