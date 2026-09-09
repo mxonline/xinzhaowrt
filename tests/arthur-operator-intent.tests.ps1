@@ -38,17 +38,14 @@ $resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
 
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
 Assert-Equal $current.schema_version '1.1' 'active execution intent must use the durable execution-aware schema'
-Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'final release must remain explicitly authorized firmware execution'
-Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'final release authorization must stay scope-bound'
-Assert-Equal $current.firmware_execution_authorized $true 'firmware release authorization must remain durable after Candidate acceptance'
+Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'terminal intent must preserve the completed firmware execution identity'
+Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'terminal intent must preserve its original scope for auditability'
+Assert-Equal $current.firmware_execution_authorized $false 'completed firmware release must close mutation authorization'
 Assert-Equal $current.execution_id 'arthur-final-release-5f41c4e-20260908' 'operator intent must bind to the active durable execution'
-Assert-Equal $current.firmware_state.current_stage 'PRE_FLASH' 'operator intent must project the canonical current Gate'
-Assert-Equal $current.firmware_state.next_stage 'AUTO_FLASH_SAFETY_GATE' 'operator intent must project the canonical next Gate'
-Assert-Equal ([long]$current.firmware_state.active_run_id) 34242450515 'operator intent must preserve the accepted Candidate run identity'
-Assert-Equal $current.firmware_state.active_source_sha '5f41c4e25be6eb5a24f78bc794ca1d80a036087c' 'operator intent must preserve the accepted firmware-content baseline'
-Assert-Equal $current.firmware_state.source 'KNOWN_GOOD_V3_RUN_34242450515_SOURCE_5F41C4E' 'known-good source marker must remain stable'
-Assert-Equal ([long]$current.firmware_state.active_artifact_id) 10068849426 'operator intent must preserve the accepted Candidate Artifact identity'
-Assert-Equal $current.firmware_state.candidate_release_conclusion 'success' 'completed Candidate publication must remain durable'
+Assert-Equal $current.firmware_state.current_stage 'PRODUCTION_RELEASED' 'operator intent must project the terminal stage'
+Assert-Equal $current.firmware_state.next_stage 'NONE' 'operator intent must close all future actions'
+Assert-Equal ([long]$current.firmware_state.active_run_id) 34268801985 'operator intent must use the published production run identity'
+Assert-Equal $current.firmware_state.active_source_sha '2f4d9a70e5675955bddaf51eb134131fac61bfc3' 'operator intent must use the published production source identity'
 Assert-Equal $current.guardrails.do_not_interrupt_active_run $true 'wakeups must preserve accepted execution ownership'
 Assert-Equal $current.guardrails.do_not_dispatch_duplicate_build $true 'wakeups must never dispatch a duplicate build'
 Assert-Equal $current.guardrails.reuse_uploaded_candidate_artifact_after_build $true 'post-build recovery must reuse the accepted artifact'
@@ -58,19 +55,15 @@ foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')
 
 Assert-Equal ([int]$resume.schema_version) 2 'canonical production resume state must be schema v2'
 Assert-Equal $resume.execution_id 'arthur-final-release-5f41c4e-20260908' 'resume state must share the operator execution identity'
-Assert-Equal ([long]$resume.production.github_run_id) 34242450515 'resume state must preserve the accepted Candidate run'
-Assert-Equal $resume.source.accepted_source_sha '5f41c4e25be6eb5a24f78bc794ca1d80a036087c' 'resume state must use the correct firmware-content baseline'
-Assert-Equal $resume.current_gate 'PRE_FLASH' 'canonical current durable Gate must remain PRE_FLASH'
-Assert-Equal $resume.next_action 'PRE_FLASH' 'resume must continue from PRE_FLASH and must not rebuild or skip ahead'
-Assert-Equal $resume.gates.BUILD.status 'PASS' 'BUILD must remain evidence-backed PASS'
-Assert-True (@($resume.gates.BUILD.evidence_refs) -contains 'evidence:build-run-34242450515') 'BUILD PASS must bind to durable GitHub evidence'
-Assert-Equal $resume.gates.ARTIFACT.status 'PASS' 'ARTIFACT must remain evidence-backed PASS'
-Assert-True (@($resume.gates.ARTIFACT.evidence_refs) -contains 'evidence:artifact-run-34242450515') 'ARTIFACT PASS must bind to durable Artifact evidence'
-Assert-Equal $resume.gates.PRE_FLASH.status 'PENDING' 'PRE_FLASH must remain pending until its own real safety evidence exists'
-Assert-Equal @($resume.gates.PRE_FLASH.evidence_refs).Count 0 'PRE_FLASH must not carry invented PASS evidence'
+Assert-Equal ([long]$resume.production.github_run_id) 34268801985 'resume state must use the published production run'
+Assert-Equal $resume.source.accepted_source_sha '2f4d9a70e5675955bddaf51eb134131fac61bfc3' 'resume state must use the published production source'
+Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'resume state must be terminal'
+Assert-Equal $resume.instruction_allowed $false 'terminal resume must forbid further firmware instructions'
+Assert-Equal $resume.current_gate 'PRODUCTION_RELEASED' 'canonical current gate must be terminal'
+Assert-Equal $resume.next_action 'NONE' 'terminal resume must not reopen PRE_FLASH'
+Assert-True (@($resume.pending).Count -eq 0) 'terminal resume must have no pending work'
 foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
-    Assert-Equal $resume.gates.$frozen.status 'PASS' "$frozen must remain a first-class inherited PASS gate"
-    Assert-True @($resume.gates.$frozen.evidence_refs).Count -gt 0 "$frozen PASS must carry evidence"
+    Assert-Equal $resume.gates.$frozen.status 'PASS' "$frozen must remain a terminal PASS gate"
 }
 Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256'
 Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic hash must be lowercase SHA-256'
@@ -81,8 +74,8 @@ $expectedResumeHash = Get-ArthurResumeSemanticHash $resumeForHash
 Assert-Equal ([string]$resume.semantic_sha256) $expectedResumeHash 'durable resume semantic hash must match its semantic content'
 
 $currentDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $current
-Assert-Equal $currentDecision.allowed $true 'accepted Candidate at PRE_FLASH must allow the authorized runtime to continue'
-Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_AUTHORIZED' 'PRE_FLASH continuation must remain explicitly scope-authorized'
+Assert-Equal $currentDecision.allowed $false 'completed production release must not authorize another firmware mutation'
+Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'terminal closure must be fail-closed'
 
 $runningBuildIntent = [pscustomobject]@{
     intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true

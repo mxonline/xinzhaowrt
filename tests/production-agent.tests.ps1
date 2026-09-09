@@ -160,8 +160,10 @@ if ($operatorIntent.firmware_execution_authorized -eq $true) {
     Assert-True ([string]$operatorIntent.authorization_scope -eq 'FIRMWARE_RELEASE') 'authorized operator intent must use FIRMWARE_RELEASE scope'
 }
 else {
-    Assert-True ([string]$operatorIntent.intent_type -eq 'PROCESS_GOVERNANCE') 'non-firmware operator intent must remain PROCESS_GOVERNANCE'
-    Assert-True ([string]$operatorIntent.authorization_scope -eq 'GOVERNANCE_RULES_ONLY') 'non-firmware operator intent must remain governance-only'
+    Assert-True ([string]$operatorIntent.intent_type -eq 'EXECUTE_FIRMWARE') 'terminal closure must retain the completed firmware execution identity for auditability'
+    Assert-True ([string]$operatorIntent.authorization_scope -eq 'FIRMWARE_RELEASE') 'terminal closure must retain the original scope without reauthorizing mutation'
+    Assert-True ([string]$operatorIntent.firmware_state.current_stage -eq 'PRODUCTION_RELEASED') 'terminal closure must project PRODUCTION_RELEASED'
+    Assert-True ([string]$operatorIntent.firmware_state.next_stage -eq 'NONE') 'terminal closure must not schedule another release action'
 }
 Assert-True ($deploy -notmatch '(?i)actions/checkout@v4') 'active unattended wakeup must not replace the persistent source with an ephemeral checkout'
 Assert-True ($deploy -notmatch '(?i)reset --hard') 'active wakeup must not destroy unfinished Headless Codex changes'

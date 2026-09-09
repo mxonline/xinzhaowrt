@@ -24,7 +24,9 @@ if ($Workflow -notmatch 'runtime-contract.json') { throw 'runtime manifest invoc
 
 $State = Get-Content (Join-Path $Root 'production/resume-state.json') -Raw | ConvertFrom-Json
 if ($State.PSObject.Properties.Name -contains 'state_revision') { throw 'Do not invent native state_revision in Arthur schema v2' }
-if ($State.current_gate -ne 'PRE_FLASH') { throw "This integration must not advance Arthur current_gate: $($State.current_gate)" }
-if ($State.status -ne 'RESUME_SAFE') { throw "This integration must preserve Arthur RESUME_SAFE status: $($State.status)" }
+if ($State.current_gate -ne 'PRODUCTION_RELEASED') { throw "Arthur current_gate must remain at the durable production terminal: $($State.current_gate)" }
+if ($State.next_action -ne 'NONE') { throw "Terminal Arthur state must not retain an actionable next step: $($State.next_action)" }
+if ($State.status -ne 'PRODUCTION_RELEASED') { throw "Arthur state must preserve the durable production terminal: $($State.status)" }
+if ($State.instruction_allowed -ne $false) { throw 'Terminal Arthur state must close instruction authorization' }
 
 Write-Host 'Arthur Global Runtime Contract integration: PASS'

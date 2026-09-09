@@ -306,7 +306,7 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'XinZhaoWrt State Bot'
           git config user.email 'xinzhaowrt@users.noreply.github.com'
-          git add production/resume-state.json production/operator-intent.json production/evidence/
+            git add production/resume-state.json production/operator-intent.json production/firmware-events.jsonl production/evidence/
           if git diff --cached --quiet; then
             if [ "$TERMINAL_MODE" = terminal ]; then
               echo 'ALREADY_RECONCILED=PASS NO_OP=PASS'
