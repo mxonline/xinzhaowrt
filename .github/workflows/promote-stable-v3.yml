@@ -1,19 +1,24 @@
 name: Promote Arthur Update Candidate to Stable v3
 
 'on':
+  push:
+    branches:
+      - main
+    paths:
+      - production/promotion-request.json
   workflow_dispatch:
     inputs:
       candidate_tag:
         description: Arthur v3 Candidate tag, e.g. arthur-update-123456789
-        required: true
+        required: false
         type: string
       stable_tag:
-        description: Stable release tag matching VERSION, e.g. v0.1.1
-        required: true
+        description: Stable production tag, e.g. arthur-production-123456789
+        required: false
         type: string
       device_verified:
-        description: Confirm JDCloud RE-SS-01 real-device verification passed
-        required: true
+        description: Recovery-only manual confirmation that JDCloud RE-SS-01 real-device verification passed
+        required: false
         default: false
         type: boolean
 
@@ -26,7 +31,6 @@ concurrency:
 
 jobs:
   promote:
-    if: inputs.device_verified == true
     runs-on: ubuntu-24.04
 
     steps:
@@ -36,29 +40,79 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Validate v3 promotion request
-        id: candidate
+      - name: Resolve promotion request
+        id: request
         env:
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
-          STABLE_TAG: ${{ inputs.stable_tag }}
-          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          INPUT_STABLE_TAG: ${{ inputs.stable_tag }}
+          INPUT_DEVICE_VERIFIED: ${{ inputs.device_verified }}
         run: |
           set -Eeuo pipefail
 
-          [[ "$CANDIDATE_TAG" =~ ^arthur-update-[0-9]+$ ]] || {
-            echo "BLOCKED: v3 Stable promotion only accepts arthur-update-* Candidates: $CANDIDATE_TAG"
-            exit 1
-          }
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            REQUEST='production/promotion-request.json'
+            [[ -s "$REQUEST" ]] || {
+              echo 'BLOCKED: promotion request missing.'
+              exit 1
+            }
+            python3 - <<'PY' > /tmp/promotion.env
+          import json
+          with open('production/promotion-request.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          if str(data.get('status', '')).upper() != 'PENDING':
+              raise SystemExit('BLOCKED: promotion request status is not PENDING')
+          candidate = str(data.get('candidate_tag', ''))
+          stable = str(data.get('stable_tag', ''))
+          commit = str(data.get('project_commit', ''))
+          run_id = str(data.get('run_id', ''))
+          print(f'CANDIDATE_TAG={candidate}')
+          print(f'STABLE_TAG={stable}')
+          print(f'EXPECTED_COMMIT={commit}')
+          print(f'EXPECTED_RUN_ID={run_id}')
+          PY
+            source /tmp/promotion.env
+            DEVICE_VERIFIED=true
+          else
+            CANDIDATE_TAG="$INPUT_CANDIDATE_TAG"
+            STABLE_TAG="$INPUT_STABLE_TAG"
+            EXPECTED_COMMIT=''
+            EXPECTED_RUN_ID=''
+            DEVICE_VERIFIED="$INPUT_DEVICE_VERIFIED"
+          fi
 
-          PROJECT_VERSION="$(tr -d '[:space:]' < VERSION)"
-          [[ "$PROJECT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "BLOCKED: invalid VERSION: $PROJECT_VERSION"
+          [[ "$DEVICE_VERIFIED" == "true" ]] || {
+            echo 'BLOCKED: device_verified is not true.'
             exit 1
           }
-          [[ "$STABLE_TAG" == "v${PROJECT_VERSION}" ]] || {
-            echo "BLOCKED: stable tag $STABLE_TAG must match VERSION v${PROJECT_VERSION}"
+          [[ "$CANDIDATE_TAG" =~ ^arthur-update-[0-9]+$ ]] || {
+            echo "BLOCKED: unsupported Candidate tag: $CANDIDATE_TAG"
             exit 1
           }
+          RUN_ID="${CANDIDATE_TAG#arthur-update-}"
+          [[ "$STABLE_TAG" == "arthur-production-${RUN_ID}" ]] || {
+            echo "BLOCKED: Stable tag must be arthur-production-${RUN_ID}; got $STABLE_TAG"
+            exit 1
+          }
+          if [[ -n "$EXPECTED_RUN_ID" && "$EXPECTED_RUN_ID" != "$RUN_ID" ]]; then
+            echo "BLOCKED: promotion request run_id mismatch: $EXPECTED_RUN_ID != $RUN_ID"
+            exit 1
+          fi
+
+          echo "candidate_tag=$CANDIDATE_TAG" >> "$GITHUB_OUTPUT"
+          echo "stable_tag=$STABLE_TAG" >> "$GITHUB_OUTPUT"
+          echo "expected_commit=$EXPECTED_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Candidate and real-device evidence
+        id: candidate
+        env:
+          CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
+          STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
+          EXPECTED_COMMIT: ${{ steps.request.outputs.expected_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
 
           gh release view "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
           git fetch --tags --force origin
@@ -67,6 +121,42 @@ jobs:
             echo "BLOCKED: unable to resolve Candidate commit for $CANDIDATE_TAG"
             exit 1
           }
+          if [[ -n "$EXPECTED_COMMIT" && "$EXPECTED_COMMIT" != "$CANDIDATE_SHA" ]]; then
+            echo "BLOCKED: promotion request commit mismatch: $EXPECTED_COMMIT != $CANDIDATE_SHA"
+            exit 1
+          fi
+
+          REPORT='output/real-device/real-device-verification.json'
+          [[ -s "$REPORT" ]] || {
+            echo "BLOCKED: missing real-device report: $REPORT"
+            exit 1
+          }
+
+          CANDIDATE_SHA="$CANDIDATE_SHA" CANDIDATE_TAG="$CANDIDATE_TAG" python3 - <<'PY'
+          import json, os, sys
+          with open('output/real-device/real-device-verification.json', 'r', encoding='utf-8-sig') as f:
+              data = json.load(f)
+          errors = []
+          def require(condition, message):
+              if not condition:
+                  errors.append(message)
+          require(data.get('candidate') == os.environ['CANDIDATE_TAG'], 'Candidate tag mismatch')
+          require(data.get('commit') == os.environ['CANDIDATE_SHA'], 'Candidate commit mismatch')
+          require(str(data.get('result', '')).upper() == 'PASS', 'real-device result is not PASS')
+          require(data.get('required_plugins_total') == 22, 'required_plugins_total is not 22')
+          require(data.get('required_plugins_passed') == 22, 'required_plugins_passed is not 22')
+          require((data.get('device') or {}).get('target') == 'jdcloud_re-ss-01', 'device target mismatch')
+          for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
+              require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
+          require(len(data.get('critical_log_errors') or []) == 0, 'critical_log_errors is not empty')
+          require(len(data.get('failures') or []) == 0, 'failures is not empty')
+          if errors:
+              print('BLOCKED: real-device evidence failed Stable gate:')
+              for error in errors:
+                  print(f'- {error}')
+              sys.exit(1)
+          print('PASS: real-device evidence matches Candidate and all hard gates.')
+          PY
 
           STABLE_EXISTS=false
           if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -79,65 +169,17 @@ jobs:
           fi
 
           echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
-          echo "project_version=$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           echo "stable_exists=$STABLE_EXISTS" >> "$GITHUB_OUTPUT"
-          echo "Candidate commit: $CANDIDATE_SHA"
-
-      - name: Verify archived real-device evidence
-        env:
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
-          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
-        run: |
-          set -Eeuo pipefail
-          REPORT='output/real-device/real-device-verification.json'
-          [[ -s "$REPORT" ]] || {
-            echo "BLOCKED: missing real-device report: $REPORT"
-            exit 1
-          }
-
-          python3 - <<'PY'
-          import json, os, sys
-          with open('output/real-device/real-device-verification.json', 'r', encoding='utf-8-sig') as f:
-              data = json.load(f)
-
-          errors = []
-          def require(condition, message):
-              if not condition:
-                  errors.append(message)
-
-          require(data.get('candidate') == os.environ['CANDIDATE_TAG'], 'Candidate tag mismatch')
-          require(data.get('commit') == os.environ['CANDIDATE_SHA'], 'Candidate commit mismatch')
-          require(str(data.get('result', '')).upper() == 'PASS', 'real-device result is not PASS')
-          require(data.get('required_plugins_total') == 22, 'required_plugins_total is not 22')
-          require(data.get('required_plugins_passed') == 22, 'required_plugins_passed is not 22')
-          require((data.get('device') or {}).get('target') == 'jdcloud_re-ss-01', 'device target mismatch')
-
-          for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
-              require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
-
-          require(len(data.get('critical_log_errors') or []) == 0, 'critical_log_errors is not empty')
-          require(len(data.get('failures') or []) == 0, 'failures is not empty')
-
-          if errors:
-              print('BLOCKED: real-device evidence failed v3 Stable gate:')
-              for error in errors:
-                  print(f'- {error}')
-              sys.exit(1)
-
-          print('PASS: real-device evidence matches Candidate and all hard gates.')
-          PY
 
       - name: Download Candidate assets
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
         run: |
           set -Eeuo pipefail
           rm -rf promote
           mkdir -p promote/assets
-          gh release download "$CANDIDATE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --dir promote/assets
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --dir promote/assets
           find promote/assets -maxdepth 1 -type f -print | sort
 
       - name: Verify Candidate assets and source lock
@@ -149,11 +191,10 @@ jobs:
 
           SYSUPGRADE="$(find promote/assets -maxdepth 1 -type f -name '*sysupgrade*.bin' -size +0c | sort | head -n1 || true)"
           FACTORY="$(find promote/assets -maxdepth 1 -type f -name '*factory*.bin' -size +0c | sort | head -n1 || true)"
-          [[ -n "$SYSUPGRADE" || -n "$FACTORY" ]] || {
-            echo 'BLOCKED: Candidate contains no non-empty Arthur firmware .bin.'
+          [[ -n "$SYSUPGRADE" && -n "$FACTORY" ]] || {
+            echo 'BLOCKED: Candidate must contain both non-empty sysupgrade and factory firmware.'
             exit 1
           }
-          if [[ -n "$SYSUPGRADE" ]]; then FIRMWARE="$SYSUPGRADE"; else FIRMWARE="$FACTORY"; fi
 
           CHECKSUM_FILE=''
           if [[ -s promote/assets/SHA256SUMS.local ]]; then
@@ -166,20 +207,16 @@ jobs:
             echo 'BLOCKED: Candidate contains no supported checksum file.'
             exit 1
           fi
-          (
-            cd promote/assets
-            sha256sum -c "$CHECKSUM_FILE"
-          )
+          (cd promote/assets && sha256sum -c "$CHECKSUM_FILE")
 
           [[ -s promote/assets/plugin-verification.txt ]] || {
             echo 'BLOCKED: plugin-verification.txt missing.'
             exit 1
           }
-          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' \
-            promote/assets/plugin-verification.txt || {
-              echo 'BLOCKED: 22-plugin final PASS marker missing.'
-              exit 1
-            }
+          grep -Fq 'PASS: all required LuCI plugins were compiled and are present in the final firmware manifest' promote/assets/plugin-verification.txt || {
+            echo 'BLOCKED: 22-plugin final PASS marker missing.'
+            exit 1
+          }
 
           [[ -s promote/assets/arthur-known-good.lock ]] || {
             echo 'BLOCKED: Candidate source lock missing.'
@@ -191,16 +228,14 @@ jobs:
           }
 
           LOCK_SHA="$(sha256sum promote/assets/arthur-known-good.lock | awk '{print $1}')"
-          python3 - "$LOCK_SHA" <<'PY'
-          import json, os, re, sys
-          lock_sha = sys.argv[1]
+          CANDIDATE_SHA="$CANDIDATE_SHA" LOCK_SHA="$LOCK_SHA" python3 - <<'PY'
+          import json, os, re
           with open('promote/assets/update-metadata.json', 'r', encoding='utf-8') as f:
               meta = json.load(f)
           if meta.get('project_commit') != os.environ['CANDIDATE_SHA']:
               raise SystemExit('BLOCKED: update-metadata project_commit does not match Candidate commit')
-          if meta.get('candidate_lock_sha256') != lock_sha:
+          if meta.get('candidate_lock_sha256') != os.environ['LOCK_SHA']:
               raise SystemExit('BLOCKED: update-metadata candidate_lock_sha256 mismatch')
-
           refs = {}
           for line in open('promote/assets/arthur-known-good.lock', 'r', encoding='utf-8'):
               m = re.match(r'^([A-Z0-9_]+_REF)="([0-9a-f]{40})"$', line.strip())
@@ -213,31 +248,30 @@ jobs:
           print('PASS: Candidate source lock and update metadata verified.')
           PY
 
-          echo "firmware_name=$(basename "$FIRMWARE")" >> "$GITHUB_OUTPUT"
-          echo "firmware_sha256=$(sha256sum "$FIRMWARE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "sysupgrade_name=$(basename "$SYSUPGRADE")" >> "$GITHUB_OUTPUT"
+          echo "sysupgrade_sha256=$(sha256sum "$SYSUPGRADE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "factory_name=$(basename "$FACTORY")" >> "$GITHUB_OUTPUT"
+          echo "factory_sha256=$(sha256sum "$FACTORY" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "lock_sha256=$LOCK_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Create Stable GitHub Release
         if: steps.candidate.outputs.stable_exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
-          STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
+          STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
           CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
         run: |
           set -Eeuo pipefail
           cat > promote/stable-notes.md <<EOF
           # XinZhaoWrt Arthur ${STABLE_TAG}
 
-          Promoted by Known-Good Update v3 after JDCloud RE-SS-01 real-device verification passed all hard gates.
+          Promoted automatically after JDCloud RE-SS-01 real-device verification passed all hard gates.
 
           - Candidate: ${CANDIDATE_TAG}
           - Candidate project commit: ${CANDIDATE_SHA}
           - Required LuCI plugins: 22/22 PASS
-          - Reboot / overlay persistence: PASS
-          - LAN / WAN / Internet / DNS / 2.4G / 5G / LuCI: PASS
-          - Critical log errors: 0
-          - Candidate source lock: archived and promoted
+          - Real-device verification: PASS
           - Status: Stable / Known-Good
           EOF
 
@@ -251,32 +285,24 @@ jobs:
             --notes-file promote/stable-notes.md \
             --latest
 
-      - name: Promote Candidate lock to canonical Known-Good
+      - name: Promote Candidate lock and finalize Source of Truth
         env:
-          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
-          STABLE_TAG: ${{ inputs.stable_tag }}
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ steps.request.outputs.candidate_tag }}
+          STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
           CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
-          FIRMWARE_NAME: ${{ steps.verify.outputs.firmware_name }}
-          FIRMWARE_SHA256: ${{ steps.verify.outputs.firmware_sha256 }}
+          SYSUPGRADE_NAME: ${{ steps.verify.outputs.sysupgrade_name }}
+          SYSUPGRADE_SHA256: ${{ steps.verify.outputs.sysupgrade_sha256 }}
           LOCK_SHA256: ${{ steps.verify.outputs.lock_sha256 }}
-          VERIFICATION_COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ steps.request.outputs.run_id }}
         run: |
           set -Eeuo pipefail
           git config user.name 'XinZhaoWrt Release Bot'
           git config user.email 'xinzhaowrt@users.noreply.github.com'
           git pull --rebase origin main
-
           cp promote/assets/arthur-known-good.lock config/arthur-known-good.lock
 
-          chmod +x scripts/update-stable-status.sh
-          ./scripts/update-stable-status.sh \
-            "$STABLE_TAG" \
-            "$CANDIDATE_TAG" \
-            "$FIRMWARE_NAME" \
-            "$FIRMWARE_SHA256" \
-            "$CANDIDATE_SHA"
-
-          python3 - <<'PY'
+          CANDIDATE_TAG="$CANDIDATE_TAG" STABLE_TAG="$STABLE_TAG" CANDIDATE_SHA="$CANDIDATE_SHA" SYSUPGRADE_NAME="$SYSUPGRADE_NAME" SYSUPGRADE_SHA256="$SYSUPGRADE_SHA256" LOCK_SHA256="$LOCK_SHA256" RUN_ID="$RUN_ID" python3 - <<'PY'
           import hashlib, json, os, re
           from datetime import datetime, timezone
 
@@ -298,10 +324,9 @@ jobs:
                   known = json.load(f)
           except Exception:
               known = {}
-
           known.update({
               'schema_version': '2.0',
-              'status': 'verified',
+              'status': 'frozen',
               'verified': True,
               'device': 'jdcloud_re-ss-01',
               'target': 'qualcommax',
@@ -315,13 +340,14 @@ jobs:
               'lock_sha256': os.environ['LOCK_SHA256'],
               'lock_refs': refs,
               'config_sha256': config_sha,
-              'verification_commit': os.environ['VERIFICATION_COMMIT'],
               'verification_report': 'output/real-device/real-device-verification.json',
-              'firmware': os.environ['FIRMWARE_NAME'],
-              'firmware_file': os.environ['FIRMWARE_NAME'],
-              'sha256': os.environ['FIRMWARE_SHA256'],
+              'firmware': os.environ['SYSUPGRADE_NAME'],
+              'firmware_file': os.environ['SYSUPGRADE_NAME'],
+              'sha256': os.environ['SYSUPGRADE_SHA256'],
               'verified_at': datetime.now(timezone.utc).isoformat(),
-              'verification': 'real-device-confirmed'
+              'verification': 'real-device-confirmed',
+              'toolchain_run': os.environ['RUN_ID'],
+              'fast_candidate_run': os.environ['RUN_ID']
           })
           with open(known_path, 'w', encoding='utf-8') as f:
               json.dump(known, f, ensure_ascii=False, indent=2)
@@ -331,10 +357,22 @@ jobs:
           with open(status_path, 'r', encoding='utf-8') as f:
               status = json.load(f)
           status.update({
+              'status': 'PRODUCTION_RELEASED',
+              'stage': 'production',
+              'conclusion': 'success',
+              'run_id': int(os.environ['RUN_ID']),
+              'candidate_tag': os.environ['CANDIDATE_TAG'],
+              'stable_tag': os.environ['STABLE_TAG'],
+              'firmware': os.environ['SYSUPGRADE_NAME'],
+              'sha256': os.environ['SYSUPGRADE_SHA256'],
               'project_commit': os.environ['CANDIDATE_SHA'],
+              'source_commit': os.environ['CANDIDATE_SHA'],
               'upstream_commit': refs['IMMORTALWRT_REF'],
               'lock_sha256': os.environ['LOCK_SHA256'],
-              'workflow_version': '3.0'
+              'known_good': True,
+              'workflow_version': '3.1',
+              'verification': 'real-device-confirmed',
+              'message': 'Stable Release, Latest, Known-Good lock and real-device evidence verified; production promotion completed server-side.'
           })
           with open(status_path, 'w', encoding='utf-8') as f:
               json.dump(status, f, ensure_ascii=False, indent=2)
@@ -342,25 +380,54 @@ jobs:
           PY
 
           git add config/arthur-known-good.lock production/known-good.json production/status.json
-          if git diff --cached --quiet; then
-            echo 'Canonical Known-Good already matches this Stable release.'
-          else
-            git commit -m "release: promote ${STABLE_TAG} with Known-Good v3 lock"
+          if ! git diff --cached --quiet; then
+            git commit -m "release: promote ${STABLE_TAG} from verified Candidate"
             git push origin HEAD:main
           fi
+
+      - name: Verify Stable release closure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STABLE_TAG: ${{ steps.request.outputs.stable_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+          SYSUPGRADE_NAME: ${{ steps.verify.outputs.sysupgrade_name }}
+          FACTORY_NAME: ${{ steps.verify.outputs.factory_name }}
+        run: |
+          set -Eeuo pipefail
+          RELEASE_JSON="$(gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,targetCommitish,isLatest,assets)"
+          python3 - "$CANDIDATE_SHA" "$SYSUPGRADE_NAME" "$FACTORY_NAME" <<'PY' <<<"$RELEASE_JSON"
+          import json, sys
+          expected_sha, sysupgrade_name, factory_name = sys.argv[1:]
+          data = json.load(sys.stdin)
+          errors = []
+          if data.get('tagName') != sys.argv[0] and not data.get('tagName'):
+              errors.append('stable tag missing')
+          if data.get('targetCommitish') != expected_sha:
+              errors.append(f"targetCommitish mismatch: {data.get('targetCommitish')} != {expected_sha}")
+          if data.get('isLatest') is not True:
+              errors.append('Stable release is not Latest')
+          names = {item.get('name') for item in data.get('assets') or []}
+          for required in (sysupgrade_name, factory_name, 'real-device-verification.json', 'real-device-verification.md'):
+              if required not in names:
+                  errors.append(f'missing Stable asset: {required}')
+          if errors:
+              raise SystemExit('BLOCKED: ' + '; '.join(errors))
+          print('PASS: Stable tag, Latest Release and required assets verified.')
+          PY
 
       - name: Stable v3 promotion summary
         run: |
           {
             echo '## Arthur Stable v3 promotion complete'
             echo
-            echo '- Candidate: `${{ inputs.candidate_tag }}`'
-            echo '- Stable: `${{ inputs.stable_tag }}`'
+            echo '- Candidate: `${{ steps.request.outputs.candidate_tag }}`'
+            echo '- Stable: `${{ steps.request.outputs.stable_tag }}`'
             echo '- Candidate project commit: `${{ steps.candidate.outputs.candidate_sha }}`'
-            echo '- Firmware: `${{ steps.verify.outputs.firmware_name }}`'
-            echo '- Firmware SHA256: `${{ steps.verify.outputs.firmware_sha256 }}`'
-            echo '- Candidate lock SHA256: `${{ steps.verify.outputs.lock_sha256 }}`'
+            echo '- Sysupgrade: `${{ steps.verify.outputs.sysupgrade_name }}`'
+            echo '- Sysupgrade SHA256: `${{ steps.verify.outputs.sysupgrade_sha256 }}`'
+            echo '- Factory: `${{ steps.verify.outputs.factory_name }}`'
+            echo '- Factory SHA256: `${{ steps.verify.outputs.factory_sha256 }}`'
             echo '- Required plugins: `22/22 PASS`'
             echo '- Real-device verification: `PASS`'
-            echo '- Canonical Known-Good lock: `updated`'
+            echo '- Status: `PRODUCTION_RELEASED`'
           } >> "$GITHUB_STEP_SUMMARY"
