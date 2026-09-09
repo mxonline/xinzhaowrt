@@ -29,6 +29,11 @@ Assert-Contains $helperText '& $bashExe $resolver' 'resolver must invoke the res
 Assert-Contains $gateText 'arthur-candidate-failure-recovery.ps1' 'control-plane gate must invoke failed Candidate recovery'
 Assert-Contains $gateText 'CONTROL_PLANE_REPAIR_ROUTED=PASS' 'control-plane gate must stop competing mutation when repair owns the wakeup'
 
+# A terminal v3 repair state for the same failed Run must not be resurrected by the
+# five-minute candidate recovery wakeup after the controller process has exited.
+Assert-Contains $helperText 'ci-v3-state.json' 'failed Candidate recovery must consult the v3 terminal controller state'
+Assert-Contains $helperText "Write-RepairResult -Status 'BLOCKED_TERMINAL'" 'failed Candidate recovery must refuse to restart a blocked terminal Run'
+
 # A known failed formal Candidate is durable GitHub evidence and must be routed to
 # its repair controller before legacy Resume Gate state can block it. The helper
 # must operate from the clean current-main control checkout, never a preserved dirty
@@ -53,6 +58,21 @@ Assert-Contains $controllerText 'BUILD_CLOSURE_PREFLIGHT=PASS' 'closure orchestr
 Assert-Contains $controllerText 'BUILD_CLOSURE_FAILED_CONTINUE_REPAIR' 'failed closure must continue Codex repair instead of Candidate dispatch'
 Assert-Contains $controllerText 'BUILD_CLOSURE_PASS_ALLOW_CANDIDATE' 'Candidate dispatch must have an explicit closure-pass boundary'
 
+# Every task-driving wait/retry loop in the legacy v3 controller must have a bounded
+# exit. Watch mode itself remains persistent, but GitHub retry, Run discovery,
+# workflow wait, closure wait and Production continuation cannot wait forever.
+Assert-Contains $controllerText 'GH_RETRY_EXHAUSTED' 'GitHub transient retry loop must terminate after a bounded retry budget'
+Assert-Contains $controllerText 'RUN_DISCOVERY_TIMEOUT' 'new Candidate Run discovery must have a hard timeout'
+Assert-Contains $controllerText 'BUILD_CLOSURE_DISCOVERY_TIMEOUT' 'build-closure Run discovery must have a hard timeout'
+Assert-Contains $controllerText 'BUILD_CLOSURE_TIMEOUT' 'build-closure completion wait must have a hard timeout'
+Assert-Contains $controllerText 'WORKFLOW_RUN_TIMEOUT' 'formal Candidate workflow wait must have a hard timeout'
+Assert-Contains $controllerText 'PRODUCTION_CONTINUATION_TIMEOUT' 'Production Agent continuation wait must have a hard timeout'
+Assert-Contains $controllerText 'REPAIR_EXHAUSTED' 'repair budget exhaustion must be an explicit terminal result'
+Assert-Contains $controllerText 'BLOCKED_CONTROLLER_ERROR' 'unexpected controller errors must stop instead of recursively relaunching forever'
+if ($controllerText.Contains('RECOVERABLE_CONTROLLER_RESTART')) {
+    throw 'FAIL: controller still recursively relaunches itself after an unbounded recoverable error'
+}
+
 $processStart = $controllerText.IndexOf('function Process-V3Run')
 if ($processStart -lt 0) { throw 'FAIL: Process-V3Run function is missing' }
 $processText = $controllerText.Substring($processStart)
@@ -66,6 +86,12 @@ $preRepairCircuitText = $processText.Substring($failureCircuit, $repairEvidence 
 if ($preRepairCircuitText.Contains('Start-V3Run -RequestedMode $RequestedMode')) {
     throw 'FAIL: MaxRepairRounds circuit breaker can bypass build closure and dispatch a Candidate directly'
 }
+if ($preRepairCircuitText.Contains('$round = 0')) {
+    throw 'FAIL: MaxRepairRounds circuit breaker resets the counter and can re-enter the same repair loop'
+}
+Assert-Contains $preRepairCircuitText 'REPAIR_EXHAUSTED' 'MaxRepairRounds circuit breaker must emit REPAIR_EXHAUSTED'
+Assert-Contains $preRepairCircuitText "-Status 'blocked'" 'MaxRepairRounds circuit breaker must persist the existing blocked terminal state'
+Assert-Contains $preRepairCircuitText "-Conclusion 'repair-exhausted'" 'MaxRepairRounds circuit breaker must persist repair-exhausted conclusion'
 
 $repairStart = $processText.IndexOf("elseif (`$action -eq 'repaired')")
 if ($repairStart -lt 0) { throw 'FAIL: repaired branch is missing from Process-V3Run' }
