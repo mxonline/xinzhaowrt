@@ -1,186 +1,90 @@
-# 新肇网络Wrt-京东云亚瑟固件
+# 新肇网络Wrt｜京东云亚瑟固件
 
-面向 **JDCloud RE-SS-01（京东云亚瑟 / Arthur）** 的定制 ImmortalWrt 固件工程。当前正式 Known-Good 版本为 **v0.1.0 Stable**，后续更新统一从已验证基准派生 Candidate，不再直接用浮动源码覆盖正式基准。
+这是给 **JDCloud RE-SS-01（京东云亚瑟 / Arthur）** 使用的 ImmortalWrt 固件。这里把已经在真实设备上刷机确认过的正式版放在最前面，测试包和中间构建不会长期堆在 Releases 页面。
 
-设备配置固定为：
+## 当前正式版
 
-```text
-qualcommax/ipq60xx/jdcloud_re-ss-01
-```
-
-64G 表示设备 eMMC 容量，不是独立 OpenWrt target。
-
-## 当前 Known-Good
-
-- Stable：`v0.1.0`
-- Device：`JDCloud RE-SS-01`
+- 版本：`v0.1.3`
+- 正式 Release：`arthur-production-34268801985`
+- 设备：`JDCloud RE-SS-01`
 - Target：`qualcommax/ipq60xx`
-- Required LuCI plugins：`22/22 PASS`
-- Real-device verification：`PASS`
-- Canonical source lock：`config/arthur-known-good.lock`
-- Known-Good metadata：`production/known-good.json`
-
-## 首次登录默认值
-
-- 管理地址：`192.168.6.1`
-- 用户：`root`
+- 构建日期：`2026-09-08`
+- 管理地址：`http://192.168.6.1`
+- 用户名：`root`
 - 初始密码：`password`
 
-这是公开的初始密码。刷入固件并首次登录后，应立即在 LuCI 的系统管理页面修改 root 密码。
+这版已经在真实的京东云亚瑟上实际刷入并完成验收。
 
-## 22 个硬性必选 LuCI 插件
+## 下载哪个文件
 
-构建以 `config/required-plugins.txt` 为唯一必选清单。`make defconfig` 后缺少任何一个，`scripts/check-config.sh` 会直接终止构建；完整编译后还必须验证 22 个插件均存在实际安装包并进入最终 firmware manifest。
+日常从已有 OpenWrt / 新肇Wrt 升级，使用：
 
-```text
-luci-app-adguardhome
-luci-app-autoreboot
-luci-app-diskman
-luci-app-easytier
-luci-app-firewall
-luci-app-istorex
-luci-app-lucky
-luci-app-mosdns
-luci-app-oaf
-luci-app-package-manager
-luci-app-openclash
-luci-app-pbr
-luci-app-quickfile
-luci-app-quickstart
-luci-app-samba4
-luci-app-smartdns
-luci-app-sqm
-luci-app-store
-luci-app-ttyd
-luci-app-upnp
-luci-app-vlmcsd
-luci-app-wol
+`XinZhaoWrt-Arthur-v0.1.3-20260908-sysupgrade.bin`
+
+SHA256：
+
+`f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557`
+
+`factory.bin` 主要留给对应的首次刷入场景：
+
+`XinZhaoWrt-Arthur-v0.1.3-20260908-factory.bin`
+
+SHA256：
+
+`060f3e100aabc02f3542466e802f049789343aba1969ccb75a19484df459311d`
+
+不确定自己该用哪个文件时，不要直接尝试 factory，先确认当前系统和刷机方式。
+
+## 这版已经确认正常
+
+- LAN 使用 `192.168.6.1/24`，DHCP、网关和 DNS 正常
+- 2.4GHz、5GHz Wi-Fi 正常
+- LuCI 中文界面正常
+- LuCI 使用 Nginx，只开放 HTTP 80
+- TCP 443 不监听，也不会从 HTTP 跳转到 HTTPS
+- QuickStart 正常
+- iStoreX / iStore 正常
+- QuickFile 正常
+- AdGuardHome 管理页面完整，默认关闭
+- 固件内 22 个必选 LuCI 插件已经完整编入
+
+## 刷机前
+
+本固件只适用于 **JDCloud RE-SS-01**。刷机前请先核对设备型号和固件 SHA256。
+
+升级前建议先执行兼容性检查：
+
+```sh
+sysupgrade -T <固件文件>
 ```
 
-## LuCI Web 栈
+不要使用 `-F` 强制刷入。不要对 U-Boot、ART/EEPROM、原始 eMMC/SPI/NAND 分区做未经确认的写入。
 
-由于 `luci-app-quickfile` 当前依赖 `luci-nginx`，本固件统一使用 **LuCI + Nginx** 作为管理 Web 栈，不同时选择默认 uhttpd 的 `luci` / `luci-ssl` collections。
+首次登录后请尽快修改默认 root 密码。
 
-## Known-Good 自动编译 v3
+## 回滚
 
-正式更新入口：`.github/workflows/arthur-update-v3.yml`。
+当前保留的回滚版本是 `v0.1.0`。
 
-更新模式：
+它用于当前正式版出现明确兼容问题时回退。正常使用请下载 Releases 页面标记为 **Latest** 的正式版。
 
-```text
-rebuild_known_good
-update_immortalwrt
-update_feeds
-update_plugins
-update_all
-```
+## Releases 页面怎么保留
 
-v3 的原则是：先复制当前 `config/arthur-known-good.lock` 生成临时 Candidate lock，只移动本次允许更新的 ref；Candidate 编译失败不会覆盖正式 Known-Good。
+以后 Releases 页面只保留三类内容：
 
-成功 Candidate 自动创建：
+1. 当前正式版
+2. 当前正式版对应的 Candidate 构建留档
+3. 明确指定的回滚版本
 
-```text
-arthur-update-<run_id>
-```
+旧测试包、失败构建、过期 Candidate 和草稿 Release 会按这个规则整理，避免下载页越来越乱。
 
-Candidate 必须经过 JDCloud RE-SS-01 实机验证，只有输出：
+## 开发资料
 
-```text
-REAL DEVICE VERIFICATION PASS
-```
+构建、验收和发布的详细规则仍保留在仓库文档中：
 
-并归档验收报告后，才能晋升新的 Stable。Stable 晋升成功后，Candidate lock 才会替换正式 `config/arthur-known-good.lock`。
-
-完整规则以 `production/release-policy.md` 和 `AGENTS.md` 的冻结 RELEASE-FIRST 主线为准。
-
-## Codex 本机实机验收
-
-Candidate 通过 `AUTO_FLASH_SAFETY_GATE` 后，使用项目已验证的自动刷入路径：
-
-```text
-GitHub Actions → candidate 完整性与 cloud/local SHA256 → AUTO_FLASH_SAFETY_GATE → Windows PowerShell → OpenSSH ssh.exe 上传 → remote SHA256 → /sbin/sysupgrade → WAIT_DEVICE → REAL_DEVICE_VERIFY → Release Gate
-```
-
-在与亚瑟同一局域网的 Windows / Codex Desktop 环境，实机验收目标设备为：
-
-```text
-root@192.168.6.1
-```
-
-实机流程必须验证 SSH、设备型号、存储、LAN/WAN、Internet、DNS、Wi-Fi、LuCI、22/22 插件、主题、指定服务、日志、正常重启和 overlay 持久化。任何实机门禁失败都禁止 Release。
-
-只有标准 Arthur sysupgrade 在 `AUTO_FLASH_SAFETY_GATE` 全部通过时允许自动执行。MTD、U-Boot、bootloader、`dd`、raw eMMC/SPI/NAND、原始分区、ART/EEPROM/校准数据写入不属于自动刷入路径，继续要求明确人工授权或按项目安全策略禁止自动执行。
-
-## Codex Cloud / GitHub Actions 编译
-
-环境初始化：
-
-```bash
-./scripts/codex-setup.sh
-```
-
-静态检查：
-
-```bash
-./scripts/verify-project.sh
-```
-
-完整云编译：
-
-```bash
-./scripts/codex-cloud-build.sh
-```
-
-失败时优先读取 `output/logs/build.log`、`output/logs/build-diagnostic.log` 和 diagnostics Artifact，不把普通 WARNING 或最终 exit code 当根因。
-
-## Windows 持久控制器
-
-旧 v2 控制器仍保留用于已有 Build / Controller 任务的兼容和排障：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-ci-controller.ps1 -Mode UpdateBuild
-```
-
-查看状态：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\ci-status.ps1
-```
-
-新固件更新与 Stable 发布统一服从 `RELEASE-FIRST AUTOMATION MODE`，唯一成功终点为 `PRODUCTION_RELEASED`。
-
-## 本地编译
-
-```bash
-./scripts/build.sh main
-```
-
-## 固件命名
-
-标准输出：
-
-```text
-XinZhaoWrt-Arthur-vX.Y.Z-YYYYMMDD-sysupgrade.bin
-XinZhaoWrt-Arthur-vX.Y.Z-YYYYMMDD-factory.bin
-```
-
-实际是否同时生成 factory / sysupgrade，由当前 RE-SS-01 image recipe 决定。
-
-## 运行时注意
-
-AdGuard Home、MosDNS、SmartDNS、OpenClash 可以同时编进固件，但不要让多个 DNS 服务同时占用 53 端口。OpenClash 与 PBR 可以共存为软件包，但实际启用时要避免两套策略路由同时接管同一批流量。
-
-OAF 带有内核相关组件。上游发生较大的 Linux 内核变化时，如果编译失败，优先检查 OAF 的内核 API 兼容性，不得为了让构建通过直接删除 `luci-app-oaf`。
-
-## 文档
-
-- `AGENTS.md`：Codex 项目硬规则与冻结 RELEASE-FIRST 主线
-- `production/release-policy.md`：Candidate、自动刷入、REAL_DEVICE_VERIFY、Release Gate 与 Stable 晋升策略
-- `docs/OPENWRT_CI_V3.md`：Known-Good 自动编译、Candidate、实机验收与 Stable 晋升细节
-- `docs/OPENWRT_CI_V2.md`：旧版持久控制器流程，保留作为历史兼容
-- `docs/PERSISTENT_CI_CONTROLLER.md`：Windows 持久控制器与 `codex exec`
-- `docs/CODEX_CLOUD.md`：Codex Cloud 全编译流程
-- `docs/BUILD.md`：本地/手工编译
-- `docs/PLUGINS.md`：插件说明
-- `docs/FLASH.md`：刷机安全说明
-- `docs/GITHUB.md`：GitHub Actions / Release
+- `production/known-good.json`
+- `production/release-policy.md`
+- `docs/OPENWRT_CI_V3.md`
+- `docs/BUILD.md`
+- `docs/FLASH.md`
+- `docs/GITHUB.md`
