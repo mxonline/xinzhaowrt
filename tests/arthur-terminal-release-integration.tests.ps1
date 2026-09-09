@@ -31,16 +31,23 @@ $agent = Get-Content -Raw -LiteralPath $AgentPath
 $promotion = Get-Content -Raw -LiteralPath $PromotionPath
 $controlPlane = Get-Content -Raw -LiteralPath $ControlPlanePath
 
-# Break caught: a local Release completion could leave pre-flash runtime state live
-# if it declared terminal success before calling the shared reconciler.
+# Break caught: normal local Release completion must retain its existing local
+# terminal transition when server-side evidence has not arrived yet; it may only
+# invoke the shared reconciler after all durable evidence is available.
 Assert-Contains $agent 'arthur-terminal-release-reconciler.ps1' 'Production Agent must load the shared terminal release reconciler'
+Assert-Contains $agent 'function Test-ProductionTerminalEvidenceAvailable' 'Production Agent must guard the reconciler with durable evidence availability'
 $completeRelease = Get-FunctionBody -Text $agent -Name 'Complete-Release'
 $savedEvidence = $completeRelease.IndexOf("Write-ProductionEvidence `$State 'RELEASE' 'GITHUB_RELEASE'",[System.StringComparison]::OrdinalIgnoreCase)
+$terminalState = $completeRelease.IndexOf("Save-State `$State 'PRODUCTION_RELEASED'",[System.StringComparison]::OrdinalIgnoreCase)
+$evidenceAvailable = $completeRelease.IndexOf('Test-ProductionTerminalEvidenceAvailable',[System.StringComparison]::OrdinalIgnoreCase)
 $invokeReconciler = $completeRelease.IndexOf('Invoke-ArthurTerminalReleaseReconcile',[System.StringComparison]::OrdinalIgnoreCase)
-$terminalState = $completeRelease.IndexOf("Save-State `$reconciledState 'PRODUCTION_RELEASED'",[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($savedEvidence -ge 0) 'Complete-Release must persist production release evidence'
-Assert-True ($invokeReconciler -gt $savedEvidence) 'Complete-Release must invoke the shared reconciler only after release evidence is saved'
-Assert-True ($terminalState -gt $invokeReconciler) 'Complete-Release must not publish local terminal success before shared reconciliation'
+Assert-True ($terminalState -gt $savedEvidence) 'Complete-Release must preserve local terminal success after release evidence is saved'
+Assert-True ($evidenceAvailable -gt $terminalState) 'Complete-Release must evaluate durable evidence only after preserving local terminal success'
+Assert-True ($invokeReconciler -gt $evidenceAvailable) 'Complete-Release must invoke the shared reconciler only when durable evidence is available'
+Assert-Contains $completeRelease 'if (Test-ProductionTerminalEvidenceAvailable -ExecutionId $executionId)' 'available durable evidence must be the only branch that calls the shared reconciler'
+Assert-Contains $completeRelease 'TERMINAL_RELEASE_RECONCILE_DEFERRED=PASS' 'missing server-side evidence must be explicitly deferred rather than failing local release completion'
+Assert-Contains $completeRelease 'SERVER_SIDE_EVIDENCE_PENDING' 'deferred local release must identify the missing server-side evidence condition'
 
 # Break caught: server-side promotion could manufacture terminal state without an
 # Actions-token verified release record, or commit the record without reconciling it.

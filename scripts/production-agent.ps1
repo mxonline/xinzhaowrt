@@ -412,6 +412,32 @@ function Invoke-RealDeviceVerify($State,[string]$Target) {
     Save-State $State 'RELEASE_GATE' 'VERIFIED'
 }
 
+function Test-ProductionTerminalEvidenceAvailable {
+    param([Parameter(Mandatory=$true)][string]$ExecutionId)
+
+    $evidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $ExecutionId)
+    $paths = [ordered]@{
+        status = Join-Path $Root 'production\status.json'
+        known_good = Join-Path $Root 'production\known-good.json'
+        github_release = Join-Path $evidenceRoot 'github-release-evidence.json'
+        real_device = Join-Path $evidenceRoot 'real-device-evidence.json'
+    }
+    if (@($paths.Values | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -ne 0) { return $false }
+    try {
+        $status = Get-Content -Raw -LiteralPath $paths.status | ConvertFrom-Json
+        $knownGood = Get-Content -Raw -LiteralPath $paths.known_good | ConvertFrom-Json
+        $releaseEvidence = Get-Content -Raw -LiteralPath $paths.github_release | ConvertFrom-Json
+        $deviceEvidence = Get-Content -Raw -LiteralPath $paths.real_device | ConvertFrom-Json
+        return (
+            [string]$status.status -eq 'PRODUCTION_RELEASED' -and $status.known_good -eq $true -and
+            $knownGood.known_good -eq $true -and $knownGood.verified -eq $true -and [string]$knownGood.verification -eq 'real-device-confirmed' -and
+            [string]$releaseEvidence.verified_by -eq 'GITHUB_ACTIONS_GITHUB_TOKEN' -and $releaseEvidence.release_exists -eq $true -and $releaseEvidence.draft -eq $false -and $releaseEvidence.prerelease -eq $false -and
+            $deviceEvidence.known_good -eq $true -and $deviceEvidence.verified -eq $true -and [string]$deviceEvidence.verification -eq 'real-device-confirmed'
+        )
+    }
+    catch { return $false }
+}
+
 function Complete-Release($State) {
     $tag = "arthur-production-$($State.run_id)"
     $existing = Invoke-Process 'gh' @('release','view',$tag,'--repo',[string]$Config.repository) -AllowFailure
@@ -421,23 +447,27 @@ function Complete-Release($State) {
     }
     Write-ProductionEvidence $State 'RELEASE' 'GITHUB_RELEASE' ("release-$($State.run_id)") ("github-release:$tag") 'PASS'
     $executionId = Ensure-ProductionExecutionId $State
-    $terminalEvidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $executionId)
-    $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
-        -StatusPath (Join-Path $Root 'production\status.json') `
-        -KnownGoodPath (Join-Path $Root 'production\known-good.json') `
-        -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
-        -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
-        -ResumeStatePath (Join-Path $Root 'production\resume-state.json') `
-        -OperatorIntentPath (Join-Path $Root 'production\operator-intent.json') `
-        -RuntimeStatePath $StatePath `
-        -EventLogPath (Join-Path $Root 'production\firmware-events.jsonl') `
-        -ExecutionId $executionId
-    if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
-        throw 'TERMINAL_RELEASE_RECONCILE_EXECUTION_ID_MISMATCH'
+    Save-State $State 'PRODUCTION_RELEASED' 'VERIFIED'
+    if (Test-ProductionTerminalEvidenceAvailable -ExecutionId $executionId) {
+        $terminalEvidenceRoot = Join-Path $Root (Join-Path 'production\evidence' $executionId)
+        $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
+            -StatusPath (Join-Path $Root 'production\status.json') `
+            -KnownGoodPath (Join-Path $Root 'production\known-good.json') `
+            -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
+            -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
+            -ResumeStatePath (Join-Path $Root 'production\resume-state.json') `
+            -OperatorIntentPath (Join-Path $Root 'production\operator-intent.json') `
+            -RuntimeStatePath $StatePath `
+            -EventLogPath (Join-Path $Root 'production\firmware-events.jsonl') `
+            -ExecutionId $executionId
+        if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
+            throw 'TERMINAL_RELEASE_RECONCILE_EXECUTION_ID_MISMATCH'
+        }
+        Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$executionId result=$($terminalResult.reason)"
     }
-    Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$executionId result=$($terminalResult.reason)"
-    $reconciledState = Get-Content -Raw -LiteralPath $StatePath | ConvertFrom-Json
-    Save-State $reconciledState 'PRODUCTION_RELEASED' 'VERIFIED'
+    else {
+        Log "TERMINAL_RELEASE_RECONCILE_DEFERRED=PASS execution=$executionId reason=SERVER_SIDE_EVIDENCE_PENDING"
+    }
     Write-Host 'PRODUCTION_RELEASED=YES'
 }
 
