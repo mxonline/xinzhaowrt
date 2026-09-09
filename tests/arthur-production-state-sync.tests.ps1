@@ -37,6 +37,13 @@ Assert-Contains $workflow 'GITHUB_ACTIONS_GITHUB_TOKEN' 'persisted release evide
 Assert-Contains $workflow 'Invoke-ArthurTerminalReleaseReconcile' 'state sync must invoke the shared terminal reconciler'
 Assert-Contains $workflow 'TERMINAL_RELEASE_EVIDENCE=PASS' 'terminal evidence validation must report explicit success'
 
+# known-good.json is the frozen manifest: its terminal assertion is
+# `verified=true`, not a non-existent `known_good` field.  Requiring that
+# missing field would silently bypass the terminal path and reintroduce the
+# false-positive stale-run SKIP.
+Assert-Contains $workflow "known_good.get('verified') is True" 'terminal eligibility must use the frozen known-good verified field'
+Assert-True (-not $workflow.Contains("known_good.get('known_good') is True")) 'terminal eligibility must not require a missing known-good.json field'
+
 # A repeated dispatch must be an observable no-op: the reconciler owns ledger
 # duplicate detection and the workflow must not turn an empty diff into a new
 # reconciliation commit.
