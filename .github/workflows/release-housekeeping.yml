@@ -1,0 +1,221 @@
+name: Arthur Release Housekeeping
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - production/release-maintenance-request.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: xinzhaowrt-release-housekeeping
+  cancel-in-progress: false
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate cleanup request
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+
+          path = 'production/release-maintenance-request.json'
+          with open(path, 'r', encoding='utf-8') as f:
+              data = json.load(f)
+
+          expected = [
+              'arthur-production-34268801985',
+              'arthur-update-34268801985',
+              'v0.1.0',
+          ]
+
+          if str(data.get('status', '')).upper() != 'PENDING':
+              raise SystemExit('BLOCKED: release maintenance request is not PENDING')
+          if data.get('action') != 'prune-and-rewrite':
+              raise SystemExit('BLOCKED: unsupported release maintenance action')
+          if data.get('keep_releases') != expected:
+              raise SystemExit('BLOCKED: keep_releases does not match the approved three-release policy')
+
+          print('PASS: approved release cleanup request validated.')
+          PY
+
+      - name: Verify the three releases to keep
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh release view 'arthur-production-34268801985' --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release view 'arthur-update-34268801985' --repo "$GITHUB_REPOSITORY" >/dev/null
+          gh release view 'v0.1.0' --repo "$GITHUB_REPOSITORY" >/dev/null
+
+      - name: Rewrite public release descriptions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          cat > /tmp/stable-notes.md <<'EOF'
+          # 京东云亚瑟正式版
+
+          这是目前实机验证通过的 **JDCloud RE-SS-01（京东云亚瑟 / Arthur）** 正式固件。
+
+          这版已经在真实设备上刷机运行，LAN、DHCP/DNS、2.4GHz 和 5GHz Wi-Fi、中文 LuCI、QuickStart、iStoreX、QuickFile、AdGuardHome 管理页都已经实际确认。LuCI 使用 Nginx，只开放 HTTP 80，443 不监听，也不会从 HTTP 跳转到 HTTPS。
+
+          ## 日常升级
+
+          使用：
+
+          `XinZhaoWrt-Arthur-v0.1.3-20260908-sysupgrade.bin`
+
+          SHA256：
+
+          `f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557`
+
+          管理地址：`http://192.168.6.1`
+
+          默认用户：`root`
+
+          初始密码：`password`
+
+          首次登录后建议马上修改密码。刷机前请确认设备型号确实是 JDCloud RE-SS-01，并先运行 `sysupgrade -T` 检查固件兼容性。不要使用 `-F` 强制刷入。
+
+          需要首次刷入时，Release 里也保留了 factory 固件；不确定当前场景该用 factory 还是 sysupgrade 时，先确认刷机方式再操作。
+          EOF
+
+          cat > /tmp/candidate-notes.md <<'EOF'
+          # Arthur #74 构建留档
+
+          这是当前正式版 `arthur-production-34268801985` 对应的构建留档，主要用于核对源码、校验值和发布来源。
+
+          普通使用请直接下载 **Latest 正式版**，不需要优先选择这个 Candidate。
+
+          - Build ID：`34268801985`
+          - Project commit：`2f4d9a70e5675955bddaf51eb134131fac61bfc3`
+          - 对应正式版：`arthur-production-34268801985`
+
+          这里保留的固件和校验资料与正式版来自同一次已经通过实机验收的构建。
+          EOF
+
+          cat > /tmp/rollback-notes.md <<'EOF'
+          # v0.1.0 回滚备用
+
+          这是为京东云亚瑟保留的旧版回滚固件。
+
+          正常使用请下载当前 Latest 正式版；只有在新版本出现明确兼容问题、并且已经决定回退时，才使用这里的文件。
+
+          回滚 sysupgrade：
+
+          `XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin`
+
+          SHA256：
+
+          `9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d`
+
+          回滚前同样要先核对设备型号和 SHA256，并执行 `sysupgrade -T`。不要使用 `-F` 强制刷入。
+          EOF
+
+          gh release edit 'arthur-update-34268801985' \
+            --repo "$GITHUB_REPOSITORY" \
+            --title '构建留档｜Arthur #74（34268801985）' \
+            --notes-file /tmp/candidate-notes.md \
+            --prerelease
+
+          gh release edit 'v0.1.0' \
+            --repo "$GITHUB_REPOSITORY" \
+            --title '回滚备用｜XinZhaoWrt Arthur v0.1.0' \
+            --notes-file /tmp/rollback-notes.md
+
+          gh release edit 'arthur-production-34268801985' \
+            --repo "$GITHUB_REPOSITORY" \
+            --title '新肇网络Wrt｜京东云亚瑟正式版（2026-09-08）' \
+            --notes-file /tmp/stable-notes.md \
+            --latest
+
+      - name: Remove obsolete releases and their release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          delete_release() {
+            local tag="$1"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "DELETE: $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            else
+              echo "ALREADY ABSENT: $tag"
+            fi
+          }
+
+          delete_release 'v0.1.3-arthur-33372332735'
+          delete_release 'v0.1.3-arthur-33348146504'
+          delete_release 'arthur-update-34242450515'
+          delete_release 'v0.1.3-rc.31'
+          delete_release 'arthur-update-34070832235'
+          delete_release 'arthur-update-33833009848'
+          delete_release 'arthur-production-33813232041'
+          delete_release 'arthur-update-33813232041'
+          delete_release 'arthur-update-33759122573'
+          delete_release 'arthur-update-33622163574'
+          delete_release 'arthur-update-33570985102'
+          delete_release 'arthur-update-33541575157'
+          delete_release 'arthur-known-good-33462873812'
+          delete_release 'v0.1.3-arthur-33336216751'
+          delete_release 'v0.1.3'
+          delete_release 'arthur-theme-candidate-33316789858'
+          delete_release 'arthur-fast-candidate-33241309046'
+          delete_release 'arthur-fast-candidate-33232376176'
+          delete_release 'arthur-fast-candidate-33231158438'
+          delete_release 'arthur-toolchain-v0.1.0-33196164359'
+          delete_release 'arthur-known-good-33182381566'
+          delete_release 'arthur-update-33010831103'
+          delete_release 'arthur-update-32943895389'
+          delete_release 'arthur-known-good-33097369697'
+          delete_release 'arthur-update-32890807587'
+          delete_release 'arthur-known-good-32853100232'
+
+      - name: Verify release page is clean
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].tag_name' | sort > /tmp/actual.txt
+
+          printf '%s\n' \
+            'arthur-production-34268801985' \
+            'arthur-update-34268801985' \
+            'v0.1.0' | sort > /tmp/expected.txt
+
+          diff -u /tmp/expected.txt /tmp/actual.txt
+
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
+          [[ "$latest" == 'arthur-production-34268801985' ]] || {
+            echo "BLOCKED: Latest is $latest"
+            exit 1
+          }
+
+          stable_title="$(gh release view 'arthur-production-34268801985' --repo "$GITHUB_REPOSITORY" --json name --jq '.name')"
+          candidate_title="$(gh release view 'arthur-update-34268801985' --repo "$GITHUB_REPOSITORY" --json name --jq '.name')"
+          rollback_title="$(gh release view 'v0.1.0' --repo "$GITHUB_REPOSITORY" --json name --jq '.name')"
+
+          [[ "$stable_title" == '新肇网络Wrt｜京东云亚瑟正式版（2026-09-08）' ]]
+          [[ "$candidate_title" == '构建留档｜Arthur #74（34268801985）' ]]
+          [[ "$rollback_title" == '回滚备用｜XinZhaoWrt Arthur v0.1.0' ]]
+
+          echo 'RELEASE_HOUSEKEEPING=PASS'
+          echo 'KEPT_RELEASES=3'
+          echo "LATEST=$latest"

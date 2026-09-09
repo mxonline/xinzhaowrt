@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "status": "PENDING",
+  "action": "prune-and-rewrite",
+  "keep_releases": [
+    "arthur-production-34268801985",
+    "arthur-update-34268801985",
+    "v0.1.0"
+  ],
+  "requested_at": "2026-09-09T10:30:00+08:00",
+  "reason": "Keep only the current Stable, its Candidate archive, and the configured rollback release; rewrite public descriptions in plain Chinese."
+}
