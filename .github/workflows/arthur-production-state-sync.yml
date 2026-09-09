@@ -49,10 +49,13 @@ jobs:
           echo "SOURCE_RUN_ID=$run_id" >> "$GITHUB_ENV"
 
       - name: Reconcile Gate and Evidence state
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import hashlib, json, os
+          import hashlib, json, os, subprocess
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -67,6 +70,91 @@ jobs:
           intent = json.load(open(intent_path, encoding='utf-8'))
           if int(resume.get('schema_version', 0)) != 2:
               raise SystemExit('BLOCKED: production resume state is not schema v2')
+
+          # A manual dispatch can recover a terminal release after a prior
+          # state-sync committed PRE_FLASH for a different execution.  Terminal
+          # evidence is authoritative for the released identity, so it must be
+          # evaluated before the old resume run can take the legacy SKIP path.
+          status = json.load(open('production/status.json', encoding='utf-8'))
+          known_good = json.load(open('production/known-good.json', encoding='utf-8'))
+          identity_keys = ('run_id', 'stable_tag', 'project_commit', 'source_commit', 'firmware', 'sha256')
+          terminal_eligible = (
+              status.get('status') == 'PRODUCTION_RELEASED' and
+              status.get('known_good') is True and
+              known_good.get('known_good') is True and
+              known_good.get('verified') is True and
+              known_good.get('verification') == 'real-device-confirmed' and
+              int(status.get('run_id', 0)) == run_id
+          )
+          if terminal_eligible:
+              for key in identity_keys:
+                  if str(status.get(key, '')) != str(known_good.get(key, '')):
+                      raise SystemExit(f'BLOCKED: terminal status and known-good identity differ: {key}')
+              stable_tag = str(status['stable_tag'])
+              release = json.loads(subprocess.run(
+                  ['gh', 'api', f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/{stable_tag}"],
+                  check=True, capture_output=True, text=True).stdout)
+              if (release.get('tag_name') != stable_tag or release.get('draft') or release.get('prerelease') or
+                      str(release.get('target_commitish', '')).lower() != str(status['project_commit']).lower()):
+                  raise SystemExit('BLOCKED: Stable Release identity is not eligible for terminal reconciliation')
+              asset_names = {str(asset.get('name', '')) for asset in release.get('assets', [])}
+              if status['firmware'] not in asset_names or 'real-device-verification.json' not in asset_names:
+                  raise SystemExit('BLOCKED: Stable Release lacks firmware or durable real-device verification evidence')
+              report_dir = Path('/tmp/arthur-terminal-release-assets')
+              report_dir.mkdir(parents=True, exist_ok=True)
+              report_path = report_dir / 'real-device-verification.json'
+              if not report_path.exists():
+                  subprocess.run([
+                      'gh', 'release', 'download', stable_tag, '--repo', os.environ['GITHUB_REPOSITORY'],
+                      '--pattern', 'real-device-verification.json', '--dir', str(report_dir)
+                  ], check=True)
+              try:
+                  report_bytes = report_path.read_bytes()
+                  report = json.loads(report_bytes.decode('utf-8-sig'))
+              except Exception as exc:
+                  raise SystemExit(f'BLOCKED: durable real-device verification report is invalid: {exc}')
+              if report.get('result') != 'PASS':
+                  raise SystemExit('BLOCKED: durable real-device verification report is not PASS')
+
+              execution_id = str(resume.get('execution_id', ''))
+              if not execution_id:
+                  raise SystemExit('BLOCKED: durable terminal execution id is missing')
+              evidence_dir = Path('production/evidence') / execution_id
+              evidence_dir.mkdir(parents=True, exist_ok=True)
+              identity = {key: status[key] for key in identity_keys}
+              identity['run_id'] = int(identity['run_id'])
+              now = datetime.now(timezone.utc).isoformat()
+              release_evidence = dict(identity, verified_by='GITHUB_ACTIONS_GITHUB_TOKEN', release_exists=True,
+                                      draft=False, prerelease=False, release_id=str(release['id']),
+                                      release_url=str(release['html_url']), observed_at=now)
+              device_evidence = dict(identity, known_good=True, verified=True,
+                                     verification='real-device-confirmed',
+                                     evidence_sha256=hashlib.sha256(report_bytes).hexdigest(),
+                                     ref=f'release:{stable_tag}/real-device-verification.json', observed_at=now)
+
+              def evidence_matches(path, expected):
+                  try:
+                      actual = json.load(open(path, encoding='utf-8'))
+                  except (OSError, ValueError):
+                      return False
+                  return all(str(actual.get(key, '')) == str(expected[key]) for key in identity_keys)
+
+              release_path = evidence_dir / 'github-release-evidence.json'
+              device_path = evidence_dir / 'real-device-evidence.json'
+              if not evidence_matches(release_path, release_evidence):
+                  release_path.write_text(json.dumps(release_evidence, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+              if not evidence_matches(device_path, device_evidence):
+                  device_path.write_text(json.dumps(device_evidence, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+              runtime_path = Path('/tmp/arthur-terminal-runtime.json')
+              runtime_path.write_text(json.dumps({
+                  'execution_id': execution_id, 'phase': 'RELEASE_GATE', 'current_stage': 'RELEASE_GATE',
+                  'next_action': 'RELEASE', 'terminal_state': None, 'pending_human_gate': None
+              }) + '\n', encoding='utf-8')
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+                  out.write('mode=terminal\n')
+              print(f'TERMINAL_RELEASE_EVIDENCE=PASS run={run_id} stable_tag={stable_tag}')
+              raise SystemExit(0)
+
           if int(resume.get('production', {}).get('github_run_id', 0)) != run_id:
               print(f'SKIP: durable execution is bound to another run: {resume.get("production", {}).get("github_run_id")}')
               raise SystemExit(0)
@@ -171,16 +259,43 @@ jobs:
           evidence_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
           resume_path.write_text(json.dumps(resume, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
           intent_path.write_text(json.dumps(intent, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write('mode=legacy\n')
           print(f'PASS: durable state reconciled run={run_id} build={build_result} acceptance={acceptance} upload={upload} release={release} next={resume["next_action"]}')
           PY
 
+      - name: Reconcile terminal production state
+        if: ${{ steps.reconcile.outputs.mode == 'terminal' }}
+        run: |
+          set -Eeuo pipefail
+          pwsh -NoProfile -Command '
+            . ./scripts/arthur-terminal-release-reconciler.ps1
+            $resume = Get-Content -Raw ./production/resume-state.json | ConvertFrom-Json
+            $executionId = [string]$resume.execution_id
+            if ([string]::IsNullOrWhiteSpace($executionId)) { throw "TERMINAL_RELEASE_EXECUTION_ID_MISSING" }
+            $evidenceRoot = Join-Path ./production/evidence $executionId
+            $result = Invoke-ArthurTerminalReleaseReconcile -StatusPath ./production/status.json -KnownGoodPath ./production/known-good.json -ReleaseEvidencePath (Join-Path $evidenceRoot github-release-evidence.json) -DeviceEvidencePath (Join-Path $evidenceRoot real-device-evidence.json) -ResumeStatePath ./production/resume-state.json -OperatorIntentPath ./production/operator-intent.json -RuntimeStatePath /tmp/arthur-terminal-runtime.json -EventLogPath ./production/firmware-events.jsonl -ExecutionId $executionId
+            if ([string]$result.reason -eq "EXECUTION_ID_MISMATCH") { throw "TERMINAL_RELEASE_EXECUTION_ID_MISMATCH" }
+            if ([string]$result.reason -eq "ALREADY_RECONCILED") {
+              Write-Host "ALREADY_RECONCILED=PASS NO_OP=PASS execution=$executionId"
+            } else {
+              Write-Host "TERMINAL_RELEASE_RECONCILED=PASS execution=$executionId result=$($result.reason)"
+            }
+          '
+
       - name: Commit state-only reconciliation
+        env:
+          TERMINAL_MODE: ${{ steps.reconcile.outputs.mode }}
         run: |
           set -Eeuo pipefail
           git config user.name 'XinZhaoWrt State Bot'
           git config user.email 'xinzhaowrt@users.noreply.github.com'
           git add production/resume-state.json production/operator-intent.json production/evidence/
           if git diff --cached --quiet; then
+            if [ "$TERMINAL_MODE" = terminal ]; then
+              echo 'ALREADY_RECONCILED=PASS NO_OP=PASS'
+              exit 0
+            fi
             echo 'PASS: durable production state already reconciled.'
             exit 0
           fi
