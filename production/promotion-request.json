@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "status": "PENDING",
+  "candidate_tag": "arthur-update-34268801985",
+  "stable_tag": "arthur-production-34268801985",
+  "project_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+  "run_id": "34268801985",
+  "device": "jdcloud_re-ss-01",
+  "device_verified": true,
+  "evidence": "output/real-device/real-device-verification.json",
+  "requested_at": "2026-09-09T10:07:00+08:00",
+  "requested_by": "release-automation"
+}
