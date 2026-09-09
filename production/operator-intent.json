@@ -3,13 +3,13 @@
   "project": "Arthur",
   "intent_type": "EXECUTE_FIRMWARE",
   "authorization_scope": "FIRMWARE_RELEASE",
-  "firmware_execution_authorized": true,
+  "firmware_execution_authorized": false,
   "execution_id": "arthur-final-release-5f41c4e-20260908",
   "firmware_state": {
-    "current_stage": "PRE_FLASH",
-    "next_stage": "AUTO_FLASH_SAFETY_GATE",
-    "active_run_id": 34242450515,
-    "active_source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
+    "current_stage": "PRODUCTION_RELEASED",
+    "next_stage": "NONE",
+    "active_run_id": 34268801985,
+    "active_source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
     "verified_frozen": [
       "WIFI",
       "LUCI_CHINESE",

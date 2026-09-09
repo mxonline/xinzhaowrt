@@ -1,0 +1,15 @@
+{
+  "run_id": 34268801985,
+  "stable_tag": "arthur-production-34268801985",
+  "project_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+  "source_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.3-20260908-sysupgrade.bin",
+  "sha256": "f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557",
+  "verified_by": "GITHUB_ACTIONS_GITHUB_TOKEN",
+  "release_exists": true,
+  "draft": false,
+  "prerelease": false,
+  "release_id": "385182885",
+  "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-34268801985",
+  "observed_at": "2026-09-09T14:13:34.798667+00:00"
+}

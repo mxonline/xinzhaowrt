@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
   "execution_id": "arthur-final-release-5f41c4e-20260908",
-  "status": "RESUME_SAFE",
-  "instruction_allowed": true,
+  "status": "PRODUCTION_RELEASED",
+  "instruction_allowed": false,
   "source": {
     "repository_head": "b0d4df823d6c368d34329a97862a6f26690ab9b7",
-    "accepted_source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c"
+    "accepted_source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3"
   },
   "production": {
-    "github_run_id": 34242450515,
+    "github_run_id": 34268801985,
     "artifact_id": 10068849426,
-    "candidate_sha256": ""
+    "candidate_sha256": "f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557"
   },
   "device": {
     "version": "0.1.3",
@@ -25,15 +25,15 @@
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#wifi",
       "requirement_digest": "3503c96c3703e7c71856089fdc22eda8613036eea245cd44dfe259a69dc97879",
       "subject": {
-        "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
-        "device_build_id": "33462873812"
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:baseline-wifi-v1"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
-      "inherited": true,
-      "inherited_from": "accepted-real-device-baseline-e27bafa",
-      "verified_at": "2026-09-08T15:54:00+00:00"
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
     },
     "LUCI_CHINESE": {
       "gate_id": "LUCI_CHINESE",
@@ -41,15 +41,15 @@
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#luci-chinese",
       "requirement_digest": "cec0e25e5c925ce1f6bd4349e4c0074fb1e54b2bdc86513b5b10032f28373948",
       "subject": {
-        "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
-        "device_build_id": "33462873812"
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:baseline-luci-chinese-v1"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
-      "inherited": true,
-      "inherited_from": "accepted-real-device-baseline-e27bafa",
-      "verified_at": "2026-09-08T15:54:00+00:00"
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
     },
     "ADGUARD_FULL_MANAGER": {
       "gate_id": "ADGUARD_FULL_MANAGER",
@@ -57,15 +57,15 @@
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#adguard-full-manager",
       "requirement_digest": "ea34cc2ac5216448787e3712a63b404fdfdbc6d8427e5ef959f8b5c4c84b2660",
       "subject": {
-        "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
-        "device_build_id": "33462873812"
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:baseline-adh-manager-v1"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
-      "inherited": true,
-      "inherited_from": "accepted-real-device-baseline-e27bafa",
-      "verified_at": "2026-09-08T15:54:00+00:00"
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
     },
     "QUICKSTART": {
       "gate_id": "QUICKSTART",
@@ -73,15 +73,15 @@
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#quickstart",
       "requirement_digest": "df8ad944b6e12a21c1939ac62164e469325fbf65027bfb70588e84279e5a41cc",
       "subject": {
-        "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9",
-        "device_build_id": "33462873812"
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:baseline-quickstart-v1"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
-      "inherited": true,
-      "inherited_from": "accepted-real-device-baseline-e27bafa",
-      "verified_at": "2026-09-08T15:54:00+00:00"
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
     },
     "BUILD": {
       "gate_id": "BUILD",
@@ -89,15 +89,15 @@
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "fdf1c18405589a44782b24c80194a6700f497cb7dd0e594ac30cabdfbefdc134",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:build-run-34242450515"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-09-08T17:40:39Z"
+      "verified_at": ""
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -105,257 +105,291 @@
       "requirement_ref": "production/release-policy.md#artifact",
       "requirement_digest": "6964a74cb9e5c95b7a71a6530302675c819a9a33774afa7c55b2498008572ce8",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:artifact-run-34242450515"
+        "terminal-release:34268801985/arthur-production-34268801985"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-09-08T17:40:39Z"
+      "verified_at": ""
     },
     "PRE_FLASH": {
       "gate_id": "PRE_FLASH",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#pre-flash",
       "requirement_digest": "126f121b50eb9c481f5fae816236ede4b98a6e15e6792c67ecf64666f0ac86ae",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "AUTO_FLASH_SAFETY_GATE": {
       "gate_id": "AUTO_FLASH_SAFETY_GATE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#auto-flash-safety-gate",
       "requirement_digest": "3bff34ecb41ade8356988f3c77275e743942e65e79108ee52fbba3e32c15b8db",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "FLASH": {
       "gate_id": "FLASH",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#flash",
       "requirement_digest": "0ab24cb5440535c97aa26248e6071dab2e6d40ce75d4ab3001361259b71aab8c",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "WAIT_DEVICE": {
       "gate_id": "WAIT_DEVICE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#wait-device",
       "requirement_digest": "e4f5935cd049ddf01405da522061dc654a48a0c835a5dc357290414e90922522",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "IDENTIFY": {
       "gate_id": "IDENTIFY",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#identify",
       "requirement_digest": "73a52dafb3134c595fc725804b12e51bf5d5f68b1f54076577d9ce8b3b2f38a4",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "LAN_RUNTIME": {
       "gate_id": "LAN_RUNTIME",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#lan-runtime",
       "requirement_digest": "3440156b445b3b743f6d9ff05644a12e727c4f728b0659023dea45e0ac7ae3d7",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "DHCP": {
       "gate_id": "DHCP",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#dhcp",
       "requirement_digest": "86d4b6deb0ba885c7c646db291f51bf2b5338b4ab637cee7d8d1287dbf6058b9",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "WAN": {
       "gate_id": "WAN",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#wan",
       "requirement_digest": "25ec5c440ce78ab4eecf6bfe5da9442632f1cda2fd077f3d7df309b5e663d78a",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "DNS": {
       "gate_id": "DNS",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#dns",
       "requirement_digest": "bc3943f1dc6d18650b6c420030c9f3bf9338e76bd2dd93876bb1e5e1ca098d85",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "SSH": {
       "gate_id": "SSH",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#ssh",
       "requirement_digest": "5277872ba658fcdab0d8f06be8351c056191bc814fbca4aab7ae13f258fa9f45",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "LUCI": {
       "gate_id": "LUCI",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#luci",
       "requirement_digest": "320316b79389df116acfe0e6c03acd21724473bf57b8f7f4de2c42cd05705377",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "PLUGIN_RUNTIME_22": {
       "gate_id": "PLUGIN_RUNTIME_22",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#plugin-runtime-22",
       "requirement_digest": "7944e13375a7cb392241a0a2ce325a63eaac06db4b59339b4b287fe32ada4c60",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "ARGON_KUCAT_RUNTIME": {
       "gate_id": "ARGON_KUCAT_RUNTIME",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#argon-kucat-runtime",
       "requirement_digest": "9e16edde0efd657a9884f54ac44c3ee90f6859165c4633729110d87eba190372",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "SYSTEM_HEALTH": {
       "gate_id": "SYSTEM_HEALTH",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#system-health",
       "requirement_digest": "98ab195bfa5d880e5bba5c7daeb9272f1e35e934de64ab06d09f1e62158d2071",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "RELEASE_GATE": {
       "gate_id": "RELEASE_GATE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#release-gate",
       "requirement_digest": "2ee971332fee791234b4da95fd93f6f5906e3e326c01220beb6348afa667d16f",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "RELEASE": {
       "gate_id": "RELEASE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#release",
       "requirement_digest": "9b70336c6233a7cd437f1d924901b8c9702a1238da1a9e000ed8a16ff151ec5f",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     },
     "PRODUCTION_RELEASED": {
       "gate_id": "PRODUCTION_RELEASED",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#production-released",
       "requirement_digest": "6c10f9c39a788fd279dddb269e0c0bd990853cc055bb7f1cc7cedffa03b5f419",
       "subject": {
-        "source_sha": "5f41c4e25be6eb5a24f78bc794ca1d80a036087c",
-        "github_run_id": 34242450515
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "terminal-release:34268801985/arthur-production-34268801985"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
     }
   },
-  "current_gate": "PRE_FLASH",
-  "next_action": "PRE_FLASH",
+  "current_gate": "PRODUCTION_RELEASED",
+  "next_action": "NONE",
   "repository_head": "b0d4df823d6c368d34329a97862a6f26690ab9b7",
   "real_device": {
     "version": "0.1.3",
@@ -369,8 +403,8 @@
     "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
   },
   "checkpoint": {
-    "current": "PRE_FLASH",
-    "next_action": "PRE_FLASH",
+    "current": "PRODUCTION_RELEASED",
+    "next_action": "NONE",
     "turn_count": 7
   },
   "verified": {
@@ -380,9 +414,7 @@
     "adguard_full_manager": "LIVE_BROWSER_VERIFIED",
     "quickstart": "AUTHENTICATED_RENDER_VERIFIED"
   },
-  "pending": [
-    "PRE_FLASH"
-  ],
+  "pending": [],
   "conflicts": [],
   "source_precedence": [
     "LIVE_DEVICE",
@@ -397,5 +429,5 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "semantic_sha256": "dc525478e87dc8ee0f8b33588e5dadee8ade44dfcc87c826c3a889d483cd4bf6"
+  "semantic_sha256": "e0482e3c25cdb54869bef51e4a5da6680ccd7d85e58fbfef4d595c7c7f8f868a"
 }

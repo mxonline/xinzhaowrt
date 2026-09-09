@@ -1,0 +1,14 @@
+{
+  "run_id": 34268801985,
+  "stable_tag": "arthur-production-34268801985",
+  "project_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+  "source_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.3-20260908-sysupgrade.bin",
+  "sha256": "f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557",
+  "known_good": true,
+  "verified": true,
+  "verification": "real-device-confirmed",
+  "evidence_sha256": "1d6663391051993182f84b716100cc90ce13237334caf7d0372367b78e58cf32",
+  "ref": "release:arthur-production-34268801985/real-device-verification.json",
+  "observed_at": "2026-09-09T14:13:34.798667+00:00"
+}
