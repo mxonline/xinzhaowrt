@@ -57,5 +57,6 @@ Assert-Contains $workflow 'arthur-terminal-known-good.json' 'transient known-goo
 # reconciliation commit.
 Assert-Contains $workflow 'ALREADY_RECONCILED=PASS NO_OP=PASS' 'second terminal dispatch must explicitly report its no-op result'
 Assert-Contains $workflow 'TERMINAL_MODE' 'commit step must distinguish terminal no-op from a generic empty diff'
+Assert-Contains $workflow 'git add production/resume-state.json production/operator-intent.json production/firmware-events.jsonl production/evidence/' 'terminal event ledger must be persisted with the canonical state snapshot'
 
 Write-Host 'ARTHUR_PRODUCTION_STATE_SYNC_CONTRACT=PASS'
