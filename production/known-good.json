@@ -33,8 +33,8 @@
     "OPENCLASH_REF": "c3a33c1d3407956fdf8f0e0b7c1a4c52e6ad9593",
     "OPENAPPFILTER_REF": "a189ad85e8fb461318533941963f0e2975274a19"
   },
-  "config_sha256": null,
-  "verified_at": "2026-09-09",
+  "config_sha256": "08f04cc4888c06a0602cb5d095343bfdfde2787ce6e2b33ce8cb7656be6b0f3b",
+  "verified_at": "2026-09-09T02:21:45.883374+00:00",
   "verification_commit": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
   "verification_report": "output/real-device/real-device-verification.json",
   "verification": "real-device-confirmed",
