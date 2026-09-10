@@ -35,12 +35,6 @@ jobs:
       - name: Install build dependencies
         run: ./scripts/codex-setup.sh
 
-      - name: Preflight project validation
-        run: |
-          mkdir -p output/logs
-          set -o pipefail
-          ./scripts/verify-project.sh 2>&1 | tee -a output/logs/build.log
-
       - name: Restore OpenWrt download and compiler caches
         uses: actions/cache@v4
         with:
@@ -108,6 +102,14 @@ jobs:
           # Hard gate: use the same Arthur compatibility seed as the real build,
           # then require all 22 protected LuCI packages to survive make defconfig.
           bash "$GITHUB_WORKSPACE/scripts/apply-arthur-config.sh" "$SRC"
+
+      - name: Preflight project validation
+        env:
+          ADGUARD_MANAGER_PACKAGE_ROOT: ${{ github.workspace }}/work/feed-check/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome
+        run: |
+          mkdir -p output/logs
+          set -o pipefail
+          ./scripts/verify-project.sh 2>&1 | tee -a output/logs/build.log
 
       - name: Build firmware
         env:
