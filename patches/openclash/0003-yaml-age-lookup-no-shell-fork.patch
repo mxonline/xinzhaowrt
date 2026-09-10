@@ -1,0 +1,67 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/YAML.rb b/luci-app-openclash/root/usr/share/openclash/YAML.rb
+index ca633338..ce869840 100644
+--- a/luci-app-openclash/root/usr/share/openclash/YAML.rb
++++ b/luci-app-openclash/root/usr/share/openclash/YAML.rb
+@@ -226,17 +226,47 @@ module YAML
+ 		basename_no_ext = File.basename(filename, File.extname(filename))
+ 		publics = []
+ 		secrets = []
+-
+-		[basename, basename_no_ext].uniq.each do |n|
+-			cmd_public = ["/bin/sh", "-c", ". /usr/share/openclash/uci.sh; uci_get_age_public_keys \"$1\"", "sh", n]
+-			IO.popen(cmd_public, "r") do |io|
+-				io.each_line { |l| publics << l.strip unless l.nil? || l.strip == "" }
++		names = [basename, basename_no_ext].uniq
++		current_type = nil
++		current_name = nil
++		current_public = nil
++		current_secret = nil
++		parse_uci_value = lambda do |raw|
++			value = raw.to_s.strip
++			if value.length >= 2 && ((value.start_with?("'") && value.end_with?("'")) || (value.start_with?("\"") && value.end_with?("\"")))
++				value[1...-1].gsub(/\\(.)/, '\\1')
++			else
++				value.split(/\s+#/, 2).first.to_s.strip
++			end
++		end
++		flush = lambda do
++			if current_type == 'config_age_secret' && names.include?(current_name)
++				publics << current_public if current_public && !current_public.empty?
++				secrets << current_secret if current_secret && !current_secret.empty?
+ 			end
++		end
+ 
+-			cmd_secret = ["/bin/sh", "-c", ". /usr/share/openclash/uci.sh; uci_get_age_secret_keys \"$1\"", "sh", n]
+-			IO.popen(cmd_secret, "r") do |io|
+-				io.each_line { |l| secrets << l.strip unless l.nil? || l.strip == "" }
++		begin
++			File.foreach('/etc/config/openclash') do |line|
++				line = line.strip
++				if (section = line.match(/\Aconfig\s+(\S+)/))
++					flush.call
++					current_type = section[1]
++					current_name = nil
++					current_public = nil
++					current_secret = nil
++				elsif current_type == 'config_age_secret' && (option = line.match(/\Aoption\s+(name|public|secret)\s+(.+)\z/))
++					value = parse_uci_value.call(option[2])
++					case option[1]
++					when 'name' then current_name = value
++					when 'public' then current_public = value
++					when 'secret' then current_secret = value
++					end
++				end
+ 			end
++			flush.call
++		rescue Errno::ENOENT, Errno::EACCES
++			# No age settings are available; retain the normal plaintext path.
+ 		end
+ 		{ publics: publics, secrets: secrets }
+ 	end
+@@ -770,4 +800,4 @@ module YAML
+ 			raise "[batch update] update_spec: [#{update_spec}], error: [#{e.message}]"
+ 		end
+ 	end
+-end
+\ No newline at end of file
++end

@@ -239,6 +239,14 @@ OPENCLASH_CONFIG_PATCH="$PROJECT_ROOT/patches/openclash/0002-config-rewrite-no-s
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_CONFIG_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_CONFIG_PATCH"
 echo "APPLIED_PATCH: OpenClash config rewrite without shell fork"
+OPENCLASH_YAML_PATCH="$PROJECT_ROOT/patches/openclash/0003-yaml-age-lookup-no-shell-fork.patch"
+[[ -f "$OPENCLASH_YAML_PATCH" ]] || {
+  echo "ERROR: OpenClash YAML age lookup patch missing: $OPENCLASH_YAML_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_YAML_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_YAML_PATCH"
+echo "APPLIED_PATCH: OpenClash YAML age lookup without shell fork"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
