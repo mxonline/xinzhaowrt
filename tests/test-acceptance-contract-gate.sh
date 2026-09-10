@@ -19,6 +19,7 @@ assert data['status'] == 'PASS'
 assert data['all_requirements_covered'] is True
 assert data['static_acceptance_pass'] is True
 assert data['unknown'] == 0
+assert data['source_commit'] == '27e26e324bee0b0c2a4eb58e2e9121fea5d43194'
 PY
 grep -Fxq 'ALL_REQUIREMENTS_COVERED=true' /tmp/xinzhao-acceptance-contract-gate.log
 grep -Fxq 'STATIC_ACCEPTANCE_PASS=true' /tmp/xinzhao-acceptance-contract-gate.log

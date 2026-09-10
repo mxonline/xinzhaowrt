@@ -19,6 +19,14 @@ fi
 # shellcheck disable=SC1091
 source <(sed 's/\r$//' build.env)
 
+source_lock='config/arthur-known-good.lock'
+[[ -s "$source_lock" ]] || fail 'Arthur known-good source lock is missing'
+# shellcheck disable=SC1091
+source <(sed 's/\r$//' "$source_lock")
+[[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] || fail 'build.env SOURCE_REF is not a full commit hash'
+[[ "$SOURCE_REF" == "$IMMORTALWRT_REF" ]] || fail 'build.env SOURCE_REF disagrees with the Arthur known-good source lock'
+export SOURCE_REF
+
 [[ "$DEFAULT_LAN_IP" == '192.168.6.1' ]] || fail 'authoritative LAN IP is not 192.168.6.1'
 [[ "$DEFAULT_ROOT_USER" == 'root' ]] || fail 'authoritative administrator is not root'
 [[ "$DEFAULT_ROOT_PASSWORD" == 'passwort' ]] || fail 'authoritative root password is not passwort'
@@ -95,12 +103,13 @@ for required in \
   scripts/real-device-verify.ps1; do
   [[ -e "$required" ]] || fail "acceptance evidence is missing: $required"
 done
-git cat-file -e 6d284c842526e214a2a303856c9bbda2cc3bb9ab^{commit} || fail 'required source commit 6d284c8 is unavailable'
+[[ "$SOURCE_REF" == "$IMMORTALWRT_REF" ]] || fail 'source provenance does not match the Arthur known-good lock'
 pass EXPECTED_DIFF_ACCEPTANCE_MAPPING
 
 mkdir -p output
 "$PYTHON_BIN" - <<'PY'
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 report = {
@@ -122,7 +131,7 @@ report = {
         'luci_theme_language_and_port_contract': 'PASS',
         'required_plugins': 'PASS'
     },
-    'source_commit': '6d284c842526e214a2a303856c9bbda2cc3bb9ab',
+    'source_commit': os.environ['SOURCE_REF'],
     'generated_at': datetime.now(timezone.utc).isoformat()
 }
 Path('output/acceptance-contract-gate.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
