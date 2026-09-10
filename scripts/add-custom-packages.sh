@@ -231,6 +231,14 @@ OPENCLASH_CORE_PATCH="$PROJECT_ROOT/patches/openclash/0001-core-updater-single-f
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_CORE_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_CORE_PATCH"
 echo "APPLIED_PATCH: OpenClash core updater single-flight/private-tmp"
+OPENCLASH_CONFIG_PATCH="$PROJECT_ROOT/patches/openclash/0002-config-rewrite-no-shell-fork.patch"
+[[ -f "$OPENCLASH_CONFIG_PATCH" ]] || {
+  echo "ERROR: OpenClash config rewrite patch missing: $OPENCLASH_CONFIG_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_CONFIG_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_CONFIG_PATCH"
+echo "APPLIED_PATCH: OpenClash config rewrite without shell fork"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SOURCE="${OPENCLASH_YML_SOURCE:-$ROOT/work/immortalwrt/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/yml_change.sh}"
+
+[[ -f "$SOURCE" ]] || {
+  echo "FAIL: OpenClash YAML rewrite source is missing: $SOURCE" >&2
+  exit 1
+}
+
+grep -Fq "'device' => 'utun'" "$SOURCE" || {
+  echo "FAIL: YAML rewrite must preserve OpenClash's expected TUN device" >&2
+  exit 1
+}
+grep -Fq "Dir.children('/sys/class/net')" "$SOURCE" || {
+  echo "FAIL: YAML rewrite must enumerate network devices without a shell fork" >&2
+  exit 1
+}
+if grep -Fq '%x{ls -l /sys/class/net/' "$SOURCE"; then
+  echo "FAIL: YAML rewrite still forks ls/awk while building local_exclude" >&2
+  exit 1
+fi
+
+echo "PASS: OpenClash YAML rewrite avoids the /sys/class/net shell fork and retains device: utun"
