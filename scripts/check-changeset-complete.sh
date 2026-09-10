@@ -12,6 +12,8 @@ pass() { echo "$1=PASS"; }
 for test_script in \
   tests/test-adguard-manager.sh \
   tests/test-adguard-defaults.sh \
+  tests/test-memory-source-defaults.sh \
+  tests/test-memory-source-runtime.sh \
   tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
   tests/test-functional-acceptance.sh \

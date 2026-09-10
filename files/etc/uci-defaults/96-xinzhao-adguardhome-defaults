@@ -3,8 +3,25 @@
 # dnsmasq keeps port 53; AdGuard Home's optional local resolver uses 5353.
 set -eu
 
-config_file='/etc/adguardhome/adguardhome.yaml'
-config_dir='/etc/adguardhome'
+init_dir="${XINZHAO_INIT_DIR:-/etc/init.d}"
+
+disable_service() {
+    service="$1"
+    init_script="$init_dir/$service"
+    [ -x "$init_script" ] || return 0
+    "$init_script" stop >/dev/null 2>&1 || true
+    "$init_script" disable >/dev/null 2>&1 || true
+}
+
+# Reconcile both historical AdGuard Home service names and the QuickFile
+# daemon.  This removes stale procd enable symlinks that can survive a
+# configuration-preserving upgrade while leaving all packages installed.
+disable_service adguardhome
+disable_service AdGuardHome
+disable_service quickfile
+
+config_dir="${XINZHAO_ADGUARD_CONFIG_DIR:-/etc/adguardhome}"
+config_file="${XINZHAO_ADGUARD_CONFIG_FILE:-$config_dir/adguardhome.yaml}"
 if [ ! -s "$config_file" ]; then
     mkdir -m 0700 -p "$config_dir"
     tmp="$config_file.tmp.$$"

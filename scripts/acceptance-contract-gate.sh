@@ -70,6 +70,8 @@ grep -Fq "option enabled '0'" "$adguard_cfg" || fail 'AdGuard Home is not defaul
 grep -Fq '3000' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard Web UI port seed is missing'
 grep -Fq '5353' files/etc/uci-defaults/96-xinzhao-adguardhome-defaults || fail 'AdGuard DNS compatibility seed is missing'
 bash tests/test-adguard-manager.sh || fail 'mature AdGuard manager contract is missing'
+bash tests/test-memory-source-defaults.sh || fail 'memory source defaults contract is missing'
+bash tests/test-memory-source-runtime.sh || fail 'memory source runtime contract is missing'
 grep -Fq 'adguard_page_functional' "$verify" || fail 'real-device AdGuard page functional check is missing'
 grep -Fq 'ARTHUR_LUCI_COOKIE_FILE' "$verify" || fail 'real-device AdGuard page check must use an existing authenticated session'
 pass ADGUARD_FUNCTIONAL_CONTRACT
@@ -97,6 +99,8 @@ for required in \
   tests/test-functional-acceptance.sh \
   tests/test-adguard-manager.sh \
   tests/test-adguard-defaults.sh \
+  tests/test-memory-source-defaults.sh \
+  tests/test-memory-source-runtime.sh \
   tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
   tests/test-argon-default-theme.sh \
