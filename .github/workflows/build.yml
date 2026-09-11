@@ -117,6 +117,7 @@ jobs:
       - name: Preflight project validation
         env:
           ADGUARD_MANAGER_PACKAGE_ROOT: ${{ github.workspace }}/work/feed-check/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome
+          FEED_CHECK_ROOT: ${{ github.workspace }}/work/feed-check/immortalwrt
         run: |
           mkdir -p output/logs
           set -o pipefail
