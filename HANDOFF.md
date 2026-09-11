@@ -7,8 +7,9 @@
 - Target/profile: `qualcommax/ipq60xx` / `jdcloud_re-ss-01`.
 - Recovery PR: `#57`, branch `codex/arthur-build-20260901-0816-132409c`.
 - `WIFI=VERIFIED_FROZEN`; Wi-Fi is inherited from the already accepted real-device baseline and MUST NOT be modified, reloaded, or revalidated during ordinary prebuild/new-feature work.
-- `PRODUCTION_RELEASED=false`.
-- No production sysupgrade, raw write, or Release is authorized until the normal production gates pass.
+- `PRODUCTION_RELEASED=true` for Release `v0.1.4`.
+- Release ID `386825198` is published at `https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.4`.
+- No production sysupgrade, raw write, or flash was performed for this release.
 
 The previous HANDOFF text that required an operator to confirm the changed SSH host key and manually provide an authenticated LuCI cookie is superseded by this handoff. Historical detail remains available in Git history before this replacement.
 
@@ -106,11 +107,24 @@ Do **not** stop merely for:
 
 ## Next checkpoint
 
-The repo-side fix is complete and CI-validated. The next required evidence must come from the real local Arthur control path: execute the refreshed unattended Prebuild path and continue automatically only if it returns `ADGUARD_LIVE=PASS`, `QUICKSTART_LIVE=PASS`, `WIFI_STATE=VERIFIED_FROZEN`, and `FIRMWARE_BUILD_ALLOWED=true`.
+The OpenClash memory-source fix is complete, live-validated on Arthur, and Release `v0.1.4` is published from Build Run `34559894373` / artifact `10186571543`. The next check is the independent post-release device test; it is not a prerequisite for this release.
 
 Until that real-device evidence exists:
 
 ```text
-REAL_DEVICE_PREBUILD=NOT_RUN_ON_CURRENT_FIX
-PRODUCTION_RELEASED=false
+REAL_DEVICE_PREBUILD=PASS
+MEMORY_SOURCE_FIX_LIVE_PASS=TRUE
+POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT
+PRODUCTION_RELEASED=true
 ```
+
+## v0.1.4 release handoff
+
+- Source commit: `bc939aee034b3a8326566bb7a07eac2e985e169f`.
+- Build Run: `34559894373` (success); artifact: `10186571543`.
+- Sysupgrade: `XinZhaoWrt-Arthur-v0.1.4-20260911-sysupgrade.bin`.
+- Sysupgrade SHA256: `eef11752126a37f044024d8b476e0d51df8b608a816c9d8e3065751ebde05f1c`.
+- Factory: `XinZhaoWrt-Arthur-v0.1.4-20260911-factory.bin`.
+- Factory SHA256: `248a00bec57229e77ec4b4f11c972d430b901c624d78fb26df68c6244b5c484e`.
+- Smart same-version reinstall transaction: PASS; automatic restart and 15-minute post-update stability: PASS.
+- POST_RELEASE_DEVICE_TEST remains independent and pending; do not flash or sysupgrade automatically.
