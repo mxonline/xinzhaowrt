@@ -27,6 +27,7 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+WEB_BUILD_ID="${WEB_BUILD_ID:-${GITHUB_RUN_ID:-local}}"
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -86,6 +87,8 @@ python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
   --manifest production/accepted-preview/arthur-adh-quickstart.json \
   --dest "$SRC/files"
 bash "$PROJECT_ROOT/scripts/restore-pinned-adguard-manager.sh" "$SRC"
+bash "$PROJECT_ROOT/scripts/stamp-build-info.sh" \
+  "$SRC/files" "$FIRMWARE_VERSION" "$BUILD_DATE" "$SOURCE_SHA" "$WEB_BUILD_ID"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
 bash "$PROJECT_ROOT/tests/test-version-identity-defconfig.sh" "$SRC"
