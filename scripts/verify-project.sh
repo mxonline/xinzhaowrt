@@ -39,7 +39,9 @@ for test_script in \
   tests/test-final-rootfs-identity-regression.sh \
   tests/test-memory-source-defaults.sh \
   tests/test-memory-source-runtime.sh \
-  tests/test-openclash-runtime-forensics.sh; do
+  tests/test-openclash-runtime-forensics.sh \
+  tests/test-openclash-watchdog-memory.sh \
+  tests/test-openclash-sigsegv-fail-closed.sh; do
   bash "$test_script"
 done
 

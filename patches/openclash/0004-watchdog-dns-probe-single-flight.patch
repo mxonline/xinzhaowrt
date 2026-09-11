@@ -1,0 +1,12 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh b/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
+--- a/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
++++ b/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
+@@ -121,6 +121,6 @@
+       ips_mutex = Mutex.new
+       queue = Queue.new
+       domains_to_resolve.each{|d| queue << d}
+-      threads = (1..[10, queue.size].min).map do
++      threads = (1..[1, queue.size].min).map do
+          Thread.new do
+             while domain = queue.pop(true) rescue nil
+                syscall = '/usr/share/openclash/openclash_debug_dns.lua 2>/dev/null \"' + domain + '\" \"true\"'

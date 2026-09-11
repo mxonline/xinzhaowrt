@@ -247,6 +247,22 @@ OPENCLASH_YAML_PATCH="$PROJECT_ROOT/patches/openclash/0003-yaml-age-lookup-no-sh
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_YAML_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_YAML_PATCH"
 echo "APPLIED_PATCH: OpenClash YAML age lookup without shell fork"
+OPENCLASH_WATCHDOG_PATCH="$PROJECT_ROOT/patches/openclash/0004-watchdog-dns-probe-single-flight.patch"
+[[ -f "$OPENCLASH_WATCHDOG_PATCH" ]] || {
+  echo "ERROR: OpenClash watchdog memory patch missing: $OPENCLASH_WATCHDOG_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_WATCHDOG_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_WATCHDOG_PATCH"
+echo "APPLIED_PATCH: OpenClash watchdog DNS probe single-flight"
+OPENCLASH_SIGSEGV_PATCH="$PROJECT_ROOT/patches/openclash/0005-core-candidate-sigsegv-fail-closed.patch"
+[[ -f "$OPENCLASH_SIGSEGV_PATCH" ]] || {
+  echo "ERROR: OpenClash candidate validation patch missing: $OPENCLASH_SIGSEGV_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_SIGSEGV_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_SIGSEGV_PATCH"
+echo "APPLIED_PATCH: OpenClash Smart candidate SIGSEGV fail-closed"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
