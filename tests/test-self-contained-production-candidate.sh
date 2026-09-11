@@ -22,6 +22,7 @@ grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production 
 python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 bash "$root/tests/test-final-rootfs-identity.sh"
+bash "$root/tests/test-build-info-stamping.sh"
 bash "$root/tests/test-final-rootfs-web-build-info-regression.sh"
 
 echo 'SELF_CONTAINED_PRODUCTION_CANDIDATE=PASS'
