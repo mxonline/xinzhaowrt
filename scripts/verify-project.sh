@@ -28,7 +28,18 @@ done < config/required-plugins.txt
 ./scripts/check-upload-oom-fix.sh
 ./scripts/acceptance-contract-gate.sh
 
-for test_script in tests/test-first-boot-defaults.sh tests/test-version-identity.sh tests/test-final-rootfs-identity.sh tests/test-functional-acceptance.sh tests/test-arthur-luci-language-config.sh; do
+for test_script in \
+  tests/test-first-boot-defaults.sh \
+  tests/test-version-identity.sh \
+  tests/test-final-rootfs-identity.sh \
+  tests/test-functional-acceptance.sh \
+  tests/test-arthur-luci-language-config.sh \
+  tests/test-quickstart-template-forensics.sh \
+  tests/test-quickstart-template-parser-fix.sh \
+  tests/test-final-rootfs-identity-regression.sh \
+  tests/test-memory-source-defaults.sh \
+  tests/test-memory-source-runtime.sh \
+  tests/test-openclash-runtime-forensics.sh; do
   bash "$test_script"
 done
 

@@ -14,16 +14,12 @@ CONFIG_VERSIONOPT=y
 CONFIG_VERSION_DIST="XinZhaoWrt"
 CONFIG_VERSION_NUMBER="$VERSION"
 CONFIG
-cat > "$ROOTFS/etc/openwrt_release" <<RELEASE
-DISTRIB_ID='XinZhaoWrt'
-DISTRIB_RELEASE='$VERSION'
-RELEASE
-cat > "$ROOTFS/etc/os-release" <<RELEASE
-NAME='XinZhaoWrt'
-VERSION='$VERSION'
-RELEASE
+commit='27e26e324bee0b0c2a4eb58e2e9121fea5d43194'
+build_id='static-test'
+mkdir -p "$ROOTFS/etc" "$ROOTFS/www/luci-static/xinzhao"
+"$PROJECT_ROOT/scripts/resolve-build-identity.sh" "$PROJECT_ROOT/VERSION" "$commit" "$build_id" "$ROOTFS"
 cp "$PROJECT_ROOT/files/etc/uci-defaults/99-xinzhao-defaults" "$ROOTFS/etc/uci-defaults/99-xinzhao-defaults"
 
-bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$CONFIG" "$ROOTFS"
+bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$CONFIG" "$ROOTFS" "$commit" "$build_id"
 
 echo 'PASS: final rootfs identity verifier accepts an embedded project release and defaults overlay.'

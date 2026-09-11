@@ -22,5 +22,13 @@ grep -Fq 'link_pkg "$pkg" "$IMMORTAL_LUCI/applications/$pkg"' "$root/scripts/add
   fail 'production source preparation is not wired to the ImmortalWrt LuCI applications tree'
 grep -Fq 'luci-app-adguardhome' "$root/scripts/add-custom-packages.sh" || \
   fail 'production source preparation does not include luci-app-adguardhome'
+grep -Fq 'apply-luci-template-fix.sh' "$build" || \
+  fail 'production build does not apply the legacy LuCI CRLF parser fix'
+grep -Fq 'resolve-build-identity.sh' "$build" || \
+  fail 'production build does not materialize synchronized identity files'
+grep -Fq 'test-final-rootfs-quickstart-render.sh' "$build" || \
+  fail 'production build does not run final-rootfs QuickStart parser/render smoke'
+grep -Fq 'verify-final-rootfs-identity.sh' "$build" || \
+  fail 'production build does not verify final-rootfs identity'
 
 echo 'PRODUCTION_WORKFLOW_CONTRACT: PASS'

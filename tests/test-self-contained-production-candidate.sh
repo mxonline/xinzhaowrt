@@ -19,7 +19,9 @@ grep -Fq 'link_pkg luci-theme-kucat' "$packages" || { echo 'FAIL: KuCat must ent
 [[ -s "$manifest" ]] || { echo 'FAIL: accepted arthur-adh-quickstart manifest is missing from the production source.' >&2; exit 1; }
 [[ -x "$materializer" || -f "$materializer" ]] || { echo 'FAIL: accepted overlay materializer is missing.' >&2; exit 1; }
 grep -Fq 'materialize-accepted-overlay.py' "$build" || { echo 'FAIL: production build must materialize the frozen accepted overlay.' >&2; exit 1; }
-python3 "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || PYTHON_BIN=python
+"$PYTHON_BIN" "$materializer" --root "$root" --manifest "production/accepted-preview/arthur-adh-quickstart.json" --check
 bash "$root/tests/test-adguard-overlay-precedence.sh"
 
 echo 'SELF_CONTAINED_PRODUCTION_CANDIDATE=PASS'

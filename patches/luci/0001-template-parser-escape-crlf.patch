@@ -1,0 +1,14 @@
+diff --git a/modules/luci-lua-runtime/src/template_utils.c b/modules/luci-lua-runtime/src/template_utils.c
+--- a/modules/luci-lua-runtime/src/template_utils.c
++++ b/modules/luci-lua-runtime/src/template_utils.c
+@@ -441,6 +441,10 @@ void luastr_escape(struct template_buffer *out, const char *s, unsigned int l,
+ 		case '\n':
+ 			buf_append(out, "\\n", 2);
+ 			break;
++
++		case '\r':
++			buf_append(out, "\\r", 2);
++			break;
+ 
+ 		case '\'':
+ 		case '&':

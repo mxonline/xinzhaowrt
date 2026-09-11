@@ -27,6 +27,7 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+BUILD_ID="${BUILD_ID:-${GITHUB_RUN_ID:-local-${BUILD_DATE}-$$}}"
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -74,6 +75,7 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 "$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
+"$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 "$PROJECT_ROOT/scripts/verify-project.sh"
@@ -81,6 +83,8 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
+"$PROJECT_ROOT/scripts/resolve-build-identity.sh" \
+  "$PROJECT_ROOT/VERSION" "$SOURCE_SHA" "$BUILD_ID" "$SRC/files"
 python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
   --root "$PROJECT_ROOT" \
   --manifest production/accepted-preview/arthur-adh-quickstart.json \
@@ -123,7 +127,8 @@ while IFS= read -r release_file; do
   fi
 done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
 [[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
-bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
+bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
+bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR" "$SOURCE_SHA" "$BUILD_ID"
 
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
 "$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"
@@ -171,6 +176,7 @@ done
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
+  echo "Build ID: $BUILD_ID"
   echo "Source method: $SOURCE_METHOD"
   echo "Source remote: $SOURCE_REMOTE"
   echo "Source integrity: $SOURCE_INTEGRITY"
