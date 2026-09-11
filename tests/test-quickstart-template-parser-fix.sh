@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-src="${1:-${FEED_CHECK_ROOT:-$root/work/immortalwrt}}"
+src="${1:-${FEED_CHECK_ROOT:?FEED_CHECK_ROOT must point to the prepared source root}}"
 bash "$root/scripts/apply-luci-template-fix.sh" "$src"
 parser="$src/feeds/luci/modules/luci-lua-runtime/src/template_utils.c"
 PYTHON_BIN="${PYTHON_BIN:-python3}"

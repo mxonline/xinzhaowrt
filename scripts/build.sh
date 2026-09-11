@@ -131,7 +131,7 @@ while IFS= read -r release_file; do
   fi
 done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
 [[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
-bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
+FEED_CHECK_ROOT="$SRC" bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
 bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR" "$SOURCE_SHA" "$BUILD_ID"
 
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"

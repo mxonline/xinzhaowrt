@@ -7,7 +7,7 @@ trap 'rm -rf "$source_tree"' EXIT
 
 fixture_luci="$source_tree/feeds/luci"
 fixture_parser="$fixture_luci/modules/luci-lua-runtime/src/template_utils.c"
-feed_check_root="${FEED_CHECK_ROOT:-$root/work/immortalwrt}"
+feed_check_root="${FEED_CHECK_ROOT:?FEED_CHECK_ROOT must point to the prepared source root}"
 source_parser="$feed_check_root/feeds/luci/modules/luci-lua-runtime/src/template_utils.c"
 mkdir -p "$(dirname "$fixture_parser")"
 [[ -s "$source_parser" ]] || {

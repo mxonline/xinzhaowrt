@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-package_root="${ADGUARD_MANAGER_PACKAGE_ROOT:-$root/work/immortalwrt/package/feeds/xinzhao/luci-app-adguardhome}"
+feed_check_root="${FEED_CHECK_ROOT:?FEED_CHECK_ROOT must point to the prepared source root}"
+package_root="${ADGUARD_MANAGER_PACKAGE_ROOT:-$feed_check_root/package/feeds/xinzhao/luci-app-adguardhome}"
 view="$package_root/htdocs/luci-static/resources/view/adguardhome/config.js"
 acl="$package_root/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
 overlay_view="$root/files/www/luci-static/resources/view/adguardhome/config.js"

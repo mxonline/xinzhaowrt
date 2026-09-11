@@ -38,6 +38,7 @@ for test_script in \
   tests/test-quickstart-final-rootfs-contract.sh \
   tests/test-quickstart-template-parser-fix.sh \
   tests/test-preflight-feed-root.sh \
+  tests/test-preflight-path-contract.sh \
   tests/test-final-rootfs-identity-regression.sh \
   tests/test-memory-source-defaults.sh \
   tests/test-memory-source-runtime.sh \

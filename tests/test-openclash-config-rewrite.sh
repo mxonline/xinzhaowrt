@@ -3,8 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SOURCE="${OPENCLASH_YML_SOURCE:-$ROOT/work/immortalwrt/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/yml_change.sh}"
-YAML_SOURCE="${OPENCLASH_YAML_SOURCE:-$ROOT/work/immortalwrt/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/YAML.rb}"
+FEED_CHECK_ROOT="${FEED_CHECK_ROOT:?FEED_CHECK_ROOT must point to the prepared source root}"
+SOURCE="${OPENCLASH_YML_SOURCE:-$FEED_CHECK_ROOT/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/yml_change.sh}"
+YAML_SOURCE="${OPENCLASH_YAML_SOURCE:-$FEED_CHECK_ROOT/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/YAML.rb}"
 
 [[ -f "$SOURCE" ]] || {
   echo "FAIL: OpenClash YAML rewrite source is missing: $SOURCE" >&2
