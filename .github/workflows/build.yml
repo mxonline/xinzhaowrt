@@ -46,6 +46,17 @@ jobs:
             arthur-${{ runner.os }}-${{ github.event.inputs.source_ref || 'main' }}-
             arthur-${{ runner.os }}-
 
+      - name: Replacement build hard gate
+        env:
+          PUBLISH_CANDIDATE: ${{ github.event.inputs.publish_candidate || 'true' }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$PUBLISH_CANDIDATE" == 'false' ]] || {
+            echo 'REPLACEMENT_BUILD_HARD_GATE: FAIL -- publish_candidate must be false' >&2
+            exit 1
+          }
+          ./scripts/check-replacement-build-hard-gate.sh config/replacement-build-gate.env
+
       - name: Feed Check
         env:
           IMMORTAL_SOURCE_REPO: https://github.com/immortalwrt/immortalwrt.git

@@ -5,6 +5,10 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 
+# Every repair/replacement build must consume the same repository-controlled
+# gate before touching the build output or source tree.
+"$PROJECT_ROOT/scripts/check-replacement-build-hard-gate.sh" "$PROJECT_ROOT/config/replacement-build-gate.env"
+
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 [[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }
 export FIRMWARE_VERSION

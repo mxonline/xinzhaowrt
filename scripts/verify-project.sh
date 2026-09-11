@@ -41,7 +41,8 @@ for test_script in \
   tests/test-memory-source-runtime.sh \
   tests/test-openclash-runtime-forensics.sh \
   tests/test-openclash-watchdog-memory.sh \
-  tests/test-openclash-sigsegv-fail-closed.sh; do
+  tests/test-openclash-sigsegv-fail-closed.sh \
+  tests/test-replacement-build-hard-gate.sh; do
   bash "$test_script"
 done
 
