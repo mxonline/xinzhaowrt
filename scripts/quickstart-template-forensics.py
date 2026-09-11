@@ -63,9 +63,10 @@ def git_blob(root: Path, path: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def accepted_bytes(data: bytes, expected: str) -> bytes | None:
+def accepted_bytes(data: bytes, expected: str, line_endings: str | None) -> bytes | None:
     normalized = data.replace(b"\r\n", b"\n")
-    for candidate in (data, normalized, normalized.replace(b"\n", b"\r\n")):
+    candidates = (data, normalized) if line_endings == "LF" else (data, normalized, normalized.replace(b"\n", b"\r\n"))
+    for candidate in candidates:
         if sha(candidate) == expected:
             return candidate
     return None
@@ -109,11 +110,14 @@ def main() -> int:
         overlay = entry["overlay"]
         remote = entry["remote"]
         expected = entry["sha256"]
+        line_endings_contract = entry.get("line_endings")
+        if line_endings_contract not in ("LF", "NONE"):
+            failures.append(f"QuickStart acceptance contract is not canonical LF for {overlay}")
         repo_path = root / overlay
         repo_data = repo_path.read_bytes() if repo_path.is_file() else b""
-        accepted = accepted_bytes(repo_data, expected)
+        accepted = accepted_bytes(repo_data, expected, line_endings_contract)
         blob = git_blob(root, overlay)
-        if accepted is None or blob is None or accepted_bytes(blob, expected) is None:
+        if accepted is None or blob is None or accepted_bytes(blob, expected, line_endings_contract) is None:
             failures.append(f"repo/HEAD drift for {overlay}")
         final_path = final_rootfs / remote.lstrip("/")
         item: dict[str, object] = {

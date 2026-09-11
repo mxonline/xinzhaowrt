@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Validate/materialize the frozen Arthur accepted-preview overlay byte-for-byte.
 
-The accepted preview manifest is immutable evidence. Repository text blobs may use
-LF while the accepted runtime bytes used CRLF, so the materializer reads the exact
-Git blob for the current HEAD and selects only a byte representation whose SHA256
-matches the frozen manifest. Checkout line-ending conversion is therefore irrelevant.
+The accepted preview manifest is immutable evidence. QuickStart entries explicitly
+use canonical LF bytes because the legacy LuCI template parser is not safe for raw
+CRLF in templates. The materializer reads the exact Git blob for the current HEAD;
+checkout line-ending conversion is therefore irrelevant.
 """
 from __future__ import annotations
 
@@ -34,14 +34,15 @@ def git_blob(root: Path, path: str) -> bytes:
     return result.stdout
 
 
-def accepted_payload(data: bytes, expected: str) -> tuple[bytes, str] | None:
+def accepted_payload(data: bytes, expected: str, line_endings: str | None) -> tuple[bytes, str] | None:
     candidates: list[tuple[bytes, str]] = [(data, "raw")]
     lf = data.replace(b"\r\n", b"\n")
     if lf != data:
         candidates.append((lf, "lf"))
-    crlf = lf.replace(b"\n", b"\r\n")
-    if crlf != data:
-        candidates.append((crlf, "crlf"))
+    if line_endings != "LF":
+        crlf = lf.replace(b"\n", b"\r\n")
+        if crlf != data:
+            candidates.append((crlf, "crlf"))
 
     seen: set[bytes] = set()
     for payload, kind in candidates:
@@ -91,7 +92,10 @@ def main() -> int:
             raise SystemExit(f"FAIL: accepted overlay missing from firmware input: {overlay}")
 
         data = git_blob(root, overlay)
-        match = accepted_payload(data, expected)
+        line_endings = item.get("line_endings")
+        if line_endings not in (None, "LF", "NONE"):
+            raise SystemExit(f"FAIL: unsupported accepted line ending contract: {overlay}={line_endings}")
+        match = accepted_payload(data, expected, line_endings)
         if match is None:
             raise SystemExit(
                 f"FAIL: accepted overlay content drift: {overlay} expected={expected} "

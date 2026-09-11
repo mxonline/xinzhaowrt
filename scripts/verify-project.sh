@@ -35,6 +35,7 @@ for test_script in \
   tests/test-functional-acceptance.sh \
   tests/test-arthur-luci-language-config.sh \
   tests/test-quickstart-template-forensics.sh \
+  tests/test-quickstart-final-rootfs-contract.sh \
   tests/test-quickstart-template-parser-fix.sh \
   tests/test-final-rootfs-identity-regression.sh \
   tests/test-memory-source-defaults.sh \

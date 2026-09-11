@@ -12,17 +12,21 @@ command -v "$PYTHON_BIN" >/dev/null 2>&1 || PYTHON_BIN=python
 "$PYTHON_BIN" - "$root" "$fixture" <<'PY'
 import json
 from pathlib import Path
-import shutil
+import subprocess
 import sys
 
 root = Path(sys.argv[1])
 fixture = Path(sys.argv[2])
 manifest = json.loads((root / 'production/accepted-preview/arthur-adh-quickstart.json').read_text(encoding='utf-8'))
 for entry in manifest['frozen_files']:
-    source = root / entry['overlay']
     target = fixture / entry['remote'].lstrip('/')
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, target)
+    result = subprocess.run(
+        ['git', '-C', str(root), 'show', f"HEAD:{entry['overlay']}"],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    target.write_bytes(result.stdout)
 PY
 "$PYTHON_BIN" "$root/scripts/quickstart-template-forensics.py" \
   --root "$root" \
