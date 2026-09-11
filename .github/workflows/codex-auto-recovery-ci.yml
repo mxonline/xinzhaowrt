@@ -25,7 +25,7 @@ jobs:
   recovery-contract:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Compile recovery runtime
         run: python3 -m py_compile ai_orchestrator/models.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py scripts/run-supervisor.py
       - name: Run controlled session-loss and recovery tests

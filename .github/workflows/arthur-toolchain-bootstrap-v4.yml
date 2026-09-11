@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout v4 project
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           ref: main
@@ -74,7 +74,7 @@ jobs:
           ./scripts/v4-toolchain-bootstrap.sh --plan
 
       - name: Restore Known-Good downloads and compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             work/immortalwrt/dl
@@ -150,7 +150,7 @@ jobs:
 
       - name: Upload bootstrap diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Arthur-v4-toolchain-diagnostics-${{ github.run_id }}
           path: |
@@ -166,7 +166,7 @@ jobs:
 
       - name: Upload verified toolchain bundle
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Arthur-v4-toolchain-${{ github.run_id }}
           path: output/toolchain/*

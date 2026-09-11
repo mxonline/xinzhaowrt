@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -129,7 +129,7 @@ jobs:
           echo 'PASS: verified/frozen Known-Good baseline and Candidate lock prepared.'
 
       - name: Restore downloads and compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             work/immortalwrt/dl
@@ -215,7 +215,7 @@ jobs:
 
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Arthur-v3-diagnostics-${{ github.run_id }}
           path: |
@@ -235,7 +235,7 @@ jobs:
 
       - name: Upload verified Candidate
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Arthur-v3-Candidate-${{ github.run_id }}
           path: |
@@ -286,7 +286,7 @@ jobs:
 
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -403,7 +403,7 @@ jobs:
           echo 'PASS: recovered firmware, 22/22 plugins, original large-upload OOM guard, SHA256 and Candidate lock verified.'
 
       - name: Upload verified Candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Arthur-v3-Candidate-${{ github.run_id }}
           path: |

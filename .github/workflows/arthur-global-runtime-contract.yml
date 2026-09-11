@@ -16,10 +16,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout Arthur
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Checkout Global Runtime Contract
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: mxonline/xinzhou-code-standard
           ref: ae014413f6d9302cada832683a359ecffe5a4942

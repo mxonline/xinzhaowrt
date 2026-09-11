@@ -75,7 +75,7 @@ grep -q 'Arthur Known-Good Fast Lane v1' "$WORKFLOW"
 grep -q "github.event.workflow_run.id == ${LEGACY_RUN_ID}" "$WORKFLOW"
 grep -q 'v4-toolchain-bootstrap.sh --plan' "$WORKFLOW"
 grep -q 'v4-toolchain-bootstrap.sh --execute' "$WORKFLOW"
-grep -q 'actions/upload-artifact@v4' "$WORKFLOW"
+grep -q 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4' "$WORKFLOW"
 
 # The bootstrap may auto-handoff only from the one legacy run, never from arbitrary pushes.
 if grep -Eq '^[[:space:]]+push:' "$WORKFLOW"; then
