@@ -3,14 +3,24 @@
   "execution_id": "arthur-final-release-5f41c4e-20260908",
   "status": "PRODUCTION_RELEASED",
   "instruction_allowed": false,
+  "release": "v0.1.4",
   "source": {
-    "repository_head": "b0d4df823d6c368d34329a97862a6f26690ab9b7",
-    "accepted_source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3"
+    "repository_head": "bc939aee034b3a8326566bb7a07eac2e985e169f",
+    "accepted_source_sha": "bc939aee034b3a8326566bb7a07eac2e985e169f",
+    "accepted_release": "v0.1.4",
+    "accepted_firmware": "XinZhaoWrt-Arthur-v0.1.4-20260911-sysupgrade.bin",
+    "accepted_firmware_sha256": "eef11752126a37f044024d8b476e0d51df8b608a816c9d8e3065751ebde05f1c",
+    "accepted_factory_sha256": "248a00bec57229e77ec4b4f11c972d430b901c624d78fb26df68c6244b5c484e"
   },
   "production": {
-    "github_run_id": 34268801985,
-    "artifact_id": 10068849426,
-    "candidate_sha256": "f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557"
+    "github_run_id": 34559894373,
+    "artifact_id": 10186571543,
+    "release_id": 386825198,
+    "release": "v0.1.4",
+    "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.4",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.4-20260911-sysupgrade.bin",
+    "candidate_sha256": "eef11752126a37f044024d8b476e0d51df8b608a816c9d8e3065751ebde05f1c",
+    "factory_sha256": "248a00bec57229e77ec4b4f11c972d430b901c624d78fb26df68c6244b5c484e"
   },
   "device": {
     "version": "0.1.3",
@@ -390,7 +400,7 @@
   },
   "current_gate": "PRODUCTION_RELEASED",
   "next_action": "NONE",
-  "repository_head": "b0d4df823d6c368d34329a97862a6f26690ab9b7",
+  "repository_head": "bc939aee034b3a8326566bb7a07eac2e985e169f",
   "real_device": {
     "version": "0.1.3",
     "build_id": "33462873812",
@@ -415,6 +425,7 @@
     "quickstart": "AUTHENTICATED_RENDER_VERIFIED"
   },
   "pending": [],
+  "post_release_device_test": "PENDING_INDEPENDENT",
   "conflicts": [],
   "source_precedence": [
     "LIVE_DEVICE",
@@ -429,5 +440,5 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "semantic_sha256": "e0482e3c25cdb54869bef51e4a5da6680ccd7d85e58fbfef4d595c7c7f8f868a"
+  "semantic_sha256": "4387240d5bcc48cee57439fff429380528e0e3a01b17299466cfb7ae656d6031"
 }
