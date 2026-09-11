@@ -82,7 +82,7 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 "$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
-"$PROJECT_ROOT/scripts/verify-project.sh"
+FEED_CHECK_ROOT="$SRC" "$PROJECT_ROOT/scripts/verify-project.sh"
 
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
