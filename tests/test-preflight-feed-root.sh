@@ -7,8 +7,14 @@ trap 'rm -rf "$source_tree"' EXIT
 
 fixture_luci="$source_tree/feeds/luci"
 fixture_parser="$fixture_luci/modules/luci-lua-runtime/src/template_utils.c"
+feed_check_root="${FEED_CHECK_ROOT:-$root/work/immortalwrt}"
+source_parser="$feed_check_root/feeds/luci/modules/luci-lua-runtime/src/template_utils.c"
 mkdir -p "$(dirname "$fixture_parser")"
-cp "$root/work/immortalwrt/feeds/luci/modules/luci-lua-runtime/src/template_utils.c" "$fixture_parser"
+[[ -s "$source_parser" ]] || {
+  echo "PREFLIGHT_FEED_ROOT_TEST: FAIL -- parser fixture source is missing: $source_parser" >&2
+  exit 1
+}
+cp "$source_parser" "$fixture_parser"
 git -C "$fixture_luci" init -q
 git -C "$fixture_luci" apply --reverse "$root/patches/luci/0001-template-parser-escape-crlf.patch"
 
