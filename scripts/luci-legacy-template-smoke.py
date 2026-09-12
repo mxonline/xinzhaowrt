@@ -73,7 +73,7 @@ def main() -> int:
             raise SystemExit(f"FAIL: final rootfs template missing: {path}")
 
     runners: list[tuple[str, list[str], dict[str, str]]] = []
-    for name in ("lua", "luajit"):
+    for name in ("lua", "luajit", "lua5.1"):
         found = shutil.which(name)
         if found:
             runners.append((name, [found], {}))
