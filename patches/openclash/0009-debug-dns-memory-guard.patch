@@ -1,0 +1,34 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_debug_dns.lua b/luci-app-openclash/root/usr/share/openclash/openclash_debug_dns.lua
+--- a/luci-app-openclash/root/usr/share/openclash/openclash_debug_dns.lua
++++ b/luci-app-openclash/root/usr/share/openclash/openclash_debug_dns.lua
+@@ -1,6 +1,15 @@
+-#!/usr/bin/lua
++#!/bin/sh
++exec 9>/tmp/xinzhao-openclash-debug-dns.lock
++flock -n 9 || exit 0
++exec /usr/bin/lua - "$@" <<'XINZHAO_DEBUG_DNS_LUA'
+ 
+ local addr = arg[1]
+ local resolve = arg[2]
++if addr then
++   addr = addr:gsub('^"(.*)"$', '%1')
++end
++if resolve then
++   resolve = resolve:gsub('^"(.*)"$', '%1')
++end
+ 
+ local function shell_quote(value)
+@@ -122,1 +132,2 @@
+ debug_dns()
++XINZHAO_DEBUG_DNS_LUA
+diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh b/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
+--- a/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
++++ b/luci-app-openclash/root/usr/share/openclash/openclash_watchdog.sh
+@@ -20,3 +20,7 @@
+ skip_proxies_address()
+ {
++   local_mem_available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
++   if [ -n "$local_mem_available" ] && [ "$local_mem_available" -lt 131072 ]; then
++      return 0
++   fi
+ ruby -ryaml -rYAML -I "/usr/share/openclash" -E UTF-8 -e "

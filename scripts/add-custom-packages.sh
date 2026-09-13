@@ -287,6 +287,14 @@ OPENCLASH_SMART_NO_EXEC_PATCH="$PROJECT_ROOT/patches/openclash/0008-smart-candid
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_SMART_NO_EXEC_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_SMART_NO_EXEC_PATCH"
 echo "APPLIED_PATCH: OpenClash Smart candidate pre-execution fail-closed"
+OPENCLASH_DEBUG_DNS_OOM_PATCH="$PROJECT_ROOT/patches/openclash/0009-debug-dns-memory-guard.patch"
+[[ -f "$OPENCLASH_DEBUG_DNS_OOM_PATCH" ]] || {
+  echo "ERROR: OpenClash debug DNS low-memory guard patch missing: $OPENCLASH_DEBUG_DNS_OOM_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_DEBUG_DNS_OOM_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_DEBUG_DNS_OOM_PATCH"
+echo "APPLIED_PATCH: OpenClash debug DNS low-memory guard"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
