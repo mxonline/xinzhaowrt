@@ -35,7 +35,7 @@
     document.head.appendChild(style);
   }
 
-  fetch('/luci-static/xinzhao/build-info.json', { credentials: 'same-origin' })
+  fetch('/luci-static/xinzhao/build-info.json', { credentials: 'same-origin', cache: 'no-store' })
     .then(function (response) { return response.ok ? response.json() : null; })
     .then(function (info) { if (info) applyBranding(info); })
     .catch(function () {});

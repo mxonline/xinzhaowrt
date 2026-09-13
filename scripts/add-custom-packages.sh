@@ -263,6 +263,30 @@ OPENCLASH_SIGSEGV_PATCH="$PROJECT_ROOT/patches/openclash/0005-core-candidate-sig
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_SIGSEGV_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_SIGSEGV_PATCH"
 echo "APPLIED_PATCH: OpenClash Smart candidate SIGSEGV fail-closed"
+OPENCLASH_FINGERPRINT_PATCH="$PROJECT_ROOT/patches/openclash/0006-legacy-fingerprint-compat.patch"
+[[ -f "$OPENCLASH_FINGERPRINT_PATCH" ]] || {
+  echo "ERROR: OpenClash legacy fingerprint compatibility patch missing: $OPENCLASH_FINGERPRINT_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_FINGERPRINT_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_FINGERPRINT_PATCH"
+echo "APPLIED_PATCH: OpenClash legacy global-client-fingerprint compatibility"
+OPENCLASH_DEBUG_DNS_PATCH="$PROJECT_ROOT/patches/openclash/0007-debug-dns-lightweight-resolve.patch"
+[[ -f "$OPENCLASH_DEBUG_DNS_PATCH" ]] || {
+  echo "ERROR: OpenClash debug DNS memory patch missing: $OPENCLASH_DEBUG_DNS_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_DEBUG_DNS_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_DEBUG_DNS_PATCH"
+echo "APPLIED_PATCH: OpenClash debug DNS lightweight resolve"
+OPENCLASH_SMART_NO_EXEC_PATCH="$PROJECT_ROOT/patches/openclash/0008-smart-candidate-no-exec.patch"
+[[ -f "$OPENCLASH_SMART_NO_EXEC_PATCH" ]] || {
+  echo "ERROR: OpenClash Smart no-exec patch missing: $OPENCLASH_SMART_NO_EXEC_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_SMART_NO_EXEC_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_SMART_NO_EXEC_PATCH"
+echo "APPLIED_PATCH: OpenClash Smart candidate pre-execution fail-closed"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.
