@@ -23,7 +23,7 @@
       "source": "sources/live-preview-mature/adguardhome/luasrc/controller/AdGuardHome.lua",
       "remote": "/usr/lib/lua/luci/controller/AdGuardHome.lua",
       "overlay": "files/usr/lib/lua/luci/controller/AdGuardHome.lua",
-      "sha256": "d62002a1ad218ff0a1db66e0779e51cfd68a9255ba1c01ae95913fa226e72c94",
+      "sha256": "3605d0c753c8afa7d3725181ff928b6c6c51746b63d38e6a9953cf6e1a0ccb0c",
       "mode": "0644"
     },
     {
@@ -114,7 +114,7 @@
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/overview.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/overview.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/overview.htm",
-      "sha256": "b4cf754e08408b915318b04ac7bfab028f7476629eb56de58f10668fb5240980",
+      "sha256": "ab0c340c9630681f1d6033a15f15696fa4b5d7b56050219afd7bfd905be8879a",
       "mode": "0644"
     },
     {
@@ -226,7 +226,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
       "remote": "/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
       "overlay": "files/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
-      "sha256": "8e57ad7e141ea0658bed0fa2464453dbee8040b62786dcf9ef68f66478dc69aa",
+      "sha256": "b73fd687a67be370a0ba768bf7c5783637a6c92665184969889ca0b9cc0daa71",
       "mode": "0644"
     },
     {
