@@ -143,6 +143,39 @@ body:has(.adg-ov-root) form .cbi-section + .cbi-page-actions { display: none !im
 }
 .adg-ov-actions a.primary:hover { background: #0064d2; }
 
+.adg-ov-service-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin: 0 0 18px 0;
+}
+.adg-ov-service-actions .label {
+	font-size: 13px;
+	font-weight: 600;
+	margin-right: 4px;
+}
+.adg-ov-service-actions button {
+	padding: 7px 12px;
+	border-radius: 7px;
+	border: 1px solid var(--adg-card-border, rgba(128,128,128,0.18));
+	background: var(--adg-card-bg, rgba(128,128,128,0.04));
+	color: inherit;
+	cursor: pointer;
+}
+.adg-ov-service-actions button:hover {
+	background: rgba(0,122,255,0.08);
+	border-color: rgba(0,122,255,0.4);
+}
+.adg-ov-service-actions button:disabled {
+	opacity: .6;
+	cursor: wait;
+}
+.adg-ov-action-result {
+	font-size: 12px;
+	color: rgba(128,128,128,.86);
+}
+
 @media (max-width: 720px) {
 	.adg-ov-card .value { font-size: 16px; }
 	.adg-ov-actions a, .adg-ov-actions button { flex: 1 1 calc(50% - 5px); justify-content: center; }
@@ -212,12 +245,22 @@ body:has(.adg-ov-root) form .cbi-section + .cbi-page-actions { display: none !im
 		<a href="<%=tools_url%>"><%:运维%></a>
 		<a href="<%=log_url%>"><%:查看日志%></a>
 	</div>
+	<div class="adg-ov-service-actions" aria-label="AdGuardHome service controls">
+		<span class="label"><%:服务控制%></span>
+		<button type="button" id="adg-action-start" data-adg-action="start"><%:启动%> Start</button>
+		<button type="button" id="adg-action-stop" data-adg-action="stop"><%:停止%> Stop</button>
+		<button type="button" id="adg-action-restart" data-adg-action="restart"><%:重启%> Restart</button>
+		<button type="button" id="adg-action-enable" data-adg-action="enable"><%:启用%> Enable</button>
+		<button type="button" id="adg-action-disable" data-adg-action="disable"><%:禁用%> Disable</button>
+		<span id="adg-action-result" class="adg-ov-action-result" role="status"></span>
+	</div>
 </div>
 
 <script>
 (function () {
 	var STATUS_URL = '<%=dsp.build_url("admin","services","AdGuardHome","status")%>';
 	var TOGGLE_URL = '<%=toggle_url%>';
+	var ACTION_URL = '<%=dsp.build_url("admin","services","AdGuardHome","action")%>';
 
 	var elStatus    = document.getElementById('adg-ov-status');
 	var elStatusSub = document.getElementById('adg-ov-status-sub');
@@ -226,6 +269,7 @@ body:has(.adg-ov-root) form .cbi-section + .cbi-page-actions { display: none !im
 	var elRedir     = document.getElementById('adg-ov-redir');
 	var elRedirSub  = document.getElementById('adg-ov-redir-sub');
 	var elWebUI     = document.getElementById('adg-ov-webui');
+	var elActionResult = document.getElementById('adg-action-result');
 
 	// patch the webui link to use current hostname
 	if (elWebUI) {
@@ -266,6 +310,32 @@ body:has(.adg-ov-root) form .cbi-section + .cbi-page-actions { display: none !im
 			elToggle.disabled = false;
 			if (data) paint(data);
 			poll();
+		});
+	});
+
+	function serviceAction(action, button) {
+		var buttons = document.querySelectorAll('[data-adg-action]');
+		buttons.forEach(function (item) { item.disabled = true; });
+		if (elActionResult)
+			elActionResult.textContent = action + '…';
+		XHR.post(ACTION_URL, {
+			action: action,
+			token: window.L && L.env ? L.env.token : ''
+		}, function (x, data) {
+			buttons.forEach(function (item) { item.disabled = false; });
+			if (data && data.success) {
+				if (elActionResult)
+					elActionResult.textContent = action + ' OK';
+				poll();
+			} else if (elActionResult) {
+				elActionResult.textContent = (data && data.message) || 'Operation failed';
+			}
+		});
+	}
+
+	document.querySelectorAll('[data-adg-action]').forEach(function (button) {
+		button.addEventListener('click', function () {
+			serviceAction(button.getAttribute('data-adg-action'), button);
 		});
 	});
 

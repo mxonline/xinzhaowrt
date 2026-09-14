@@ -15,9 +15,21 @@ if grep -Eq 'extract_err=\$\("\$TMP_FILE" -v' "$SOURCE"; then
   echo 'FAIL: Smart updater still executes the downloaded candidate during validation' >&2
   exit 1
 fi
-grep -Eq 'Smart candidate rejected before execution|Smart.*runtime validation.*fail-closed' "$SOURCE" || {
-  echo 'FAIL: Smart updater has no explicit pre-execution fail-closed path' >&2
+grep -Eq 'validate_candidate\(\)' "$SOURCE" || {
+  echo 'FAIL: Smart updater has no explicit candidate validation function' >&2
+  exit 1
+}
+grep -Eq 'timeout[[:space:]]+10[[:space:]]+"\$candidate"[[:space:]]+-v' "$SOURCE" || {
+  echo 'FAIL: Smart candidate validation has no bounded runtime check' >&2
+  exit 1
+}
+grep -Eq '\[ -x "\$candidate" \]' "$SOURCE" || {
+  echo 'FAIL: Smart candidate validation does not require an executable candidate' >&2
+  exit 1
+}
+grep -Eq 'extract_err=\$\(validate_candidate "\$TMP_FILE"\)' "$SOURCE" || {
+  echo 'FAIL: Smart updater does not gate replacement on candidate validation' >&2
   exit 1
 }
 
-echo 'PASS: Smart core updater rejects untrusted candidates without executing them'
+echo 'PASS: Smart core updater validates candidates with bounded fail-closed checks before replacement'

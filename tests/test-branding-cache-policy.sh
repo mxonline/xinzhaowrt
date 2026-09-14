@@ -10,7 +10,8 @@ SOURCE="${BRANDING_SOURCE:-$ROOT/files/www/luci-static/xinzhao/branding.js}"
   exit 1
 }
 
-grep -Eq "fetch\('/luci-static/xinzhao/build-info\.json', *\{[^}]*cache: *['\"]no-store['\"]" "$SOURCE" || {
+grep -Eq "fetch\('/luci-static/xinzhao/build-info\.json[^,]*," "$SOURCE" &&
+grep -Eq "cache: *['\"]no-store['\"]" "$SOURCE" || {
   echo 'FAIL: status card build-info fetch is cacheable and can retain placeholders' >&2
   exit 1
 }

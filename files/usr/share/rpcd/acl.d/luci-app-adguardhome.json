@@ -7,12 +7,12 @@
         "network.interface.lan": ["status"],
         "file": ["read", "stat", "exec"]
       },
-      "uci": ["adguardhome"],
+      "uci": ["AdGuardHome"],
       "file": {
-        "/etc/adguardhome/adguardhome.yaml": ["read"],
-        "/etc/adguardhome/adguardhome.yaml.xinzhao-backup": ["read"],
+        "/etc/AdGuardHome.yaml": ["read"],
+        "/etc/AdGuardHome.yaml.xinzhao-backup": ["read"],
         "/usr/bin/AdGuardHome --version": ["exec"],
-        "/usr/bin/AdGuardHome --check-config --config /etc/adguardhome/adguardhome.yaml": ["exec"],
+        "/usr/bin/AdGuardHome --check-config --config /etc/AdGuardHome.yaml": ["exec"],
         "/usr/bin/logread -e AdGuardHome": ["exec"]
       }
     },
@@ -21,13 +21,13 @@
         "luci": ["setInitAction"],
         "file": ["read", "write", "stat", "exec"]
       },
-      "uci": ["adguardhome"],
+      "uci": ["AdGuardHome"],
       "file": {
-        "/etc/adguardhome/adguardhome.yaml": ["read", "write"],
-        "/etc/adguardhome/adguardhome.yaml.xinzhao-backup": ["read", "write"],
-        "/tmp/adguardhome-log.txt": ["write"],
+        "/etc/AdGuardHome.yaml": ["read", "write"],
+        "/etc/AdGuardHome.yaml.xinzhao-backup": ["read", "write"],
+        "/tmp/AdGuardHome.log": ["write"],
         "/bin/cp *": ["exec"],
-        "/usr/bin/AdGuardHome --check-config --config /etc/adguardhome/adguardhome.yaml": ["exec"]
+        "/usr/bin/AdGuardHome --check-config --config /etc/AdGuardHome.yaml": ["exec"]
       }
     }
   }

@@ -11,7 +11,11 @@ local function service_running()
 		return false
 	end
 
-	return luci.sys.call("/etc/init.d/AdGuardHome status >/dev/null 2>&1") == 0
+	-- procd may report "active with no instances" with exit status 0 after
+	-- the service has been disabled. Use the actual daemon PID as the
+	-- runtime signal so action responses cannot report a stopped service as
+	-- running.
+	return luci.sys.call("pidof AdGuardHome >/dev/null 2>&1") == 0
 end
 
 function index()
@@ -40,6 +44,8 @@ function index()
 		call("act_status"), nil).leaf = true
 	entry({"admin", "services", "AdGuardHome", "toggle"},
 		call("toggle_service"), nil).leaf = true
+	entry({"admin", "services", "AdGuardHome", "action"},
+		call("service_action"), nil).leaf = true
 	entry({"admin", "services", "AdGuardHome", "check"},
 		call("check_update"), nil)
 	entry({"admin", "services", "AdGuardHome", "doupdate"},
@@ -166,6 +172,85 @@ function toggle_service()
 		uci:commit("AdGuardHome")
 		result.enabled = (old_enabled == "1")
 		result.message = enabled == "1" and "AdGuardHome start failed" or "AdGuardHome stop failed"
+	end
+
+	http.prepare_content("application/json")
+	http.write_json(result)
+end
+
+local SERVICE_ACTIONS = {
+	start = "start",
+	stop = "stop",
+	restart = "restart",
+	enable = "enable",
+	disable = "disable"
+}
+
+local function set_enabled(value)
+	uci:set("AdGuardHome", "AdGuardHome", "enabled", value)
+	uci:commit("AdGuardHome")
+end
+
+local function call_service(command)
+	return luci.sys.call("/etc/init.d/AdGuardHome " .. command .. " >/dev/null 2>&1")
+end
+
+local function wait_for_running(target)
+	for _ = 1, 8 do
+		if service_running() == target then
+			return service_running()
+		end
+		luci.sys.call("sleep 1")
+	end
+	return service_running()
+end
+
+function service_action()
+	local action = http.formvalue("action")
+	local command = SERVICE_ACTIONS[action]
+	local old_enabled = uci:get("AdGuardHome", "AdGuardHome", "enabled") == "1" and "1" or "0"
+	local result = { action = action, success = false, enabled = old_enabled == "1" }
+
+	if not command then
+		result.message = "Unsupported AdGuardHome service action"
+		http.status(400, "Bad Request")
+		http.prepare_content("application/json")
+		http.write_json(result)
+		return
+	end
+
+	local rc = 0
+	if action == "start" or action == "restart" then
+		-- This init script intentionally treats UCI enabled=0 as stopped.
+		-- A successful explicit start therefore enables the service policy;
+		-- the separate Disable action is the deliberate way to turn it off.
+		if old_enabled == "0" then
+			set_enabled("1")
+		end
+		rc = call_service(command)
+		result.running = wait_for_running(true)
+	elseif action == "stop" then
+		rc = call_service(command)
+		result.running = wait_for_running(false)
+	elseif action == "enable" then
+		rc = call_service(command)
+		if rc == 0 then
+			set_enabled("1")
+		end
+		result.running = service_running()
+	elseif action == "disable" then
+		rc = call_service(command)
+		if rc == 0 then
+			set_enabled("0")
+			rc = call_service("stop")
+		end
+		result.running = wait_for_running(false)
+	end
+
+	result.enabled = uci:get("AdGuardHome", "AdGuardHome", "enabled") == "1"
+	result.success = (rc == 0) and ((action == "start" or action == "restart") and result.running or action == "stop" and not result.running or action == "enable" and result.enabled or action == "disable" and not result.enabled)
+	if not result.success and not result.message then
+		result.message = "AdGuardHome " .. action .. " failed"
 	end
 
 	http.prepare_content("application/json")

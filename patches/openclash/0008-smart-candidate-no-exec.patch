@@ -1,16 +1,41 @@
 diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 --- a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 +++ b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
-@@ -9,4 +9,8 @@
+@@ -9,4 +9,33 @@
  RUN_DIR="$RUN_ROOT/$$"
  LOCK_ACQUIRED=0
  
 +validate_candidate() {
-+   "$1" -v 2>&1
++   local candidate="$1"
++   local output result expected_arch
++   [ -f "$candidate" ] || return 126
++   [ -x "$candidate" ] || return 126
++
++   output=$(timeout 10 "$candidate" -v 2>&1)
++   result=$?
++   printf '%s\n' "$output"
++   [ "$result" -eq 0 ] || return "$result"
++   echo "$output" | grep -qi 'Mihomo' || return 1
++
++   case "$CPU_MODEL" in
++      linux-arm64)
++         expected_arch='linux arm64'
++         ;;
++      linux-amd64)
++         expected_arch='linux amd64'
++         ;;
++      linux-386)
++         expected_arch='linux 386'
++         ;;
++      *)
++         expected_arch=''
++         ;;
++   esac
++   [ -z "$expected_arch" ] || echo "$output" | grep -qi "$expected_arch" || return 1
 +}
 +
  set_lock() {
-@@ -186,12 +190,19 @@
+@@ -186,11 +190,14 @@
                    [ "$extract_success" = "true" ] && { extract_err=$(chmod 4755 "$TMP_FILE" 2>&1) || extract_success=false; }
                    if [ "$extract_success" = "true" ]; then
 -                     extract_err=$("$TMP_FILE" -v 2>&1)
@@ -21,20 +46,14 @@ diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luc
 -                           fatal_candidate=true
 -                           extract_err="candidate core terminated by signal $((validate_result - 128)): $(echo "$extract_err" | tr '\n' ' ' | head -c 240)"
 +                     fatal_candidate=false
-+                     if [ "$CORE_TYPE" = "Smart" ]; then
++                     extract_err=$(validate_candidate "$TMP_FILE")
++                     validate_result=$?
++                     if [ "$validate_result" -ne 0 ]; then
 +                        extract_success=false
-+                        fatal_candidate=true
-+                        extract_err="Smart candidate rejected before execution: runtime validation is fail-closed"
-+                     else
-+                        extract_err=$(validate_candidate "$TMP_FILE")
-+                        validate_result=$?
-+                        if [ "$validate_result" -ne 0 ]; then
-+                           extract_success=false
-+                           if [ "$validate_result" -ge 128 ]; then
-+                              fatal_candidate=true
-+                              extract_err="candidate core terminated by signal $((validate_result - 128)): $(echo "$extract_err" | tr '\n' ' ' | head -c 240)"
-+                           fi
-                         fi
-                      fi
++                        if [ "$validate_result" -ge 128 ] || [ "$validate_result" -eq 124 ]; then
++                           fatal_candidate=true
++                           extract_err="candidate core validation failed ($validate_result): $(echo "$extract_err" | tr '\n' ' ' | head -c 240)"
++                        fi
++                     fi
                    fi
                 }

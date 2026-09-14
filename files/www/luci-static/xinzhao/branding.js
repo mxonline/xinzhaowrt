@@ -1,16 +1,42 @@
 (function () {
   'use strict';
 
+  var buildInfo = null;
+  var renderTimer = null;
+
+  function isStatusPage() {
+    return /\/admin\/status(?:\/overview)?(?:\/|$)/.test(window.location.pathname);
+  }
+
+  function getMount() {
+    return document.querySelector('#maincontent') ||
+      document.querySelector('#content') ||
+      document.querySelector('#view');
+  }
+
+  function cardMatchesInfo(card, info) {
+    return card &&
+      card.getAttribute('data-identity-source') === 'build-info.json' &&
+      card.textContent.indexOf(info.Version || '') !== -1 &&
+      card.textContent.indexOf(info['Build ID'] || '') !== -1 &&
+      card.textContent.indexOf(info['Git Commit'] || '') !== -1;
+  }
+
   function applyBranding(info) {
+    if (!isStatusPage()) return false;
+
+    var mount = getMount();
+    if (!mount) return false;
+
+    var oldCard = document.getElementById('xinzhao-build-info');
+    if (cardMatchesInfo(oldCard, info)) return true;
+    if (oldCard) oldCard.remove();
+
     var name = info.Firmware || 'XinZhaoWrt';
-    document.title = name + (document.title ? ' - ' + document.title.replace(/^.*?\s-\s/, '') : '');
-    applyThemeLayout();
-    if (!/\/admin\/status(?:\/overview)?(?:\/|$)/.test(window.location.pathname)) return;
-    var main = document.querySelector('#maincontent, #content');
-    if (!main || document.getElementById('xinzhao-build-info')) return;
     var card = document.createElement('section');
     card.id = 'xinzhao-build-info';
     card.className = 'cbi-section';
+    card.setAttribute('data-identity-source', 'build-info.json');
     card.innerHTML = '<h3>' + name + '</h3>' +
       '<div class="cbi-value"><label class="cbi-value-title">固件版本</label><div class="cbi-value-field">' +
       name + ' ' + (info.Version || '') + '</div></div>' +
@@ -18,7 +44,19 @@
       '<div class="cbi-value"><label class="cbi-value-title">编译时间</label><div class="cbi-value-field">' + (info['Build Date'] || '') + '</div></div>' +
       '<div class="cbi-value"><label class="cbi-value-title">Git Commit</label><div class="cbi-value-field">' + (info['Git Commit'] || '') + '</div></div>' +
       '<div class="cbi-value"><label class="cbi-value-title">Build ID</label><div class="cbi-value-field">' + (info['Build ID'] || '') + '</div></div>';
-    main.insertBefore(card, main.firstChild);
+    mount.insertBefore(card, mount.firstChild);
+    return true;
+  }
+
+  function scheduleRender() {
+    if (!buildInfo || renderTimer) return;
+    var attempts = 0;
+    function attempt() {
+      renderTimer = null;
+      if (applyBranding(buildInfo) || attempts++ >= 40) return;
+      renderTimer = window.setTimeout(attempt, 250);
+    }
+    attempt();
   }
 
   function applyThemeLayout() {
@@ -35,8 +73,21 @@
     document.head.appendChild(style);
   }
 
-  fetch('/luci-static/xinzhao/build-info.json', { credentials: 'same-origin', cache: 'no-store' })
+  applyThemeLayout();
+
+  fetch('/luci-static/xinzhao/build-info.json?xinzhao_identity=' + Date.now(), {
+    credentials: 'same-origin',
+    cache: 'no-store'
+  })
     .then(function (response) { return response.ok ? response.json() : null; })
-    .then(function (info) { if (info) applyBranding(info); })
+    .then(function (info) {
+      if (!info) return;
+      buildInfo = info;
+      applyThemeLayout();
+      scheduleRender();
+      new MutationObserver(function () {
+        if (!document.getElementById('xinzhao-build-info')) scheduleRender();
+      }).observe(document.body, { childList: true, subtree: true });
+    })
     .catch(function () {});
 }());
