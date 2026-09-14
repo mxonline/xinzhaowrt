@@ -35,7 +35,7 @@ diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luc
 +}
 +
  set_lock() {
-@@ -186,11 +190,14 @@
+@@ -186,13 +190,14 @@
                    [ "$extract_success" = "true" ] && { extract_err=$(chmod 4755 "$TMP_FILE" 2>&1) || extract_success=false; }
                    if [ "$extract_success" = "true" ]; then
 -                     extract_err=$("$TMP_FILE" -v 2>&1)
@@ -55,5 +55,7 @@ diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luc
 +                           extract_err="candidate core validation failed ($validate_result): $(echo "$extract_err" | tr '\n' ' ' | head -c 240)"
 +                        fi
 +                     fi
+-                        fi
+-                     fi
                    fi
                 }
