@@ -241,7 +241,7 @@ jobs:
           df -h
 
       - name: Install build dependencies
-        run: ./scripts/codex-setup.sh
+        run: bash ./scripts/codex-setup.sh
 
       - name: Prepare exact Candidate lock
         id: lock
