@@ -72,8 +72,26 @@ class ArthurPipeline:
             "SYSTEM_HEALTH",
         }
     )
-    release_only_phases = tuple(
-        phase for phase in legacy_phases if phase not in release_only_skipped_phases
+    # Keep this explicit inside the class body. Python class-scope comprehensions
+    # execute in a nested scope and cannot reliably reference sibling class names.
+    release_only_phases = (
+        "FORENSICS",
+        "ADH_MANAGEMENT",
+        "ADH_CHINESE",
+        "CHANGE_IMPACT",
+        "BASELINE_INHERITANCE",
+        "EXPECTED_DIFF",
+        "CONFIG",
+        "PACKAGE",
+        "PLUGIN_BASELINE_22",
+        "ARGON_KUCAT",
+        "LAN",
+        "FAST_GATE",
+        "BUILD",
+        "ARTIFACT",
+        "RELEASE_GATE",
+        "RELEASE",
+        "PRODUCTION_RELEASED",
     )
     # Compatibility alias for readers that use the historical registry directly.
     phases = legacy_phases
