@@ -4,11 +4,11 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $autoTriggerPath = Join-Path $Root '.github/workflows/arthur-update-v3-auto.yml'
-$agentPath = Join-Path $Root 'scripts/production-agent.ps1'
+$agentPath = Join-Path $Root 'scripts/production-agent-flash-legacy.ps1'
 $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 if (-not (Test-Path $deployPath)) { throw 'TEST_FAIL: runner wakeup workflow is missing' }
 if (-not (Test-Path $autoTriggerPath)) { throw 'TEST_FAIL: Arthur v3 auto-trigger workflow is missing' }
-if (-not (Test-Path $agentPath)) { throw 'TEST_FAIL: production-agent script is missing' }
+if (-not (Test-Path $agentPath)) { throw 'TEST_FAIL: legacy production-agent script is missing' }
 if (-not (Test-Path $installPath)) { throw 'TEST_FAIL: production-agent installer is missing' }
 $deploy = Get-Content -Raw $deployPath
 $autoTrigger = Get-Content -Raw $autoTriggerPath
@@ -42,16 +42,16 @@ Assert-Contains $autoTrigger 'V3_AUTO_TRIGGER_DISPATCH_ACK_TIMEOUT' 'missing dis
 Assert-Contains $autoTrigger 'V3_AUTO_TRIGGER_DISPATCHED=YES' 'successful dispatch must expose a confirmed run id'
 Assert-True ($deploy -notmatch '(?i)gh\s+workflow\s+run\s+arthur-update-v3\.yml') 'runner wakeup must not own a second Candidate dispatcher'
 
-# REBUILD_REQUESTED has one writer. Production Agent may persist the request, but it must not launch or dispatch a second controller.
+# REBUILD_REQUESTED has one writer. The preserved legacy flash agent may persist the request, but it must not launch or dispatch a second controller.
 $rebuildMatch = [regex]::Match($agent,'(?s)function\s+Request-CurrentSourceRebuild\b.*?(?=function\s+Invoke-RealDeviceBaselineGate\b)')
-Assert-True $rebuildMatch.Success 'Request-CurrentSourceRebuild function must be present'
+Assert-True $rebuildMatch.Success 'Request-CurrentSourceRebuild function must remain present in the legacy flash agent'
 $rebuildFunction = $rebuildMatch.Value
-Assert-Contains $rebuildFunction "Save-State `$State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED'" 'Production Agent must durably persist the rebuild request'
-Assert-Contains $rebuildFunction 'CURRENT_SOURCE_REBUILD_REQUESTED=YES' 'Production Agent must expose the rebuild request marker'
-Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Production Agent must not launch an independent Rebuild controller'
-Assert-True ($rebuildFunction -notmatch '(?i)gh\s+workflow\s+run') 'Production Agent must not independently dispatch a Candidate workflow'
+Assert-Contains $rebuildFunction "Save-State `$State 'CANDIDATE_VERIFIED' 'REBUILD_REQUESTED'" 'Legacy Production Agent must durably persist the rebuild request'
+Assert-Contains $rebuildFunction 'CURRENT_SOURCE_REBUILD_REQUESTED=YES' 'Legacy Production Agent must expose the rebuild request marker'
+Assert-True ($rebuildFunction -notmatch 'Start-Process') 'Legacy Production Agent must not launch an independent Rebuild controller'
+Assert-True ($rebuildFunction -notmatch '(?i)gh\s+workflow\s+run') 'Legacy Production Agent must not independently dispatch a Candidate workflow'
 $modeRebuildNeedle = "'-Mode','Rebuild'"
-Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Production Agent must not invoke ci-controller-v3 in Rebuild mode'
+Assert-True ($rebuildFunction.IndexOf($modeRebuildNeedle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Legacy Production Agent must not invoke ci-controller-v3 in Rebuild mode'
 
 # Legacy Rebuild cleanup remains precise rollback/forensic tooling even though it is no longer in the active wakeup topology.
 Assert-Contains $install 'Get-CimInstance Win32_Process' 'legacy installer must inspect process command lines to find old Rebuild controllers'
