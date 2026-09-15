@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $BootstrapPath = Join-Path $Root 'scripts\bootstrap-arthur-host-key.ps1'
 $LibPath = Join-Path $Root 'scripts\real-device-baseline-lib.ps1'
-$AgentPath = Join-Path $Root 'scripts\production-agent.ps1'
+$AgentPath = Join-Path $Root 'scripts\production-agent-flash-legacy.ps1'
 $ConfigPath = Join-Path $Root 'production\production-agent.json'
 $WorkflowPath = Join-Path $Root '.github\workflows\arthur-host-key-bootstrap.yml'
 $BuildEnvPath = Join-Path $Root 'build.env'
@@ -24,6 +24,7 @@ function Assert-Contains {
 Assert-True (Test-Path $BootstrapPath) 'safe Arthur host-key bootstrap script must exist'
 Assert-True (Test-Path $WorkflowPath) 'recurring Arthur host-key bootstrap workflow must exist'
 Assert-True (Test-Path $BuildEnvPath) 'build.env must remain the authority for initial credentials'
+Assert-True (Test-Path $AgentPath) 'legacy flash agent must remain available for host-key safety compatibility'
 
 . $LibPath
 Assert-True ([string](Classify-ArthurSshProbe -ExitCode 255 -Output 'Host key verification failed.') -eq 'SSH_HOST_KEY_UNTRUSTED') 'generic first-use host-key failure must not impersonate a changed-key mismatch'
@@ -89,7 +90,7 @@ foreach ($needle in @(
 }
 
 $agent = Get-Content -Raw $AgentPath
-Assert-Contains $agent 'SSH_HOST_IDENTITY_MISMATCH' 'Production Agent must preserve the hard changed-key stop'
+Assert-Contains $agent 'SSH_HOST_IDENTITY_MISMATCH' 'Legacy Production Agent must preserve the hard changed-key stop'
 
 $config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
 Assert-True (@($config.human_stop_classes) -contains 'SSH_HOST_IDENTITY_MISMATCH') 'changed host identity must remain a human safety stop'

@@ -1,15 +1,16 @@
 # Arthur Authoritative Product Targets
 
 Status: ACTIVE SPEC
-Updated: 2026-09-02
+Updated: 2026-09-15
 Scope: JDCloud RE-SS-01 / Arthur (`qualcommax/ipq60xx`, profile `jdcloud_re-ss-01`)
 
-This document is the product-target Source of Truth for Arthur firmware. It complements `production/release-policy.md`, `production/production-agent.json`, `production/arthur-known-good-v1.json`, and runtime HANDOFF/state. When a remembered/chat requirement conflicts with this document, the repository specification wins after the change has been reviewed and merged.
+This document is the product-target Source of Truth for Arthur firmware. It complements `production/release-policy.md`, `production/release-mode.json`, `production/production-agent.json`, `production/arthur-known-good-v1.json`, and runtime HANDOFF/state. When a remembered/chat requirement conflicts with this document, the repository specification wins after the change has been reviewed and merged.
 
 ## Source-of-Truth split
 
 - Product intent and acceptance target: `production/ARTHUR_PRODUCT_TARGETS.md`
 - Release policy and safety rules: `production/release-policy.md`
+- Release/flash separation policy: `production/release-mode.json`
 - Machine-readable production defaults/gates: `production/production-agent.json`
 - Frozen verified rollback baseline: `production/arthur-known-good-v1.json` and `production/known-good.json`
 - Runtime progress: current HANDOFF/state plus GitHub workflow/artifact/device evidence
@@ -23,8 +24,8 @@ A historical state file must not be treated as real-time progress without cross-
 - Profile: `jdcloud_re-ss-01`
 - LAN management address: `192.168.6.1`
 - LuCI default HTTP entry: port `80`
-- SSH, DHCP, WAN and DNS must work after production flash
-- Storage/overlay, system services and boot log must have no release-blocking error
+- SSH, DHCP, WAN and DNS must work when the exact released firmware is exercised by independent `POST_RELEASE_DEVICE_TEST`
+- Storage/overlay, system services and boot log must have no Known-Good-promotion-blocking error during that post-release device acceptance
 
 ## Required LuCI target
 
@@ -38,30 +39,34 @@ A historical state file must not be treated as real-time progress without cross-
 
 - The 22-package baseline remains mandatory unless a reviewed product-target change explicitly replaces it
 - iStore/iStoreX and QuickStart are product-visible capabilities, not package-presence-only checks
-- QuickStart must expose the intended complete home/dashboard experience in real-device verification; package installation alone is insufficient
+- QuickStart must expose the intended complete home/dashboard experience in `POST_RELEASE_DEVICE_TEST`; package installation alone is insufficient
 - AdGuard Home must remain disabled by default unless an approved product-target change says otherwise
-- AdGuard Home verification must cover the intended management experience and service state, not only package presence
+- AdGuard Home device acceptance must cover the intended management experience and service state, not only package presence
 
 ## Required Wi-Fi target
 
 - The approved default Wi-Fi SSID is part of the firmware-level product baseline and must persist through the intended first-boot/default configuration path
 - Wi-Fi credentials must come from an approved secure configuration source; do not duplicate credentials in public documentation, logs, screenshots or GPT long-term memory
-- Real-device verification must confirm both required radios/interfaces, expected SSID broadcast, successful client association using the approved credential, DHCP lease acquisition, LAN reachability and WAN/Internet access
+- `POST_RELEASE_DEVICE_TEST` must confirm both required radios/interfaces, expected SSID broadcast, successful client association using the approved credential, DHCP lease acquisition, LAN reachability and WAN/Internet access
 - A verification that only checks that 2.4 GHz / 5 GHz radios exist is insufficient
 
-## Candidate composition rule
+## Candidate composition and RELEASE_ONLY rule
 
 Product-target changes that belong to one requested firmware release must be combined into one candidate where technically safe. Do not intentionally force one real-device flash per small product setting when the same candidate can carry all approved changes.
 
-The release loop is:
+The default production route is `RELEASE_ONLY`:
 
-`target diff -> implementation -> build -> artifact/hash checks -> AUTO_FLASH_SAFETY_GATE -> standard sysupgrade -> REAL_DEVICE_VERIFY -> Release Gate`
+`target diff -> implementation -> build -> artifact/hash/config/plugin/theme/provenance checks -> RELEASE_GATE -> GitHub Release -> PRODUCTION_RELEASED`
 
-If any product-target acceptance item fails, Stable/Latest promotion is blocked. Collect evidence, apply the minimum required fix, rebuild a new candidate, run the normal safety gate and repeat real-device verification.
+`POST_RELEASE_DEVICE_TEST` runs independently after publication. It does not block or undo GitHub Release, and it must not trigger an implicit rebuild. A release becomes eligible to replace `production/known-good.json` only after the exact released firmware/hash passes that independent device test.
 
-## Real-device acceptance additions
+If a product-target device acceptance item fails after Release, the published release remains published but is not eligible for Known-Good promotion. Preserve the previous real-device-confirmed Known-Good as rollback authority, collect evidence, and start a separate repair execution when required.
 
-In addition to the existing release-policy checks, the current product acceptance must explicitly verify:
+`FLASH_AND_VERIFY` remains compatibility-only. It is never implicitly selected by `FIRMWARE_RELEASE` authorization and requires separate device-write authorization.
+
+## POST_RELEASE_DEVICE_TEST acceptance additions
+
+The independent post-release product acceptance must explicitly verify:
 
 1. LAN management entry and LuCI HTTP port
 2. Simplified Chinese default language
@@ -72,10 +77,12 @@ In addition to the existing release-policy checks, the current product acceptanc
 7. QuickStart complete intended home/dashboard behavior
 8. AdGuard Home intended management UI/behavior and default-disabled state
 9. Wi-Fi expected SSID plus real client association, DHCP and LAN/WAN access
-10. Persistence after reboot/configuration path as required by the candidate
+10. Persistence after reboot/configuration path as required by the released candidate
+
+These checks gate Known-Good promotion, not the preceding `RELEASE_ONLY` GitHub Release.
 
 ## Migration status
 
 Some requirements in this document are newer than older real-device verification artifacts. Historical PASS evidence must not be used to claim the newer acceptance items are already VERIFIED.
 
-The next implementation change should update machine-readable config/checks and the real-device verifier so they enforce this document. Until that is done, these newer acceptance items remain REQUIRED but not automatically enforced by all existing scripts.
+Machine-readable release routing must enforce `RELEASE_ONLY` independently of device-write state. Device-test tooling may continue to use legacy real-device verification markers internally, but those markers belong to `POST_RELEASE_DEVICE_TEST` and must not become GitHub Release prerequisites.

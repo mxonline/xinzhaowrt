@@ -4,9 +4,9 @@
 
 `LIVE_PREVIEW` is the approved pre-Candidate development loop for preview-safe Arthur UI and application-management changes. It restores the fast 0.1.3-style ability to see changes on the real router without rebuilding and flashing a complete firmware image for every UI iteration.
 
-It is not a release stage, not a new production gate, and not formal post-flash evidence.
+It is not a release stage, not a new production gate, and not formal post-release device evidence.
 
-`LIVE_PREVIEW=PASS` must never be interpreted as `REAL_DEVICE_VERIFY=PASS`.
+`LIVE_PREVIEW=PASS` must never be interpreted as `REAL_DEVICE_VERIFY=PASS` or `POST_RELEASE_DEVICE_TEST=PASS`.
 
 ## Default development loop
 
@@ -16,9 +16,9 @@ For mature AdGuard Home + QuickStart work, use the safe wrapper by default:
 
 When the intended UI/management experience is confirmed:
 
-`freeze source -> existing production pre-Candidate gates -> Candidate/build -> artifact/hash -> AUTO_FLASH_SAFETY_GATE -> standard sysupgrade -> reboot -> REAL_DEVICE_VERIFY -> Release`
+`freeze source -> existing production pre-Candidate gates -> Candidate/build -> artifact/hash -> RELEASE_GATE -> GitHub Release -> PRODUCTION_RELEASED`
 
-The production order after source freeze remains the existing RELEASE-FIRST order.
+The default production order after source freeze is `RELEASE_ONLY`. `POST_RELEASE_DEVICE_TEST` is a separate, independent activity after publication and gates only Known-Good promotion.
 
 ## Executors, source lock and policy
 
@@ -43,7 +43,7 @@ Do not silently move these preview refs. Re-evaluate the source through Reuse Ga
 
 A safety gate must not convert an already-authorized unattended task into a routine human-confirmation stop when a safer continuation exists.
 
-If a preview action cannot be reliably rolled back, the executor must fail closed on that action and automatically continue with the safest useful subset. The deferred acceptance item moves to formal post-flash `REAL_DEVICE_VERIFY`.
+If a preview action cannot be reliably rolled back, the executor must fail closed on that action and automatically continue with the safest useful subset. The deferred acceptance item moves to independent `POST_RELEASE_DEVICE_TEST` after the GitHub Release.
 
 For the mature AdGuard implementation, the upstream init script can modify dnsmasq/DHCP/firewall runtime depending on redirect mode. LIVE_PREVIEW does not have a complete rollback model for those runtime side effects. Therefore the standard mature preview path must not invoke `/etc/init.d/AdGuardHome start`, `stop`, `restart`, `reload`, `enable` or `disable`.
 
@@ -57,7 +57,7 @@ Instead, `scripts/live-preview-mature-safe.ps1`:
 6. automatically emits the deferred runtime acceptance markers;
 7. never asks for routine approval merely because the unsafe runtime test was deferred.
 
-The following are explicitly deferred from LIVE_PREVIEW to formal `REAL_DEVICE_VERIFY`:
+The following are explicitly deferred from LIVE_PREVIEW to independent `POST_RELEASE_DEVICE_TEST`:
 
 - AdGuard init start/stop behavior
 - DNS ownership/redirect behavior
@@ -65,7 +65,7 @@ The following are explicitly deferred from LIVE_PREVIEW to formal `REAL_DEVICE_V
 - firewall/nftables/iptables mutation behavior
 - live AdGuard Web runtime endpoint behavior that requires starting the service
 
-These deferrals do not block UI preview and do not imply release acceptance.
+These deferrals do not block UI preview, Candidate build, Release Gate, or GitHub Release. They remain required before the exact released hash can replace the previous real-device-confirmed Known-Good.
 
 ## Approved runtime paths
 
@@ -149,7 +149,7 @@ Success emits:
 - `ADGUARD_WEB_RUNTIME_TEST=DEFERRED_TO_REAL_DEVICE_VERIFY`
 - `ADGUARD_PREVIEW=PASS`
 
-This is product-visible preview evidence only. Formal release still requires the deferred runtime checks plus `ADGUARD_REAL_DEVICE=PASS` after the Candidate is flashed.
+This is product-visible preview evidence only. The deferred runtime checks plus `ADGUARD_REAL_DEVICE=PASS` are required during independent `POST_RELEASE_DEVICE_TEST` before Known-Good promotion; they are not `RELEASE_ONLY` GitHub Release prerequisites.
 
 ## Official QuickStart preview acceptance
 
@@ -163,7 +163,7 @@ The safe wrapper requires the existing QuickStart backend process plus the authe
 - no login-page marker
 - large official assets return HTTP 200 and exceed minimum size checks
 
-Success emits `QUICKSTART_PREVIEW=PASS` only. Formal release still requires `QUICKSTART_REAL_DEVICE=PASS` after Candidate flash.
+Success emits `QUICKSTART_PREVIEW=PASS` only. `QUICKSTART_REAL_DEVICE=PASS` is required later by independent `POST_RELEASE_DEVICE_TEST` before Known-Good promotion, not before the `RELEASE_ONLY` GitHub Release.
 
 ## Standard commands
 
@@ -202,7 +202,7 @@ A successful mature safe preview must retain these meanings:
 - `REAL_DEVICE_VERIFY=NOT_RUN`
 - `RELEASE_ALLOWED=false`
 
-Never write `REAL_DEVICE_VERIFY=PASS`, `ADGUARD_REAL_DEVICE=PASS`, `QUICKSTART_REAL_DEVICE=PASS` or release eligibility from the preview path.
+`RELEASE_ALLOWED=false` here means LIVE_PREVIEW itself does not grant Release eligibility. Release eligibility must come from the formal Candidate/artifact/Release Gate path. Never write `REAL_DEVICE_VERIFY=PASS`, `ADGUARD_REAL_DEVICE=PASS`, `QUICKSTART_REAL_DEVICE=PASS` or release eligibility from the preview path.
 
 ## Unattended continuation rule
 
@@ -210,17 +210,11 @@ Routine safety deferral is not a human gate. After static validation succeeds, C
 
 A real `BLOCKED` state is allowed only when continuation cannot be made safe or useful, for example:
 
-- device identity cannot be established
+- device identity cannot be established for the preview operation
 - ethernet control path is unavailable
 - SSH/authentication cannot be recovered from already-authorized credentials
 - deployment rollback evidence is missing
-- router becomes unreachable
-- Candidate/flash safety evidence is insufficient later in the production path
+- router becomes unreachable during the preview mutation
+- Candidate/artifact/Release Gate safety evidence is insufficient later in the production path
 
-For an unsafe optional preview behavior test with a defined formal verification stage, defer it and continue instead of asking the user to approve the unsafe action.
-
-## Build routing
-
-Changes to the LIVE_PREVIEW executors, policy, source-lock/preparation scripts, tests and related control-plane wiring are `FAST_GATE` changes. They must not trigger a firmware build solely to validate the control-plane implementation.
-
-Changes to firmware content keep their normal build classification. LIVE_PREVIEW can preview a safe runtime subset, but it does not lower the required Candidate build scope once source is frozen for release.
+For an unsafe optional preview behavior test with a defined independent post-release verification stage, defer it and continue instead of asking the user to approve the unsafe action.

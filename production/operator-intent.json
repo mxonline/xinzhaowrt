@@ -8,8 +8,8 @@
   "firmware_state": {
     "current_stage": "PRODUCTION_RELEASED",
     "next_stage": "NONE",
-    "active_run_id": 34268801985,
-    "active_source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+    "active_run_id": 34559894373,
+    "active_source_sha": "bc939aee034b3a8326566bb7a07eac2e985e169f",
     "verified_frozen": [
       "WIFI",
       "LUCI_CHINESE",
@@ -22,8 +22,8 @@
       "AdGuard Home full manager",
       "official iStoreOS QuickStart"
     ],
-    "source": "KNOWN_GOOD_V3_RUN_34242450515_SOURCE_5F41C4E",
-    "active_artifact_id": 10068849426,
+    "source": "CANONICAL_RELEASE_V0.1.4_RUN_34559894373",
+    "active_artifact_id": 10186571543,
     "candidate_release_conclusion": "success"
   },
   "guardrails": {
@@ -39,6 +39,6 @@
   "governance_task": {
     "authorized": false,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Continue the accepted Arthur Candidate for execution arthur-final-release-5f41c4e-20260908 from PRE_FLASH. BUILD and ARTIFACT are already evidence-backed PASS for source 5f41c4e25be6eb5a24f78bc794ca1d80a036087c and run 34242450515. Continue PRE_FLASH -> AUTO_FLASH_SAFETY_GATE -> at-most-once sysupgrade -> PostFlash real-device verification -> RELEASE -> PRODUCTION_RELEASED. Never rebuild automatically when the accepted Candidate Artifact can be reused."
+    "goal": "v0.1.4 is already PRODUCTION_RELEASED from GitHub run 34559894373. This terminal execution authorizes no further firmware mutation or router write. Any new release must create a fresh execution identity and use the current release-mode policy; do not resume PRE_FLASH or sysupgrade from this closed execution."
   }
 }

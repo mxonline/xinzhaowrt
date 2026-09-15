@@ -178,14 +178,72 @@ function Resolve-ArthurGateStatus {
     return 'PASS'
 }
 
+function Get-ArthurConfiguredReleaseMode {
+    [CmdletBinding()]
+    param()
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$env:ARTHUR_RELEASE_MODE)) {
+        return ([string]$env:ARTHUR_RELEASE_MODE).Trim()
+    }
+
+    $root = Split-Path -Parent $PSScriptRoot
+    $policyPath = Join-Path $root 'production/release-mode.json'
+    if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+        throw 'ARTHUR_RELEASE_MODE_POLICY_MISSING'
+    }
+    try {
+        $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "ARTHUR_RELEASE_MODE_POLICY_INVALID=$($_.Exception.Message)"
+    }
+    $mode = [string](Get-ArthurStateMember $policy 'mode')
+    if ([string]::IsNullOrWhiteSpace($mode)) { throw 'ARTHUR_RELEASE_MODE_MISSING' }
+    return $mode.Trim()
+}
+
+function Get-ArthurEffectivePhaseOrder {
+    [CmdletBinding()]
+    param(
+        [string]$ReleaseMode = '',
+        [string[]]$PhaseOrder = @()
+    )
+
+    $mode = $ReleaseMode
+    if ([string]::IsNullOrWhiteSpace($mode)) { $mode = Get-ArthurConfiguredReleaseMode }
+    $mode = $mode.Trim()
+
+    if ($PhaseOrder.Count -eq 0) {
+        $resumeOrder = Get-Variable -Name ArthurResumePhaseOrder -Scope Script -ErrorAction SilentlyContinue
+        if ($null -eq $resumeOrder) { throw 'ARTHUR_RELEASE_PHASE_ORDER_MISSING' }
+        $PhaseOrder = @($resumeOrder.Value)
+    }
+
+    if ($mode -eq 'FLASH_AND_VERIFY') { return @($PhaseOrder) }
+    if ($mode -ne 'RELEASE_ONLY') { throw "ARTHUR_RELEASE_MODE_INVALID=$mode" }
+
+    $skip = @(
+        'PRE_FLASH','AUTO_FLASH_SAFETY_GATE','FLASH','WAIT_DEVICE','IDENTIFY',
+        'LAN_RUNTIME','DHCP','WAN','DNS','SSH','LUCI','PLUGIN_RUNTIME_22',
+        'ARGON_KUCAT_RUNTIME','SYSTEM_HEALTH'
+    )
+    return @($PhaseOrder | Where-Object { $skip -notcontains [string]$_ })
+}
+
 function Get-ArthurNextRequiredGate {
     [CmdletBinding()]
     param(
         [object[]]$Gates = @(),
-        [string[]]$GateOrder = @()
+        [string[]]$GateOrder = @(),
+        [string]$ReleaseMode = ''
     )
 
-    foreach ($gateId in @($GateOrder)) {
+    $effectiveOrder = @($GateOrder)
+    if ($effectiveOrder -contains 'PRODUCTION_RELEASED') {
+        $effectiveOrder = @(Get-ArthurEffectivePhaseOrder -ReleaseMode $ReleaseMode -PhaseOrder $effectiveOrder)
+    }
+
+    foreach ($gateId in $effectiveOrder) {
         $gate = @($Gates | Where-Object { [string](Get-ArthurStateMember $_ 'gate_id') -eq [string]$gateId } | Select-Object -First 1)
         if ($gate.Count -eq 0) { continue }
         $candidate = $gate[0]
