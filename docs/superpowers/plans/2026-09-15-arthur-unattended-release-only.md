@@ -27,23 +27,21 @@
 - [x] Made Python orchestrator and PowerShell Resume Gate route `ARTIFACT -> RELEASE_GATE` in RELEASE_ONLY while retaining explicit `FLASH_AND_VERIFY` compatibility.
 - [x] Split default Production Agent routing from the preserved legacy flash implementation.
 - [x] Added terminal state helper `scripts/arthur-release-only-state.ps1`.
-- [x] Aligned `production/release-policy.md`, `production/GPT-FIRMWARE-EXECUTION-RULES.md`, `AGENTS.md`, `knowledge/LIVE-PREVIEW.md`, and `production/ARTHUR_PRODUCT_TARGETS.md` with RELEASE_ONLY semantics.
+- [x] Aligned release policy, execution rules, AGENTS, LIVE_PREVIEW and product targets with RELEASE_ONLY semantics.
 - [x] Added cloud State Sync contract test using RED -> GREEN verification.
-- [x] Made `arthur-production-state-sync.yml` read `production/release-mode.json` and route verified RELEASE_ONLY artifacts to `RELEASE_GATE`, not PRE_FLASH.
-- [x] State Sync reuses the existing Candidate prerelease assets, verifies checksums/22-plugin evidence/source metadata, creates or reuses the final GitHub Release, re-downloads the published sysupgrade asset and verifies SHA256, then calls `Complete-ArthurReleaseOnlyState`.
-- [x] State Sync records release evidence plus append-only `PRODUCTION_RELEASED` event evidence and leaves `POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT`.
+- [x] Made `arthur-production-state-sync.yml` route verified RELEASE_ONLY artifacts to `RELEASE_GATE`, never PRE_FLASH.
+- [x] State Sync reuses Candidate assets, verifies checksums/22-plugin/source evidence, creates or reuses the final GitHub Release, re-downloads the published sysupgrade asset and verifies SHA256, then closes state with `Complete-ArthurReleaseOnlyState`.
+- [x] State Sync records release evidence plus append-only `PRODUCTION_RELEASED` evidence and leaves `POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT`.
 - [x] State Sync never writes `production/known-good.json`; Known-Good promotion remains separate.
 - [x] Idempotent terminal replay is a no-op; a partially completed Release can be reused on retry rather than rebuilt.
 - [x] Design spec records the approved State Sync ownership model and retry invariants.
 
 ## Merge gate
 
-Before integration:
-
+- [x] Final audited implementation head before integration passed all nine core CI workflows: Release Mode Contract, Production Agent CI, Resume State V2, Durable State Gate, Unified State Integration, Global Runtime Contract, Control Plane Gates, Codex Auto-Recovery CI, and Fast Preflight.
 - [x] PR diff contains no `config/arthur.config`, required-plugin list, firmware overlay, source lock, target/profile or firmware payload change.
 - [x] RELEASE_ONLY cloud State Sync contains no `/sbin/sysupgrade`, `mtd write`, raw storage write or router access path.
 - [x] `production/known-good.json` is unchanged by this migration.
-- [ ] Require the complete CI set green on the exact final head selected for integration.
 - [ ] Integrate PR #126 only by explicit operator integration choice.
 
 ## Fresh unattended execution after merge
