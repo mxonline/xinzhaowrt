@@ -33,7 +33,7 @@ jobs:
           df -h
 
       - name: Install build dependencies
-        run: ./scripts/codex-setup.sh
+        run: bash ./scripts/codex-setup.sh
 
       - name: Preflight project validation
         run: |
