@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "mode": "RELEASE_ONLY",
+  "unattended_release": true,
+  "automatic_flash": false,
+  "post_release_device_test": "INDEPENDENT",
+  "known_good_promotion_requires_post_release_device_test_pass": true,
+  "fail_closed_on_unknown": true
+}
