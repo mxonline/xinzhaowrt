@@ -69,7 +69,7 @@ foreach ($requiredRead in @('ubus call system board','/www/luci-static/xinzhao/b
 foreach ($forbiddenWrite in @('sysupgrade',' mtd ','mtd write',' nandwrite','uci set','uci commit','/etc/init.d/','reboot','poweroff','dd if=')) {
     Assert-True (-not $snapshot.ToLowerInvariant().Contains($forbiddenWrite.ToLowerInvariant())) "snapshot must remain read-only; forbidden token: $forbiddenWrite"
 }
-Assert-Contains $snapshot 'output\\real-device' 'snapshot must persist runtime evidence under output/real-device'
+Assert-Contains $snapshot 'output\real-device' 'snapshot must persist runtime evidence under output/real-device'
 Assert-Contains $snapshot "grep -v '\.key='" 'snapshot must redact wireless keys rather than commit or log them'
 
 $gate = Get-Content -Raw $gatePath
