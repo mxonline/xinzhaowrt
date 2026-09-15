@@ -53,4 +53,20 @@ Assert-True ($legacy -contains 'SYSTEM_HEALTH') 'legacy compatibility mode must 
 
 Assert-Throws { Get-ArthurEffectivePhaseOrder -ReleaseMode 'UNKNOWN' } 'unknown mode must fail closed'
 
+$gates = @(
+    [pscustomobject]@{ gate_id = 'ARTIFACT'; status = 'PASS' },
+    [pscustomobject]@{ gate_id = 'PRE_FLASH'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'AUTO_FLASH_SAFETY_GATE'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'FLASH'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'WAIT_DEVICE'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'SYSTEM_HEALTH'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'RELEASE_GATE'; status = 'PENDING' },
+    [pscustomobject]@{ gate_id = 'RELEASE'; status = 'PENDING' }
+)
+$next = Get-ArthurNextRequiredGate -Gates $gates -GateOrder $script:ArthurResumePhaseOrder
+Assert-Equal ([string]$next.gate_id) 'RELEASE_GATE' 'default release-only resume selection must skip pending flash/device gates'
+
+$legacyNext = Get-ArthurNextRequiredGate -Gates $gates -GateOrder $script:ArthurResumePhaseOrder -ReleaseMode 'FLASH_AND_VERIFY'
+Assert-Equal ([string]$legacyNext.gate_id) 'PRE_FLASH' 'explicit legacy mode must preserve old flash traversal'
+
 Write-Host 'PASS: Arthur release-only PowerShell contract'
