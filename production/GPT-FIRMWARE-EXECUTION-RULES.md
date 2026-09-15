@@ -15,9 +15,9 @@ This file is the durable operator/GPT contract for deciding whether a firmware a
 9. A completed execution must never be reopened as the identity of a new release. After `PRODUCTION_RELEASED`, the next firmware production requires a fresh execution id and fresh execution-specific expected diff.
 10. Completed/verified work is never repeated without invalidating evidence. `WIFI=VERIFIED_FROZEN` and other accepted capabilities stay frozen unless current requirements or evidence invalidate them.
 11. On conflict, do not guess. Report/reconcile the conflicting sources before firmware execution. Version metadata conflict, source identity conflict, non-matching artifact/hash, and unknown release mode all fail closed.
-12. **Machine time is absolute.** State/event evidence uses ISO 8601 timestamps with `Z` or explicit UTC offset. Relative date words are presentation only.
+12. **Machine time is absolute.** State/event evidence uses ISO 8601 timestamps with `Z` or explicit UTC offset. Relative date words such as `today` and “今天” are presentation only.
 13. **The event ledger is append-only.** Existing `production/firmware-events.jsonl` lines must never be edited, reordered, or deleted; corrections are appended as new events.
-14. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** `schannel: AcquireCredentialsHandle failed` and `SEC_E_NO_CREDENTIALS` are transport-recovery signatures. Use `scripts/arthur-git-remote.ps1`: Git read with OpenSSL fallback, then authenticated `gh api` read-only fallback. A successful fallback is degraded transport, not a new credential-provisioning requirement.
+14. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** `schannel: AcquireCredentialsHandle failed` and `SEC_E_NO_CREDENTIALS` are transport-recovery signatures. Use `scripts/arthur-git-remote.ps1`: Git read with OpenSSL fallback, then authenticated `gh api` read-only fallback. A successful fallback is degraded transport and must not create `NEW_CREDENTIAL_PROVISIONING`; only a real non-Schannel authentication/authorization failure may become a credential problem.
 
 ## Release mode contract
 
@@ -59,7 +59,7 @@ The canonical local implementation is `scripts/arthur-firmware-resume.ps1` plus 
 
 ## Event ledger contract
 
-`production/firmware-events.jsonl` is append-only JSON Lines history. Each event contains an absolute time, monotonic sequence, event name, stage, source, data, previous hash and current hash.
+`production/firmware-events.jsonl` is append-only JSON Lines history. Each event contains an absolute ISO 8601 time, monotonic sequence, event name, stage, source, data, previous hash and current hash.
 
 Typical historical events may include `BUILD_STARTED`, `CANDIDATE_ACCEPTED`, `FLASH_STARTED`, `REAL_DEVICE_VERIFIED`, `PRODUCTION_RELEASED`, and reconciliation events. Event names are evidence labels, not authorization.
 
@@ -93,7 +93,7 @@ A stopped safety condition is not permission to weaken a Gate or broaden the exp
 
 ## Post-release device test and Known-Good
 
-`POST_RELEASE_DEVICE_TEST` is outside Build/Release. It must not trigger a rebuild, create a second Release for the same bytes, block an already valid Release, or silently perform sysupgrade.
+`POST_RELEASE_DEVICE_TEST` is outside Build/Release. It must not trigger a rebuild, create a second Release for the same bytes, block an already valid Release, or silently perform a device write.
 
 Only an exact released firmware/hash that passes this independent test may advance `production/known-good.json`. On failure, preserve the Release and evidence, keep the previous known-good rollback baseline, and open a new repair execution if needed.
 
@@ -101,7 +101,7 @@ Only an exact released firmware/hash that passes this independent test may advan
 
 - “当前应该从修 ADH 完整管理和中文开始” -> state correction only.
 - “把这套防跑偏规则建立起来” -> `PROCESS_GOVERNANCE / GOVERNANCE_RULES_ONLY`, no firmware mutation.
-- “按当前状态开始发布固件，并继续无人值守流程” -> may become a fresh `EXECUTE_FIRMWARE / FIRMWARE_RELEASE / firmware_execution_authorized=true` after reconciliation; under `RELEASE_ONLY` this still does not authorize sysupgrade.
+- “按当前状态开始发布固件，并继续无人值守流程” -> may become a fresh `EXECUTE_FIRMWARE / FIRMWARE_RELEASE / firmware_execution_authorized=true` after reconciliation; under `RELEASE_ONLY` this still does not authorize a router write.
 - “刷到真实 Arthur 并验证” -> is a separate device-write request; it requires explicit compatible policy/authorization and must not be inferred from a release request.
 
 The only successful firmware production terminal remains `PRODUCTION_RELEASED`.
