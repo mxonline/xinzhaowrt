@@ -20,14 +20,14 @@ $expectedDiffPath = Join-Path $Root 'production/expected-diff.json'
 $libPath = Join-Path $Root 'scripts/real-device-baseline-lib.ps1'
 $snapshotPath = Join-Path $Root 'scripts/real-device-snapshot.ps1'
 $gatePath = Join-Path $Root 'scripts/real-device-baseline-gate.ps1'
-$agentPath = Join-Path $Root 'scripts/production-agent.ps1'
+$agentPath = Join-Path $Root 'scripts/production-agent-flash-legacy.ps1'
 $safetyPath = Join-Path $Root 'scripts/auto-flash-safety-gate.ps1'
 $configPath = Join-Path $Root 'production/production-agent.json'
 $controllerPath = Join-Path $Root 'scripts/ci-controller-v3.ps1'
 $deployPath = Join-Path $Root '.github/workflows/production-agent-deploy.yml'
 $autoTriggerPath = Join-Path $Root '.github/workflows/arthur-update-v3-auto.yml'
 
-foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath,$autoTriggerPath)) {
+foreach ($required in @($baselinePath,$expectedDiffPath,$libPath,$snapshotPath,$gatePath,$deployPath,$autoTriggerPath,$agentPath)) {
     Assert-True (Test-Path $required) "real-device baseline implementation file missing: $required"
 }
 
@@ -69,7 +69,7 @@ foreach ($requiredRead in @('ubus call system board','/www/luci-static/xinzhao/b
 foreach ($forbiddenWrite in @('sysupgrade',' mtd ','mtd write',' nandwrite','uci set','uci commit','/etc/init.d/','reboot','poweroff','dd if=')) {
     Assert-True (-not $snapshot.ToLowerInvariant().Contains($forbiddenWrite.ToLowerInvariant())) "snapshot must remain read-only; forbidden token: $forbiddenWrite"
 }
-Assert-Contains $snapshot 'output\real-device' 'snapshot must persist runtime evidence under output/real-device'
+Assert-Contains $snapshot 'output\\real-device' 'snapshot must persist runtime evidence under output/real-device'
 Assert-Contains $snapshot "grep -v '\.key='" 'snapshot must redact wireless keys rather than commit or log them'
 
 $gate = Get-Content -Raw $gatePath
@@ -79,9 +79,9 @@ Assert-Contains $gate 'BASELINE_INHERITANCE_GATE=PASS' 'baseline inheritance mus
 Assert-Contains $gate 'EXPECTED_DIFF_GATE=PASS' 'expected diff must be an explicit gate'
 
 $agent = Get-Content -Raw $agentPath
-Assert-Contains $agent 'real-device-baseline.json' 'Production Agent must consume the real-device baseline'
-Assert-Contains $agent 'real-device-snapshot.ps1' 'Production Agent must obtain a read-only snapshot before a write path'
-Assert-Contains $agent 'real-device-baseline-gate.ps1' 'Production Agent must run baseline/expected-diff/version gate before upload'
+Assert-Contains $agent 'real-device-baseline.json' 'Legacy Production Agent must consume the real-device baseline'
+Assert-Contains $agent 'real-device-snapshot.ps1' 'Legacy Production Agent must obtain a read-only snapshot before a write path'
+Assert-Contains $agent 'real-device-baseline-gate.ps1' 'Legacy Production Agent must run baseline/expected-diff/version gate before upload'
 Assert-Contains $agent 'DEVICE_UNREACHABLE' 'unreachable device must be separately classified'
 Assert-Contains $agent 'SSH_AUTH_FAILED' 'SSH auth failure must be separately classified'
 Assert-Contains $agent 'DEVICE_IDENTITY_MISMATCH' 'wrong device must have a hard safety class'
