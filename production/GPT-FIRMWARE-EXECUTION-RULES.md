@@ -17,7 +17,7 @@ This file is the durable operator/GPT contract for deciding whether a firmware a
 11. On conflict, do not guess. Report/reconcile the conflicting sources before firmware execution. Version metadata conflict, source identity conflict, non-matching artifact/hash, and unknown release mode all fail closed.
 12. **Machine time is absolute.** State/event evidence uses ISO 8601 timestamps with `Z` or explicit UTC offset. Relative date words are presentation only.
 13. **The event ledger is append-only.** Existing `production/firmware-events.jsonl` lines must never be edited, reordered, or deleted; corrections are appended as new events.
-14. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** Use `scripts/arthur-git-remote.ps1`: Git read with OpenSSL fallback, then authenticated `gh api` read-only fallback. A successful fallback is degraded transport, not a new credential-provisioning requirement.
+14. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** `schannel: AcquireCredentialsHandle failed` and `SEC_E_NO_CREDENTIALS` are transport-recovery signatures. Use `scripts/arthur-git-remote.ps1`: Git read with OpenSSL fallback, then authenticated `gh api` read-only fallback. A successful fallback is degraded transport, not a new credential-provisioning requirement.
 
 ## Release mode contract
 
