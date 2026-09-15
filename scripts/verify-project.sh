@@ -28,6 +28,7 @@ done < config/required-plugins.txt
 bash tests/test-functional-acceptance.sh
 bash tests/test-live-preview-contract.sh
 bash tests/test-package-source-provenance.sh
+bash tests/test-full-openclash-adh-contract.sh
 python3 -m json.tool production/live-preview-policy.json >/dev/null
 python3 -m json.tool production/mature-ui-sources.json >/dev/null
 
