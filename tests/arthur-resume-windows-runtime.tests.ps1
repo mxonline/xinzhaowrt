@@ -34,4 +34,7 @@ else {
     Assert-True ($exitCode -eq 0) 'reconciliation-only head drift must not hard-fail the Windows runtime Resume Gate'
 }
 
+# The child Resume Gate is explicitly allowed to return 1/2 for an already-closed
+# terminal execution. Do not leak that accepted native exit code to the CI shell.
+$global:LASTEXITCODE = 0
 Write-Host 'ARTHUR_WINDOWS_RESUME_HEAD_RUNTIME_CONTRACT=PASS'
