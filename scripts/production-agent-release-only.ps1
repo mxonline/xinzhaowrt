@@ -77,9 +77,9 @@ function Invoke-ReleaseOnlyObservation {
         return
     }
 
-    # RELEASE_ONLY deliberately has no rollback, SSH, upload, sysupgrade, reboot,
-    # WAIT_DEVICE, or real-device verification implementation. GitHub Actions owns
-    # Candidate -> Release Gate -> PRODUCTION_RELEASED; device testing is separate.
+    # RELEASE_ONLY deliberately has no router-write, device reboot, wait-for-device,
+    # or real-device verification implementation. GitHub Actions owns Candidate ->
+    # Release Gate -> PRODUCTION_RELEASED; device testing is a separate post-release flow.
     Write-Host "RELEASE_ONLY_CLOUD_FINALIZER_OWNS_RELEASE=YES execution=$($state.execution_id)"
     Write-Host "RELEASE_ONLY_CURRENT_GATE=$($state.current_gate)"
     Write-Host 'POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT'
