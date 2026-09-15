@@ -19,6 +19,22 @@ This file is the durable operator/GPT contract for deciding whether a firmware a
 13. **The event ledger is append-only.** Existing `production/firmware-events.jsonl` lines must never be edited, reordered, or deleted; corrections are appended as new events.
 14. **Windows Schannel credential-handle failures are transport failures, not operator credential gates.** `schannel: AcquireCredentialsHandle failed` and `SEC_E_NO_CREDENTIALS` are transport-recovery signatures. Use `scripts/arthur-git-remote.ps1`: Git read with OpenSSL fallback, then authenticated `gh api` read-only fallback. A successful fallback is degraded transport and must not create `NEW_CREDENTIAL_PROVISIONING`; only a real non-Schannel authentication/authorization failure may become a credential problem.
 
+## GitHub ↔ Codex incremental handoff contract
+
+GitHub repository work and Codex local-workspace work are one execution chain, not two independent workflows.
+
+1. **Immediate Codex handoff is mandatory when needed.** Whenever GPT/GitHub-side work changes a branch, HEAD, build rule, test, source lock, package definition, workflow, or other repository state that Codex must consume locally, the same operator-facing response must include the exact incremental Codex instruction needed for the next local action. The operator must never be left to infer when to send Codex a command.
+2. **Every handoff must declare prior-instruction status.** The instruction must explicitly state one of:
+   - `PREVIOUS_INSTRUCTION=CONTINUES` — prior Codex task remains valid; append only the new delta.
+   - `PREVIOUS_INSTRUCTION=AMENDED` — prior task remains active but specific steps/assumptions are replaced by the stated delta.
+   - `PREVIOUS_INSTRUCTION=SUPERSEDED` — prior instruction must stop at a safe boundary and be replaced by the new instruction.
+3. **Prefer incremental continuation over restart.** If Codex is already working on the same task, do not tell it to restart, re-plan, re-clone, or discard work merely because GitHub advanced. Preserve local uncommitted work/evidence, fetch the new remote state, reconcile safely, and continue from the current stage.
+4. **Bind both sides to identity.** Every Codex sync handoff must name the intended branch and, when known, the expected remote HEAD SHA. Codex must report at least `LOCAL_BRANCH`, `LOCAL_HEAD`, `REMOTE_HEAD`, and `HEAD_SYNC=PASS/FAIL` before relying on local execution results.
+5. **GitHub evidence is not Codex-local evidence.** A GitHub commit, PR, CI PASS, workflow run, artifact, or static Gate must never be described as proof that Codex local workspace synchronized, executed, built, or verified anything. Likewise, Codex local output does not prove GitHub state until the corresponding remote evidence exists.
+6. **No false completion across the boundary.** If GitHub has advanced and Codex has not yet consumed the required change, report `CODEX_SYNC_REQUIRED`. Do not claim the repair/build is complete. If no local Codex action is required, explicitly report `CODEX_ACTION=NONE`.
+7. **Authorization rules still apply.** This handoff contract does not bypass Intent Gate, Release Mode Gate, or firmware authorization. When firmware execution is not authorized, provide only the permitted read-only/governance sync action or report the authorization block; do not emit an executable firmware instruction in violation of the Hard rules.
+8. **The GPT side owns the handoff decision.** The operator must not be asked to decide whether an old Codex instruction is still valid, whether it should be repeated, or whether a new GitHub change requires a new Codex command. GPT must make that determination from current Source of Truth and state it explicitly.
+
 ## Release mode contract
 
 `production/release-mode.json` is the machine-readable route selector.
