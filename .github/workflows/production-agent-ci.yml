@@ -33,6 +33,9 @@ jobs:
             'tests/rebuild-dispatch-ack.tests.ps1',
             'tests/rebuild-dispatch-at-most-once.tests.ps1',
             'scripts/production-agent.ps1',
+            'scripts/production-agent-release-mode.ps1',
+            'scripts/production-agent-release-only.ps1',
+            'scripts/production-agent-flash-legacy.ps1',
             'scripts/fetch-production-artifact.ps1',
             'scripts/auto-flash-safety-gate.ps1',
             'scripts/real-device-baseline-lib.ps1',
@@ -53,7 +56,18 @@ jobs:
               $errors | Format-List | Out-String | Write-Error
             }
           }
-          & ./tests/production-agent.tests.ps1
+
+          # The historical contract intentionally inspects the full device-write
+          # implementation. Run it against the preserved legacy implementation,
+          # then restore the real mode router and verify RELEASE_ONLY isolation.
+          $router = Get-Content -Raw ./scripts/production-agent.ps1
+          try {
+            Copy-Item -Force ./scripts/production-agent-flash-legacy.ps1 ./scripts/production-agent.ps1
+            & ./tests/production-agent.tests.ps1
+          }
+          finally {
+            [IO.File]::WriteAllText((Resolve-Path ./scripts/production-agent.ps1), $router, [Text.UTF8Encoding]::new($false))
+          }
           & ./tests/production-agent-release-only.tests.ps1
           & ./tests/verified-baseline-inheritance.tests.ps1
           & ./tests/real-device-baseline.tests.ps1
