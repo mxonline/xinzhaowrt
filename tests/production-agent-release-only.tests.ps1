@@ -4,6 +4,8 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $HelperPath = Join-Path $Root 'scripts\production-agent-release-mode.ps1'
 $AgentPath = Join-Path $Root 'scripts\production-agent.ps1'
+$ReleaseOnlyPath = Join-Path $Root 'scripts\production-agent-release-only.ps1'
+$LegacyPath = Join-Path $Root 'scripts\production-agent-flash-legacy.ps1'
 $PolicyPath = Join-Path $Root 'production\release-mode.json'
 
 function Assert-True {
@@ -20,13 +22,18 @@ function Assert-Contains {
         throw "TEST_FAIL: $Message (missing '$Needle')"
     }
 }
+function Assert-NotContains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    if ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw "TEST_FAIL: $Message (unexpected '$Needle')"
+    }
+}
 
-Assert-True (Test-Path -LiteralPath $PolicyPath -PathType Leaf) 'release-mode policy must exist'
-Assert-True (Test-Path -LiteralPath $HelperPath -PathType Leaf) 'production-agent release-mode helper must exist'
-Assert-True (Test-Path -LiteralPath $AgentPath -PathType Leaf) 'production-agent implementation must exist'
+foreach ($path in @($PolicyPath,$HelperPath,$AgentPath,$ReleaseOnlyPath,$LegacyPath)) {
+    Assert-True (Test-Path -LiteralPath $path -PathType Leaf) "required release-only production file must exist: $path"
+}
 
 . $HelperPath
-
 $policy = Get-ArthurProductionReleaseModePolicy -Path $PolicyPath
 Assert-Equal ([string]$policy.mode) 'RELEASE_ONLY' 'new production default must be RELEASE_ONLY'
 Assert-True ([bool]$policy.unattended_release) 'RELEASE_ONLY must permit unattended GitHub release'
@@ -41,9 +48,9 @@ foreach ($stage in @('REAL_DEVICE_BASELINE_GATE','AUTO_FLASH_SAFETY_GATE','FLASH
     Assert-True ($releaseOnly -notcontains $stage) "RELEASE_ONLY must never select $stage"
 }
 
-$legacy = @(Get-ArthurProductionAgentStages -ReleaseMode 'FLASH_AND_VERIFY')
+$legacyStages = @(Get-ArthurProductionAgentStages -ReleaseMode 'FLASH_AND_VERIFY')
 foreach ($stage in @('REAL_DEVICE_BASELINE_GATE','AUTO_FLASH_SAFETY_GATE','FLASH_STARTED','WAIT_DEVICE','REAL_DEVICE_VERIFY','RELEASE_GATE','PRODUCTION_RELEASED')) {
-    Assert-True ($legacy -contains $stage) "FLASH_AND_VERIFY compatibility must preserve $stage"
+    Assert-True ($legacyStages -contains $stage) "FLASH_AND_VERIFY compatibility must preserve $stage"
 }
 
 $threw = $false
@@ -53,13 +60,22 @@ Assert-True $threw 'unknown release mode must fail closed'
 $agent = Get-Content -Raw -LiteralPath $AgentPath
 Assert-Contains $agent 'production-agent-release-mode.ps1' 'production agent must source the release-mode helper'
 Assert-Contains $agent 'Get-ArthurProductionReleaseModePolicy' 'production agent must load machine release policy'
-Assert-Contains $agent 'Get-ArthurProductionAgentStages' 'production agent must select an effective stage registry by mode'
-Assert-Contains $agent "if (`$ReleaseMode -eq 'RELEASE_ONLY')" 'production agent must have an explicit RELEASE_ONLY execution branch'
-Assert-Contains $agent "Save-State `$state 'RELEASE_GATE'" 'RELEASE_ONLY must advance Candidate directly to RELEASE_GATE'
-Assert-Contains $agent 'POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT' 'release-only terminal must explicitly leave post-release device testing pending and independent'
-
+Assert-Contains $agent "if (`$ReleaseMode -eq 'RELEASE_ONLY')" 'production agent must explicitly select RELEASE_ONLY'
+Assert-Contains $agent 'production-agent-release-only.ps1' 'RELEASE_ONLY must route to the no-flash runtime'
+Assert-Contains $agent 'production-agent-flash-legacy.ps1' 'legacy flash implementation must have an explicit compatibility route'
 $releaseBranch = $agent.IndexOf("if (`$ReleaseMode -eq 'RELEASE_ONLY')",[System.StringComparison]::OrdinalIgnoreCase)
-$firstRollbackExecution = $agent.IndexOf('Ensure-Rollback $state',[System.StringComparison]::OrdinalIgnoreCase)
-Assert-True ($releaseBranch -ge 0 -and $firstRollbackExecution -ge 0 -and $releaseBranch -lt $firstRollbackExecution) 'RELEASE_ONLY decision must be evaluated before any rollback/device/flash execution path'
+$legacyBranch = $agent.IndexOf("if (`$ReleaseMode -eq 'FLASH_AND_VERIFY')",[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($releaseBranch -ge 0 -and $legacyBranch -gt $releaseBranch) 'RELEASE_ONLY route must be evaluated before legacy flash compatibility'
+
+$releaseRuntime = Get-Content -Raw -LiteralPath $ReleaseOnlyPath
+Assert-Contains $releaseRuntime 'RELEASE_ONLY_CLOUD_FINALIZER_OWNS_RELEASE=YES' 'release-only runtime must hand off to the cloud finalizer'
+Assert-Contains $releaseRuntime 'POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT' 'post-release device testing must remain explicitly independent'
+foreach ($forbidden in @('Ensure-Rollback','Get-DeviceTarget','ssh.exe','scp.exe','sysupgrade','auto-flash-safety-gate.ps1','real-device-verify-v3.ps1','Invoke-VerifiedSysupgrade','Upload-Candidate')) {
+    Assert-NotContains $releaseRuntime $forbidden "release-only runtime must not contain router write primitive $forbidden"
+}
+
+$legacyRuntime = Get-Content -Raw -LiteralPath $LegacyPath
+Assert-Contains $legacyRuntime 'Invoke-VerifiedSysupgrade' 'legacy compatibility runtime must preserve historical sysupgrade implementation'
+Assert-Contains $legacyRuntime 'AUTO_FLASH_SAFETY_GATE' 'legacy compatibility runtime must preserve flash safety gate'
 
 Write-Host 'ARTHUR_PRODUCTION_AGENT_RELEASE_ONLY=PASS'
