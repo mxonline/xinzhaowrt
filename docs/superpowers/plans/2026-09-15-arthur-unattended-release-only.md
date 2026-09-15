@@ -34,17 +34,16 @@
 - [x] State Sync records release evidence plus append-only `PRODUCTION_RELEASED` event evidence and leaves `POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT`.
 - [x] State Sync never writes `production/known-good.json`; Known-Good promotion remains separate.
 - [x] Idempotent terminal replay is a no-op; a partially completed Release can be reused on retry rather than rebuilt.
-- [x] Design spec updated to record the approved State Sync ownership model and retry invariants.
+- [x] Design spec records the approved State Sync ownership model and retry invariants.
 
 ## Merge gate
 
 Before integration:
 
-- [x] Relevant control-plane CI passed on implementation head before the final design-doc-only synchronization commit.
 - [x] PR diff contains no `config/arthur.config`, required-plugin list, firmware overlay, source lock, target/profile or firmware payload change.
 - [x] RELEASE_ONLY cloud State Sync contains no `/sbin/sysupgrade`, `mtd write`, raw storage write or router access path.
 - [x] `production/known-good.json` is unchanged by this migration.
-- [ ] Re-run the same CI set on the final documentation-synchronized head and require all checks green.
+- [ ] Require the complete CI set green on the exact final head selected for integration.
 - [ ] Integrate PR #126 only by explicit operator integration choice.
 
 ## Fresh unattended execution after merge
