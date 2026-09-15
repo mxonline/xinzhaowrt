@@ -8,6 +8,7 @@ TARGETS="$ROOT/production/ARTHUR_PRODUCT_TARGETS.md"
 CORE_LOCK="$ROOT/config/openclash-core.lock"
 CORE_STAGE="$ROOT/scripts/stage-openclash-core.sh"
 ROOTFS_VERIFY="$ROOT/scripts/verify-firmware-openclash-adh.sh"
+PREFLIGHT="$ROOT/.github/workflows/arthur-fast-preflight.yml"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -36,6 +37,15 @@ source "$CORE_LOCK"
 [[ -f "$ROOTFS_VERIFY" ]] || fail 'final firmware OpenClash/AdGuardHome rootfs verifier is missing'
 grep -Fq 'stage-openclash-core.sh' "$BUILD" || fail 'build must stage the pinned OpenClash core before firmware compilation'
 grep -Fq 'verify-firmware-openclash-adh.sh' "$BUILD" || fail 'build must verify complete OpenClash and AdGuardHome in the final firmware rootfs'
+
+# A repair that changes firmware composition is classified FULL_BUILD. Its PR
+# must execute the exact source/feed/package/defconfig closure automatically;
+# static tests alone are not sufficient evidence for a firmware repair.
+grep -Fq 'outputs:' "$PREFLIGHT" || fail 'preflight job must publish its resolved build scope'
+grep -Fq 'scope: ${{ steps.changes.outputs.scope }}' "$PREFLIGHT" || fail 'preflight job must expose the resolved build scope to build-closure'
+grep -Fq "needs.preflight.outputs.scope == 'FULL_BUILD'" "$PREFLIGHT" || fail 'FULL_BUILD pull requests must automatically run build closure'
+grep -Fq "needs.preflight.outputs.scope == 'SDK_BUILD'" "$PREFLIGHT" || fail 'SDK_BUILD pull requests must automatically run build closure'
+grep -Fq "CLOSURE_MODE=\"rebuild_known_good\"" "$PREFLIGHT" || fail 'PR build closure must use a deterministic rebuild_known_good lock mode'
 
 grep -Fq 'OPENCLASH_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete OpenClash usability as the acceptance endpoint'
 grep -Fq 'ADGUARDHOME_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete AdGuardHome usability as the acceptance endpoint'
