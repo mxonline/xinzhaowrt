@@ -1,0 +1,38 @@
+name: Arthur Release Mode Contract
+
+'on':
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'production/release-mode.json'
+      - 'production/release-policy.md'
+      - 'production/GPT-FIRMWARE-EXECUTION-RULES.md'
+      - 'production/ARTHUR_PRODUCT_TARGETS.md'
+      - 'AGENTS.md'
+      - 'knowledge/PROJECT-STATE.md'
+      - 'knowledge/LIVE-PREVIEW.md'
+      - 'ai_orchestrator/arthur.py'
+      - 'scripts/arthur-resume-state.ps1'
+      - 'tests/test_arthur_release_mode.py'
+      - 'tests/arthur-release-mode.tests.ps1'
+      - '.github/workflows/arthur-release-mode.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-mode-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Python release-only contract
+        run: python -m unittest tests.test_arthur_release_mode -v
+
+      - name: PowerShell release-only contract
+        shell: pwsh
+        run: ./tests/arthur-release-mode.tests.ps1
