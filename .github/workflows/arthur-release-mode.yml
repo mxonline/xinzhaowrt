@@ -21,7 +21,10 @@ name: Arthur Release Mode Contract
       - 'tests/test_arthur_release_mode.py'
       - 'tests/arthur-release-mode.tests.ps1'
       - 'tests/arthur-release-only-finalizer.tests.ps1'
+      - 'tests/arthur-release-only-state-sync.tests.ps1'
       - 'tests/production-agent-release-only.tests.ps1'
+      - '.github/workflows/arthur-production-state-sync.yml'
+      - '.github/workflows/promote-stable-v3.yml'
       - '.github/workflows/arthur-release-mode.yml'
   workflow_dispatch:
 
@@ -45,3 +48,4 @@ jobs:
           ./tests/arthur-release-mode.tests.ps1
           ./tests/production-agent-release-only.tests.ps1
           ./tests/arthur-release-only-finalizer.tests.ps1
+          ./tests/arthur-release-only-state-sync.tests.ps1
