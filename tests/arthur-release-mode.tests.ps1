@@ -23,6 +23,16 @@ function Assert-Throws {
     if (-not $threw) { throw "ASSERT_THROWS_FAILED: $Message" }
 }
 
+function Assert-Contains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    Assert-True ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) $Message
+}
+
+function Assert-NotContains {
+    param([string]$Text,[string]$Needle,[string]$Message)
+    Assert-True ($Text.IndexOf($Needle,[System.StringComparison]::OrdinalIgnoreCase) -lt 0) $Message
+}
+
 $policyPath = Join-Path $root 'production/release-mode.json'
 Assert-True (Test-Path -LiteralPath $policyPath -PathType Leaf) 'release mode policy must exist'
 $policy = Get-Content -LiteralPath $policyPath -Raw | ConvertFrom-Json
@@ -68,5 +78,20 @@ Assert-Equal ([string]$next.gate_id) 'RELEASE_GATE' 'default release-only resume
 
 $legacyNext = Get-ArthurNextRequiredGate -Gates $gates -GateOrder $script:ArthurResumePhaseOrder -ReleaseMode 'FLASH_AND_VERIFY'
 Assert-Equal ([string]$legacyNext.gate_id) 'PRE_FLASH' 'explicit legacy mode must preserve old flash traversal'
+
+# Durable human-readable Source of Truth must agree with the machine route.
+$agents = Get-Content -Raw (Join-Path $root 'AGENTS.md')
+$livePreview = Get-Content -Raw (Join-Path $root 'knowledge/LIVE-PREVIEW.md')
+$productTargets = Get-Content -Raw (Join-Path $root 'production/ARTHUR_PRODUCT_TARGETS.md')
+foreach ($doc in @($agents,$livePreview,$productTargets)) {
+    Assert-Contains $doc 'RELEASE_ONLY' 'release-control documents must name RELEASE_ONLY as the default production route'
+    Assert-Contains $doc 'POST_RELEASE_DEVICE_TEST' 'release-control documents must keep device acceptance independent after Release'
+}
+Assert-NotContains $agents 'AUTO_FLASH_SAFETY_GATE` → Windows PowerShell → OpenSSH `ssh.exe` upload → remote SHA256 → previously verified Arthur `/sbin/sysupgrade` → `WAIT_DEVICE` → `REAL_DEVICE_VERIFY` → Release Gate' 'AGENTS must not define the legacy device-write chain as the default frozen production order'
+Assert-NotContains $agents 'Only a newly built/flashed Candidate followed by formal `REAL_DEVICE_VERIFY=PASS` may enter Release Gate.' 'LIVE_PREVIEW guidance in AGENTS must not require flash before RELEASE_ONLY Release Gate'
+Assert-NotContains $livePreview 'Candidate/build -> artifact/hash -> AUTO_FLASH_SAFETY_GATE -> standard sysupgrade -> reboot -> REAL_DEVICE_VERIFY -> Release' 'LIVE_PREVIEW must not route the default production path through device write before Release'
+Assert-NotContains $livePreview 'Formal release still requires the deferred runtime checks plus `ADGUARD_REAL_DEVICE=PASS` after the Candidate is flashed.' 'AdGuard preview guidance must not make post-release device validation a RELEASE_ONLY release prerequisite'
+Assert-NotContains $livePreview 'Formal release still requires `QUICKSTART_REAL_DEVICE=PASS` after Candidate flash.' 'QuickStart preview guidance must not make post-release device validation a RELEASE_ONLY release prerequisite'
+Assert-NotContains $productTargets 'target diff -> implementation -> build -> artifact/hash checks -> AUTO_FLASH_SAFETY_GATE -> standard sysupgrade -> REAL_DEVICE_VERIFY -> Release Gate' 'product targets must not encode flash as a default Release prerequisite'
 
 Write-Host 'PASS: Arthur release-only PowerShell contract'
