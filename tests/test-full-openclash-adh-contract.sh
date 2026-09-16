@@ -38,6 +38,16 @@ source "$CORE_LOCK"
 grep -Fq 'stage-openclash-core.sh' "$BUILD" || fail 'build must stage the pinned OpenClash core before firmware compilation'
 grep -Fq 'verify-firmware-openclash-adh.sh' "$BUILD" || fail 'build must verify complete OpenClash and AdGuardHome in the final firmware rootfs'
 
+# The final-rootfs verifier runs as an unprivileged GitHub Actions user. It must
+# never unpack the whole SquashFS tree because /dev/console and other device
+# nodes require root privileges. Inspect only the required regular files and
+# their metadata with unsquashfs -cat/-ll.
+if grep -Eq '"?\$UNSQUASHFS"?[[:space:]]+-d[[:space:]]' "$ROOTFS_VERIFY"; then
+  fail 'final rootfs verifier must not fully extract SquashFS as an unprivileged runner'
+fi
+grep -Fq '"$UNSQUASHFS" -cat "$tmp/root.squashfs"' "$ROOTFS_VERIFY" || fail 'rootfs verifier must inspect required files with unsquashfs -cat'
+grep -Fq '"$UNSQUASHFS" -ll "$tmp/root.squashfs"' "$ROOTFS_VERIFY" || fail 'rootfs verifier must inspect executable metadata with unsquashfs -ll'
+
 # A repair that changes firmware composition is classified FULL_BUILD. Its PR
 # must execute the exact source/feed/package/defconfig closure automatically;
 # static tests alone are not sufficient evidence for a firmware repair.
