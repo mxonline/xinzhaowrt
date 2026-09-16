@@ -122,6 +122,11 @@ clone_or_update \
   "$ADGUARD_MATURE_REF"
 ADGUARD_MATURE="$SOURCES/kenzok8-adguardhome"
 
+# Apply the Arthur coexistence upstream only inside the pinned mature package
+# source; keep the repository free of copied ADH credentials/templates.
+ADH_TEMPLATE="$ADGUARD_MATURE/luci-app-adguardhome/root/usr/share/AdGuardHome/AdGuardHome_template.yaml"
+python3 "$PROJECT_ROOT/scripts/patch-adguardhome-coexistence.py" "$ADH_TEMPLATE"
+
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"

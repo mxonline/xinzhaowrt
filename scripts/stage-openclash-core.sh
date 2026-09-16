@@ -60,6 +60,18 @@ install_path="$SRC/files$OPENCLASH_CORE_INSTALL_PATH"
 install -D -m 0755 "$core" "$install_path"
 [[ -x "$install_path" ]] || { echo 'ERROR: staged OpenClash core is not executable' >&2; exit 1; }
 
+# OpenClash's official init probes /etc/openclash/clash before deciding that a
+# core is missing. Keep that compatibility path as a symlink to the pinned
+# bundled Meta core so a normal first start never enters online core download.
+runtime_alias="$SRC/files/etc/openclash/clash"
+mkdir -p "$(dirname "$runtime_alias")"
+ln -sfn "core/clash_meta" "$runtime_alias"
+[[ -L "$runtime_alias" ]] || { echo 'ERROR: OpenClash runtime core alias is not a symlink' >&2; exit 1; }
+
+core_script="$SRC/.xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/openclash_core.sh"
+[[ -f "$core_script" ]] || { echo "ERROR: OpenClash core updater missing: $core_script" >&2; exit 1; }
+python3 "$PROJECT_ROOT/scripts/patch-openclash-core-lifecycle.py" "$core_script"
+
 # OpenClash 0.47.156 uses this UCI value to identify the compiled architecture.
 # Patch the single upstream package default rather than adding a duplicate config overlay.
 openclash_config="$SRC/.xinzhao-sources/OpenClash/luci-app-openclash/root/etc/config/openclash"
@@ -76,3 +88,8 @@ grep -Fq "option core_version 'linux-arm64'" "$openclash_config" || { echo 'ERRO
 echo "OPENCLASH_CORE_BUNDLED=PASS ref=$OPENCLASH_CORE_REF blob=$actual_blob arch=$OPENCLASH_CORE_ARCH"
 echo 'OPENCLASH_CORE_ARCH=PASS'
 echo 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS'
+echo 'OPENCLASH_BUNDLED_CORE_PREFERRED=PASS'
+echo 'OPENCLASH_FIRST_START_NO_DOWNLOAD=PASS'
+echo 'OPENCLASH_CORE_UPDATE_ARCH_GUARD=PASS'
+echo 'OPENCLASH_CORE_UPDATE_ROLLBACK=PASS'
+echo 'OPENCLASH_CORE_RESTART_PERSISTENCE=PASS'

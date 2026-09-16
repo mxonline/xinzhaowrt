@@ -1,0 +1,104 @@
+#!/bin/sh
+# Small lifecycle reconciliation helper.  It delegates DNS mutations to the
+# mature AdGuardHome/OpenClash init scripts and only restores their UCI state.
+set -eu
+
+CONFIG_SECTION="${XINZHAO_DNS_SECTION:-xinzhao-dns.main}"
+STATE_FILE="$(uci -q get "$CONFIG_SECTION.state_file" 2>/dev/null || echo /etc/xinzhao-dns-coexist.state)"
+LOCK_DIR=/var/run/xinzhao-dns-coexist.lock
+# Canonical Arthur endpoints: dnsmasq upstream 127.0.0.1#1745, ADH upstream
+# 127.0.0.1:7874.  Values remain configurable only for future target ports.
+
+get() { uci -q get "$1" 2>/dev/null || true; }
+log() { logger -t xinzhao-dns-coexist "$*" 2>/dev/null || true; }
+
+acquire() {
+	if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+		exit 0
+	fi
+	trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
+save_openclash_state() {
+	[ -e "$STATE_FILE" ] && return 0
+	old_enable="$(get openclash.config.enable_redirect_dns)"
+	old_redirect="$(get openclash.config.redirect_dns)"
+	[ -n "$old_enable" ] || old_enable=1
+	[ -n "$old_redirect" ] || old_redirect=0
+	state_tmp="$STATE_FILE.$$"
+	(umask 077; printf 'enable_redirect_dns=%s\nredirect_dns=%s\n' "$old_enable" "$old_redirect" > "$state_tmp")
+	mv -f "$state_tmp" "$STATE_FILE"
+}
+
+restore_openclash_state() {
+	[ -s "$STATE_FILE" ] || return 0
+	old_enable=1
+	old_redirect=0
+	# shellcheck disable=SC1090
+	. "$STATE_FILE"
+	uci set openclash.config.enable_redirect_dns="$old_enable"
+	uci set openclash.config.redirect_dns="$old_redirect"
+	uci commit openclash
+	rm -f "$STATE_FILE"
+}
+
+adh_running() {
+	pidof AdGuardHome >/dev/null 2>&1
+}
+
+coexistence_on() {
+	[ "$(get AdGuardHome.AdGuardHome.enabled)" = 1 ] || return 1
+	adh_running
+}
+
+reconcile() {
+	acquire
+	adh_port="$(get "$CONFIG_SECTION.adguardhome_dns_port")"
+	oc_port="$(get "$CONFIG_SECTION.openclash_dns_port")"
+	[ -n "$adh_port" ] || adh_port=1745
+	[ -n "$oc_port" ] || oc_port=7874
+
+	if coexistence_on; then
+		save_openclash_state
+		# The mature ADH init owns this dnsmasq-upstream mutation.  OpenClash's
+		# own DNS firewall and dnsmasq takeover are disabled for this mode.
+		oc_changed=0
+		[ "$(get openclash.config.enable_redirect_dns)" = 0 ] || { uci set openclash.config.enable_redirect_dns=0; oc_changed=1; }
+		[ "$(get openclash.config.redirect_dns)" = 0 ] || { uci set openclash.config.redirect_dns=0; oc_changed=1; }
+		[ "$oc_changed" = 0 ] || uci commit openclash
+		adh_changed=0
+		[ "$(get AdGuardHome.AdGuardHome.redirect)" = dnsmasq-upstream ] || { uci set AdGuardHome.AdGuardHome.redirect=dnsmasq-upstream; adh_changed=1; }
+		[ "$adh_changed" = 0 ] || uci commit AdGuardHome
+		servers="$(get dhcp.@dnsmasq[0].server)"
+		case " $servers " in
+			*" 127.0.0.1#$adh_port "*) ;;
+			*) /etc/init.d/AdGuardHome do_redirect 1 >/dev/null 2>&1 || true ;;
+		esac
+		log "coexistence-on dnsmasq=127.0.0.1#$adh_port openclash=127.0.0.1:$oc_port"
+	else
+		# Mature ADH clears its own redirect/upstream on stop.  Restore the
+		# user's OpenClash DNS mode, then let its official init restore dnsmasq.
+		adh_changed=0
+		[ "$(get AdGuardHome.AdGuardHome.redirect)" = none ] || { uci set AdGuardHome.AdGuardHome.redirect=none; adh_changed=1; }
+		[ "$adh_changed" = 0 ] || uci commit AdGuardHome
+		servers="$(get dhcp.@dnsmasq[0].server)"
+		case " $servers " in
+			*" 127.0.0.1#$adh_port "*) /etc/init.d/AdGuardHome do_redirect 0 >/dev/null 2>&1 || true ;;
+			esac
+		if [ -s "$STATE_FILE" ]; then
+			restore_openclash_state
+			[ "$(get openclash.config.enable)" = 1 ] && /etc/init.d/openclash reload >/dev/null 2>&1 || true
+		fi
+		log 'coexistence-off restored OpenClash DNS mode'
+	fi
+}
+
+case "${1:-reconcile}" in
+	start|stop|restart|reconcile|status)
+		reconcile
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart|reconcile|status}" >&2
+		exit 2
+		;;
+esac

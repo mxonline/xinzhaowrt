@@ -52,6 +52,15 @@ require_exec() {
   }
 }
 
+require_symlink() {
+  local rel="$1" target="$2" line
+  line="$($UNSQUASHFS -ll "$tmp/root.squashfs" "$rel" 2>/dev/null | grep -F "squashfs-root/$rel" | head -n1 || true)"
+  [[ "$line" == *" -> $target"* ]] || {
+    echo "ERROR: final rootfs symlink is missing or points elsewhere: $rel -> $target" >&2
+    exit 1
+  }
+}
+
 require_aarch64() {
   local rel="$1"
   local out="$tmp/$(basename "$rel").bin"
@@ -75,7 +84,16 @@ read_text() {
 require_file 'usr/lib/lua/luci/controller/openclash.lua'
 require_file 'usr/share/openclash/openclash_core.sh'
 require_file 'etc/config/openclash'
+require_symlink 'etc/openclash/clash' 'core/clash_meta'
 require_aarch64 'etc/openclash/core/clash_meta'
+core_updater="$tmp/openclash_core.sh"
+read_text 'usr/share/openclash/openclash_core.sh' "$core_updater"
+grep -Fq 'Bundled Meta Core already present, skip online download' "$core_updater" || {
+  echo 'ERROR: bundled OpenClash core preference guard is missing' >&2
+  exit 1
+}
+grep -Fq 'core_is_aarch64' "$core_updater" || { echo 'ERROR: OpenClash core architecture guard is missing' >&2; exit 1; }
+grep -Fq 'known_good=' "$core_updater" || { echo 'ERROR: OpenClash core rollback guard is missing' >&2; exit 1; }
 openclash_config="$tmp/openclash.config"
 read_text 'etc/config/openclash' "$openclash_config"
 grep -Fq "option core_version 'linux-arm64'" "$openclash_config" || {
@@ -86,6 +104,10 @@ grep -Fq "option core_version 'linux-arm64'" "$openclash_config" || {
 echo 'OPENCLASH_CORE_BUNDLED=PASS'
 echo 'OPENCLASH_CORE_ARCH=PASS'
 echo 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS'
+echo 'OPENCLASH_BUNDLED_CORE_PREFERRED=PASS'
+echo 'OPENCLASH_CORE_UPDATE_ARCH_GUARD=PASS'
+echo 'OPENCLASH_CORE_UPDATE_ROLLBACK=PASS'
+echo 'OPENCLASH_CORE_RESTART_PERSISTENCE=PASS'
 
 # Complete mature AdGuardHome manager and bundled daemon. These paths are the
 # accepted pinned manager's user-visible menu/controller/CBI/lifecycle surface.
@@ -111,6 +133,30 @@ grep -Eq "^[[:space:]]*option[[:space:]]+enabled[[:space:]]+'0'[[:space:]]*$" "$
   echo 'ERROR: AdGuardHome mature manager is not disabled by default' >&2
   exit 1
 }
+grep -Eq "^[[:space:]]*option[[:space:]]+redirect[[:space:]]+'none'[[:space:]]*$" "$adh_config" || {
+  echo 'ERROR: AdGuardHome must not redirect DNS by default' >&2
+  exit 1
+}
+
+# Coexistence glue is part of the final rootfs contract.  It delegates firewall
+# and dnsmasq mutations to the mature services and records the single chain.
+for rel in \
+  'etc/config/xinzhao-dns' \
+  'etc/init.d/xinzhao-dns-coexist' \
+  'usr/libexec/xinzhao-dns-coexist'; do
+  require_file "$rel"
+done
+require_exec 'etc/init.d/xinzhao-dns-coexist'
+require_exec 'usr/libexec/xinzhao-dns-coexist'
+coexist_helper="$tmp/xinzhao-dns-coexist"
+coexist_template="$tmp/AdGuardHome_template.yaml"
+read_text 'usr/libexec/xinzhao-dns-coexist' "$coexist_helper"
+read_text 'usr/share/AdGuardHome/AdGuardHome_template.yaml' "$coexist_template"
+grep -Fq 'dnsmasq-upstream' "$coexist_helper" || { echo 'ERROR: mature AdGuardHome dnsmasq-upstream mode missing' >&2; exit 1; }
+grep -Fq 'enable_redirect_dns=0' "$coexist_helper" || { echo 'ERROR: OpenClash DNS hijack is not disabled in coexistence mode' >&2; exit 1; }
+grep -Fq '127.0.0.1:7874' "$coexist_template" || { echo 'ERROR: AdGuardHome upstream does not terminate at OpenClash DNS 7874' >&2; exit 1; }
+grep -Fq 'port: 1745' "$coexist_template" || { echo 'ERROR: AdGuardHome coexistence DNS port is not 1745' >&2; exit 1; }
+echo 'COEXISTENCE_DNS_CHAIN_ROOTFS=PASS'
 
 # The binary dependency also ships its lowercase service. It must likewise be
 # disabled by default so only the mature manager controls runtime activation.

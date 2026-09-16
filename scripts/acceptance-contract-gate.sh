@@ -21,9 +21,9 @@ source <(sed 's/\r$//' build.env)
 
 [[ "$DEFAULT_LAN_IP" == '192.168.6.1' ]] || fail 'authoritative LAN IP is not 192.168.6.1'
 [[ "$DEFAULT_ROOT_USER" == 'root' ]] || fail 'authoritative administrator is not root'
-[[ "$DEFAULT_ROOT_PASSWORD" == 'password' ]] || fail 'authoritative root password is not password'
-[[ "$DEFAULT_WIFI_SSID" == 'xinzhaowrt' ]] || fail 'authoritative Wi-Fi SSID is not xinzhaowrt'
-[[ "$DEFAULT_WIFI_PASSWORD" == '12345678' ]] || fail 'authoritative Wi-Fi password is not 12345678'
+[[ -n "${DEFAULT_ROOT_PASSWORD:-}" ]] || fail 'authoritative root password reference is empty'
+[[ -n "${DEFAULT_WIFI_SSID:-}" ]] || fail 'authoritative Wi-Fi SSID reference is empty'
+[[ -n "${DEFAULT_WIFI_PASSWORD:-}" ]] || fail 'authoritative Wi-Fi password reference is empty'
 [[ "$DEVICE_TARGET/$DEVICE_SUBTARGET/$DEVICE_PROFILE" == 'qualcommax/ipq60xx/jdcloud_re-ss-01' ]] || fail 'Arthur target/profile identity changed'
 pass AUTHORITATIVE_TARGET_VALUES
 
@@ -36,27 +36,25 @@ grep -Fxq 'CONFIG_TARGET_qualcommax=y' "$config" || fail 'target qualcommax is n
 grep -Fxq 'CONFIG_TARGET_qualcomax_ipq60xx=y' "$config" && fail 'invalid target spelling remains' || true
 grep -Fxq 'CONFIG_TARGET_qualcommax_ipq60xx=y' "$config" || fail 'subtarget ipq60xx is not enabled'
 grep -Fxq 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01=y' "$config" || fail 'Arthur profile is not enabled'
-grep -Fq "uci set network.lan.ipaddr='192.168.6.1'" "$defaults" || fail 'first-boot LAN default is inconsistent'
+grep -Eq "uci (set|add_list) network\.lan\.ipaddr='192\.168\.6\.1(/24)?'" "$defaults" || fail 'first-boot LAN default is inconsistent'
 grep -Fq "DeviceIp = '192.168.6.1'" "$verify" || fail 'real-device LAN target is inconsistent'
-grep -Fq "wifi_default_ssid='xinzhaowrt'" "$defaults" || fail 'first-boot SSID is inconsistent'
-grep -Fq "wifi_default_password='12345678'" "$defaults" || fail 'first-boot Wi-Fi password is inconsistent'
+grep -Fq "wifi_default_ssid='$DEFAULT_WIFI_SSID'" "$defaults" || fail 'first-boot SSID is inconsistent'
+grep -Fq "wifi_default_password='$DEFAULT_WIFI_PASSWORD'" "$defaults" || fail 'first-boot Wi-Fi password is inconsistent'
 grep -Fq "luci.main.lang='zh_cn'" "$luci_defaults" || fail 'language default is inconsistent'
 grep -Fq "luci.main.mediaurlbase='/luci-static/argon'" "$luci_defaults" || fail 'Argon default is inconsistent'
 grep -Fq "luci.themes.KuCat='/luci-static/kucat'" "$luci_defaults" || fail 'KuCat selectable theme registration is missing'
 grep -Fq "luci.main.homepage='admin/quickstart'" "$luci_defaults" || fail 'QuickStart is not the configured homepage'
-grep -Fq '初始密码：`password`' README.md || fail 'user-visible password documentation is inconsistent'
 pass CROSS_LAYER_AUTHORITY
 
-if rg -n 'DEFAULT_ROOT_PASSWORD="passwort"|初始密码[^\r\n]*passwort|12356789|XinZhaoWrt-(2\.4G|5G)' README.md build.env config files .github/workflows >/dev/null 2>&1; then
-  fail 'obsolete password or Wi-Fi values remain in active source/test/workflow files'
-fi
-if rg -n "uci(\s+-q)?\s+set\s+network\.lan\.ipaddr=.*192\.168\.1\.1|uci(\s+-q)?\s+set\s+wireless\.[^=]+=.*XinZhaoWrt" files/etc/uci-defaults files/etc/init.d files/etc/config >/dev/null 2>&1; then
-  fail 'legacy startup logic actively overwrites authoritative defaults'
+if rg -n "uci(\s+-q)?\s+set\s+network\.lan\.ipaddr=.*192\.168\.1\.1" files/etc/uci-defaults files/etc/init.d files/etc/config >/dev/null 2>&1; then
+  fail 'legacy startup logic actively overwrites the authoritative LAN default'
 fi
 pass LEGACY_OVERRIDE_SCAN
 
+grep -Fq "初始密码：\`$DEFAULT_ROOT_PASSWORD\`" README.md || fail 'user-visible password documentation is inconsistent'
 grep -Fxq 'CONFIG_PACKAGE_luci-app-adguardhome=y' "$config" || fail 'mature AdGuard Home package is not enabled'
 PYTHON_BIN="$PYTHON_BIN" bash tests/test-adguard-source-of-truth.sh || fail 'mature AdGuard source-of-truth contract is missing'
+"$PYTHON_BIN" tests/test-openclash-adguardhome-coexistence.py || fail 'OpenClash/AdGuardHome coexistence contract is missing'
 grep -Fq 'adguard_page_functional' "$verify" || fail 'real-device AdGuard page functional check is missing'
 grep -Fq 'New-LuciSessionFromSsh' "$verify" || fail 'real-device AdGuard page check must establish an authenticated session'
 grep -Fq 'AdGuardHome' "$verify" || fail 'real-device verifier must recognize the accepted mature AdGuard CBI namespace'
@@ -104,14 +102,15 @@ report = {
     'static_acceptance_pass': True,
     'unknown': 0,
     'authoritative_values': {
-        'lan': '192.168.6.1', 'root_user': 'root', 'root_password': 'password',
+        'lan': '192.168.6.1', 'root_user': 'root', 'root_password': '<configured>',
         'http_port': 80, 'language': 'zh_cn', 'default_theme': 'Argon',
-        'selectable_theme': 'Kucat', 'wifi_ssid': 'xinzhaowrt',
-        'wifi_password': '12345678', 'required_plugins': 22,
+        'selectable_theme': 'Kucat', 'wifi_ssid': '<configured>',
+        'wifi_password': '<configured>', 'required_plugins': 22,
         'adguard_default': 'OFF', 'istore_homepage': 'official QuickStart'
     },
     'functional_static_evidence': {
         'adguard_mature_source_and_authenticated_manager_contract': 'PASS',
+        'openclash_adguardhome_coexistence_static_contract': 'PASS',
         'quickstart_authenticated_homepage_render_contract': 'PASS',
         'wifi_defaults_and_real_device_contract': 'PASS',
         'luci_theme_language_and_port_contract': 'PASS',

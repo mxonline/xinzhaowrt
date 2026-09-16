@@ -7,8 +7,10 @@ BUILD="$ROOT/scripts/build.sh"
 TARGETS="$ROOT/production/ARTHUR_PRODUCT_TARGETS.md"
 CORE_LOCK="$ROOT/config/openclash-core.lock"
 CORE_STAGE="$ROOT/scripts/stage-openclash-core.sh"
+CORE_LIFECYCLE="$ROOT/tests/test-openclash-core-lifecycle.py"
 ROOTFS_VERIFY="$ROOT/scripts/verify-firmware-openclash-adh.sh"
 PREFLIGHT="$ROOT/.github/workflows/arthur-fast-preflight.yml"
+BUILD_WORKFLOW="$ROOT/.github/workflows/build.yml"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -34,9 +36,15 @@ source "$CORE_LOCK"
 [[ "${OPENCLASH_CORE_INSTALL_PATH:-}" == '/etc/openclash/core/clash_meta' ]] || fail 'OpenClash core install path must match the official OpenClash runtime path'
 
 [[ -f "$CORE_STAGE" ]] || fail 'OpenClash core staging helper is missing'
+[[ -f "$CORE_LIFECYCLE" ]] || fail 'OpenClash core lifecycle contract is missing'
 [[ -f "$ROOTFS_VERIFY" ]] || fail 'final firmware OpenClash/AdGuardHome rootfs verifier is missing'
+[[ -f "$BUILD_WORKFLOW" ]] || fail 'FULL_BUILD workflow is missing'
+grep -Fq 'run: bash ./scripts/codex-setup.sh' "$BUILD_WORKFLOW" || fail 'FULL_BUILD workflow must invoke dependency setup through bash'
 grep -Fq 'stage-openclash-core.sh' "$BUILD" || fail 'build must stage the pinned OpenClash core before firmware compilation'
 grep -Fq 'verify-firmware-openclash-adh.sh' "$BUILD" || fail 'build must verify complete OpenClash and AdGuardHome in the final firmware rootfs'
+CORE_PYTHON="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+[[ -n "$CORE_PYTHON" ]] || fail 'OpenClash core lifecycle contract requires Python'
+"$CORE_PYTHON" "$CORE_LIFECYCLE" || fail 'OpenClash core lifecycle contract failed'
 
 # The final-rootfs verifier runs as an unprivileged GitHub Actions user. It must
 # never unpack the whole SquashFS tree because /dev/console and other device

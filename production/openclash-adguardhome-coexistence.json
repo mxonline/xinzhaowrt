@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "purpose": "Arthur DNS coexistence contract",
+  "lan_frontend": {
+    "service": "dnsmasq",
+    "port": 53
+  },
+  "openclash_dns_port": 7874,
+  "adguardhome_dns_port": 1745,
+  "defaults": {
+    "adguardhome_enabled": false,
+    "adguardhome_redirect": "none"
+  },
+  "coexistence": {
+    "chain": "LAN:dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874",
+    "adh_redirect": "dnsmasq-upstream",
+    "openclash_enable_redirect_dns": 0,
+    "openclash_redirect_dns": 0,
+    "dnsmasq_upstream": "127.0.0.1#1745",
+    "adguardhome_upstream": "127.0.0.1:7874",
+    "firewall_dns_hijack": false,
+    "state_restore": true,
+    "reboot_reconcile": true
+  },
+  "lifecycle": {
+    "coordinator": "/etc/init.d/xinzhao-dns-coexist",
+    "reload_triggers": ["AdGuardHome", "openclash", "dhcp"],
+    "adh": ["start", "stop", "restart", "enable", "disable"],
+    "openclash": ["start", "stop", "restart"]
+  }
+}
