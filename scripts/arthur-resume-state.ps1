@@ -164,7 +164,7 @@ function Resolve-ArthurMigrationExecutionId {
 
     if (-not [string]::IsNullOrWhiteSpace($ExplicitExecutionId)) {
         $candidate = $ExplicitExecutionId.Trim().ToLowerInvariant()
-        if ($candidate -notmatch '^arthur-[a-z0-9-]+-[0-9a-f]{7}-\d{8}$') {
+        if ($candidate -notmatch '^arthur-[a-z0-9.-]+-[0-9a-f]{7}-\d{8}$') {
             throw "ARTHUR_EXECUTION_ID_INVALID=$ExplicitExecutionId"
         }
         return $candidate
