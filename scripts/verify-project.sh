@@ -32,6 +32,7 @@ done < config/required-plugins.txt
 
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
+bash tests/test-version-identity-gate.sh
 bash tests/test-functional-acceptance.sh
 bash tests/test-live-preview-contract.sh
 bash tests/test-package-source-provenance.sh
