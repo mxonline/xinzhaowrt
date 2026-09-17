@@ -7,6 +7,7 @@ build_sources="$root/config/istore-quickstart.lock"
 packages="$root/scripts/add-custom-packages.sh"
 build="$root/scripts/build.sh"
 manifest="$root/production/accepted-preview/arthur-quickstart.json"
+adh_overlay="$root/files/usr/share/AdGuardHome"
 python_bin="${PYTHON_BIN:-python3}"
 
 expected_ref="743bb3ad87a7b97fd440d8e334832e25d4f678e0"
@@ -45,6 +46,10 @@ grep -Fq 'link_pkg luci-app-adguardhome "$ADGUARD_MATURE/luci-app-adguardhome"' 
   echo 'FAIL: luci-app-adguardhome must be linked from the accepted mature source.' >&2
   exit 1
 }
+if [[ -d "$adh_overlay" ]] && find "$adh_overlay" -type f -print -quit | grep -q .; then
+  echo 'FAIL: duplicate files/usr/share/AdGuardHome overlay remains; pinned mature package must own these files.' >&2
+  exit 1
+fi
 ! grep -Fq 'restore-pinned-adguard-manager.sh' "$build" || {
   echo 'FAIL: build must not restore a duplicate AdGuard manager overlay.' >&2
   exit 1

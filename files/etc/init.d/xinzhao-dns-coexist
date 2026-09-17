@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+START=98
+STOP=12
+
+USE_PROCD=1
+
+start_service() {
+	/usr/libexec/xinzhao-dns-coexist start
+}
+
+stop_service() {
+	/usr/libexec/xinzhao-dns-coexist stop
+}
+
+reload_service() {
+	/usr/libexec/xinzhao-dns-coexist reconcile
+}
+
+service_triggers() {
+	procd_add_reload_trigger AdGuardHome openclash dhcp
+}

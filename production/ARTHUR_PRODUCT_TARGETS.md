@@ -1,7 +1,7 @@
 # Arthur Authoritative Product Targets
 
 Status: ACTIVE SPEC
-Updated: 2026-09-15
+Updated: 2026-09-16
 Scope: JDCloud RE-SS-01 / Arthur (`qualcommax/ipq60xx`, profile `jdcloud_re-ss-01`)
 
 This document is the product-target Source of Truth for Arthur firmware. It complements `production/release-policy.md`, `production/release-mode.json`, `production/production-agent.json`, `production/arthur-known-good-v1.json`, and runtime HANDOFF/state. When a remembered/chat requirement conflicts with this document, the repository specification wins after the change has been reviewed and merged.
@@ -43,6 +43,22 @@ A historical state file must not be treated as real-time progress without cross-
 - AdGuard Home must remain disabled by default unless an approved product-target change says otherwise
 - AdGuard Home device acceptance must cover the intended management experience and service state, not only package presence
 
+## Complete OpenClash + AdGuardHome target
+
+Package presence, a visible menu, or a running process is not sufficient for either application.
+
+OpenClash firmware composition must include the complete LuCI application and a pinned Arthur-compatible `linux-arm64` Meta/Mihomo core at the runtime path expected by OpenClash. First start must not require downloading the core. Independent post-release acceptance must cover configuration import/save, subscription handling, node and policy-group/rule operation, Start/Stop/Restart, DNS behavior, proxy operation, logs/status and reboot persistence.
+
+`OPENCLASH_FULLY_USABLE=PASS` is the required OpenClash product endpoint.
+
+AdGuardHome firmware composition must include the complete accepted mature LuCI manager and the AdGuardHome daemon in the final rootfs. Independent post-release acceptance must cover the full management surface, Start/Stop/Restart, Enable/Disable, Web UI, upstream DNS, filtering/query-log behavior, configuration persistence and the required default-disabled state.
+
+`ADGUARDHOME_FULLY_USABLE=PASS` is the required AdGuardHome product endpoint.
+
+After both standalone checks pass, the independent post-release test must run them concurrently and verify no DNS loop, no port conflict, stable LAN/WAN/DHCP/DNS behavior, no abnormal service restart, configuration persistence/restore, and that disabling AdGuardHome leaves OpenClash operating normally.
+
+`OPENCLASH_ADH_COEXISTENCE=PASS` is required before the exact released firmware/hash may replace the current Known-Good.
+
 ## Required Wi-Fi target
 
 - The approved default Wi-Fi SSID is part of the firmware-level product baseline and must persist through the intended first-boot/default configuration path
@@ -76,8 +92,10 @@ The independent post-release product acceptance must explicitly verify:
 6. iStore/iStoreX availability where required by the product baseline
 7. QuickStart complete intended home/dashboard behavior
 8. AdGuard Home intended management UI/behavior and default-disabled state
-9. Wi-Fi expected SSID plus real client association, DHCP and LAN/WAN access
-10. Persistence after reboot/configuration path as required by the released candidate
+9. OpenClash complete usability, bundled-core first start and runtime operation
+10. OpenClash + AdGuardHome coexistence without DNS/port/runtime conflicts
+11. Wi-Fi expected SSID plus real client association, DHCP and LAN/WAN access
+12. Persistence after reboot/configuration path as required by the released candidate
 
 These checks gate Known-Good promotion, not the preceding `RELEASE_ONLY` GitHub Release.
 

@@ -121,9 +121,10 @@ Assert-Contains $controller '$ProductionConfig.human_stop_classes' 'controller m
 $version = (Get-Content -Raw (Join-Path $Root 'VERSION')).Trim()
 $buildEnv = Get-Content -Raw (Join-Path $Root 'build.env')
 $arthurConfig = Get-Content -Raw (Join-Path $Root 'config/arthur.config')
-Assert-True ($version -eq '0.1.3') 'VERSION must align with physical baseline 0.1.3'
-Assert-Contains $buildEnv 'FIRMWARE_VERSION="0.1.3"' 'build.env firmware version must align with 0.1.3'
-Assert-Contains $arthurConfig 'CONFIG_VERSION_NUMBER="0.1.3"' 'arthur.config version number must align with 0.1.3'
+$baselineVersion = [string]$baseline.firmware.version
+Assert-True ((Compare-ArthurVersion $version $baselineVersion) -gt 0) 'candidate VERSION must advance beyond the physical baseline'
+Assert-Contains $buildEnv ('FIRMWARE_VERSION="{0}"' -f $baselineVersion) 'build.env must preserve the physical baseline defaults'
+Assert-Contains $arthurConfig ('CONFIG_VERSION_NUMBER="{0}"' -f $version) 'arthur.config version number must match the candidate VERSION'
 
 Write-Host 'REAL_DEVICE_BASELINE_CONTRACT=PASS'
 Write-Host 'REAL_DEVICE_ACCESS_CLASSIFICATION_CONTRACT=PASS'

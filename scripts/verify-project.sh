@@ -4,6 +4,12 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || {
+  PYTHON_BIN=python
+  command -v "$PYTHON_BIN" >/dev/null 2>&1 || { echo "ERROR: Python interpreter not found"; exit 1; }
+}
+
 COUNT="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | wc -l | tr -d ' ')"
 [[ "$COUNT" == "22" ]] || { echo "ERROR: expected 22 mandatory LuCI plugins, found $COUNT"; exit 1; }
 
@@ -16,6 +22,7 @@ DUPES="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | sort | uniq
 [[ -z "$DUPES" ]] || { echo "ERROR: duplicate plugins:"; echo "$DUPES"; exit 1; }
 
 while IFS= read -r pkg; do
+  pkg="${pkg%$'\r'}"
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
   grep -qxF "CONFIG_PACKAGE_${pkg}=y" config/arthur.config || {
     echo "ERROR: config/arthur.config does not enable $pkg"
@@ -25,16 +32,23 @@ done < config/required-plugins.txt
 
 ./scripts/check-defaults.sh
 ./scripts/check-upload-oom-fix.sh
+bash tests/test-version-identity-gate.sh
 bash tests/test-functional-acceptance.sh
 bash tests/test-live-preview-contract.sh
 bash tests/test-package-source-provenance.sh
-python3 -m json.tool production/live-preview-policy.json >/dev/null
-python3 -m json.tool production/mature-ui-sources.json >/dev/null
+bash tests/test-full-openclash-adh-contract.sh
+"$PYTHON_BIN" tests/test-openclash-adguardhome-coexistence.py
+"$PYTHON_BIN" -m json.tool production/live-preview-policy.json >/dev/null
+"$PYTHON_BIN" -m json.tool production/mature-ui-sources.json >/dev/null
+"$PYTHON_BIN" -m json.tool production/openclash-adguardhome-coexistence.json >/dev/null
 
 for f in scripts/*.sh; do
   bash -n "$f"
 done
 sh -n files/etc/uci-defaults/99-xinzhao-defaults
+sh -n files/etc/uci-defaults/98-xinzhao-dns-coexist
+sh -n files/etc/init.d/xinzhao-dns-coexist
+sh -n files/usr/libexec/xinzhao-dns-coexist
 
 [[ -x scripts/check-package-existence.sh ]] || {
   echo "ERROR: scripts/check-package-existence.sh must be executable"

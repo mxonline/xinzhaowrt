@@ -1,0 +1,12 @@
+#!/bin/sh
+# Install the coordinator without changing the mature ADH package defaults.
+set -eu
+
+if uci -q get AdGuardHome.AdGuardHome.enabled >/dev/null 2>&1; then
+	[ -n "$(uci -q get AdGuardHome.AdGuardHome.enabled 2>/dev/null || true)" ] || uci set AdGuardHome.AdGuardHome.enabled=0
+	[ -n "$(uci -q get AdGuardHome.AdGuardHome.redirect 2>/dev/null || true)" ] || uci set AdGuardHome.AdGuardHome.redirect=none
+	uci commit AdGuardHome
+fi
+/etc/init.d/xinzhao-dns-coexist enable >/dev/null 2>&1 || true
+/etc/init.d/xinzhao-dns-coexist start >/dev/null 2>&1 || true
+exit 0

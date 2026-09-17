@@ -1,0 +1,5 @@
+config coexist 'main'
+	option enabled '1'
+	option adguardhome_dns_port '1745'
+	option openclash_dns_port '7874'
+	option state_file '/etc/xinzhao-dns-coexist.state'

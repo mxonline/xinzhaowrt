@@ -90,9 +90,10 @@ echo "[3/10] Refresh feeds and package indexes before existence check"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 
-echo "[4/10] Install project first-boot defaults overlay"
+echo "[4/10] Install project first-boot defaults overlay and pinned OpenClash core"
 mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
+bash "$PROJECT_ROOT/scripts/stage-openclash-core.sh" "$SRC"
 BUILD_INFO_JSON="$SRC/files/www/luci-static/xinzhao/build-info.json"
 [[ -f "$BUILD_INFO_JSON" ]] || { echo "ERROR: build-info template missing: $BUILD_INFO_JSON"; exit 1; }
 sed -i -e "s|@VERSION@|$FIRMWARE_VERSION|g" -e "s|@BUILD_DATE@|$BUILD_DATE|g" -e "s|@GIT_COMMIT@|$SOURCE_SHA|g" -e "s|@BUILD_ID@|$BUILD_ID|g" "$BUILD_INFO_JSON"
@@ -127,7 +128,7 @@ cp .config "$OUT/full.config"
 
 if [[ "$BUILD_CLOSURE_ONLY" == "1" ]]; then
   echo 'BUILD_CLOSURE_PREFLIGHT=PASS'
-  echo 'Build closure verified exact locked sources, feeds, external packages, provenance, package existence, overlay, make defconfig and required config; source download and firmware compile were not run.'
+  echo 'Build closure verified exact locked sources, feeds, external packages, provenance, package existence, overlay, bundled OpenClash core, make defconfig and required config; source download and firmware compile were not run.'
   exit 0
 fi
 
@@ -186,6 +187,7 @@ done
 for image in "$OUT"/firmware/*sysupgrade.bin; do
   [[ -e "$image" ]] || continue
   bash "$PROJECT_ROOT/scripts/verify-firmware-build-info.sh" "$image" "$SRC/staging_dir/host/bin/unsquashfs"
+  bash "$PROJECT_ROOT/scripts/verify-firmware-openclash-adh.sh" "$image" "$SRC/staging_dir/host/bin/unsquashfs"
 done
 
 {

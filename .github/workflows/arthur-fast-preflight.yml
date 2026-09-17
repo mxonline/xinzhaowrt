@@ -34,6 +34,8 @@ jobs:
   preflight:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      scope: ${{ steps.changes.outputs.scope }}
 
     steps:
       - name: Checkout project
@@ -222,7 +224,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-closure:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_closure == true }}
+    if: ${{ needs.preflight.result == 'success' && ((github.event_name == 'workflow_dispatch' && inputs.build_closure == true) || (github.event_name == 'pull_request' && (needs.preflight.outputs.scope == 'FULL_BUILD' || needs.preflight.outputs.scope == 'SDK_BUILD'))) }}
     needs: preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -239,7 +241,7 @@ jobs:
           df -h
 
       - name: Install build dependencies
-        run: ./scripts/codex-setup.sh
+        run: bash ./scripts/codex-setup.sh
 
       - name: Prepare exact Candidate lock
         id: lock
@@ -248,9 +250,15 @@ jobs:
           set -Eeuo pipefail
           chmod +x scripts/*.sh
           CLOSURE_LOCK="$RUNNER_TEMP/arthur-build-closure.lock"
-          ./scripts/prepare-update-lock.sh '${{ inputs.update_mode }}' "$CLOSURE_LOCK"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CLOSURE_MODE="${{ inputs.update_mode }}"
+          else
+            CLOSURE_MODE="rebuild_known_good"
+          fi
+          ./scripts/prepare-update-lock.sh "$CLOSURE_MODE" "$CLOSURE_LOCK"
           echo "path=$CLOSURE_LOCK" >> "$GITHUB_OUTPUT"
           echo "sha=$(sha256sum "$CLOSURE_LOCK" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "mode=$CLOSURE_MODE" >> "$GITHUB_OUTPUT"
 
       - name: Run exact source and config closure
         shell: bash
@@ -300,7 +308,7 @@ jobs:
             echo '## Arthur exact build closure'
             echo
             echo "- Source: \`${GITHUB_SHA}\`"
-            echo "- Update mode: \`${{ inputs.update_mode }}\`"
+            echo "- Update mode: \`${{ steps.lock.outputs.mode || 'UNAVAILABLE' }}\`"
             echo "- Candidate lock SHA256: \`${{ steps.lock.outputs.sha || 'UNAVAILABLE' }}\`"
             echo '- Boundary: exact source/feeds/custom packages/provenance/package existence/overlay/make defconfig/check-config only.'
             echo '- Firmware source download: not run after closure PASS.'

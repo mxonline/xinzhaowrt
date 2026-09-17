@@ -1,0 +1,11 @@
+# Arthur OpenClash bundled core input.
+# Keep independent from the frozen firmware/source Known-Good lock: this is a
+# product repair input and must move only through reviewed firmware releases.
+OPENCLASH_CORE_REPO="https://github.com/vernesong/OpenClash.git"
+OPENCLASH_CORE_REF="dc71e38205fd2d83cc934592d3da8cf6da3e0b51"
+OPENCLASH_CORE_BRANCH="master"
+OPENCLASH_CORE_FLAVOR="meta"
+OPENCLASH_CORE_ARCH="linux-arm64"
+OPENCLASH_CORE_GIT_BLOB_SHA="5c90d325491032c316849c0ed39711a16dfdda4c"
+OPENCLASH_CORE_ARCHIVE_PATH="master/meta/clash-linux-arm64.tar.gz"
+OPENCLASH_CORE_INSTALL_PATH="/etc/openclash/core/clash_meta"
