@@ -12,6 +12,8 @@ def main() -> int:
     text = path.read_text(encoding="utf-8")
     old = "  upstream_dns:\n  - 223.5.5.5"
     new = "  upstream_dns:\n  - 127.0.0.1:7874"
+    if "  port: 1745" not in text:
+        raise SystemExit("AdGuardHome DNS port anchor missing; expected mature package port 1745")
     if new not in text:
         if old not in text:
             raise SystemExit("AdGuardHome upstream template anchor missing")
