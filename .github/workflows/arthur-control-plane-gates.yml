@@ -13,6 +13,7 @@ name: Arthur Control Plane Gates
       - 'scripts/arthur-firmware-resume.ps1'
       - 'scripts/arthur-evidence-index.ps1'
       - 'tests/arthur-control-plane-gates.tests.ps1'
+      - 'tests/arthur-execution-id-version-slug.tests.ps1'
       - 'tests/arthur-fresh-execution-bootstrap.tests.ps1'
       - '.github/workflows/arthur-control-plane-gates.yml'
 
@@ -32,4 +33,5 @@ jobs:
         shell: pwsh
         run: |
           ./tests/arthur-control-plane-gates.tests.ps1
+          ./tests/arthur-execution-id-version-slug.tests.ps1
           ./tests/arthur-fresh-execution-bootstrap.tests.ps1
