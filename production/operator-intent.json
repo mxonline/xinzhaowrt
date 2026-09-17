@@ -3,28 +3,31 @@
   "project": "Arthur",
   "intent_type": "EXECUTE_FIRMWARE",
   "authorization_scope": "FIRMWARE_RELEASE",
-  "firmware_execution_authorized": false,
-  "execution_id": "arthur-final-release-5f41c4e-20260908",
+  "firmware_execution_authorized": true,
+  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "release_mode": "RELEASE_ONLY",
+  "target_release": "v0.1.5",
+  "device_write_authorized": false,
   "firmware_state": {
-    "current_stage": "PRODUCTION_RELEASED",
-    "next_stage": "NONE",
-    "active_run_id": 34559894373,
-    "active_source_sha": "bc939aee034b3a8326566bb7a07eac2e985e169f",
+    "current_stage": "CHANGE_IMPACT",
+    "next_stage": "BASELINE_INHERITANCE",
+    "active_run_id": 0,
+    "active_source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
     "verified_frozen": [
       "WIFI",
       "LUCI_CHINESE",
-      "ADGUARD_FULL_MANAGER",
       "QUICKSTART"
     ],
     "preserve": [
       "WIFI",
       "LuCI Simplified Chinese",
-      "AdGuard Home full manager",
-      "official iStoreOS QuickStart"
+      "official iStoreOS QuickStart",
+      "22 mandatory LuCI plugins",
+      "target qualcommax/ipq60xx/jdcloud_re-ss-01"
     ],
-    "source": "CANONICAL_RELEASE_V0.1.4_RUN_34559894373",
-    "active_artifact_id": 10186571543,
-    "candidate_release_conclusion": "success"
+    "source": "OPERATOR_AUTHORIZED_V0.1.5_MAIN_e0377509dcc57c415935e9f779fe27117ce591be",
+    "active_artifact_id": null,
+    "candidate_release_conclusion": null
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
@@ -34,11 +37,14 @@
     "no_codex_instruction_without_firmware_authorization": true,
     "do_not_interrupt_active_run": true,
     "do_not_dispatch_duplicate_build": true,
-    "reuse_uploaded_candidate_artifact_after_build": true
+    "reuse_uploaded_candidate_artifact_after_build": true,
+    "release_only": true,
+    "automatic_flash": false,
+    "sysupgrade_forbidden": true
   },
   "governance_task": {
     "authorized": false,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "v0.1.4 is already PRODUCTION_RELEASED from GitHub run 34559894373. This terminal execution authorizes no further firmware mutation or router write. Any new release must create a fresh execution identity and use the current release-mode policy; do not resume PRE_FLASH or sysupgrade from this closed execution."
+    "goal": "Fresh v0.1.5 production execution is explicitly authorized for RELEASE_ONLY publication. Router writes, sysupgrade, reboot-for-flash, and Known-Good promotion are not authorized by this execution."
   }
 }
