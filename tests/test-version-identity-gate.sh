@@ -92,7 +92,16 @@ done
 echo "CURRENT_STABLE=$CURRENT_STABLE"
 echo "TARGET_RELEASE=$TARGET_RELEASE"
 echo "TARGET_VERSION=$TARGET_VERSION"
-VERSION_BEFORE_AUDIT="$(git -C "$ROOT" show HEAD^:VERSION 2>/dev/null || printf 'unknown')"
+VERSION_BEFORE_AUDIT="unknown"
+cursor="$(git -C "$ROOT" rev-parse HEAD^ 2>/dev/null || true)"
+while [[ -n "$cursor" ]]; do
+  candidate="$(git -C "$ROOT" show "$cursor:VERSION" 2>/dev/null | tr -d '\r\n ' || true)"
+  if [[ -n "$candidate" && "$candidate" != "$VERSION" ]]; then
+    VERSION_BEFORE_AUDIT="$candidate"
+    break
+  fi
+  cursor="$(git -C "$ROOT" rev-parse "$cursor^" 2>/dev/null || true)"
+done
 echo "VERSION_BEFORE_AUDIT=$VERSION_BEFORE_AUDIT"
 echo "VERSION_AFTER=$VERSION"
 echo "VERSION_GT_CURRENT_STABLE=PASS"
