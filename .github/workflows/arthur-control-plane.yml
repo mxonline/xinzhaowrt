@@ -141,6 +141,10 @@ jobs:
           print(value)
           PY
           )"
+          # Governance Gate definitions come from current main, while all
+          # firmware inputs and functional evidence remain frozen at SOURCE_SHA.
+          cp "$GITHUB_WORKSPACE/scripts/check-changeset-complete.sh" "$ACCEPTED_ROOT/scripts/check-changeset-complete.sh"
+          cp "$GITHUB_WORKSPACE/scripts/acceptance-contract-gate.sh" "$ACCEPTED_ROOT/scripts/acceptance-contract-gate.sh"
           (
             cd "$ACCEPTED_ROOT"
             chmod +x scripts/*.sh tests/*.sh
