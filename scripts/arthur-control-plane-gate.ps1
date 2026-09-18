@@ -42,6 +42,65 @@ if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
 $operatorIntent = Read-ArthurOperatorIntent -Path $intentPath
 $decision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $operatorIntent
 
+$highestEvidence = $operatorIntent.PSObject.Properties['highest_machine_evidence']
+if (-not $highestEvidence) {
+    Write-Error 'HIGHEST_MACHINE_EVIDENCE_MISSING'
+    exit 1
+}
+$highestEvidence = $highestEvidence.Value
+$expectedCanonicalPath = @(
+    'CHANGE_IMPACT',
+    'BASELINE_INHERITANCE',
+    'EXPECTED_DIFF',
+    'BUILD',
+    'ARTIFACT',
+    'RELEASE_GATE',
+    'RELEASE',
+    'PRODUCTION_RELEASED'
+)
+$actualCanonicalPath = @($highestEvidence.canonical_path)
+$pathMatches = (
+    $actualCanonicalPath.Count -eq $expectedCanonicalPath.Count -and
+    (($actualCanonicalPath -join '>') -eq ($expectedCanonicalPath -join '>'))
+)
+$objectiveValid = (
+    [string]$highestEvidence.authority -eq 'OPERATOR' -and
+    [string]$highestEvidence.priority_class -eq 'HIGHEST' -and
+    [string]$highestEvidence.objective_id -eq 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY' -and
+    [string]$highestEvidence.required_terminal -eq 'PRODUCTION_RELEASED' -and
+    [string]$highestEvidence.execution_id -eq [string]$operatorIntent.execution_id -and
+    [string]$highestEvidence.accepted_source_sha -eq [string]$operatorIntent.firmware_state.active_source_sha -and
+    [string]$highestEvidence.target_release -eq [string]$operatorIntent.target_release -and
+    [string]$highestEvidence.release_mode -eq 'RELEASE_ONLY' -and
+    [string]$operatorIntent.release_mode -eq 'RELEASE_ONLY' -and
+    $operatorIntent.device_write_authorized -ne $true -and
+    [string]$highestEvidence.action_rule -eq 'ONLY_ADVANCE_OR_MINIMALLY_UNBLOCK_CURRENT_CANONICAL_GATE' -and
+    $highestEvidence.fail_closed_on_violation -eq $true -and
+    $pathMatches
+)
+if (-not $objectiveValid) {
+    Write-Error 'HIGHEST_MACHINE_EVIDENCE_VIOLATION'
+    exit 1
+}
+$forbidden = @($highestEvidence.forbidden)
+foreach ($requiredForbidden in @(
+    'NEW_AUTOMATION_WORKFLOW',
+    'NEW_SUPERVISOR_OR_ORCHESTRATOR',
+    'SIDE_PATH_NOT_REQUIRED_TO_ADVANCE_OR_UNBLOCK_CURRENT_CANONICAL_GATE',
+    'NEW_EXECUTION',
+    'FIRMWARE_SCOPE_EXPANSION',
+    'DEVICE_WRITE',
+    'SYSUPGRADE',
+    'PRE_RELEASE_DEVICE_TEST_AS_GATE',
+    'KNOWN_GOOD_PROMOTION_BEFORE_POST_RELEASE_DEVICE_TEST_PASS'
+)) {
+    if ($forbidden -notcontains $requiredForbidden) {
+        Write-Error "HIGHEST_MACHINE_EVIDENCE_FORBIDDEN_SET_INCOMPLETE=$requiredForbidden"
+        exit 1
+    }
+}
+Write-Host "HIGHEST_MACHINE_EVIDENCE=PASS objective=$($highestEvidence.objective_id) terminal=$($highestEvidence.required_terminal) execution=$($highestEvidence.execution_id)"
+
 $firmwareState = $operatorIntent.firmware_state
 $currentStage = if ($firmwareState) { [string]$firmwareState.current_stage } else { '' }
 $nextStage = if ($firmwareState) { [string]$firmwareState.next_stage } else { '' }

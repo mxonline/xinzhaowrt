@@ -5,6 +5,8 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ContractPath = Join-Path $Root 'scripts\arthur-state-contract.ps1'
 $ResumePath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
+$ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
+$OperatorIntentPath = Join-Path $Root 'production\operator-intent.json'
 $FirmwareResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
 $ConsistencyPath = Join-Path $Root 'scripts\arthur-state-consistency.ps1'
 
@@ -136,5 +138,20 @@ Assert-Contains $firmwareResume 'execution_id' 'resume gate output must expose e
 Assert-Contains $firmwareResume 'gates' 'resume gate output must expose reconciled Gate state'
 Assert-Contains $firmwareResume 'arthur-state-consistency.ps1' 'resume gate must load runtime consistency helper'
 Assert-Contains $firmwareResume 'Test-ArthurRuntimeStateConsistency' 'resume gate must fail closed on cross-store state inconsistency'
+
+$controlPlaneGate = Get-Content -Raw $ControlPlaneGatePath
+Assert-Contains $controlPlaneGate 'HIGHEST_MACHINE_EVIDENCE=PASS' 'formal Control Plane gate must emit machine proof that the highest release objective was enforced'
+Assert-Contains $controlPlaneGate 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY' 'formal Control Plane gate must bind to the canonical v0.1.5 release objective'
+Assert-Contains $controlPlaneGate 'ONLY_ADVANCE_OR_MINIMALLY_UNBLOCK_CURRENT_CANONICAL_GATE' 'formal Control Plane gate must reject nonessential side work'
+Assert-Contains $controlPlaneGate 'NEW_AUTOMATION_WORKFLOW' 'formal Control Plane gate must forbid new automation workflows during the active release execution'
+Assert-Contains $controlPlaneGate 'NEW_EXECUTION' 'formal Control Plane gate must forbid replacing the active v0.1.5 execution'
+
+$operatorIntent = Get-Content -Raw $OperatorIntentPath | ConvertFrom-Json
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.priority_class) 'HIGHEST' 'operator intent must persist the release objective at highest machine priority'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.objective_id) 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY' 'operator intent must persist the canonical release objective id'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.required_terminal) 'PRODUCTION_RELEASED' 'operator intent must require the formal production terminal'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.execution_id) 'arthur-v0.1.5-release-e037750-20260918' 'highest machine evidence must bind to the active execution'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.accepted_source_sha) 'e0377509dcc57c415935e9f779fe27117ce591be' 'highest machine evidence must bind to the accepted v0.1.5 firmware source'
+Assert-True ($operatorIntent.highest_machine_evidence.fail_closed_on_violation -eq $true) 'highest machine evidence violations must fail closed'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'
