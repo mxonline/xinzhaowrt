@@ -263,3 +263,34 @@ post_release_device_test=PENDING_INDEPENDENT
 ```
 
 Confirm `production/known-good.json` remains the previous device-confirmed rollback authority.
+
+### Task 6: Scope legacy terminal reconciliation to the active execution
+
+**Files:**
+- Modify: `scripts/arthur-control-plane-device-routing.ps1`
+- Modify: `scripts/arthur-control-plane.ps1:440-475`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: current `production/status.json`, current `production/resume-state.json`, and the active execution id.
+- Produces: historical `PRODUCTION_RELEASED` status is skipped for a non-terminal new execution; a terminal status matching the active execution remains eligible for the existing evidence reconciler.
+
+- [ ] **Step 1: Write the failing historical-status test**
+
+Use a v0.1.4-style status (`request_id=arthur-openclash-memory-v014`) with the v0.1.5 resume state at `CHANGE_IMPACT`, and assert `Test-ArthurControlPlaneTerminalStatusForActiveExecution` returns false. Also assert a matching v0.1.5 terminal status/resume pair returns true.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pwsh -NoProfile -File tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+Expected: FAIL because the execution-scoping helper does not exist.
+
+- [ ] **Step 3: Implement the execution-scoped guard**
+
+Before invoking `Invoke-ArthurTerminalReleaseReconcile`, call the helper. If the status is `PRODUCTION_RELEASED` but the active resume is not terminal and the status execution/request id differs, log `HISTORICAL_STATUS_DIFFERENT_EXECUTION` and continue to current-gate arbitration. If the active execution is terminal or the status id matches, preserve the existing reconciler and fail closed on missing/mismatched evidence.
+
+- [ ] **Step 4: Run all focused contracts**
+
+Run: `pwsh -NoProfile -File tests/arthur-control-plane-release-only-device-isolation.tests.ps1; pwsh -NoProfile -File tests/arthur-control-plane-gates.tests.ps1; pwsh -NoProfile -File tests/arthur-control-plane-executor.tests.ps1; pwsh -NoProfile -File tests/production-agent-release-only.tests.ps1`
+
+Expected: all tests pass and `git diff --check` is clean.

@@ -66,12 +66,44 @@ $fallback = Resolve-ArthurResumeState `
 Assert-True ([bool]$fallback.instruction_allowed) 'RELEASE_ONLY must resume from the frozen baseline without live device evidence'
 Assert-Equal ([string]$fallback.device.evidence) 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'RELEASE_ONLY must identify baseline fallback explicitly'
 
+$historicalStatus = [pscustomobject]@{
+    status = 'PRODUCTION_RELEASED'
+    request_id = 'arthur-openclash-memory-v014'
+}
+$newExecutionResume = [pscustomobject]@{
+    execution_id = 'arthur-v0.1.5-release-e037750-20260918'
+    current_gate = 'CHANGE_IMPACT'
+    next_action = 'CHANGE_IMPACT'
+}
+Assert-True (-not (Test-ArthurControlPlaneTerminalStatusForActiveExecution `
+        -TerminalStatus $historicalStatus `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918')) `
+    'historical PRODUCTION_RELEASED status must not block a new RELEASE_ONLY execution'
+
+$currentTerminalStatus = [pscustomobject]@{
+    status = 'PRODUCTION_RELEASED'
+    request_id = 'arthur-v0.1.5-release-e037750-20260918'
+}
+$currentTerminalResume = [pscustomobject]@{
+    execution_id = 'arthur-v0.1.5-release-e037750-20260918'
+    current_gate = 'PRODUCTION_RELEASED'
+    next_action = 'NONE'
+}
+Assert-True (Test-ArthurControlPlaneTerminalStatusForActiveExecution `
+        -TerminalStatus $currentTerminalStatus `
+        -ResumeState $currentTerminalResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'current terminal status must remain eligible for reconciliation'
+
 $controlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $controlPlane = Get-Content -Raw -LiteralPath $controlPlanePath
 Assert-Contains $controlPlane 'arthur-control-plane-device-routing.ps1' 'control plane must load device routing helper'
 Assert-Contains $controlPlane 'Invoke-ArthurControlPlaneDeviceObservation' 'control plane must route device observations through the mode gate'
 Assert-Contains $controlPlane 'RELEASE_ONLY_DEVICE_OBSERVATION_NOT_REQUIRED' 'release-only skip must be observable'
 Assert-Contains $controlPlane 'RETRY_DEVICE_UNAVAILABLE' 'FLASH_AND_VERIFY reachability protection must remain'
+Assert-Contains $controlPlane 'Test-ArthurControlPlaneTerminalStatusForActiveExecution' 'terminal reconciliation must be execution-scoped'
+Assert-Contains $controlPlane 'HISTORICAL_STATUS_DIFFERENT_EXECUTION' 'historical terminal status must be explicitly skipped'
 $flashRuntime = Get-Content -Raw -LiteralPath (Join-Path $Root 'scripts\production-agent-flash-legacy.ps1')
 Assert-Contains $flashRuntime 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'FLASH_AND_VERIFY legacy runtime must retain host-key safety evidence'
 Assert-Contains $flashRuntime 'SSH_HOST_IDENTITY_MISMATCH' 'FLASH_AND_VERIFY legacy runtime must retain hard host-key mismatch classification'

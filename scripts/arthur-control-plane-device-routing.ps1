@@ -21,3 +21,28 @@ function Invoke-ArthurControlPlaneDeviceObservation {
         value = (& $Action)
     }
 }
+
+function Test-ArthurControlPlaneTerminalStatusForActiveExecution {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][object]$TerminalStatus,
+        [Parameter(Mandatory=$true)][object]$ResumeState,
+        [Parameter(Mandatory=$true)][string]$ExecutionId
+    )
+
+    if ([string]$TerminalStatus.status -ne 'PRODUCTION_RELEASED') { return $false }
+    if ([string]$ResumeState.execution_id -ne $ExecutionId) { return $false }
+
+    $statusExecutionId = ''
+    if ($TerminalStatus.PSObject.Properties['execution_id']) {
+        $statusExecutionId = [string]$TerminalStatus.execution_id
+    }
+    elseif ($TerminalStatus.PSObject.Properties['request_id']) {
+        $statusExecutionId = [string]$TerminalStatus.request_id
+    }
+    if ($statusExecutionId -eq $ExecutionId) { return $true }
+
+    $currentGate = if ($ResumeState.PSObject.Properties['current_gate']) { [string]$ResumeState.current_gate } else { [string]$ResumeState.checkpoint.current }
+    $nextAction = if ($ResumeState.PSObject.Properties['next_action']) { [string]$ResumeState.next_action } else { [string]$ResumeState.checkpoint.next_action }
+    return ($currentGate -eq 'PRODUCTION_RELEASED' -and $nextAction -eq 'NONE')
+}

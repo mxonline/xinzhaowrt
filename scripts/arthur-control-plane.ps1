@@ -444,22 +444,34 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         catch { Fail "STATE_RECONCILIATION_REQUIRED: TERMINAL_STATUS_INVALID $($_.Exception.Message)" }
         if ([string]$terminalStatus.status -eq 'PRODUCTION_RELEASED') {
             if ([string]::IsNullOrWhiteSpace($activeExecutionId)) { Fail 'STATE_RECONCILIATION_REQUIRED: TERMINAL_EXECUTION_ID_MISSING' }
-            $terminalEvidenceRoot = Join-Path $codeRoot (Join-Path 'production\evidence' $activeExecutionId)
-            $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
-                -StatusPath $terminalStatusPath `
-                -KnownGoodPath (Join-Path $codeRoot 'production\known-good.json') `
-                -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
-                -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
-                -ResumeStatePath $resumeStatePath `
-                -OperatorIntentPath (Join-Path $codeRoot 'production\operator-intent.json') `
-                -RuntimeStatePath $runtimeStatePath `
-                -EventLogPath $eventLedgerPath `
-                -ExecutionId $activeExecutionId
-            if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
-                Log "TERMINAL_RELEASE_RECONCILE_SKIPPED=PASS execution=$activeExecutionId reason=$($terminalResult.reason)"
+            $terminalMatchesActiveExecution = $false
+            if ($previousResumeState) {
+                $terminalMatchesActiveExecution = Test-ArthurControlPlaneTerminalStatusForActiveExecution `
+                    -TerminalStatus $terminalStatus `
+                    -ResumeState $previousResumeState `
+                    -ExecutionId $activeExecutionId
+            }
+            if (-not $terminalMatchesActiveExecution) {
+                Log "TERMINAL_RELEASE_RECONCILE_SKIPPED=PASS execution=$activeExecutionId reason=HISTORICAL_STATUS_DIFFERENT_EXECUTION"
             }
             else {
-                Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$activeExecutionId result=$($terminalResult.reason)"
+                $terminalEvidenceRoot = Join-Path $codeRoot (Join-Path 'production\evidence' $activeExecutionId)
+                $terminalResult = Invoke-ArthurTerminalReleaseReconcile `
+                    -StatusPath $terminalStatusPath `
+                    -KnownGoodPath (Join-Path $codeRoot 'production\known-good.json') `
+                    -ReleaseEvidencePath (Join-Path $terminalEvidenceRoot 'github-release-evidence.json') `
+                    -DeviceEvidencePath (Join-Path $terminalEvidenceRoot 'real-device-evidence.json') `
+                    -ResumeStatePath $resumeStatePath `
+                    -OperatorIntentPath (Join-Path $codeRoot 'production\operator-intent.json') `
+                    -RuntimeStatePath $runtimeStatePath `
+                    -EventLogPath $eventLedgerPath `
+                    -ExecutionId $activeExecutionId
+                if ([string]$terminalResult.reason -eq 'EXECUTION_ID_MISMATCH') {
+                    Log "TERMINAL_RELEASE_RECONCILE_SKIPPED=PASS execution=$activeExecutionId reason=$($terminalResult.reason)"
+                }
+                else {
+                    Log "TERMINAL_RELEASE_RECONCILED=PASS execution=$activeExecutionId result=$($terminalResult.reason)"
+                }
             }
         }
     }
