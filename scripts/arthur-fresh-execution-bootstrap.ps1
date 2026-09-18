@@ -162,8 +162,8 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $previousEvidencePath = Get-ArthurEvidenceIndexPath -Root $rootPath -ExecutionId $previousExecutionId
     $previousEvidenceIndex = Read-ArthurBootstrapJson -Path $previousEvidencePath -MissingCode 'FRESH_BOOTSTRAP_PREVIOUS_EVIDENCE_INDEX_MISSING'
     $previousEvidenceRecords = @($previousEvidenceIndex.evidence)
-    $inheritedEvidence = New-Object System.Collections.Generic.List[object]
-    $inheritedEvidenceIds = New-Object System.Collections.Generic.HashSet[string]
+    $inheritedEvidence = @()
+    $inheritedEvidenceIds = @{}
     $gateMap = [ordered]@{}
     foreach ($gateId in @('WIFI','LUCI_CHINESE','QUICKSTART')) {
         if ($frozen -contains $gateId) {
@@ -184,8 +184,9 @@ function Invoke-ArthurFreshExecutionBootstrap {
             foreach ($record in @($gateEvidence | Sort-Object { [string]$_.evidence_id })) {
                 $evidenceId = [string]$record.evidence_id
                 $evidenceRefs += "evidence:$evidenceId"
-                if ($inheritedEvidenceIds.Add($evidenceId)) {
-                    $inheritedEvidence.Add((Copy-ArthurBootstrapObject $record))
+                if (-not $inheritedEvidenceIds.ContainsKey($evidenceId)) {
+                    $inheritedEvidenceIds[$evidenceId] = $true
+                    $inheritedEvidence += (Copy-ArthurBootstrapObject $record)
                 }
             }
 
