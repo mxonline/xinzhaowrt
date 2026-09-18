@@ -503,13 +503,60 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     $turnBefore = [int]$runtimeBefore.turn_count
     $phaseBefore = [string]$runtimeBefore.phase
-    if ($runtimeBefore.terminal_state -eq 'PRODUCTION_RELEASED' -or $phaseBefore -eq 'PRODUCTION_RELEASED') {
+    if (Test-ArthurControlPlaneRuntimeTerminalForActiveExecution -RuntimeState $runtimeBefore -ResumeState $resumeState -ExecutionId $activeExecutionId) {
         $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
         $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
         $state.checkpoint = [ordered]@{ current = 'PRODUCTION_RELEASED'; next_action = 'PRODUCTION_RELEASED'; status = 'PRODUCTION_RELEASED'; last_run_id = $WorkflowRunId }
         Save-Json $canonicalPath $state
         Log 'PRODUCTION_RELEASED=true'
         exit 0
+    }
+
+    $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
+    $historicalSupervisorTerminal = $false
+    if (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf) {
+        try {
+            $previousSupervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json
+            if (Test-ArthurControlPlaneHistoricalSupervisorStatus `
+                    -SupervisorStatus $previousSupervisorStatus `
+                    -RuntimeState $runtimeBefore `
+                    -ResumeState $resumeState `
+                    -ExecutionId $activeExecutionId) {
+                $targetPhase = [string]$resumeState.checkpoint.current
+                $targetAction = if ($resumeState.next_action) { [string]$resumeState.next_action } else { [string]$resumeState.checkpoint.next_action }
+                $runtimeBefore.phase = $targetPhase
+                if ($runtimeBefore.PSObject.Properties['current_stage']) { $runtimeBefore.current_stage = $targetPhase }
+                else { $runtimeBefore | Add-Member -NotePropertyName current_stage -NotePropertyValue $targetPhase }
+                $runtimeBefore.next_action = $targetAction
+                $runtimeBefore.terminal_state = $null
+                $runtimeBefore.pending_human_gate = $null
+                $runtimeBefore.next_codex_prompt = "Resume Arthur execution $activeExecutionId at $targetPhase under RELEASE_ONLY. Do not flash, sysupgrade, probe or require SSH/device reachability; preserve existing candidate bytes and continue automatically through the release gates."
+                if ($runtimeBefore.PSObject.Properties['observability'] -and $runtimeBefore.observability) {
+                    $runtimeBefore.observability | Add-Member -NotePropertyName control_plane_runtime_migration -NotePropertyValue ([ordered]@{
+                        execution_id = $activeExecutionId
+                        from = $phaseBefore
+                        to = $targetPhase
+                        reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
+                    }) -Force
+                }
+                else {
+                    $runtimeBefore | Add-Member -NotePropertyName observability -NotePropertyValue ([pscustomobject]@{
+                        control_plane_runtime_migration = [ordered]@{
+                            execution_id = $activeExecutionId
+                            from = $phaseBefore
+                            to = $targetPhase
+                            reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
+                        }
+                    }) -Force
+                }
+                Save-Json $runtimeStatePath $runtimeBefore
+                $historicalSupervisorTerminal = $true
+                Log "RUNTIME_STATE_MIGRATION=PASS execution=$activeExecutionId from=$phaseBefore to=$targetPhase reason=HISTORICAL_SUPERVISOR_TERMINAL_REBOUND"
+            }
+        }
+        catch {
+            Fail "STATE_RECONCILIATION_REQUIRED: SUPERVISOR_STATUS_INVALID $($_.Exception.Message)"
+        }
     }
 
     $supervisorPath = Join-Path $codeRoot 'scripts\run-supervisor.py'
@@ -539,7 +586,6 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Fail "RECOVERY_SUPERVISOR_FAILED: exit=$supervisorCode"
     }
 
-    $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
     if (-not (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf)) {
         Fail 'RECOVERY_SUPERVISOR_STATUS_MISSING'
     }
@@ -554,6 +600,13 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     }
     if ($supervisorState -eq 'TERMINAL') {
         $runtimeTerminal = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+        if ($historicalSupervisorTerminal -and $releaseMode -eq 'RELEASE_ONLY' -and -not (Test-ArthurControlPlaneRuntimeTerminalForActiveExecution -RuntimeState $runtimeTerminal -ResumeState $resumeState -ExecutionId $activeExecutionId)) {
+            $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PENDING'
+            $state.checkpoint = [ordered]@{ current = [string]$resumeState.checkpoint.current; next_action = [string]$resumeState.next_action; status = 'RECOVERY_SUPERVISOR_HANDOFF_PENDING'; last_run_id = $WorkflowRunId }
+            Save-Json $canonicalPath $state
+            Log "RECOVERY_SUPERVISOR_ASYNC_HANDOFF=PASS execution=$activeExecutionId status=TERMINAL reason=HISTORICAL_SUPERVISOR_TERMINAL"
+            exit 0
+        }
         if ($runtimeTerminal.terminal_state -eq 'PRODUCTION_RELEASED' -or $runtimeTerminal.phase -eq 'PRODUCTION_RELEASED') {
             $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
             $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'

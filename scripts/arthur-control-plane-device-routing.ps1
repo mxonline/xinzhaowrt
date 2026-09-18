@@ -46,3 +46,40 @@ function Test-ArthurControlPlaneTerminalStatusForActiveExecution {
     $nextAction = if ($ResumeState.PSObject.Properties['next_action']) { [string]$ResumeState.next_action } else { [string]$ResumeState.checkpoint.next_action }
     return ($currentGate -eq 'PRODUCTION_RELEASED' -and $nextAction -eq 'NONE')
 }
+
+function Test-ArthurControlPlaneHistoricalSupervisorStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][object]$SupervisorStatus,
+        [Parameter(Mandatory=$true)][object]$RuntimeState,
+        [Parameter(Mandatory=$true)][object]$ResumeState,
+        [Parameter(Mandatory=$true)][string]$ExecutionId
+    )
+
+    if ([string]$SupervisorStatus.status -ne 'TERMINAL') { return $false }
+    if ([string]$ResumeState.execution_id -ne $ExecutionId) { return $false }
+
+    $currentGate = if ($ResumeState.PSObject.Properties['current_gate']) { [string]$ResumeState.current_gate } else { [string]$ResumeState.checkpoint.current }
+    $nextAction = if ($ResumeState.PSObject.Properties['next_action']) { [string]$ResumeState.next_action } else { [string]$ResumeState.checkpoint.next_action }
+    if ($currentGate -eq 'PRODUCTION_RELEASED' -and $nextAction -eq 'NONE') { return $false }
+    if ([string]$RuntimeState.terminal_state -eq 'SAFETY_BLOCKED') { return $false }
+
+    $runtimePhase = if ($RuntimeState.PSObject.Properties['current_stage']) { [string]$RuntimeState.current_stage } else { [string]$RuntimeState.phase }
+    $runtimeTerminal = [string]$RuntimeState.terminal_state
+    return ($runtimeTerminal -eq 'PRODUCTION_RELEASED' -or $runtimePhase -ne $currentGate)
+}
+
+function Test-ArthurControlPlaneRuntimeTerminalForActiveExecution {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][object]$RuntimeState,
+        [Parameter(Mandatory=$true)][object]$ResumeState,
+        [Parameter(Mandatory=$true)][string]$ExecutionId
+    )
+
+    if ([string]$ResumeState.execution_id -ne $ExecutionId) { return $false }
+    $currentGate = if ($ResumeState.PSObject.Properties['current_gate']) { [string]$ResumeState.current_gate } else { [string]$ResumeState.checkpoint.current }
+    $nextAction = if ($ResumeState.PSObject.Properties['next_action']) { [string]$ResumeState.next_action } else { [string]$ResumeState.checkpoint.next_action }
+    if ($currentGate -ne 'PRODUCTION_RELEASED' -or $nextAction -ne 'NONE') { return $false }
+    return ([string]$RuntimeState.terminal_state -eq 'PRODUCTION_RELEASED' -or [string]$RuntimeState.phase -eq 'PRODUCTION_RELEASED')
+}

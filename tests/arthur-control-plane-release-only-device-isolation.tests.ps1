@@ -96,6 +96,43 @@ Assert-True (Test-ArthurControlPlaneTerminalStatusForActiveExecution `
         -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
     'current terminal status must remain eligible for reconciliation'
 
+$historicalSupervisorStatus = [pscustomobject]@{ status = 'TERMINAL' }
+$historicalRuntimeState = [pscustomobject]@{
+    phase = 'ARTIFACT'
+    current_stage = 'ARTIFACT'
+    terminal_state = $null
+}
+Assert-True (Test-ArthurControlPlaneHistoricalSupervisorStatus `
+        -SupervisorStatus $historicalSupervisorStatus `
+        -RuntimeState $historicalRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'old terminal supervisor state must be recognized as historical for a new execution'
+
+$historicalReleasedRuntimeState = [pscustomobject]@{
+    phase = 'PRODUCTION_RELEASED'
+    current_stage = 'PRODUCTION_RELEASED'
+    terminal_state = 'PRODUCTION_RELEASED'
+}
+Assert-True (Test-ArthurControlPlaneHistoricalSupervisorStatus `
+        -SupervisorStatus $historicalSupervisorStatus `
+        -RuntimeState $historicalReleasedRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'old released runtime state must not terminate a new RELEASE_ONLY execution'
+
+$safetyBlockedRuntimeState = [pscustomobject]@{
+    phase = 'RELEASE_GATE'
+    current_stage = 'RELEASE_GATE'
+    terminal_state = 'SAFETY_BLOCKED'
+}
+Assert-True (-not (Test-ArthurControlPlaneHistoricalSupervisorStatus `
+        -SupervisorStatus $historicalSupervisorStatus `
+        -RuntimeState $safetyBlockedRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918')) `
+    'SAFETY_BLOCKED runtime state must remain fail-closed'
+
 $controlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $controlPlane = Get-Content -Raw -LiteralPath $controlPlanePath
 Assert-Contains $controlPlane 'arthur-control-plane-device-routing.ps1' 'control plane must load device routing helper'
@@ -104,6 +141,8 @@ Assert-Contains $controlPlane 'RELEASE_ONLY_DEVICE_OBSERVATION_NOT_REQUIRED' 're
 Assert-Contains $controlPlane 'RETRY_DEVICE_UNAVAILABLE' 'FLASH_AND_VERIFY reachability protection must remain'
 Assert-Contains $controlPlane 'Test-ArthurControlPlaneTerminalStatusForActiveExecution' 'terminal reconciliation must be execution-scoped'
 Assert-Contains $controlPlane 'HISTORICAL_STATUS_DIFFERENT_EXECUTION' 'historical terminal status must be explicitly skipped'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_ASYNC_HANDOFF=PASS' 'historical supervisor terminal state must not block RELEASE_ONLY handoff'
+Assert-Contains $controlPlane 'RUNTIME_STATE_MIGRATION=PASS' 'historical runtime state must be rebound to the active execution checkpoint'
 $flashRuntime = Get-Content -Raw -LiteralPath (Join-Path $Root 'scripts\production-agent-flash-legacy.ps1')
 Assert-Contains $flashRuntime 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'FLASH_AND_VERIFY legacy runtime must retain host-key safety evidence'
 Assert-Contains $flashRuntime 'SSH_HOST_IDENTITY_MISMATCH' 'FLASH_AND_VERIFY legacy runtime must retain hard host-key mismatch classification'

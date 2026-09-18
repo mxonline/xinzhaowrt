@@ -294,3 +294,32 @@ Before invoking `Invoke-ArthurTerminalReleaseReconcile`, call the helper. If the
 Run: `pwsh -NoProfile -File tests/arthur-control-plane-release-only-device-isolation.tests.ps1; pwsh -NoProfile -File tests/arthur-control-plane-gates.tests.ps1; pwsh -NoProfile -File tests/arthur-control-plane-executor.tests.ps1; pwsh -NoProfile -File tests/production-agent-release-only.tests.ps1`
 
 Expected: all tests pass and `git diff --check` is clean.
+
+### Task 7: Rebind a historical persistent supervisor to the active execution
+
+**Files:**
+- Modify: `scripts/arthur-control-plane-device-routing.ps1`
+- Modify: `scripts/arthur-control-plane.ps1`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: persistent `supervisor-status.json`, runner `runtime-state.json`, and the active `production/resume-state.json` execution checkpoint.
+- Produces: a RELEASE_ONLY runtime handoff at the active checkpoint; historical supervisor terminal state is asynchronous and non-blocking, while `SAFETY_BLOCKED` remains fail-closed.
+
+- [x] **Step 1: Write the failing stale-supervisor tests**
+
+Add historical `TERMINAL` supervisor status with an old `ARTIFACT`/`PRODUCTION_RELEASED` runtime and a new v0.1.5 `CHANGE_IMPACT` resume; assert it is historical. Add a `SAFETY_BLOCKED` case that must remain blocking.
+
+- [x] **Step 2: Run the test to verify it fails**
+
+Run: `pwsh -NoProfile -File tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+Observed failure: `Test-ArthurControlPlaneHistoricalSupervisorStatus` was not defined.
+
+- [x] **Step 3: Implement the execution-scoped runtime handoff**
+
+Rebind a historical runtime snapshot to the authoritative resume checkpoint, preserve existing candidate/evidence fields, and accept the already-running persistent supervisor as an asynchronous handoff only for non-terminal RELEASE_ONLY state. Keep active terminal and safety-blocked handling fail-closed.
+
+- [x] **Step 4: Run all focused contracts**
+
+Run the release-only isolation, control-plane gates, executor, production-agent release-only, supervisor wiring, and PowerShell parser checks. All passed.
