@@ -60,11 +60,15 @@ function New-ArthurBootstrapInheritedGate {
     param(
         [Parameter(Mandatory=$true)][object]$PreviousResume,
         [Parameter(Mandatory=$true)][string]$GateId,
-        [Parameter(Mandatory=$true)][string]$PreviousExecutionId
+        [Parameter(Mandatory=$true)][string]$PreviousExecutionId,
+        [Parameter(Mandatory=$true)][string[]]$EvidenceRefs
     )
     $old = Get-ArthurBootstrapGate -Resume $PreviousResume -GateId $GateId
     if ($null -eq $old -or [string](Get-ArthurStateMember $old 'status') -ne 'PASS') {
         throw "FRESH_BOOTSTRAP_FROZEN_GATE_NOT_PASS=$GateId"
+    }
+    if (@($EvidenceRefs).Count -eq 0) {
+        throw "FRESH_BOOTSTRAP_FROZEN_GATE_EVIDENCE_MISSING=$GateId"
     }
     return (New-ArthurGateRecord `
         -GateId $GateId `
@@ -72,7 +76,7 @@ function New-ArthurBootstrapInheritedGate {
         -RequirementDigest ([string](Get-ArthurStateMember $old 'requirement_digest')) `
         -Status 'PASS' `
         -Subject (Copy-ArthurBootstrapObject (Get-ArthurStateMember $old 'subject')) `
-        -EvidenceRefs @() `
+        -EvidenceRefs $EvidenceRefs `
         -Inherited $true `
         -InheritedFrom $PreviousExecutionId `
         -VerifiedAt ([string](Get-ArthurStateMember $old 'verified_at')))
@@ -101,6 +105,7 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $resumePath = Join-Path $rootPath 'production\resume-state.json'
     $versionPath = Join-Path $rootPath 'VERSION'
     $releasePolicyPath = Join-Path $rootPath 'production\release-policy.md'
+    $runtimeContractPath = Join-Path $rootPath 'runtime-contract.json'
 
     $intent = Read-ArthurBootstrapJson -Path $intentPath -MissingCode 'FRESH_BOOTSTRAP_OPERATOR_INTENT_MISSING'
     $policy = Read-ArthurBootstrapJson -Path $policyPath -MissingCode 'FRESH_BOOTSTRAP_RELEASE_MODE_MISSING'
@@ -154,10 +159,43 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $releasePolicyText = Get-Content -Raw -LiteralPath $releasePolicyPath
 
     $frozen = @($intent.firmware_state.verified_frozen | ForEach-Object { ([string]$_).Trim().ToUpperInvariant() })
+    $previousEvidencePath = Get-ArthurEvidenceIndexPath -Root $rootPath -ExecutionId $previousExecutionId
+    $previousEvidenceIndex = Read-ArthurBootstrapJson -Path $previousEvidencePath -MissingCode 'FRESH_BOOTSTRAP_PREVIOUS_EVIDENCE_INDEX_MISSING'
+    $previousEvidenceRecords = @($previousEvidenceIndex.evidence)
+    $inheritedEvidence = @()
+    $inheritedEvidenceIds = @{}
     $gateMap = [ordered]@{}
     foreach ($gateId in @('WIFI','LUCI_CHINESE','QUICKSTART')) {
         if ($frozen -contains $gateId) {
-            $gateMap[$gateId] = New-ArthurBootstrapInheritedGate -PreviousResume $previous -GateId $gateId -PreviousExecutionId $previousExecutionId
+            $gateEvidence = @($previousEvidenceRecords | Where-Object {
+                $null -ne $_ -and
+                $_.PSObject.Properties['evidence_id'] -and
+                $_.PSObject.Properties['gate_id'] -and
+                $_.PSObject.Properties['result'] -and
+                [string]$_.gate_id -eq $gateId -and
+                [string]$_.result -eq 'PASS' -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.evidence_id)
+            })
+            if ($gateEvidence.Count -eq 0) {
+                throw "FRESH_BOOTSTRAP_INHERITED_GATE_EVIDENCE_MISSING=$gateId"
+            }
+
+            $evidenceRefs = @()
+            foreach ($record in @($gateEvidence | Sort-Object { [string]$_.evidence_id })) {
+                $evidenceId = [string]$record.evidence_id
+                $evidenceRefs += "evidence:$evidenceId"
+                if (-not $inheritedEvidenceIds.ContainsKey($evidenceId)) {
+                    $inheritedEvidenceIds[$evidenceId] = $true
+                    $inheritedEvidence += (Copy-ArthurBootstrapObject $record)
+                }
+            }
+
+            $gate = New-ArthurBootstrapInheritedGate `
+                -PreviousResume $previous `
+                -GateId $gateId `
+                -PreviousExecutionId $previousExecutionId `
+                -EvidenceRefs $evidenceRefs
+            $gateMap[$gateId] = $gate
         }
     }
 
@@ -231,7 +269,7 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $evidenceIndex = [pscustomobject][ordered]@{
         schema_version = 1
         execution_id = $executionId
-        evidence = @()
+        evidence = @($inheritedEvidence)
     }
     $event = [pscustomobject][ordered]@{
         event = 'EXECUTION_STARTED'
@@ -284,6 +322,16 @@ function Invoke-ArthurFreshExecutionBootstrap {
         $tmp = "$resumePath.$PID.tmp"
         [IO.File]::WriteAllText($tmp,($resume | ConvertTo-Json -Depth 40) + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $tmp -Destination $resumePath -Force
+
+        $runtimeContract = Read-ArthurBootstrapJson -Path $runtimeContractPath -MissingCode 'FRESH_BOOTSTRAP_RUNTIME_CONTRACT_MISSING'
+        if ($null -eq $runtimeContract.bundles -or @($runtimeContract.bundles).Count -ne 1) { throw 'FRESH_BOOTSTRAP_RUNTIME_CONTRACT_BUNDLE_INVALID' }
+        $runtimeContract.bundles[0].execution_id = $executionId
+        $runtimeContract.bundles[0].state = 'production/resume-state.json'
+        $runtimeContract.bundles[0].events = 'production/firmware-events.jsonl'
+        $runtimeContract.bundles[0].evidence = "production/evidence/$executionId/index.json"
+        $contractTmp = "$runtimeContractPath.$PID.tmp"
+        [IO.File]::WriteAllText($contractTmp,($runtimeContract | ConvertTo-Json -Depth 20) + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $contractTmp -Destination $runtimeContractPath -Force
 
         $result.action = 'BOOTSTRAPPED'
     }

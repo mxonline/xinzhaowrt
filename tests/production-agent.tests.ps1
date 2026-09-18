@@ -26,6 +26,7 @@ $requiredFiles = @(
     'scripts/production-agent-status.ps1',
     'scripts/arthur-control-plane-gate.ps1',
     'scripts/arthur-operator-intent.ps1',
+    'scripts/arthur-fresh-runtime-supersession.ps1',
     'production/operator-intent.json',
     'production/production-agent.json',
     'production/arthur-flash-profile.json',
@@ -44,6 +45,7 @@ $installPath = Join-Path $Root 'scripts/install-production-agent.ps1'
 $deployPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
 $controlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $operatorIntentPath = Join-Path $Root 'production\operator-intent.json'
+$freshRuntimePath = Join-Path $Root 'scripts\arthur-fresh-runtime-supersession.ps1'
 $configPath = Join-Path $Root 'production\production-agent.json'
 $flashProfilePath = Join-Path $Root 'production\arthur-flash-profile.json'
 
@@ -183,6 +185,9 @@ Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=ACTIVE' 'active Windows repai
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=RECOVERED' 'verified Windows recovery must hand control back to ordinary runner flow'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=BLOCKED' 'repair terminal failures must be surfaced explicitly'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=TRIGGERED' 'broken non-protected runtime must trigger Windows repair asynchronously'
+Assert-Contains $deploy 'arthur-fresh-runtime-supersession.ps1' 'fresh authorized execution must supersede stale local runtime through the dedicated helper'
+Assert-Contains $deploy 'FRESH_EXECUTION_RUNTIME_SUPERSESSION=APPLIED' 'runner wakeup must recognize a successful fresh-execution runtime handoff'
+Assert-Contains $deploy 'FRESH_EXECUTION_SUPERSEDED' 'fresh execution handoff must remain distinct from Windows runtime repair'
 Assert-Contains $deploy 'ARTIFACT_STOPPED_RUNTIME_HANDOFF' 'ARTIFACT must permit only a stopped non-crash-loop runtime to continue to the existing persistent Supervisor handoff'
 Assert-Contains $deploy "`$phase -eq 'ARTIFACT'" 'ARTIFACT runtime handoff must remain phase-scoped'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=PASS reason=artifact_stopped_runtime_handoff' 'ARTIFACT stopped-runtime path must not invoke the Windows repair controller'
@@ -191,9 +196,56 @@ Assert-True ($deploy -notmatch '(?i)Remove-Item[^\r\n]*supervisor-state\.json') 
 $repairIndex = $deploy.IndexOf('repair-status.json',[System.StringComparison]::OrdinalIgnoreCase)
 $resumeIndex = $deploy.IndexOf('Reconcile and resume Arthur Control Plane',[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($repairIndex -ge 0 -and $resumeIndex -ge 0 -and $repairIndex -lt $resumeIndex) 'repair observer/trigger must execute before ordinary Control Plane resume'
+$freshSupersessionIndex = $deploy.IndexOf('arthur-fresh-runtime-supersession.ps1',[System.StringComparison]::OrdinalIgnoreCase)
 $artifactHandoffIndex = $deploy.IndexOf('ARTIFACT_STOPPED_RUNTIME_HANDOFF',[System.StringComparison]::OrdinalIgnoreCase)
 $protectedRuntimeIndex = $deploy.IndexOf('reason=protected_runtime',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($freshSupersessionIndex -ge 0 -and $protectedRuntimeIndex -ge 0 -and $freshSupersessionIndex -lt $protectedRuntimeIndex) 'fresh execution supersession must run before protected-phase fail-closed handling'
 Assert-True ($artifactHandoffIndex -ge 0 -and $protectedRuntimeIndex -ge 0 -and $artifactHandoffIndex -lt $protectedRuntimeIndex) 'ARTIFACT stopped-runtime handoff must precede the protected-phase fail-closed branch'
+
+# Fresh-execution runtime supersession must archive the old local runtime and
+# restart exactly at CHANGE_IMPACT without granting any device-write authority.
+$tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('arthur-fresh-runtime-' + [guid]::NewGuid().ToString('N'))
+$tempState = Join-Path $tempRoot 'state'
+$tempControl = Join-Path $tempRoot 'control'
+$tempProduction = Join-Path $tempControl 'production'
+New-Item -ItemType Directory -Force -Path $tempState,$tempProduction | Out-Null
+try {
+    $execution = 'arthur-v0.1.5-release-e037750-20260918'
+    $acceptedSource = ('e' * 40)
+    [ordered]@{
+        schema_version=2; execution_id=$execution; status='RESUME_SAFE'; instruction_allowed=$true; release='v0.1.5';
+        current_gate='CHANGE_IMPACT'; next_action='CHANGE_IMPACT';
+        source=[ordered]@{ accepted_source_sha=$acceptedSource };
+        production=[ordered]@{ github_run_id=0; artifact_id=0 }
+    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $tempProduction 'resume-state.json') -Encoding utf8NoBOM
+    [ordered]@{
+        intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true;
+        execution_id=$execution; release_mode='RELEASE_ONLY'; target_release='v0.1.5'; device_write_authorized=$false;
+        guardrails=[ordered]@{ release_only=$true; automatic_flash=$false; sysupgrade_forbidden=$true }
+    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $tempProduction 'operator-intent.json') -Encoding utf8NoBOM
+    [ordered]@{ mode='RELEASE_ONLY'; automatic_flash=$false } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $tempProduction 'release-mode.json') -Encoding utf8NoBOM
+    [ordered]@{
+        schema_version='3.0'; request_id='arthur-old'; release_task_id='arthur-old'; repo='mxonline/xinzhaowrt'; branch='main';
+        source_sha=('a'*40); device='jdcloud_re-ss-01'; phase='ARTIFACT'; current_stage='ARTIFACT'; next_action='ARTIFACT';
+        next_codex_prompt='old'; terminal_state=$null; pending_human_gate=$null; candidate=@{}; known_good=@{}; turn_count=4; preflight=@{}; observability=@{}
+    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $tempState 'runtime-state.json') -Encoding utf8NoBOM
+
+    $pwsh = (Get-Process -Id $PID).Path
+    $supersedeOutput = (& $pwsh -NoProfile -File $freshRuntimePath -StateDir $tempState -ControlRoot $tempControl -Repository 'mxonline/xinzhaowrt' 2>&1 | Out-String).Trim()
+    Assert-True ($LASTEXITCODE -eq 0) 'fresh runtime supersession helper must exit successfully for eligible stale ARTIFACT runtime'
+    Assert-Contains $supersedeOutput 'FRESH_EXECUTION_RUNTIME_SUPERSESSION=APPLIED' 'eligible stale ARTIFACT runtime must be superseded'
+    $newRuntime = Get-Content -Raw -LiteralPath (Join-Path $tempState 'runtime-state.json') | ConvertFrom-Json
+    Assert-True ([string]$newRuntime.release_task_id -eq $execution) 'new local runtime must bind fresh execution id'
+    Assert-True ([string]$newRuntime.phase -eq 'CHANGE_IMPACT') 'new local runtime must restart at CHANGE_IMPACT'
+    Assert-True ([string]$newRuntime.next_action -eq 'CHANGE_IMPACT') 'new local runtime must continue at CHANGE_IMPACT'
+    Assert-True ([string]$newRuntime.source_sha -eq $acceptedSource) 'new local runtime must bind authorized firmware source'
+    Assert-Contains ([string]$newRuntime.next_codex_prompt) 'Do not flash' 'fresh runtime prompt must preserve RELEASE_ONLY no-flash boundary'
+    Assert-Contains ([string]$newRuntime.next_codex_prompt) 'do not run sysupgrade' 'fresh runtime prompt must forbid sysupgrade'
+    Assert-True (@(Get-ChildItem -LiteralPath (Join-Path $tempState 'superseded-runtime') -Recurse -Filter 'runtime-state.json' -File).Count -eq 1) 'old runtime state must be archived exactly once'
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
 Write-Host 'AUTO_REMEDIATION_CONTRACT=PASS'
