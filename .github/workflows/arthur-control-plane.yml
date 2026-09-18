@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - '.github/workflows/arthur-control-plane.yml'
+      - 'production/operator-intent.json'
+      - 'production/release-mode.json'
+      - 'scripts/arthur-fresh-execution-bootstrap.ps1'
+      - 'scripts/arthur-control-plane-gate.ps1'
   workflow_dispatch:
     inputs:
       source_ref:
