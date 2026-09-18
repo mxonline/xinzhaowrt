@@ -45,6 +45,17 @@ function New-TestRoot {
     $temp = Join-Path ([IO.Path]::GetTempPath()) ("arthur-bootstrap-$Name-$([guid]::NewGuid().ToString('N'))")
     New-Item -ItemType Directory -Force -Path (Join-Path $temp 'production') | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $temp 'scripts') | Out-Null
+    $previousEvidenceDir = Join-Path $temp 'production\evidence\arthur-final-release-5f41c4e-20260908'
+    New-Item -ItemType Directory -Force -Path $previousEvidenceDir | Out-Null
+    [ordered]@{
+        schema_version = 1
+        execution_id = 'arthur-final-release-5f41c4e-20260908'
+        evidence = @(
+            [ordered]@{ evidence_id='wifi-old'; gate_id='WIFI'; type='INHERITED_REAL_DEVICE_BASELINE'; producer='TEST'; result='PASS' },
+            [ordered]@{ evidence_id='luci-old'; gate_id='LUCI_CHINESE'; type='INHERITED_REAL_DEVICE_BASELINE'; producer='TEST'; result='PASS' },
+            [ordered]@{ evidence_id='quick-old'; gate_id='QUICKSTART'; type='INHERITED_REAL_DEVICE_BASELINE'; producer='TEST'; result='PASS' }
+        )
+    } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $previousEvidenceDir 'index.json') -Encoding utf8NoBOM
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-state-contract.ps1') -Destination (Join-Path $temp 'scripts\arthur-state-contract.ps1')
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-evidence-index.ps1') -Destination (Join-Path $temp 'scripts\arthur-evidence-index.ps1')
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1') -Destination (Join-Path $temp 'scripts\arthur-firmware-event-ledger.ps1')
@@ -145,7 +156,10 @@ try {
     Assert-True ([bool]$result.resume_state.gates.WIFI.inherited) 'frozen WIFI inheritance must be explicit'
     Assert-Equal $result.resume_state.gates.WIFI.inherited_from $oldExecution 'inherited gate must name prior execution'
     Assert-Equal $result.evidence_index.execution_id $newExecution 'fresh evidence index must share execution id'
-    Assert-Equal @($result.evidence_index.evidence).Count 0 'bootstrap itself must not fabricate gate PASS evidence'
+    Assert-Equal @($result.evidence_index.evidence).Count 3 'fresh evidence index must carry only the referenced inherited frozen-gate evidence'
+    Assert-True (@($result.evidence_index.evidence.evidence_id) -contains 'wifi-old') 'fresh evidence index must carry inherited WIFI evidence'
+    Assert-True (@($result.evidence_index.evidence.evidence_id) -contains 'luci-old') 'fresh evidence index must carry inherited LuCI Chinese evidence'
+    Assert-True (@($result.evidence_index.evidence.evidence_id) -contains 'quick-old') 'fresh evidence index must carry inherited QuickStart evidence'
     Assert-Equal $result.event.event 'EXECUTION_STARTED' 'bootstrap must append an execution-aware start event'
     Assert-Equal $result.event.data.execution_id $newExecution 'bootstrap event must bind new execution'
     Assert-Equal ([IO.File]::ReadAllText((Join-Path $temp 'production\known-good.json'))) $knownGoodBefore 'pure bootstrap must not modify known-good'
