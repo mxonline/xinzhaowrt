@@ -404,3 +404,25 @@ Record phase, current_stage, terminal state, execution, resume gate, and drift r
 - [x] **Step 2: Verify no mutation path changed**
 
 Focused RELEASE_ONLY tests and PowerShell parser checks passed; the evidence log does not probe or write the device.
+
+### Task 12: Separate historical safety terminal state from active execution
+
+**Files:**
+- Modify: `scripts/arthur-control-plane-device-routing.ps1`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: runtime execution identity when available, legacy runtime checkpoint, and active resume execution.
+- Produces: legacy `SAFETY_BLOCKED` snapshots may be rebound only when identity is absent and checkpoint drift proves they belong to history; an active execution's `SAFETY_BLOCKED` state remains fail-closed.
+
+- [x] **Step 1: Record the runner evidence**
+
+The observation showed `phase=ARTIFACT`, `current_stage=ARTIFACT`, `terminal=SAFETY_BLOCKED`, but active v0.1.5 resume `CHANGE_IMPACT`; no runtime execution identity was present.
+
+- [x] **Step 2: Add identity-aware regression coverage**
+
+Tests now distinguish current execution safety block from legacy safety block with no active identity.
+
+- [x] **Step 3: Verify**
+
+Release-only isolation, control-plane gates, executor, release-agent, and parser checks passed.

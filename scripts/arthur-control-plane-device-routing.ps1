@@ -73,7 +73,21 @@ function Test-ArthurControlPlaneHistoricalRuntimeState {
     $currentGate = if ($ResumeState.PSObject.Properties['current_gate']) { [string]$ResumeState.current_gate } else { [string]$ResumeState.checkpoint.current }
     $nextAction = if ($ResumeState.PSObject.Properties['next_action']) { [string]$ResumeState.next_action } else { [string]$ResumeState.checkpoint.next_action }
     if ($currentGate -eq 'PRODUCTION_RELEASED' -and $nextAction -eq 'NONE') { return $false }
-    if ([string]$RuntimeState.terminal_state -eq 'SAFETY_BLOCKED') { return $false }
+
+    $runtimeExecutionId = ''
+    if ($RuntimeState.PSObject.Properties['execution_id']) {
+        $runtimeExecutionId = [string]$RuntimeState.execution_id
+    }
+    elseif ($RuntimeState.PSObject.Properties['observability'] -and $RuntimeState.observability) {
+        if ($RuntimeState.observability.PSObject.Properties['active_execution_id']) {
+            $runtimeExecutionId = [string]$RuntimeState.observability.active_execution_id
+        }
+        elseif ($RuntimeState.observability.PSObject.Properties['control_plane_runtime_migration'] -and $RuntimeState.observability.control_plane_runtime_migration.execution_id) {
+            $runtimeExecutionId = [string]$RuntimeState.observability.control_plane_runtime_migration.execution_id
+        }
+    }
+    if ($runtimeExecutionId -and $runtimeExecutionId -eq $ExecutionId -and [string]$RuntimeState.terminal_state -eq 'SAFETY_BLOCKED') { return $false }
+    if ($runtimeExecutionId -and $runtimeExecutionId -ne $ExecutionId) { return $true }
 
     $runtimePhase = [string]$RuntimeState.phase
     $runtimeStage = if ($RuntimeState.PSObject.Properties['current_stage']) { [string]$RuntimeState.current_stage } else { $runtimePhase }

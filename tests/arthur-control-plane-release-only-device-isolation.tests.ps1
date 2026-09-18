@@ -142,6 +142,7 @@ $safetyBlockedRuntimeState = [pscustomobject]@{
     phase = 'RELEASE_GATE'
     current_stage = 'RELEASE_GATE'
     terminal_state = 'SAFETY_BLOCKED'
+    observability = [pscustomobject]@{ active_execution_id = 'arthur-v0.1.5-release-e037750-20260918' }
 }
 Assert-True (-not (Test-ArthurControlPlaneHistoricalSupervisorStatus `
         -SupervisorStatus $historicalSupervisorStatus `
@@ -149,6 +150,17 @@ Assert-True (-not (Test-ArthurControlPlaneHistoricalSupervisorStatus `
         -ResumeState $newExecutionResume `
         -ExecutionId 'arthur-v0.1.5-release-e037750-20260918')) `
     'SAFETY_BLOCKED runtime state must remain fail-closed'
+$historicalSafetyBlockedRuntimeState = [pscustomobject]@{
+    phase = 'ARTIFACT'
+    current_stage = 'ARTIFACT'
+    terminal_state = 'SAFETY_BLOCKED'
+}
+Assert-True (Test-ArthurControlPlaneHistoricalSupervisorStatus `
+        -SupervisorStatus $historicalSupervisorStatus `
+        -RuntimeState $historicalSafetyBlockedRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'legacy safety-blocked runtime without active execution identity may be rebound when its checkpoint is historical'
 
 $controlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $controlPlane = Get-Content -Raw -LiteralPath $controlPlanePath
