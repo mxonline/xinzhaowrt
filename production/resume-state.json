@@ -4,7 +4,7 @@
     "status":  "RESUME_SAFE",
     "instruction_allowed":  true,
     "source":  {
-                   "repository_head":  "52180a4b9cd6bf8ab79e6c3648fb19f3ce05cd4e",
+                   "repository_head":  "51267393c31d31d5bf96bb8058785f3edd12591e",
                    "accepted_source_sha":  "e0377509dcc57c415935e9f779fe27117ce591be"
                },
     "production":  {
@@ -235,7 +235,7 @@
               },
     "current_gate":  "CHANGE_IMPACT",
     "next_action":  "CHANGE_IMPACT",
-    "repository_head":  "52180a4b9cd6bf8ab79e6c3648fb19f3ce05cd4e",
+    "repository_head":  "51267393c31d31d5bf96bb8058785f3edd12591e",
     "real_device":  {
                         "version":  "0.1.3",
                         "build_id":  "33462873812",
@@ -276,6 +276,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "a1b47720fa9a6288c39deaed57749041fada815a35bd2dc2075bc4b8f51422f8",
-    "evidence_timestamp":  "2026-09-18T07:09:35.1926258+00:00"
+    "semantic_sha256":  "fc84288d4f359b41240f53c6ff85f392f5211deadd1715ef2ba5a33fbc420eef",
+    "evidence_timestamp":  "2026-09-18T07:13:12.0678735+00:00"
 }
