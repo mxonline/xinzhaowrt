@@ -48,6 +48,7 @@ function New-TestRoot {
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-state-contract.ps1') -Destination (Join-Path $temp 'scripts\arthur-state-contract.ps1')
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-evidence-index.ps1') -Destination (Join-Path $temp 'scripts\arthur-evidence-index.ps1')
     Copy-Item -LiteralPath (Join-Path $Root 'scripts\arthur-firmware-event-ledger.ps1') -Destination (Join-Path $temp 'scripts\arthur-firmware-event-ledger.ps1')
+    Copy-Item -LiteralPath (Join-Path $Root 'production\release-policy.md') -Destination (Join-Path $temp 'production\release-policy.md')
     Copy-Item -LiteralPath $BootstrapPath -Destination (Join-Path $temp 'scripts\arthur-fresh-execution-bootstrap.ps1')
     return $temp
 }
