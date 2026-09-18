@@ -101,6 +101,7 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $resumePath = Join-Path $rootPath 'production\resume-state.json'
     $versionPath = Join-Path $rootPath 'VERSION'
     $releasePolicyPath = Join-Path $rootPath 'production\release-policy.md'
+    $runtimeContractPath = Join-Path $rootPath 'runtime-contract.json'
 
     $intent = Read-ArthurBootstrapJson -Path $intentPath -MissingCode 'FRESH_BOOTSTRAP_OPERATOR_INTENT_MISSING'
     $policy = Read-ArthurBootstrapJson -Path $policyPath -MissingCode 'FRESH_BOOTSTRAP_RELEASE_MODE_MISSING'
@@ -284,6 +285,16 @@ function Invoke-ArthurFreshExecutionBootstrap {
         $tmp = "$resumePath.$PID.tmp"
         [IO.File]::WriteAllText($tmp,($resume | ConvertTo-Json -Depth 40) + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
         Move-Item -LiteralPath $tmp -Destination $resumePath -Force
+
+        $runtimeContract = Read-ArthurBootstrapJson -Path $runtimeContractPath -MissingCode 'FRESH_BOOTSTRAP_RUNTIME_CONTRACT_MISSING'
+        if ($null -eq $runtimeContract.bundles -or @($runtimeContract.bundles).Count -ne 1) { throw 'FRESH_BOOTSTRAP_RUNTIME_CONTRACT_BUNDLE_INVALID' }
+        $runtimeContract.bundles[0].execution_id = $executionId
+        $runtimeContract.bundles[0].state = 'production/resume-state.json'
+        $runtimeContract.bundles[0].events = 'production/firmware-events.jsonl'
+        $runtimeContract.bundles[0].evidence = "production/evidence/$executionId/index.json"
+        $contractTmp = "$runtimeContractPath.$PID.tmp"
+        [IO.File]::WriteAllText($contractTmp,($runtimeContract | ConvertTo-Json -Depth 20) + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $contractTmp -Destination $runtimeContractPath -Force
 
         $result.action = 'BOOTSTRAPPED'
     }
