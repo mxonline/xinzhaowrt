@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 function Test-ArthurSchannelCredentialFailure {
     param([AllowNull()][string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
-    return ($Text -match '(?i)schannel.*(?:AcquireCredentialsHandle|acquire credentials|SEC_E_NO_CREDENTIALS)|SEC_E_NO_CREDENTIALS')
+    return ($Text -match '(?i)schannel.*(?:AcquireCredentialsHandle|acquire credentials|SEC_E_NO_CREDENTIALS|failed to receive handshake|SSL/TLS connection failed|server closed abruptly|missing close_notify)|SEC_E_NO_CREDENTIALS')
 }
 
 function Get-ArthurRemoteShaFromOutput {

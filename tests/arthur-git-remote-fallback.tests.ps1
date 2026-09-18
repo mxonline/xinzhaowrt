@@ -24,6 +24,8 @@ Assert-True (Test-Path -LiteralPath $Helper -PathType Leaf) 'resilient Git remot
 
 Assert-True (Test-ArthurSchannelCredentialFailure 'schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS') 'exact Windows Schannel credential-handle failure must be recognized'
 Assert-True (Test-ArthurSchannelCredentialFailure 'fatal: unable to access: schannel: failed to acquire credentials: SEC_E_NO_CREDENTIALS') 'Schannel credential wording variant must be recognized'
+Assert-True (Test-ArthurSchannelCredentialFailure 'fatal: unable to access: schannel: failed to receive handshake, SSL/TLS connection failed') 'observed Schannel TLS handshake failure must be recognized as retryable transport'
+Assert-True (Test-ArthurSchannelCredentialFailure 'fatal: unable to access: schannel: server closed abruptly (missing close_notify)') 'observed Schannel close_notify failure must be recognized as retryable transport'
 Assert-True (-not (Test-ArthurSchannelCredentialFailure 'HTTP 401: Bad credentials')) 'real GitHub authentication failure must not be mislabeled as Schannel transport failure'
 Assert-True (-not (Test-ArthurSchannelCredentialFailure 'repository not found')) 'repository authorization/not-found errors must not be auto-bypassed'
 

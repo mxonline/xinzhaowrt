@@ -266,6 +266,42 @@ jobs:
           gh auth setup-git
           if ($LASTEXITCODE -ne 0) { throw 'Unable to configure Git authentication for the runner Control Plane.' }
 
+          function Invoke-GitFetchWithRetry {
+            param(
+              [Parameter(Mandatory = $true)][string]$RepositoryPath,
+              [Parameter(Mandatory = $true)][string]$Label,
+              [int]$MaxAttempts = 4
+            )
+
+            $retryDelays = @(2, 5, 10)
+            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+              Write-Host "GIT_FETCH_ATTEMPT label=$Label attempt=$attempt/$MaxAttempts path=$RepositoryPath backend=schannel"
+              & git -C $RepositoryPath -c http.version=HTTP/1.1 fetch --prune origin main
+              $schannelExit = $LASTEXITCODE
+              if ($schannelExit -eq 0) {
+                Write-Host "GIT_FETCH=PASS label=$Label attempt=$attempt/$MaxAttempts backend=schannel"
+                return
+              }
+
+              Write-Warning "GIT_FETCH_BACKEND_FALLBACK label=$Label attempt=$attempt schannel_exit=$schannelExit backend=openssl"
+              & git -C $RepositoryPath -c http.version=HTTP/1.1 -c http.sslBackend=openssl fetch --prune origin main
+              $openSslExit = $LASTEXITCODE
+              if ($openSslExit -eq 0) {
+                Write-Host "GIT_FETCH=PASS label=$Label attempt=$attempt/$MaxAttempts backend=openssl degraded=true"
+                return
+              }
+
+              if ($attempt -ge $MaxAttempts) {
+                throw "GIT_FETCH_RETRY_EXHAUSTED label=$Label attempts=$MaxAttempts schannel_exit=$schannelExit openssl_exit=$openSslExit path=$RepositoryPath"
+              }
+
+              $delayIndex = [Math]::Min($attempt - 1, $retryDelays.Count - 1)
+              $delaySeconds = $retryDelays[$delayIndex]
+              Write-Warning "GIT_FETCH_RETRY label=$Label attempt=$attempt schannel_exit=$schannelExit openssl_exit=$openSslExit delay_seconds=$delaySeconds"
+              Start-Sleep -Seconds $delaySeconds
+            }
+          }
+
           # Mutable task workspace: preserve Headless Codex changes exactly as they are.
           if (-not (Test-Path (Join-Path $workspace '.git'))) {
             git clone --branch main --single-branch "https://github.com/$env:GITHUB_REPOSITORY.git" $workspace
@@ -275,8 +311,7 @@ jobs:
           else {
             git -C $workspace remote set-url origin "https://github.com/$env:GITHUB_REPOSITORY.git"
             if ($LASTEXITCODE -ne 0) { throw 'Unable to normalize persistent task workspace origin.' }
-            git -C $workspace fetch --prune origin main
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into persistent task workspace.' }
+            Invoke-GitFetchWithRetry -RepositoryPath $workspace -Label 'task-workspace'
 
             $dirty = (& git -C $workspace status --porcelain | Out-String).Trim()
             if ($dirty) {
@@ -339,8 +374,7 @@ jobs:
               Write-Host 'CONTROL_PLANE_CODE_DIRTY_FILES_END'
               throw 'CONTROL_PLANE_CODE_DIRTY: clean control-runtime contains unexpected non-cache changes.'
             }
-            git -C $controlRoot fetch --prune origin main
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch origin/main into clean Control Plane code checkout.' }
+            Invoke-GitFetchWithRetry -RepositoryPath $controlRoot -Label 'control-runtime'
             $controlBranch = (& git -C $controlRoot branch --show-current).Trim()
             if ($controlBranch -ne 'main') {
               git -C $controlRoot switch main
