@@ -8,6 +8,8 @@ name: Arthur Control Plane
       - '.github/workflows/arthur-control-plane.yml'
       - 'production/operator-intent.json'
       - 'production/release-mode.json'
+      - 'scripts/check-changeset-complete.sh'
+      - 'scripts/acceptance-contract-gate.sh'
   workflow_dispatch:
 
 permissions:
