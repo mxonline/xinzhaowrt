@@ -275,21 +275,29 @@ jobs:
 
             $retryDelays = @(2, 5, 10)
             for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-              Write-Host "GIT_FETCH_ATTEMPT label=$Label attempt=$attempt/$MaxAttempts path=$RepositoryPath"
+              Write-Host "GIT_FETCH_ATTEMPT label=$Label attempt=$attempt/$MaxAttempts path=$RepositoryPath backend=schannel"
               & git -C $RepositoryPath -c http.version=HTTP/1.1 fetch --prune origin main
-              $exitCode = $LASTEXITCODE
-              if ($exitCode -eq 0) {
-                Write-Host "GIT_FETCH=PASS label=$Label attempt=$attempt/$MaxAttempts"
+              $schannelExit = $LASTEXITCODE
+              if ($schannelExit -eq 0) {
+                Write-Host "GIT_FETCH=PASS label=$Label attempt=$attempt/$MaxAttempts backend=schannel"
+                return
+              }
+
+              Write-Warning "GIT_FETCH_BACKEND_FALLBACK label=$Label attempt=$attempt schannel_exit=$schannelExit backend=openssl"
+              & git -C $RepositoryPath -c http.version=HTTP/1.1 -c http.sslBackend=openssl fetch --prune origin main
+              $openSslExit = $LASTEXITCODE
+              if ($openSslExit -eq 0) {
+                Write-Host "GIT_FETCH=PASS label=$Label attempt=$attempt/$MaxAttempts backend=openssl degraded=true"
                 return
               }
 
               if ($attempt -ge $MaxAttempts) {
-                throw "GIT_FETCH_RETRY_EXHAUSTED label=$Label attempts=$MaxAttempts exit=$exitCode path=$RepositoryPath"
+                throw "GIT_FETCH_RETRY_EXHAUSTED label=$Label attempts=$MaxAttempts schannel_exit=$schannelExit openssl_exit=$openSslExit path=$RepositoryPath"
               }
 
               $delayIndex = [Math]::Min($attempt - 1, $retryDelays.Count - 1)
               $delaySeconds = $retryDelays[$delayIndex]
-              Write-Warning "GIT_FETCH_RETRY label=$Label attempt=$attempt exit=$exitCode delay_seconds=$delaySeconds"
+              Write-Warning "GIT_FETCH_RETRY label=$Label attempt=$attempt schannel_exit=$schannelExit openssl_exit=$openSslExit delay_seconds=$delaySeconds"
               Start-Sleep -Seconds $delaySeconds
             }
           }
