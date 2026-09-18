@@ -39,7 +39,7 @@
         "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:terminal-release-34268801985"
+        "evidence:baseline-wifi-v1"
       ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
@@ -55,7 +55,7 @@
         "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:terminal-release-34268801985"
+        "evidence:baseline-luci-chinese-v1"
       ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
@@ -71,7 +71,7 @@
         "github_run_id": 34268801985
       },
       "evidence_refs": [
-        "evidence:terminal-release-34268801985"
+        "evidence:baseline-quickstart-v1"
       ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
@@ -237,5 +237,5 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "semantic_sha256": "d1197071ee68b9bd88c14cb06b7fcf4b1aee692bb4e8be51b088ab91cbdd840a"
+  "semantic_sha256": "7a9530c7a83df430648c2a8b47af73e8cd5bab6459990df151597e655258eac6"
 }
