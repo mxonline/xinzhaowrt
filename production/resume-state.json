@@ -250,7 +250,7 @@
     "checkpoint":  {
                        "current":  "CHANGE_IMPACT",
                        "next_action":  "CHANGE_IMPACT",
-                       "turn_count":  13
+                       "turn_count":  14
                    },
     "verified":  {
                      "real_device_baseline":  "MATCHED",
@@ -276,6 +276,6 @@
                                           "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "ff16bbd440d474870440ecc5ba0e4d80ad308d631bd11c57b633c8ae569209b2",
-    "evidence_timestamp":  "2026-09-18T07:17:04.0074132+00:00"
+    "semantic_sha256":  "43591980d6b98aa5f4c84f41b436720a0f1fcfb53db5320a2f757e7957c8b00a",
+    "evidence_timestamp":  "2026-09-18T07:20:18.0974620+00:00"
 }
