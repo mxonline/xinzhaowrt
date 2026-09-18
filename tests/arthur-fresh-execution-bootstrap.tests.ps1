@@ -66,6 +66,7 @@ Assert-NotContains $bootstrap 'C:\Users\chenz' 'fresh bootstrap must never depen
 Assert-NotContains $bootstrap 'force push' 'fresh bootstrap must never force push'
 Assert-NotContains $bootstrap '--force' 'fresh bootstrap must never force push'
 Assert-Contains $bootstrap 'Invoke-ArthurFreshExecutionBootstrap' 'bootstrap helper must expose the fresh execution entrypoint'
+Assert-Contains $bootstrap 'runtime-contract.json' 'fresh bootstrap must project the active execution into the global runtime contract'
 
 $gate = Get-Content -Raw -LiteralPath $GatePath
 $bootstrapCall = $gate.IndexOf('Invoke-ArthurFreshExecutionBootstrap',[StringComparison]::OrdinalIgnoreCase)
