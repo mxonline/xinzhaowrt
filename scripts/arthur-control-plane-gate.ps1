@@ -85,7 +85,7 @@ try {
     if ([string]$bootstrapResult.action -eq 'BOOTSTRAPPED') {
         & git config user.name 'github-actions[bot]'
         & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        & git add -- 'production/resume-state.json' 'production/firmware-events.jsonl'
+        & git add -- 'production/resume-state.json' 'production/firmware-events.jsonl' 'runtime-contract.json'
         & git add -- ("production/evidence/{0}/index.json" -f [string]$bootstrapResult.execution_id)
         & git diff --cached --quiet
         if ($LASTEXITCODE -ne 0) {
