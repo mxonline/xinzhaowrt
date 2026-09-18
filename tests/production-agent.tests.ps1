@@ -141,8 +141,11 @@ Assert-Contains $install 'Register-ScheduledTask' 'legacy installer must remain 
 Assert-Contains $install 'PowerShell/PowerShell' 'legacy installer must be able to bootstrap official portable PowerShell when inspected'
 Assert-Contains $install "gh api repos/mxonline/xinzhaowrt" 'legacy installer credential probe must remain explicit'
 
-# Active unattended topology: GitHub schedule -> dedicated self-hosted runner -> preserved task workspace + clean current-main governance -> scoped operator-intent gate -> Arthur Control Plane -> ai_orchestrator.
-Assert-Contains $deploy "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
+# Legacy Windows topology is retained only as an explicit manual diagnostic/recovery tool.
+# The active v0.1.5 RELEASE_ONLY path is the GitHub-hosted Arthur Control Plane.
+Assert-Contains $deploy 'workflow_dispatch:' 'legacy runner wakeup must remain manually invocable for diagnostics'
+Assert-True ($deploy.IndexOf('cron:',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy runner wakeup must not execute on a schedule during canonical RELEASE_ONLY publication'
+Assert-True ($deploy.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy runner wakeup must not auto-run on main pushes during canonical RELEASE_ONLY publication'
 Assert-Contains $deploy 'xinzhaowrt-controller' 'runner wakeup must use the dedicated self-hosted controller label'
 Assert-Contains $deploy "XinZhaoWrt\ControlPlane" 'runner wakeup must use the canonical Control Plane root'
 Assert-Contains $deploy "Join-Path `$root 'workspace'" 'runner wakeup must preserve a persistent source workspace under the canonical root'

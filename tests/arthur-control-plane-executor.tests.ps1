@@ -33,10 +33,14 @@ $script = Get-Content -Raw $ScriptPath
 $pipeline = Get-Content -Raw $PipelinePath
 $runtime = Get-Content -Raw $RuntimePath
 
-Assert-Contains $workflow 'workflow_dispatch:' 'manual Arthur Control Plane workflow must remain available for explicit recovery'
-Assert-NotContains $workflow 'schedule:' 'manual Arthur Control Plane workflow must not own a second schedule'
-Assert-NotContains $workflow "cron: '*/5 * * * *'" 'manual Arthur Control Plane workflow must not duplicate the runner wakeup cron'
-Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'manual workflow must not pin the old runner feature branch'
+Assert-Contains $workflow 'workflow_dispatch:' 'Arthur Control Plane workflow must remain available for explicit recovery'
+Assert-NotContains $workflow 'schedule:' 'canonical Arthur Control Plane must not own a periodic schedule'
+Assert-Contains $workflow 'runs-on: ubuntu-24.04' 'canonical Arthur Control Plane must execute on GitHub-hosted Ubuntu'
+Assert-NotContains $workflow 'xinzhaowrt-controller' 'canonical Arthur Control Plane must not depend on the failed Windows controller runtime'
+Assert-Contains $workflow 'scripts/check-changeset-complete.sh' 'canonical Arthur Control Plane must execute the existing prebuild Gate bundle'
+Assert-Contains $workflow 'gh workflow run arthur-update-v3.yml' 'canonical Arthur Control Plane must dispatch the existing formal Candidate builder'
+Assert-Contains $workflow 'build-run-' 'canonical Arthur Control Plane must bind the Build run into durable evidence'
+Assert-True (-not $workflow.Contains("default: 'codex/arthur-runner-control-plane-20260904'")) 'canonical workflow must not pin the old runner feature branch'
 
 Assert-Contains $script 'HEADLESS_RUNTIME_STARTED=PASS' 'recoverable control-plane state must hand runtime ownership to the existing headless recovery supervisor'
 Assert-Contains $script 'STATE_SOURCE=AI_ORCHESTRATOR' 'ai_orchestrator StateStore must be the execution checkpoint source'
@@ -77,8 +81,9 @@ Assert-Contains $pipeline 'default_request_id = "arthur-adh-quickstart"' 'Arthur
 Assert-Contains $runtime 'self.pipeline.default_request_id' 'ProductionRuntime resume must inherit the pipeline task identity when request_id is omitted'
 Assert-NotContains $runtime 'request_id or "arthur-production"' 'ProductionRuntime must not silently replace arthur-adh-quickstart with the obsolete generic task id'
 
-Assert-Contains $wakeup "cron: '*/5 * * * *'" 'runner wakeup must execute every five minutes'
-Assert-Contains $wakeup 'xinzhaowrt-controller' 'runner wakeup must execute on the dedicated self-hosted controller runner'
+Assert-Contains $wakeup 'workflow_dispatch:' 'legacy runner wakeup must remain available for explicit manual diagnostics'
+Assert-True ($wakeup.IndexOf('cron:',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy runner wakeup must not execute every five minutes during canonical RELEASE_ONLY publication'
+Assert-Contains $wakeup 'xinzhaowrt-controller' 'manual runner diagnostics must still target the dedicated self-hosted controller runner'
 Assert-Contains $wakeup 'XinZhaoWrt\ControlPlane' 'headless source changes must use the canonical Control Plane root'
 Assert-Contains $wakeup 'Join-Path $root ''workspace''' 'headless source changes must live in a persistent workspace across scheduled jobs'
 Assert-Contains $wakeup 'ARTHUR_CONTROL_PLANE_WORKSPACE' 'wakeup must preserve and expose the persistent task workspace separately'

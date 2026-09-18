@@ -7,6 +7,9 @@ $ResumePath = Join-Path $Root 'scripts\arthur-resume-state.ps1'
 $ControlPlanePath = Join-Path $Root 'scripts\arthur-control-plane.ps1'
 $ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $OperatorIntentPath = Join-Path $Root 'production\operator-intent.json'
+$ControlPlaneWorkflowPath = Join-Path $Root '.github\workflows\arthur-control-plane.yml'
+$WakeupWorkflowPath = Join-Path $Root '.github\workflows\production-agent-deploy.yml'
+$CredentialWorkflowPath = Join-Path $Root '.github\workflows\arthur-recoverable-credential-gate.yml'
 $FirmwareResumePath = Join-Path $Root 'scripts\arthur-firmware-resume.ps1'
 $ConsistencyPath = Join-Path $Root 'scripts\arthur-state-consistency.ps1'
 
@@ -153,5 +156,27 @@ Assert-Equal ([string]$operatorIntent.highest_machine_evidence.required_terminal
 Assert-Equal ([string]$operatorIntent.highest_machine_evidence.execution_id) 'arthur-v0.1.5-release-e037750-20260918' 'highest machine evidence must bind to the active execution'
 Assert-Equal ([string]$operatorIntent.highest_machine_evidence.accepted_source_sha) 'e0377509dcc57c415935e9f779fe27117ce591be' 'highest machine evidence must bind to the accepted v0.1.5 firmware source'
 Assert-True ($operatorIntent.highest_machine_evidence.fail_closed_on_violation -eq $true) 'highest machine evidence violations must fail closed'
+
+$controlPlaneWorkflow = Get-Content -Raw $ControlPlaneWorkflowPath
+Assert-Contains $controlPlaneWorkflow 'runs-on: ubuntu-24.04' 'canonical Control Plane must run on GitHub-hosted Ubuntu, not the failed Windows runtime'
+Assert-Contains $controlPlaneWorkflow 'ARTHUR_SOURCE_REF: release/v0.1.5-e037750' 'canonical Control Plane must bind to the immutable accepted v0.1.5 source ref'
+Assert-Contains $controlPlaneWorkflow 'scripts/check-changeset-complete.sh' 'canonical Control Plane must execute the existing source/change-impact gates'
+Assert-Contains $controlPlaneWorkflow 'CHANGE_IMPACT_GATE=PASS' 'canonical Control Plane must require change-impact evidence'
+Assert-Contains $controlPlaneWorkflow 'BASELINE_INHERITANCE_GATE=PASS' 'canonical Control Plane must require baseline-inheritance evidence'
+Assert-Contains $controlPlaneWorkflow 'EXPECTED_DIFF_GATE=PASS' 'canonical Control Plane must require expected-diff evidence'
+Assert-Contains $controlPlaneWorkflow 'gh workflow run arthur-update-v3.yml' 'canonical Control Plane must dispatch the existing formal Candidate builder'
+Assert-Contains $controlPlaneWorkflow 'build-run-' 'canonical Control Plane must bind the formal Build run into durable evidence'
+Assert-Contains $controlPlaneWorkflow 'production/evidence' 'canonical Control Plane must preserve durable evidence indexing'
+Assert-Contains $controlPlaneWorkflow 'GATE_STARTED' 'canonical Control Plane must preserve hash-chained firmware event evidence'
+Assert-True ($controlPlaneWorkflow.IndexOf('self-hosted',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'canonical Control Plane must not depend on the Windows self-hosted runtime'
+
+$wakeupWorkflow = Get-Content -Raw $WakeupWorkflowPath
+Assert-Contains $wakeupWorkflow 'workflow_dispatch:' 'legacy Windows wakeup must remain available only for explicit manual diagnostics'
+Assert-True ($wakeupWorkflow.IndexOf('cron:',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy Windows wakeup must not run on a schedule during canonical release'
+Assert-True ($wakeupWorkflow.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy Windows wakeup must not auto-run on main pushes during canonical release'
+
+$credentialWorkflow = Get-Content -Raw $CredentialWorkflowPath
+Assert-Contains $credentialWorkflow 'workflow_dispatch:' 'legacy credential recovery must remain available only for explicit manual recovery'
+Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy credential recovery must not auto-run on main pushes during canonical release'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'

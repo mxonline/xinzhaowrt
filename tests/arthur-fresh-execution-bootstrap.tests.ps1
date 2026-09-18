@@ -75,7 +75,8 @@ Assert-True ($bootstrapCall -ge 0 -and $resumeCall -gt $bootstrapCall) 'fresh bo
 $workflow = Get-Content -Raw -LiteralPath $WorkflowPath
 Assert-Contains $workflow "production/operator-intent.json" 'fresh operator authorization must wake Arthur Control Plane'
 Assert-Contains $workflow 'contents: write' 'Arthur Control Plane must retain GitHub-native state publication permission'
-Assert-Contains $workflow 'xinzhaowrt-controller' 'Arthur Control Plane must remain on the controller runner'
+Assert-Contains $workflow 'runs-on: ubuntu-24.04' 'Arthur Control Plane must use the GitHub-hosted canonical release executor'
+Assert-NotContains $workflow 'xinzhaowrt-controller' 'Arthur Control Plane must not depend on the failed Windows controller runtime'
 
 # Behavioral contract uses the helper in pure (-Apply:$false) mode.
 . $BootstrapPath
