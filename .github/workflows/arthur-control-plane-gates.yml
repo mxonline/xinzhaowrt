@@ -8,9 +8,13 @@ name: Arthur Control Plane Gates
       - 'scripts/arthur-state-contract.ps1'
       - 'scripts/arthur-resume-state.ps1'
       - 'scripts/arthur-control-plane.ps1'
+      - 'scripts/arthur-control-plane-gate.ps1'
+      - 'scripts/arthur-fresh-execution-bootstrap.ps1'
       - 'scripts/arthur-firmware-resume.ps1'
       - 'scripts/arthur-evidence-index.ps1'
       - 'tests/arthur-control-plane-gates.tests.ps1'
+      - 'tests/arthur-execution-id-version-slug.tests.ps1'
+      - 'tests/arthur-fresh-execution-bootstrap.tests.ps1'
       - '.github/workflows/arthur-control-plane-gates.yml'
 
 permissions:
@@ -27,4 +31,7 @@ jobs:
 
       - name: Run control-plane gate arbitration contract
         shell: pwsh
-        run: ./tests/arthur-control-plane-gates.tests.ps1
+        run: |
+          ./tests/arthur-control-plane-gates.tests.ps1
+          ./tests/arthur-execution-id-version-slug.tests.ps1
+          ./tests/arthur-fresh-execution-bootstrap.tests.ps1

@@ -14,6 +14,7 @@ $requestPath = Join-Path $root 'production\v3-request.json'
 $resumeGatePath = Join-Path $root 'scripts\arthur-firmware-resume.ps1'
 $failureRecoveryPath = Join-Path $root 'scripts\arthur-candidate-failure-recovery.ps1'
 $controlPlanePath = Join-Path $root 'scripts\arthur-control-plane.ps1'
+$bootstrapPath = Join-Path $root 'scripts\arthur-fresh-execution-bootstrap.ps1'
 
 if (-not (Test-Path -LiteralPath $intentHelperPath -PathType Leaf)) {
     Write-Error 'OPERATOR_INTENT_HELPER_MISSING'
@@ -31,8 +32,13 @@ if (-not (Test-Path -LiteralPath $controlPlanePath -PathType Leaf)) {
     Write-Error 'CONTROL_PLANE_MISSING'
     exit 1
 }
+if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
+    Write-Error 'FRESH_EXECUTION_BOOTSTRAP_MISSING'
+    exit 1
+}
 
 . $intentHelperPath
+. $bootstrapPath
 $operatorIntent = Read-ArthurOperatorIntent -Path $intentPath
 $decision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $operatorIntent
 
@@ -49,6 +55,55 @@ if (-not $decision.allowed) {
 }
 
 Write-Host 'FIRMWARE_EXECUTION_AUTHORIZED=PASS'
+
+# Bootstrap a newly authorized RELEASE_ONLY execution before the legacy Resume Gate
+# sees the previous terminal execution. GitHub owns the durable state transition.
+Push-Location $root
+try {
+    $repositoryHead = (& git rev-parse HEAD | Out-String).Trim().ToLowerInvariant()
+    if ($LASTEXITCODE -ne 0 -or $repositoryHead -notmatch '^[0-9a-f]{40}$') {
+        throw 'FRESH_BOOTSTRAP_LOCAL_HEAD_INVALID'
+    }
+
+    $remoteLine = (& git ls-remote origin refs/heads/main | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($remoteLine)) {
+        throw 'FRESH_BOOTSTRAP_REMOTE_HEAD_UNAVAILABLE'
+    }
+    $remoteMainHead = (($remoteLine -split '\s+')[0]).Trim().ToLowerInvariant()
+    if ($remoteMainHead -notmatch '^[0-9a-f]{40}$') {
+        throw 'FRESH_BOOTSTRAP_REMOTE_HEAD_INVALID'
+    }
+
+    $sourceSha = if ($operatorIntent.firmware_state) { ([string]$operatorIntent.firmware_state.active_source_sha).Trim().ToLowerInvariant() } else { '' }
+    if ($sourceSha -notmatch '^[0-9a-f]{40}$') { throw 'FRESH_BOOTSTRAP_SOURCE_SHA_INVALID' }
+    & git merge-base --is-ancestor $sourceSha $repositoryHead
+    $sourceAncestorConfirmed = ($LASTEXITCODE -eq 0)
+
+    $bootstrapResult = Invoke-ArthurFreshExecutionBootstrap -Root $root -RepositoryHead $repositoryHead -RemoteMainHead $remoteMainHead -SourceAncestorConfirmed $sourceAncestorConfirmed -Apply
+    Write-Host "FRESH_EXECUTION_BOOTSTRAP=$($bootstrapResult.action) execution=$($bootstrapResult.execution_id)"
+
+    if ([string]$bootstrapResult.action -eq 'BOOTSTRAPPED') {
+        & git config user.name 'github-actions[bot]'
+        & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        & git add -- 'production/resume-state.json' 'production/firmware-events.jsonl'
+        & git add -- ("production/evidence/{0}/index.json" -f [string]$bootstrapResult.execution_id)
+        & git diff --cached --quiet
+        if ($LASTEXITCODE -ne 0) {
+            & git commit -m ("chore(state): bootstrap {0} [skip ci]" -f [string]$bootstrapResult.execution_id)
+            if ($LASTEXITCODE -ne 0) { throw 'FRESH_BOOTSTRAP_COMMIT_FAILED' }
+            & git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { throw 'FRESH_BOOTSTRAP_PUSH_FAILED' }
+            Write-Host "FRESH_EXECUTION_BOOTSTRAP_PUBLISHED=PASS execution=$($bootstrapResult.execution_id)"
+        }
+    }
+}
+catch {
+    Write-Error "FRESH_EXECUTION_BOOTSTRAP_FAILED: $($_.Exception.Message)"
+    exit 1
+}
+finally {
+    Pop-Location
+}
 $isFinalRelease = $false
 $finalRequest = $null
 if (Test-Path -LiteralPath $requestPath -PathType Leaf) {

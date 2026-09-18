@@ -14,7 +14,7 @@ function Get-ArthurEvidenceIndexPath {
     )
 
     $execution = $ExecutionId.Trim().ToLowerInvariant()
-    if ($execution -notmatch '^arthur-[a-z0-9-]+-[0-9a-f]{7}-\d{8}$') {
+    if ($execution -notmatch '^arthur-[a-z0-9.-]+-[0-9a-f]{7}-\d{8}$') {
         throw "ARTHUR_EVIDENCE_EXECUTION_ID_INVALID=$ExecutionId"
     }
     return (Join-Path $Root (Join-Path 'production' (Join-Path 'evidence' (Join-Path $execution 'index.json'))))
@@ -132,7 +132,7 @@ function Add-ArthurEvidenceRecord {
 
     $normalized = ConvertTo-ArthurEvidenceRecord -Record $Record
     $executionId = [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($Path)).ToLowerInvariant()
-    if ($executionId -notmatch '^arthur-[a-z0-9-]+-[0-9a-f]{7}-\d{8}$') {
+    if ($executionId -notmatch '^arthur-[a-z0-9.-]+-[0-9a-f]{7}-\d{8}$') {
         throw "ARTHUR_EVIDENCE_PATH_EXECUTION_ID_INVALID=$Path"
     }
 

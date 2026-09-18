@@ -37,36 +37,46 @@ $current = Read-ArthurOperatorIntent -Path $IntentPath
 $resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
 
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
-Assert-Equal $current.schema_version '1.1' 'active execution intent must use the durable execution-aware schema'
-Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'terminal intent must preserve the completed firmware execution identity'
-Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'terminal intent must preserve its original scope for auditability'
-Assert-Equal $current.firmware_execution_authorized $false 'completed firmware release must close mutation authorization'
-Assert-Equal $current.execution_id 'arthur-final-release-5f41c4e-20260908' 'operator intent must bind to the active durable execution'
-Assert-Equal $current.firmware_state.current_stage 'PRODUCTION_RELEASED' 'operator intent must project the terminal stage'
-Assert-Equal $current.firmware_state.next_stage 'NONE' 'operator intent must close all future actions'
-Assert-Equal ([long]$current.firmware_state.active_run_id) 34559894373 'operator intent must use the canonical v0.1.4 production run identity'
-Assert-Equal $current.firmware_state.active_source_sha 'bc939aee034b3a8326566bb7a07eac2e985e169f' 'operator intent must use the canonical v0.1.4 source identity'
-Assert-Equal ([long]$current.firmware_state.active_artifact_id) 10186571543 'operator intent must use the canonical v0.1.4 artifact identity'
-Assert-Equal $current.guardrails.do_not_interrupt_active_run $true 'wakeups must preserve accepted execution ownership'
-Assert-Equal $current.guardrails.do_not_dispatch_duplicate_build $true 'wakeups must never dispatch a duplicate build'
-Assert-Equal $current.guardrails.reuse_uploaded_candidate_artifact_after_build $true 'post-build recovery must reuse the accepted artifact'
-foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
-    Assert-True (@($current.firmware_state.verified_frozen) -contains $frozen) "$frozen must remain accepted/frozen"
+Assert-Equal $current.schema_version '1.1' 'operator intent must use the durable execution-aware schema'
+Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'operator intent must preserve firmware execution identity'
+Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'operator intent must preserve firmware release scope'
+Assert-Equal ([int]$resume.schema_version) 2 'canonical production resume state must be schema v2'
+
+$currentDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $current
+if ($current.firmware_execution_authorized -eq $true) {
+    Assert-Equal $current.release_mode 'RELEASE_ONLY' 'fresh firmware authorization must remain RELEASE_ONLY'
+    Assert-Equal $current.device_write_authorized $false 'fresh firmware authorization must not authorize router writes'
+    Assert-Equal $current.guardrails.automatic_flash $false 'fresh firmware authorization must keep automatic flash disabled'
+    Assert-Equal $current.guardrails.sysupgrade_forbidden $true 'fresh firmware authorization must forbid sysupgrade'
+    Assert-True ([string]$current.execution_id -ne [string]$resume.execution_id -or [string]$resume.status -eq 'RESUME_SAFE') 'fresh authorization may precede bootstrap, but same-execution resume must be safe'
+    if ([string]$current.execution_id -eq [string]$resume.execution_id) {
+        Assert-Equal $resume.status 'RESUME_SAFE' 'bootstrapped fresh execution must be resume-safe'
+        Assert-Equal $resume.instruction_allowed $true 'bootstrapped fresh execution must allow continuation'
+        Assert-Equal $resume.current_gate 'CHANGE_IMPACT' 'fresh execution must begin at change impact'
+        Assert-Equal $resume.next_action 'CHANGE_IMPACT' 'fresh execution must schedule change impact first'
+    }
+    else {
+        Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'before bootstrap, only the previous terminal execution may remain durable'
+        Assert-Equal $resume.instruction_allowed $false 'previous terminal execution must remain closed before bootstrap'
+    }
+    Assert-Equal $currentDecision.allowed $true 'explicit fresh firmware-release authorization must allow bootstrap/continuation'
+}
+else {
+    Assert-Equal $current.firmware_state.current_stage 'PRODUCTION_RELEASED' 'closed firmware intent must project the terminal stage'
+    Assert-Equal $current.firmware_state.next_stage 'NONE' 'closed firmware intent must close future actions'
+    Assert-Equal $resume.execution_id $current.execution_id 'closed intent and resume state must share execution identity'
+    Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'closed resume state must be terminal'
+    Assert-Equal $resume.instruction_allowed $false 'terminal resume must forbid further firmware instructions'
+    Assert-Equal $resume.current_gate 'PRODUCTION_RELEASED' 'canonical current gate must be terminal'
+    Assert-Equal $resume.next_action 'NONE' 'terminal resume must not reopen a release'
+    Assert-True (@($resume.pending).Count -eq 0) 'terminal resume must have no pending work'
+    Assert-Equal $currentDecision.allowed $false 'completed production release must not authorize another firmware mutation'
+    Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'terminal closure must be fail-closed'
 }
 
-Assert-Equal ([int]$resume.schema_version) 2 'canonical production resume state must be schema v2'
-Assert-Equal $resume.execution_id 'arthur-final-release-5f41c4e-20260908' 'resume state must share the operator execution identity'
-Assert-Equal ([long]$resume.production.github_run_id) 34559894373 'resume state must use the canonical v0.1.4 production run'
-Assert-Equal ([long]$resume.production.artifact_id) 10186571543 'resume state must use the canonical v0.1.4 artifact'
-Assert-Equal $resume.source.accepted_source_sha 'bc939aee034b3a8326566bb7a07eac2e985e169f' 'resume state must use the canonical v0.1.4 source'
-Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'resume state must be terminal'
-Assert-Equal $resume.instruction_allowed $false 'terminal resume must forbid further firmware instructions'
-Assert-Equal $resume.current_gate 'PRODUCTION_RELEASED' 'canonical current gate must be terminal'
-Assert-Equal $resume.next_action 'NONE' 'terminal resume must not reopen PRE_FLASH'
-Assert-True (@($resume.pending).Count -eq 0) 'terminal resume must have no pending work'
-foreach ($frozen in @('WIFI','LUCI_CHINESE','ADGUARD_FULL_MANAGER','QUICKSTART')) {
-    Assert-Equal $resume.gates.$frozen.status 'PASS' "$frozen must remain a terminal PASS gate"
-}
+Assert-Equal $current.guardrails.do_not_interrupt_active_run $true 'wakeups must preserve accepted execution ownership'
+Assert-Equal $current.guardrails.do_not_dispatch_duplicate_build $true 'wakeups must never dispatch a duplicate build'
+Assert-Equal $current.guardrails.reuse_uploaded_candidate_artifact_after_build $true 'post-build recovery must reuse accepted artifacts'
 Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256'
 Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic hash must be lowercase SHA-256'
 $resumeForHash = ($resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
@@ -74,10 +84,6 @@ $resumeForHash.PSObject.Properties.Remove('semantic_sha256')
 $resumeForHash.PSObject.Properties.Remove('evidence_timestamp')
 $expectedResumeHash = Get-ArthurResumeSemanticHash $resumeForHash
 Assert-Equal ([string]$resume.semantic_sha256) $expectedResumeHash 'durable resume semantic hash must match its semantic content'
-
-$currentDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $current
-Assert-Equal $currentDecision.allowed $false 'completed production release must not authorize another firmware mutation'
-Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'terminal closure must be fail-closed'
 
 $runningBuildIntent = [pscustomobject]@{
     intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true
