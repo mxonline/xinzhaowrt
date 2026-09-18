@@ -3,24 +3,14 @@
     "execution_id":  "arthur-v0.1.5-release-e037750-20260918",
     "status":  "RESUME_SAFE",
     "instruction_allowed":  true,
-    "release":  "v0.1.5",
     "source":  {
-                   "repository_head":  "d4c1040c6f1522aa92dcbac88cd0a8de33dc2e89",
-                   "accepted_source_sha":  "e0377509dcc57c415935e9f779fe27117ce591be",
-                   "accepted_release":  "v0.1.5",
-                   "accepted_firmware":  "",
-                   "accepted_firmware_sha256":  "",
-                   "accepted_factory_sha256":  ""
+                   "repository_head":  "bb0da2380b8d1d08f50866a5774f7e674317f3e8",
+                   "accepted_source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
                },
     "production":  {
-                       "github_run_id":  0,
-                       "artifact_id":  0,
-                       "release_id":  0,
-                       "release":  "v0.1.5",
-                       "release_url":  "",
-                       "firmware":  "",
-                       "candidate_sha256":  "",
-                       "factory_sha256":  ""
+                       "github_run_id":  33462873812,
+                       "artifact_id":  9784138318,
+                       "candidate_sha256":  "bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a"
                    },
     "device":  {
                    "version":  "0.1.3",
@@ -245,43 +235,47 @@
               },
     "current_gate":  "CHANGE_IMPACT",
     "next_action":  "CHANGE_IMPACT",
-    "repository_head":  "d4c1040c6f1522aa92dcbac88cd0a8de33dc2e89",
+    "repository_head":  "bb0da2380b8d1d08f50866a5774f7e674317f3e8",
     "real_device":  {
                         "version":  "0.1.3",
                         "build_id":  "33462873812",
                         "git_commit":  "e27bafa",
                         "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
                     },
+    "accepted_baseline":  {
+                              "version":  "0.1.3",
+                              "build_id":  "33462873812",
+                              "source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
+                          },
     "checkpoint":  {
                        "current":  "CHANGE_IMPACT",
                        "next_action":  "CHANGE_IMPACT",
-                       "turn_count":  0
+                       "turn_count":  13
                    },
     "verified":  {
-                     "real_device_baseline":  "ROLLBACK_AUTHORITY_PRESERVED",
+                     "real_device_baseline":  "MATCHED",
                      "wifi":  "VERIFIED_FROZEN",
                      "luci_chinese":  "VERIFIED_FROZEN",
                      "adguard_full_manager":  "REVERIFY_REQUIRED",
-                     "quickstart":  "VERIFIED_FROZEN"
+                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED"
                  },
-    "pending":  [
-                    "CHANGE_IMPACT"
-                ],
+    "pending":  "CHANGE_IMPACT",
     "conflicts":  [
 
                   ],
-    "post_release_device_test":  "PENDING_INDEPENDENT",
     "source_precedence":  [
-                              "GITHUB_AUTHORIZED_EXECUTION",
+                              "LIVE_DEVICE",
+                              "REAL_DEVICE_BASELINE",
+                              "AI_ORCHESTRATOR_RUNTIME",
                               "GITHUB_HEAD",
-                              "KNOWN_GOOD_ROLLBACK_AUTHORITY",
                               "HISTORICAL_DOCS_AUXILIARY_ONLY"
                           ],
     "legacy_source_policy":  "AUXILIARY_ONLY",
     "ignored_current_state_sources":  [
-                                          "local user worktree",
-                                          "host push bridge",
+                                          "knowledge/PROJECT-STATE.md historical sections",
+                                          "production/v4-state.json historical controller snapshot",
                                           "chat/model narrative"
                                       ],
-    "semantic_sha256":  "c8ec5b3fb6227639971992811eb91f6e68bf19a84ced6591d4c7fbf26a32415d"
+    "semantic_sha256":  "0196b7090c2b24f27120f60ba10d0c9de9d8eb093062bc3c293ef55a085ad1cc",
+    "evidence_timestamp":  "2026-09-18T06:44:06.6971038+00:00"
 }
