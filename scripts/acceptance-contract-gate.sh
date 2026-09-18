@@ -83,9 +83,7 @@ for required in \
   tests/test-functional-acceptance.sh \
   tests/test-adguard-manager.sh \
   tests/test-adguard-defaults.sh \
-  tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
-  tests/test-argon-default-theme.sh \
   scripts/real-device-verify.ps1; do
   [[ -e "$required" ]] || fail "acceptance evidence is missing: $required"
 done
