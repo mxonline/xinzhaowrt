@@ -66,13 +66,17 @@ function New-ArthurBootstrapInheritedGate {
     if ($null -eq $old -or [string](Get-ArthurStateMember $old 'status') -ne 'PASS') {
         throw "FRESH_BOOTSTRAP_FROZEN_GATE_NOT_PASS=$GateId"
     }
+    $oldEvidenceRefs = @((Get-ArthurStateMember $old 'evidence_refs'))
+    if ($oldEvidenceRefs.Count -eq 0) {
+        throw "FRESH_BOOTSTRAP_FROZEN_GATE_EVIDENCE_MISSING=$GateId"
+    }
     return (New-ArthurGateRecord `
         -GateId $GateId `
         -RequirementRef ([string](Get-ArthurStateMember $old 'requirement_ref')) `
         -RequirementDigest ([string](Get-ArthurStateMember $old 'requirement_digest')) `
         -Status 'PASS' `
         -Subject (Copy-ArthurBootstrapObject (Get-ArthurStateMember $old 'subject')) `
-        -EvidenceRefs @() `
+        -EvidenceRefs $oldEvidenceRefs `
         -Inherited $true `
         -InheritedFrom $PreviousExecutionId `
         -VerifiedAt ([string](Get-ArthurStateMember $old 'verified_at')))
