@@ -27,6 +27,14 @@ try {
         Fail "CONTROL_PLANE_ROOT_FORBIDDEN: $root"
     }
     $codeRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $deviceRoutingPath = Join-Path $codeRoot 'scripts\arthur-control-plane-device-routing.ps1'
+    if (-not (Test-Path -LiteralPath $deviceRoutingPath -PathType Leaf)) { Fail 'CONTROL_PLANE_DEVICE_ROUTING_HELPER_MISSING' }
+    . $deviceRoutingPath
+    $releaseModeHelperPath = Join-Path $codeRoot 'scripts\production-agent-release-mode.ps1'
+    if (-not (Test-Path -LiteralPath $releaseModeHelperPath -PathType Leaf)) { Fail 'CONTROL_PLANE_RELEASE_MODE_HELPER_MISSING' }
+    . $releaseModeHelperPath
+    $releaseModePath = Join-Path $codeRoot 'production\release-mode.json'
+    if (-not (Test-Path -LiteralPath $releaseModePath -PathType Leaf)) { Fail 'CONTROL_PLANE_RELEASE_MODE_MISSING' }
 
     $stateDir = Join-Path $root 'state'
     $logDir = Join-Path $root 'logs'
@@ -48,6 +56,11 @@ try {
         Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
         Write-Host $line
     }
+
+    try { $releasePolicy = Get-ArthurProductionReleaseModePolicy -Path $releaseModePath }
+    catch { Fail "CONTROL_PLANE_RELEASE_MODE_INVALID: $($_.Exception.Message)" }
+    $releaseMode = [string]$releasePolicy.mode
+    Log "CONTROL_PLANE_RELEASE_MODE=PASS mode=$releaseMode automatic_flash=$([bool]$releasePolicy.automatic_flash)"
 
     function Save-Json([string]$Path, [object]$Value) {
         $tmp = "$Path.$PID.tmp"
@@ -242,9 +255,18 @@ try {
     Log ("GITHUB_PROVENANCE candidate={0} production={1} run={2}" -f $(if ($candidate) { $candidate.tagName } else { 'MISSING' }), $(if ($production) { $production.tagName } else { 'MISSING' }), $(if ($run) { $run.databaseId } else { 'MISSING' }))
 
     $knownHosts = Join-Path $sshDir 'known_hosts'
-    $deviceProbe = Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
+    $deviceProbeCall = Invoke-ArthurControlPlaneDeviceObservation -ReleaseMode $releaseMode -Action {
+        Invoke-ReadOnlySsh 'ubus call system board; echo __BUILD_INFO_SCAN__; find /etc /usr /mnt -type f -name build-info.json -print 2>/dev/null' $knownHosts
+    }
+    $deviceProbe = $deviceProbeCall.value
     $device = [ordered]@{ classification = 'INVALID'; reachable = $false; identity = $null; error = $null; live_build_info = $null; build_info_sources = [ordered]@{ rom = 'UNKNOWN'; overlay = 'UNKNOWN'; http = 'UNKNOWN'; browser_cache = 'NOT_USED'; artifact = 'UNKNOWN' } }
-    if ($deviceProbe.ok) {
+    if ($deviceProbeCall.skipped) {
+        $device.classification = 'NOT_REQUIRED_RELEASE_ONLY'
+        $device.reachable = $null
+        $device.build_info_sources.rom = 'NOT_REQUIRED_RELEASE_ONLY'
+        Log 'DEVICE_PROBE=SKIPPED_RELEASE_ONLY reason=RELEASE_ONLY_DEVICE_OBSERVATION_NOT_REQUIRED'
+    }
+    elseif ($deviceProbe.ok) {
         $device.reachable = $true
         $probeParts = @($deviceProbe.output -split '__BUILD_INFO_SCAN__', 2)
         $boardJson = if ($probeParts.Count -gt 0) { [string]$probeParts[0] } else { '' }
@@ -270,8 +292,23 @@ try {
 
     $overlayPath = Join-Path $env:GITHUB_WORKSPACE 'files\www\luci-static\xinzhao\build-info.json'
     $device.build_info_sources.overlay = if (Test-Path -LiteralPath $overlayPath -PathType Leaf) { 'TEMPLATE_OR_SOURCE' } else { 'MISSING' }
-    try {
-        $http = Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri 'http://192.168.6.1/luci-static/xinzhao/build-info.json'
+    $httpProbeCall = Invoke-ArthurControlPlaneDeviceObservation -ReleaseMode $releaseMode -Action {
+        try {
+            return [pscustomobject]@{ ok = $true; response = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 -Uri 'http://192.168.6.1/luci-static/xinzhao/build-info.json') }
+        }
+        catch {
+            return [pscustomobject]@{ ok = $false; error = $_.Exception.Message }
+        }
+    }
+    if ($httpProbeCall.skipped) {
+        $device.build_info_sources.http = 'NOT_REQUIRED_RELEASE_ONLY'
+        Log 'DEVICE_HTTP_PROBE=SKIPPED_RELEASE_ONLY reason=RELEASE_ONLY_DEVICE_OBSERVATION_NOT_REQUIRED'
+    }
+    elseif (-not $httpProbeCall.value.ok) {
+        $device.build_info_sources.http = 'UNAVAILABLE_RETRY'
+    }
+    else {
+        $http = $httpProbeCall.value.response
         if ($http.Content -match '@VERSION@|@BUILD_ID@') {
             $device.build_info_sources.http = 'STALE_TEMPLATE'
         }
@@ -287,7 +324,7 @@ try {
             }
             catch { $device.build_info_sources.http = 'INVALID_JSON' }
         }
-    } catch { $device.build_info_sources.http = 'UNAVAILABLE_RETRY' }
+    }
     $artifactBuildInfo = @(
         if ($candidateDetails) { @($candidateDetails.assets | Where-Object { $_.name -match '(?i)build-info\.(json|txt)$' }) }
     )
@@ -302,7 +339,8 @@ try {
 
     $provenanceConsistent = ($candidate -and $production -and $run -and $device.classification -eq 'CURRENT' -and $device.build_info_sources.rom -notin @('MISSING','UNAVAILABLE_RETRY') -and $device.build_info_sources.http -eq 'PRESENT_PARSED')
     $nextStatus = 'RESUME_PENDING'
-    if (-not $device.reachable) { $nextStatus = 'RETRY_DEVICE_UNAVAILABLE' }
+    if ($releaseMode -eq 'RELEASE_ONLY') { $nextStatus = 'RESUME_SAFE_CHECKPOINT' }
+    elseif (-not $device.reachable) { $nextStatus = 'RETRY_DEVICE_UNAVAILABLE' }
     elseif ($device.classification -ne 'CURRENT') { $nextStatus = 'BLOCKED_DEVICE_IDENTITY' }
     elseif (-not $provenanceConsistent) { $nextStatus = 'RECOVERABLE_BUILD_INFO_PROVENANCE' }
     else { $nextStatus = 'RESUME_SAFE_CHECKPOINT' }
@@ -444,7 +482,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     }
     $previousGateRecords = @(Get-ArthurGateRecordsFromResumeState -ResumeState $previousResumeState)
     $currentSubjects = Get-ArthurCurrentSubjectsForRepositoryHead -GateRecords $previousGateRecords -RepositoryHead $repositoryHead
-    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects
+    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -AllowBaselineFallbackForMissingLiveDevice:($releaseMode -eq 'RELEASE_ONLY') -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects
     Publish-ResumeState $resumeState $resumeStatePath
     if (-not $resumeState.instruction_allowed) {
         Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($resumeState.conflicts) -join ','))
