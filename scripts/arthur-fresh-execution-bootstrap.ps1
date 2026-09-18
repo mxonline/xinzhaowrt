@@ -60,14 +60,14 @@ function New-ArthurBootstrapInheritedGate {
     param(
         [Parameter(Mandatory=$true)][object]$PreviousResume,
         [Parameter(Mandatory=$true)][string]$GateId,
-        [Parameter(Mandatory=$true)][string]$PreviousExecutionId
+        [Parameter(Mandatory=$true)][string]$PreviousExecutionId,
+        [Parameter(Mandatory=$true)][string[]]$EvidenceRefs
     )
     $old = Get-ArthurBootstrapGate -Resume $PreviousResume -GateId $GateId
     if ($null -eq $old -or [string](Get-ArthurStateMember $old 'status') -ne 'PASS') {
         throw "FRESH_BOOTSTRAP_FROZEN_GATE_NOT_PASS=$GateId"
     }
-    $oldEvidenceRefs = @((Get-ArthurStateMember $old 'evidence_refs'))
-    if ($oldEvidenceRefs.Count -eq 0) {
+    if (@($EvidenceRefs).Count -eq 0) {
         throw "FRESH_BOOTSTRAP_FROZEN_GATE_EVIDENCE_MISSING=$GateId"
     }
     return (New-ArthurGateRecord `
@@ -76,7 +76,7 @@ function New-ArthurBootstrapInheritedGate {
         -RequirementDigest ([string](Get-ArthurStateMember $old 'requirement_digest')) `
         -Status 'PASS' `
         -Subject (Copy-ArthurBootstrapObject (Get-ArthurStateMember $old 'subject')) `
-        -EvidenceRefs $oldEvidenceRefs `
+        -EvidenceRefs $EvidenceRefs `
         -Inherited $true `
         -InheritedFrom $PreviousExecutionId `
         -VerifiedAt ([string](Get-ArthurStateMember $old 'verified_at')))
@@ -161,31 +161,39 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $frozen = @($intent.firmware_state.verified_frozen | ForEach-Object { ([string]$_).Trim().ToUpperInvariant() })
     $previousEvidencePath = Get-ArthurEvidenceIndexPath -Root $rootPath -ExecutionId $previousExecutionId
     $previousEvidenceIndex = Read-ArthurBootstrapJson -Path $previousEvidencePath -MissingCode 'FRESH_BOOTSTRAP_PREVIOUS_EVIDENCE_INDEX_MISSING'
-    $previousEvidenceById = @{}
-    foreach ($item in @($previousEvidenceIndex.evidence)) {
-        if ($null -eq $item -or -not $item.PSObject.Properties['evidence_id']) { continue }
-        $id = [string]$item.evidence_id
-        if (-not [string]::IsNullOrWhiteSpace($id)) { $previousEvidenceById[$id] = $item }
-    }
+    $previousEvidenceRecords = @($previousEvidenceIndex.evidence)
     $inheritedEvidence = New-Object System.Collections.Generic.List[object]
     $inheritedEvidenceIds = New-Object System.Collections.Generic.HashSet[string]
     $gateMap = [ordered]@{}
     foreach ($gateId in @('WIFI','LUCI_CHINESE','QUICKSTART')) {
         if ($frozen -contains $gateId) {
-            $gate = New-ArthurBootstrapInheritedGate -PreviousResume $previous -GateId $gateId -PreviousExecutionId $previousExecutionId
-            foreach ($ref in @($gate.evidence_refs)) {
-                $text = [string]$ref
-                if (-not $text.StartsWith('evidence:',[System.StringComparison]::Ordinal)) {
-                    throw "FRESH_BOOTSTRAP_INHERITED_EVIDENCE_REF_INVALID=$gateId:$text"
-                }
-                $evidenceId = $text.Substring('evidence:'.Length)
-                if (-not $previousEvidenceById.ContainsKey($evidenceId)) {
-                    throw "FRESH_BOOTSTRAP_INHERITED_EVIDENCE_REF_MISSING=$gateId:$evidenceId"
-                }
+            $gateEvidence = @($previousEvidenceRecords | Where-Object {
+                $null -ne $_ -and
+                $_.PSObject.Properties['evidence_id'] -and
+                $_.PSObject.Properties['gate_id'] -and
+                $_.PSObject.Properties['result'] -and
+                [string]$_.gate_id -eq $gateId -and
+                [string]$_.result -eq 'PASS' -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.evidence_id)
+            })
+            if ($gateEvidence.Count -eq 0) {
+                throw "FRESH_BOOTSTRAP_INHERITED_GATE_EVIDENCE_MISSING=$gateId"
+            }
+
+            $evidenceRefs = @()
+            foreach ($record in @($gateEvidence | Sort-Object { [string]$_.evidence_id })) {
+                $evidenceId = [string]$record.evidence_id
+                $evidenceRefs += "evidence:$evidenceId"
                 if ($inheritedEvidenceIds.Add($evidenceId)) {
-                    $inheritedEvidence.Add((Copy-ArthurBootstrapObject $previousEvidenceById[$evidenceId]))
+                    $inheritedEvidence.Add((Copy-ArthurBootstrapObject $record))
                 }
             }
+
+            $gate = New-ArthurBootstrapInheritedGate `
+                -PreviousResume $previous `
+                -GateId $gateId `
+                -PreviousExecutionId $previousExecutionId `
+                -EvidenceRefs $evidenceRefs
             $gateMap[$gateId] = $gate
         }
     }
