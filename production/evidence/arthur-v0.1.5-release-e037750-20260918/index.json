@@ -59,8 +59,38 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/35356523348",
       "sha256": "",
-      "observed_at": "2026-09-18T16:52:39.860067+00:00",
-      "result": "RUNNING"
+      "observed_at": "2026-09-18T16:36:39Z",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "artifact-run-35356523348",
+      "gate_id": "ARTIFACT",
+      "type": "GITHUB_ACTIONS_ARTIFACT",
+      "producer": "ARTHUR_KNOWN_GOOD_UPDATE_V3",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356523348,
+      "artifact_id": 10557765463,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/artifacts/10557765463",
+      "sha256": "7febfbf598af5a2909c4b90085b71849d04bd7ebd921b02080454dd67ec1c693",
+      "observed_at": "2026-09-18T16:36:39Z",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "release-35356523348",
+      "gate_id": "RELEASE",
+      "type": "GITHUB_RELEASE",
+      "producer": "ARTHUR_PRODUCTION_STATE_SYNC",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356523348,
+      "artifact_id": 10557765463,
+      "candidate_sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
+      "device_build_id": "",
+      "ref": "release:v0.1.5",
+      "sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
+      "observed_at": "2026-09-18T16:53:13.0882558+00:00",
+      "result": "PASS"
     }
   ]
 }

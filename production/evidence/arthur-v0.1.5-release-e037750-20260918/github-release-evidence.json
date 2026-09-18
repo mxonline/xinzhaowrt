@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "evidence_id": "release-35356523348",
+  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "gate_id": "RELEASE",
+  "type": "GITHUB_RELEASE",
+  "producer": "ARTHUR_PRODUCTION_STATE_SYNC",
+  "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+  "github_run_id": 35356523348,
+  "artifact_id": 10557765463,
+  "release_tag": "v0.1.5",
+  "release_id": 391636426,
+  "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.5",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260918-sysupgrade.bin",
+  "firmware_sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
+  "factory_sha256": "74b9927fcdbcb1feb2889da9612c9d6e363cda5fa5ddcf82047e869c78a2455c",
+  "post_release_device_test": "PENDING_INDEPENDENT",
+  "known_good_promoted": false,
+  "observed_at": "2026-09-18T16:53:13.0882558+00:00",
+  "result": "PASS"
+}
