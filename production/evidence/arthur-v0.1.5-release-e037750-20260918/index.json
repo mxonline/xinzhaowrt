@@ -1,7 +1,66 @@
 {
-    "schema_version":  1,
-    "execution_id":  "arthur-v0.1.5-release-e037750-20260918",
-    "evidence":  [
-
-                 ]
+  "schema_version": 1,
+  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "evidence": [
+    {
+      "evidence_id": "change-impact-e0377509dcc5",
+      "gate_id": "CHANGE_IMPACT",
+      "type": "GITHUB_ACTIONS_STATIC_GATE",
+      "producer": "ARTHUR_CONTROL_PLANE_CANONICAL",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356505330,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
+      "sha256": "",
+      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "baseline-inheritance-e0377509dcc5",
+      "gate_id": "BASELINE_INHERITANCE",
+      "type": "GITHUB_ACTIONS_STATIC_GATE",
+      "producer": "ARTHUR_CONTROL_PLANE_CANONICAL",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356505330,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
+      "sha256": "",
+      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "expected-diff-e0377509dcc5",
+      "gate_id": "EXPECTED_DIFF",
+      "type": "GITHUB_ACTIONS_STATIC_GATE",
+      "producer": "ARTHUR_CONTROL_PLANE_CANONICAL",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356505330,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
+      "sha256": "",
+      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "result": "PASS"
+    },
+    {
+      "evidence_id": "build-run-35356523348",
+      "gate_id": "BUILD",
+      "type": "GITHUB_ACTIONS_RUN",
+      "producer": "ARTHUR_KNOWN_GOOD_UPDATE_V3",
+      "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+      "github_run_id": 35356523348,
+      "artifact_id": 0,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/35356523348",
+      "sha256": "",
+      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "result": "RUNNING"
+    }
+  ]
 }

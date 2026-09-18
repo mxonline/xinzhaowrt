@@ -1,281 +1,249 @@
 {
-    "schema_version":  2,
-    "execution_id":  "arthur-v0.1.5-release-e037750-20260918",
-    "status":  "RESUME_SAFE",
-    "instruction_allowed":  true,
-    "source":  {
-                   "repository_head":  "ed923456428bc29089bea13fb84a8cd73d4c3574",
-                   "accepted_source_sha":  "e0377509dcc57c415935e9f779fe27117ce591be"
-               },
-    "production":  {
-                       "github_run_id":  33462873812,
-                       "artifact_id":  9784138318,
-                       "candidate_sha256":  "bca247eb69c4d210c2965832c29271270320b3b85296ebe5e86a15a3648e880a"
-                   },
-    "device":  {
-                   "version":  "0.1.3",
-                   "build_id":  "33462873812",
-                   "git_commit":  "e27bafa",
-                   "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
-               },
-    "gates":  {
-                  "WIFI":  {
-                               "gate_id":  "WIFI",
-                               "status":  "PASS",
-                               "requirement_ref":  "production/ARTHUR_PRODUCT_TARGETS.md#wifi",
-                               "requirement_digest":  "3503c96c3703e7c71856089fdc22eda8613036eea245cd44dfe259a69dc97879",
-                               "subject":  {
-                                               "source_sha":  "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
-                                               "github_run_id":  34268801985
-                                           },
-                               "evidence_refs":  [
-
-                                                 ],
-                               "inherited":  true,
-                               "inherited_from":  "arthur-final-release-5f41c4e-20260908",
-                               "verified_at":  ""
-                           },
-                  "LUCI_CHINESE":  {
-                                       "gate_id":  "LUCI_CHINESE",
-                                       "status":  "PASS",
-                                       "requirement_ref":  "production/ARTHUR_PRODUCT_TARGETS.md#luci-chinese",
-                                       "requirement_digest":  "cec0e25e5c925ce1f6bd4349e4c0074fb1e54b2bdc86513b5b10032f28373948",
-                                       "subject":  {
-                                                       "source_sha":  "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
-                                                       "github_run_id":  34268801985
-                                                   },
-                                       "evidence_refs":  [
-
-                                                         ],
-                                       "inherited":  true,
-                                       "inherited_from":  "arthur-final-release-5f41c4e-20260908",
-                                       "verified_at":  ""
-                                   },
-                  "QUICKSTART":  {
-                                     "gate_id":  "QUICKSTART",
-                                     "status":  "PASS",
-                                     "requirement_ref":  "production/ARTHUR_PRODUCT_TARGETS.md#quickstart",
-                                     "requirement_digest":  "df8ad944b6e12a21c1939ac62164e469325fbf65027bfb70588e84279e5a41cc",
-                                     "subject":  {
-                                                     "source_sha":  "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
-                                                     "github_run_id":  34268801985
-                                                 },
-                                     "evidence_refs":  [
-
-                                                       ],
-                                     "inherited":  true,
-                                     "inherited_from":  "arthur-final-release-5f41c4e-20260908",
-                                     "verified_at":  ""
-                                 },
-                  "FORENSICS":  {
-                                    "gate_id":  "FORENSICS",
-                                    "status":  "SKIPPED",
-                                    "requirement_ref":  "production/release-policy.md#frozen-principle",
-                                    "requirement_digest":  "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
-                                    "subject":  {
-
-                                                },
-                                    "evidence_refs":  [
-
-                                                      ],
-                                    "inherited":  false,
-                                    "inherited_from":  "",
-                                    "verified_at":  ""
-                                },
-                  "ADH_MANAGEMENT":  {
-                                         "gate_id":  "ADH_MANAGEMENT",
-                                         "status":  "SKIPPED",
-                                         "requirement_ref":  "production/release-policy.md#frozen-principle",
-                                         "requirement_digest":  "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
-                                         "subject":  {
-
-                                                     },
-                                         "evidence_refs":  [
-
-                                                           ],
-                                         "inherited":  false,
-                                         "inherited_from":  "",
-                                         "verified_at":  ""
-                                     },
-                  "ADH_CHINESE":  {
-                                      "gate_id":  "ADH_CHINESE",
-                                      "status":  "SKIPPED",
-                                      "requirement_ref":  "production/release-policy.md#frozen-principle",
-                                      "requirement_digest":  "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
-                                      "subject":  {
-
-                                                  },
-                                      "evidence_refs":  [
-
-                                                        ],
-                                      "inherited":  false,
-                                      "inherited_from":  "",
-                                      "verified_at":  ""
-                                  },
-                  "CHANGE_IMPACT":  {
-                                        "gate_id":  "CHANGE_IMPACT",
-                                        "status":  "PENDING",
-                                        "requirement_ref":  "production/release-policy.md#change-impact-gate",
-                                        "requirement_digest":  "7ac148a607de907624b7aaa46abbff87a2c54f88d0a10ffb7a9064b4f1f0001b",
-                                        "subject":  {
-
-                                                    },
-                                        "evidence_refs":  [
-
-                                                          ],
-                                        "inherited":  false,
-                                        "inherited_from":  "",
-                                        "verified_at":  ""
-                                    },
-                  "BASELINE_INHERITANCE":  {
-                                               "gate_id":  "BASELINE_INHERITANCE",
-                                               "status":  "PENDING",
-                                               "requirement_ref":  "production/release-policy.md#baseline-inheritance-gate",
-                                               "requirement_digest":  "0ddb7de82c4d724b8527699c4bc23fb62aac8dbe714796c09728ac9457b72f5e",
-                                               "subject":  {
-
-                                                           },
-                                               "evidence_refs":  [
-
-                                                                 ],
-                                               "inherited":  false,
-                                               "inherited_from":  "",
-                                               "verified_at":  ""
-                                           },
-                  "EXPECTED_DIFF":  {
-                                        "gate_id":  "EXPECTED_DIFF",
-                                        "status":  "PENDING",
-                                        "requirement_ref":  "production/release-policy.md#expected-diff-gate",
-                                        "requirement_digest":  "dfd688119287f0609d36518150906d246dad52b5b9ddc0e361cb8d97702e3ae3",
-                                        "subject":  {
-
-                                                    },
-                                        "evidence_refs":  [
-
-                                                          ],
-                                        "inherited":  false,
-                                        "inherited_from":  "",
-                                        "verified_at":  ""
-                                    },
-                  "BUILD":  {
-                                "gate_id":  "BUILD",
-                                "status":  "PENDING",
-                                "requirement_ref":  "production/release-policy.md#build",
-                                "requirement_digest":  "5fb3ad32b624730877dc308f321cbd63fa29d1d8f0ae440957a0b65bc4a5e13d",
-                                "subject":  {
-
-                                            },
-                                "evidence_refs":  [
-
-                                                  ],
-                                "inherited":  false,
-                                "inherited_from":  "",
-                                "verified_at":  ""
-                            },
-                  "ARTIFACT":  {
-                                   "gate_id":  "ARTIFACT",
-                                   "status":  "PENDING",
-                                   "requirement_ref":  "production/release-policy.md#artifact",
-                                   "requirement_digest":  "013114a5383ecba07f8f6c8226366b2471ace6eaf5b80c34613343d6cc65eb51",
-                                   "subject":  {
-
-                                               },
-                                   "evidence_refs":  [
-
-                                                     ],
-                                   "inherited":  false,
-                                   "inherited_from":  "",
-                                   "verified_at":  ""
-                               },
-                  "RELEASE_GATE":  {
-                                       "gate_id":  "RELEASE_GATE",
-                                       "status":  "PENDING",
-                                       "requirement_ref":  "production/release-policy.md#release-gate",
-                                       "requirement_digest":  "c26ffd519933ffea25d2871d7651d07fba64e88e63e184de6af65074655a769f",
-                                       "subject":  {
-
-                                                   },
-                                       "evidence_refs":  [
-
-                                                         ],
-                                       "inherited":  false,
-                                       "inherited_from":  "",
-                                       "verified_at":  ""
-                                   },
-                  "RELEASE":  {
-                                  "gate_id":  "RELEASE",
-                                  "status":  "PENDING",
-                                  "requirement_ref":  "production/release-policy.md#release",
-                                  "requirement_digest":  "67ef1a8d66524276593f96357d7f7b7eddba79d505d6ce5a8ddaa68a223e8c93",
-                                  "subject":  {
-
-                                              },
-                                  "evidence_refs":  [
-
-                                                    ],
-                                  "inherited":  false,
-                                  "inherited_from":  "",
-                                  "verified_at":  ""
-                              },
-                  "PRODUCTION_RELEASED":  {
-                                              "gate_id":  "PRODUCTION_RELEASED",
-                                              "status":  "PENDING",
-                                              "requirement_ref":  "production/release-policy.md#production-released",
-                                              "requirement_digest":  "7dda7c8c025f544cb5c3c4ea491eba08456538beacc457529ce5971b860899ea",
-                                              "subject":  {
-
-                                                          },
-                                              "evidence_refs":  [
-
-                                                                ],
-                                              "inherited":  false,
-                                              "inherited_from":  "",
-                                              "verified_at":  ""
-                                          }
-              },
-    "current_gate":  "CHANGE_IMPACT",
-    "next_action":  "CHANGE_IMPACT",
-    "repository_head":  "ed923456428bc29089bea13fb84a8cd73d4c3574",
-    "real_device":  {
-                        "version":  "0.1.3",
-                        "build_id":  "33462873812",
-                        "git_commit":  "e27bafa",
-                        "evidence":  "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
-                    },
-    "accepted_baseline":  {
-                              "version":  "0.1.3",
-                              "build_id":  "33462873812",
-                              "source_sha":  "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
-                          },
-    "checkpoint":  {
-                       "current":  "CHANGE_IMPACT",
-                       "next_action":  "CHANGE_IMPACT",
-                       "turn_count":  15
-                   },
-    "verified":  {
-                     "real_device_baseline":  "MATCHED",
-                     "wifi":  "VERIFIED_FROZEN",
-                     "luci_chinese":  "VERIFIED_FROZEN",
-                     "adguard_full_manager":  "REVERIFY_REQUIRED",
-                     "quickstart":  "AUTHENTICATED_RENDER_VERIFIED"
-                 },
-    "pending":  "CHANGE_IMPACT",
-    "conflicts":  [
-
-                  ],
-    "source_precedence":  [
-                              "LIVE_DEVICE",
-                              "REAL_DEVICE_BASELINE",
-                              "AI_ORCHESTRATOR_RUNTIME",
-                              "GITHUB_HEAD",
-                              "HISTORICAL_DOCS_AUXILIARY_ONLY"
-                          ],
-    "legacy_source_policy":  "AUXILIARY_ONLY",
-    "ignored_current_state_sources":  [
-                                          "knowledge/PROJECT-STATE.md historical sections",
-                                          "production/v4-state.json historical controller snapshot",
-                                          "chat/model narrative"
-                                      ],
-    "semantic_sha256":  "ad23706db25568060902b9323c37502864f29e2b175735f0d89e35aba6aececc",
-    "evidence_timestamp":  "2026-09-18T13:57:15.0314868+00:00"
+  "schema_version": 2,
+  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "status": "RESUME_SAFE",
+  "instruction_allowed": true,
+  "source": {
+    "repository_head": "e0377509dcc57c415935e9f779fe27117ce591be",
+    "accepted_source_sha": "e0377509dcc57c415935e9f779fe27117ce591be"
+  },
+  "production": {
+    "github_run_id": 35356523348,
+    "artifact_id": 0,
+    "candidate_sha256": ""
+  },
+  "device": {
+    "version": "0.1.3",
+    "build_id": "33462873812",
+    "git_commit": "e27bafa",
+    "evidence": "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+  },
+  "gates": {
+    "WIFI": {
+      "gate_id": "WIFI",
+      "status": "PASS",
+      "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#wifi",
+      "requirement_digest": "3503c96c3703e7c71856089fdc22eda8613036eea245cd44dfe259a69dc97879",
+      "subject": {
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
+      },
+      "evidence_refs": [],
+      "inherited": true,
+      "inherited_from": "arthur-final-release-5f41c4e-20260908",
+      "verified_at": ""
+    },
+    "LUCI_CHINESE": {
+      "gate_id": "LUCI_CHINESE",
+      "status": "PASS",
+      "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#luci-chinese",
+      "requirement_digest": "cec0e25e5c925ce1f6bd4349e4c0074fb1e54b2bdc86513b5b10032f28373948",
+      "subject": {
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
+      },
+      "evidence_refs": [],
+      "inherited": true,
+      "inherited_from": "arthur-final-release-5f41c4e-20260908",
+      "verified_at": ""
+    },
+    "QUICKSTART": {
+      "gate_id": "QUICKSTART",
+      "status": "PASS",
+      "requirement_ref": "production/ARTHUR_PRODUCT_TARGETS.md#quickstart",
+      "requirement_digest": "df8ad944b6e12a21c1939ac62164e469325fbf65027bfb70588e84279e5a41cc",
+      "subject": {
+        "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
+        "github_run_id": 34268801985
+      },
+      "evidence_refs": [],
+      "inherited": true,
+      "inherited_from": "arthur-final-release-5f41c4e-20260908",
+      "verified_at": ""
+    },
+    "FORENSICS": {
+      "gate_id": "FORENSICS",
+      "status": "SKIPPED",
+      "requirement_ref": "production/release-policy.md#frozen-principle",
+      "requirement_digest": "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "ADH_MANAGEMENT": {
+      "gate_id": "ADH_MANAGEMENT",
+      "status": "SKIPPED",
+      "requirement_ref": "production/release-policy.md#frozen-principle",
+      "requirement_digest": "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "ADH_CHINESE": {
+      "gate_id": "ADH_CHINESE",
+      "status": "SKIPPED",
+      "requirement_ref": "production/release-policy.md#frozen-principle",
+      "requirement_digest": "09bdca4c9e0c91dfc89293b607237b6f125aceff71b2d35f957a230e45ef4d0c",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "CHANGE_IMPACT": {
+      "gate_id": "CHANGE_IMPACT",
+      "status": "PASS",
+      "requirement_ref": "production/release-policy.md#change-impact-gate",
+      "requirement_digest": "7ac148a607de907624b7aaa46abbff87a2c54f88d0a10ffb7a9064b4f1f0001b",
+      "subject": {
+        "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be"
+      },
+      "evidence_refs": [
+        "evidence:change-impact-e0377509dcc5"
+      ],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+    },
+    "BASELINE_INHERITANCE": {
+      "gate_id": "BASELINE_INHERITANCE",
+      "status": "PASS",
+      "requirement_ref": "production/release-policy.md#baseline-inheritance-gate",
+      "requirement_digest": "0ddb7de82c4d724b8527699c4bc23fb62aac8dbe714796c09728ac9457b72f5e",
+      "subject": {
+        "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be"
+      },
+      "evidence_refs": [
+        "evidence:baseline-inheritance-e0377509dcc5"
+      ],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+    },
+    "EXPECTED_DIFF": {
+      "gate_id": "EXPECTED_DIFF",
+      "status": "PASS",
+      "requirement_ref": "production/release-policy.md#expected-diff-gate",
+      "requirement_digest": "dfd688119287f0609d36518150906d246dad52b5b9ddc0e361cb8d97702e3ae3",
+      "subject": {
+        "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be"
+      },
+      "evidence_refs": [
+        "evidence:expected-diff-e0377509dcc5"
+      ],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+    },
+    "BUILD": {
+      "gate_id": "BUILD",
+      "status": "RUNNING",
+      "requirement_ref": "production/release-policy.md#build",
+      "requirement_digest": "5fb3ad32b624730877dc308f321cbd63fa29d1d8f0ae440957a0b65bc4a5e13d",
+      "subject": {
+        "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+        "github_run_id": 35356523348
+      },
+      "evidence_refs": [
+        "evidence:build-run-35356523348"
+      ],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "ARTIFACT": {
+      "gate_id": "ARTIFACT",
+      "status": "PENDING",
+      "requirement_ref": "production/release-policy.md#artifact",
+      "requirement_digest": "013114a5383ecba07f8f6c8226366b2471ace6eaf5b80c34613343d6cc65eb51",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "RELEASE_GATE": {
+      "gate_id": "RELEASE_GATE",
+      "status": "PENDING",
+      "requirement_ref": "production/release-policy.md#release-gate",
+      "requirement_digest": "c26ffd519933ffea25d2871d7651d07fba64e88e63e184de6af65074655a769f",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "RELEASE": {
+      "gate_id": "RELEASE",
+      "status": "PENDING",
+      "requirement_ref": "production/release-policy.md#release",
+      "requirement_digest": "67ef1a8d66524276593f96357d7f7b7eddba79d505d6ce5a8ddaa68a223e8c93",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    },
+    "PRODUCTION_RELEASED": {
+      "gate_id": "PRODUCTION_RELEASED",
+      "status": "PENDING",
+      "requirement_ref": "production/release-policy.md#production-released",
+      "requirement_digest": "7dda7c8c025f544cb5c3c4ea491eba08456538beacc457529ce5971b860899ea",
+      "subject": {},
+      "evidence_refs": [],
+      "inherited": false,
+      "inherited_from": "",
+      "verified_at": ""
+    }
+  },
+  "current_gate": "BUILD",
+  "next_action": "BUILD",
+  "repository_head": "e0377509dcc57c415935e9f779fe27117ce591be",
+  "real_device": {
+    "version": "0.1.3",
+    "build_id": "33462873812",
+    "git_commit": "e27bafa",
+    "evidence": "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+  },
+  "accepted_baseline": {
+    "version": "0.1.3",
+    "build_id": "33462873812",
+    "source_sha": "e27bafac2d4a3ecf0f7a0e4cf2f7b34cf77571c9"
+  },
+  "checkpoint": {
+    "current": "BUILD",
+    "next_action": "BUILD",
+    "turn_count": 16
+  },
+  "verified": {
+    "real_device_baseline": "MATCHED",
+    "wifi": "VERIFIED_FROZEN",
+    "luci_chinese": "VERIFIED_FROZEN",
+    "adguard_full_manager": "REVERIFY_REQUIRED",
+    "quickstart": "AUTHENTICATED_RENDER_VERIFIED"
+  },
+  "pending": [
+    "BUILD"
+  ],
+  "conflicts": [],
+  "source_precedence": [
+    "LIVE_DEVICE",
+    "REAL_DEVICE_BASELINE",
+    "AI_ORCHESTRATOR_RUNTIME",
+    "GITHUB_HEAD",
+    "HISTORICAL_DOCS_AUXILIARY_ONLY"
+  ],
+  "legacy_source_policy": "AUXILIARY_ONLY",
+  "ignored_current_state_sources": [
+    "knowledge/PROJECT-STATE.md historical sections",
+    "production/v4-state.json historical controller snapshot",
+    "chat/model narrative"
+  ],
+  "evidence_timestamp": "2026-09-18T14:29:27.997632+00:00",
+  "release": "v0.1.5",
+  "semantic_sha256": "3726e9b8c6100ec6f8b1ba59370e8c63a6dd551729fff1c9c72fa9ede9caf86e"
 }
