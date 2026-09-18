@@ -2,10 +2,13 @@ Set-StrictMode -Version Latest
 
 $stateContractPath = Join-Path $PSScriptRoot 'arthur-state-contract.ps1'
 $evidenceHelperPath = Join-Path $PSScriptRoot 'arthur-evidence-index.ps1'
+$eventLedgerHelperPath = Join-Path $PSScriptRoot 'arthur-firmware-event-ledger.ps1'
 if (-not (Test-Path -LiteralPath $stateContractPath -PathType Leaf)) { throw 'FRESH_BOOTSTRAP_STATE_CONTRACT_MISSING' }
 if (-not (Test-Path -LiteralPath $evidenceHelperPath -PathType Leaf)) { throw 'FRESH_BOOTSTRAP_EVIDENCE_HELPER_MISSING' }
+if (-not (Test-Path -LiteralPath $eventLedgerHelperPath -PathType Leaf)) { throw 'FRESH_BOOTSTRAP_EVENT_LEDGER_HELPER_MISSING' }
 . $stateContractPath
 . $evidenceHelperPath
+. $eventLedgerHelperPath
 
 function Read-ArthurBootstrapJson {
     param([Parameter(Mandatory=$true)][string]$Path,[Parameter(Mandatory=$true)][string]$MissingCode)
@@ -258,6 +261,31 @@ function Invoke-ArthurFreshExecutionBootstrap {
         event = $event
     }
 
-    if ($Apply) { throw 'FRESH_BOOTSTRAP_APPLY_NOT_IMPLEMENTED' }
+    if ($Apply) {
+        $eventLedgerPath = Join-Path $rootPath 'production\firmware-events.jsonl'
+        if (-not (Test-Path -LiteralPath $eventLedgerPath -PathType Leaf)) {
+            throw 'FRESH_BOOTSTRAP_EVENT_LEDGER_MISSING'
+        }
+        [void](Test-ArthurFirmwareEventLedger -Path $eventLedgerPath)
+
+        $evidenceIndexPath = Get-ArthurEvidenceIndexPath -Root $rootPath -ExecutionId $executionId
+        Write-ArthurEvidenceIndex -Path $evidenceIndexPath -Index $evidenceIndex
+
+        $existingEvents = @(Get-ArthurFirmwareEvents -Path $eventLedgerPath)
+        $alreadyStarted = @($existingEvents | Where-Object {
+            [string]$_.event -eq 'EXECUTION_STARTED' -and
+            $_.PSObject.Properties['data'] -and
+            [string]$_.data.execution_id -eq $executionId
+        }).Count -gt 0
+        if (-not $alreadyStarted) {
+            $null = Add-ArthurFirmwareEvent -Path $eventLedgerPath -Event $event.event -Stage $event.stage -Source $event.source -Data $event.data
+        }
+
+        $tmp = "$resumePath.$PID.tmp"
+        [IO.File]::WriteAllText($tmp,($resume | ConvertTo-Json -Depth 40) + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $tmp -Destination $resumePath -Force
+
+        $result.action = 'BOOTSTRAPPED'
+    }
     return $result
 }
