@@ -168,15 +168,15 @@ Assert-Contains $controlPlaneWorkflow 'gh workflow run arthur-update-v3.yml' 'ca
 Assert-Contains $controlPlaneWorkflow 'build-run-' 'canonical Control Plane must bind the formal Build run into durable evidence'
 Assert-Contains $controlPlaneWorkflow 'production/evidence' 'canonical Control Plane must preserve durable evidence indexing'
 Assert-Contains $controlPlaneWorkflow 'GATE_STARTED' 'canonical Control Plane must preserve hash-chained firmware event evidence'
-Assert-True ($controlPlaneWorkflow -notmatch '(?m)^\s*-s*self-hosted\s*) 'canonical Control Plane must not depend on the Windows self-hosted runtime'
+Assert-True ($controlPlaneWorkflow.IndexOf('self-hosted',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'canonical Control Plane must not depend on the Windows self-hosted runtime'
 
 $wakeupWorkflow = Get-Content -Raw $WakeupWorkflowPath
 Assert-Contains $wakeupWorkflow 'workflow_dispatch:' 'legacy Windows wakeup must remain available only for explicit manual diagnostics'
-Assert-True ($wakeupWorkflow -notmatch "(?m)^\s*-\s*cron:") 'legacy Windows wakeup must not run on a schedule during canonical release'
-Assert-True ($wakeupWorkflow -notmatch "(?ms)^on:\s*\r?\n\s+push:") 'legacy Windows wakeup must not auto-run on main pushes during canonical release'
+Assert-True ($wakeupWorkflow.IndexOf('cron:',[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy Windows wakeup must not run on a schedule during canonical release'
+Assert-True ($wakeupWorkflow.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy Windows wakeup must not auto-run on main pushes during canonical release'
 
 $credentialWorkflow = Get-Content -Raw $CredentialWorkflowPath
 Assert-Contains $credentialWorkflow 'workflow_dispatch:' 'legacy credential recovery must remain available only for explicit manual recovery'
-Assert-True ($credentialWorkflow -notmatch "(?ms)^'on':\s*\r?\n\s+push:") 'legacy credential recovery must not auto-run on main pushes during canonical release'
+Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy credential recovery must not auto-run on main pushes during canonical release'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'
