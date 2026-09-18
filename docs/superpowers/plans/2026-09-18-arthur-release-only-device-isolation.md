@@ -387,3 +387,20 @@ Add an optional resolver input and pass the operator-intent SHA from the control
 - [x] **Step 3: Verify**
 
 Release-only isolation, control-plane gates, executor, production-agent release-only, and parser checks passed.
+
+### Task 11: Emit deterministic runtime reconciliation evidence
+
+**Files:**
+- Modify: `scripts/arthur-control-plane.ps1`
+
+**Interfaces:**
+- Consumes: persisted runtime fields and the resolved active resume checkpoint.
+- Produces: read-only `RUNTIME_STATE_RECONCILIATION_OBSERVED` evidence for drift decisions.
+
+- [x] **Step 1: Add the observation log**
+
+Record phase, current_stage, terminal state, execution, resume gate, and drift result before the supervisor handoff.
+
+- [x] **Step 2: Verify no mutation path changed**
+
+Focused RELEASE_ONLY tests and PowerShell parser checks passed; the evidence log does not probe or write the device.

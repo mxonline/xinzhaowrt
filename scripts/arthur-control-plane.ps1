@@ -510,6 +510,10 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     $turnBefore = [int]$runtimeBefore.turn_count
     $phaseBefore = [string]$runtimeBefore.phase
+    $runtimeStageBefore = if ($runtimeBefore.PSObject.Properties['current_stage']) { [string]$runtimeBefore.current_stage } else { '' }
+    $resumeGateBefore = if ($resumeState.PSObject.Properties['current_gate']) { [string]$resumeState.current_gate } else { [string]$resumeState.checkpoint.current }
+    $historicalRuntimeDrift = Test-ArthurControlPlaneHistoricalRuntimeState -RuntimeState $runtimeBefore -ResumeState $resumeState -ExecutionId $activeExecutionId
+    Log "RUNTIME_STATE_RECONCILIATION_OBSERVED=PASS phase=$phaseBefore current_stage=$runtimeStageBefore terminal=$([string]$runtimeBefore.terminal_state) resume_execution=$([string]$resumeState.execution_id) resume_gate=$resumeGateBefore drift=$historicalRuntimeDrift"
     if (Test-ArthurControlPlaneRuntimeTerminalForActiveExecution -RuntimeState $runtimeBefore -ResumeState $resumeState -ExecutionId $activeExecutionId) {
         $state.acceptance.UNATTENDED_RELEASE_CERTIFIED = 'true'
         $state.acceptance.CHECKPOINT_AUTO_RESUMED = 'PASS'
@@ -521,10 +525,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
     $historicalSupervisorTerminal = $false
-    if ($releaseMode -eq 'RELEASE_ONLY' -and (Test-ArthurControlPlaneHistoricalRuntimeState `
-            -RuntimeState $runtimeBefore `
-            -ResumeState $resumeState `
-            -ExecutionId $activeExecutionId)) {
+    if ($releaseMode -eq 'RELEASE_ONLY' -and $historicalRuntimeDrift) {
         $targetPhase = [string]$resumeState.checkpoint.current
         $targetAction = if ($resumeState.next_action) { [string]$resumeState.next_action } else { [string]$resumeState.checkpoint.next_action }
         $runtimeBefore.phase = $targetPhase
