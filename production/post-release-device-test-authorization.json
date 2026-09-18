@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "status": "AUTHORIZED",
+  "authority": "OPERATOR",
+  "priority_class": "HIGHEST",
+  "task": "POST_RELEASE_DEVICE_TEST",
+  "scope": "EXACT_RELEASE_DEVICE_WRITE_AND_FULL_POST_RELEASE_ACCEPTANCE",
+  "device": "jdcloud_re-ss-01",
+  "release": "v0.1.5",
+  "source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+  "github_run_id": 35356523348,
+  "artifact_id": 10557765463,
+  "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260918-sysupgrade.bin",
+  "firmware_sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
+  "write_method": "STANDARD_SYSUPGRADE_N",
+  "preserve_config": false,
+  "device_write_authorized": true,
+  "sysupgrade_authorized": true,
+  "full_post_release_device_test_authorized": true,
+  "known_good_promotion_authorized_only_after_exact_release_test_pass": true,
+  "forbidden": [
+    "FIRMWARE_REBUILD",
+    "RELEASE_REWRITE",
+    "RAW_MTD_WRITE",
+    "DD_RAW_STORAGE_WRITE",
+    "BOOTLOADER_WRITE",
+    "KNOWN_GOOD_PROMOTION_BEFORE_TEST_PASS",
+    "RETRY_SYSUPGRADE_AFTER_WRITE_MAY_HAVE_STARTED"
+  ],
+  "failure_rule": "KEEP_V0_1_5_RELEASE; DO_NOT_PROMOTE_KNOWN_GOOD; DO_NOT_REBUILD_OR_REFLASH_AUTOMATICALLY",
+  "requested_by": "operator_current_chat"
+}
