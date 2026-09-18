@@ -107,7 +107,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+      "verified_at": "2026-09-18T16:52:39.860067+00:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -122,7 +122,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+      "verified_at": "2026-09-18T16:52:39.860067+00:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -137,7 +137,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-09-18T14:29:27.997632+00:00"
+      "verified_at": "2026-09-18T16:52:39.860067+00:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
@@ -217,7 +217,7 @@
   "checkpoint": {
     "current": "BUILD",
     "next_action": "BUILD",
-    "turn_count": 16
+    "turn_count": 17
   },
   "verified": {
     "real_device_baseline": "MATCHED",
@@ -243,7 +243,7 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-09-18T14:29:27.997632+00:00",
+  "evidence_timestamp": "2026-09-18T16:52:39.860067+00:00",
   "release": "v0.1.5",
-  "semantic_sha256": "3726e9b8c6100ec6f8b1ba59370e8c63a6dd551729fff1c9c72fa9ede9caf86e"
+  "semantic_sha256": "04e6b9159b9addc5ed4ea90c81922e00b81ad9147028b1575c62a4cf20191bd5"
 }

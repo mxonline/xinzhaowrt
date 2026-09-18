@@ -14,7 +14,7 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
       "sha256": "",
-      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "observed_at": "2026-09-18T16:52:39.860067+00:00",
       "result": "PASS"
     },
     {
@@ -29,7 +29,7 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
       "sha256": "",
-      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "observed_at": "2026-09-18T16:52:39.860067+00:00",
       "result": "PASS"
     },
     {
@@ -44,7 +44,7 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/35356505330",
       "sha256": "",
-      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "observed_at": "2026-09-18T16:52:39.860067+00:00",
       "result": "PASS"
     },
     {
@@ -59,7 +59,7 @@
       "device_build_id": "",
       "ref": "github-actions:mxonline/xinzhaowrt/runs/35356523348",
       "sha256": "",
-      "observed_at": "2026-09-18T14:29:27.997632+00:00",
+      "observed_at": "2026-09-18T16:52:39.860067+00:00",
       "result": "RUNNING"
     }
   ]
