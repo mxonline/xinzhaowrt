@@ -1,6 +1,6 @@
 name: Arthur Control Plane
 
-on:
+'on':
   push:
     branches:
       - main
@@ -8,71 +8,402 @@ on:
       - '.github/workflows/arthur-control-plane.yml'
       - 'production/operator-intent.json'
       - 'production/release-mode.json'
-      - 'scripts/arthur-fresh-execution-bootstrap.ps1'
-      - 'scripts/arthur-control-plane-gate.ps1'
   workflow_dispatch:
-    inputs:
-      source_ref:
-        description: 'Optional Arthur source branch for a manual recovery run; leave empty to use main'
-        required: false
-        default: ''
-
-concurrency:
-  group: arthur-control-plane-manual
-  cancel-in-progress: false
 
 permissions:
   contents: write
   actions: write
-  pull-requests: write
+
+concurrency:
+  group: arthur-control-plane-canonical-release
+  cancel-in-progress: false
 
 jobs:
   control-plane:
-    runs-on:
-      - self-hosted
-      - windows
-      - x64
-      - xinzhaowrt-controller
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      ARTHUR_SOURCE_REF: release/v0.1.5-e037750
 
     steps:
-      - name: Checkout manual recovery source
+      - name: Checkout canonical production state
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: main
           fetch-depth: 0
-          ref: ${{ inputs.source_ref || 'main' }}
 
-      - name: Reconcile and resume Arthur checkpoint
-        shell: powershell
+      - name: Validate highest machine objective
+        id: contract
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $env:ARTHUR_CONTROL_PLANE_WORKSPACE = $env:GITHUB_WORKSPACE
-          $script = Join-Path $env:GITHUB_WORKSPACE 'scripts\arthur-control-plane-gate.ps1'
-          if (-not (Test-Path -LiteralPath $script -PathType Leaf)) {
-            throw "CONTROL_PLANE_GATE_INSTALL_FAILED: missing $script"
-          }
-          & $script -Repository $env:GITHUB_REPOSITORY -WorkflowRunId $env:GITHUB_RUN_ID
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, re
 
-      - name: Publish control-plane summary
+          root = pathlib.Path('.')
+          intent = json.loads((root / 'production/operator-intent.json').read_text(encoding='utf-8'))
+          resume = json.loads((root / 'production/resume-state.json').read_text(encoding='utf-8'))
+          mode = json.loads((root / 'production/release-mode.json').read_text(encoding='utf-8'))
+          highest = intent.get('highest_machine_evidence') or {}
+
+          required = {
+              'authority': 'OPERATOR',
+              'priority_class': 'HIGHEST',
+              'objective_id': 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY',
+              'required_terminal': 'PRODUCTION_RELEASED',
+              'execution_id': 'arthur-v0.1.5-release-e037750-20260918',
+              'accepted_source_sha': 'e0377509dcc57c415935e9f779fe27117ce591be',
+              'target_release': 'v0.1.5',
+              'release_mode': 'RELEASE_ONLY',
+              'action_rule': 'ONLY_ADVANCE_OR_MINIMALLY_UNBLOCK_CURRENT_CANONICAL_GATE',
+          }
+          for key, expected in required.items():
+              if highest.get(key) != expected:
+                  raise SystemExit(f'HIGHEST_MACHINE_EVIDENCE_VIOLATION {key}={highest.get(key)!r} expected={expected!r}')
+          if highest.get('fail_closed_on_violation') is not True:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION fail_closed_on_violation')
+          if intent.get('execution_id') != highest['execution_id'] or resume.get('execution_id') != highest['execution_id']:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION execution_id')
+          if intent.get('firmware_state', {}).get('active_source_sha') != highest['accepted_source_sha']:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION active_source_sha')
+          if resume.get('source', {}).get('accepted_source_sha') != highest['accepted_source_sha']:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION resume accepted_source_sha')
+          if intent.get('target_release') != highest['target_release']:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION target_release')
+          if intent.get('release_mode') != 'RELEASE_ONLY' or mode.get('mode') != 'RELEASE_ONLY':
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION release_mode')
+          if bool(intent.get('device_write_authorized')) or bool(mode.get('automatic_flash')):
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION device_write')
+          if intent.get('firmware_execution_authorized') is not True:
+              raise SystemExit('FIRMWARE_EXECUTION_NOT_AUTHORIZED')
+
+          canonical = highest.get('canonical_path') or []
+          expected_path = [
+              'CHANGE_IMPACT','BASELINE_INHERITANCE','EXPECTED_DIFF','BUILD',
+              'ARTIFACT','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'
+          ]
+          if canonical != expected_path:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION canonical_path')
+
+          source = highest['accepted_source_sha']
+          release = highest['target_release']
+          execution = highest['execution_id']
+          current = str(resume.get('current_gate') or '')
+          skip = current in {'ARTIFACT','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'}
+          if current == 'PRODUCTION_RELEASED':
+              print(f'ALREADY_PRODUCTION_RELEASED=PASS release={resume.get("release","")}')
+          elif skip:
+              print(f'CANONICAL_RELEASE_ALREADY_OWNED_BY_DOWNSTREAM=PASS gate={current}')
+          else:
+              print(f'HIGHEST_MACHINE_EVIDENCE=PASS objective={highest["objective_id"]} gate={current}')
+
+          out = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          with out.open('a', encoding='utf-8') as fh:
+              fh.write(f'source_sha={source}\n')
+              fh.write(f'release_tag={release}\n')
+              fh.write(f'execution_id={execution}\n')
+              fh.write(f'skip={"true" if skip else "false"}\n')
+          PY
+
+      - name: Verify immutable accepted source ref
+        if: ${{ steps.contract.outputs.skip != 'true' }}
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin "refs/heads/$ARTHUR_SOURCE_REF:refs/remotes/origin/$ARTHUR_SOURCE_REF"
+          RESOLVED_SHA="$(git rev-parse "refs/remotes/origin/$ARTHUR_SOURCE_REF")"
+          test "$RESOLVED_SHA" = "$SOURCE_SHA" || {
+            echo "BLOCKED: frozen source ref mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA" >&2
+            exit 1
+          }
+          echo "FROZEN_SOURCE_REF=PASS ref=$ARTHUR_SOURCE_REF sha=$RESOLVED_SHA"
+
+      - name: Run canonical prebuild gates on accepted source
+        if: ${{ steps.contract.outputs.skip != 'true' }}
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          ACCEPTED_ROOT="$RUNNER_TEMP/arthur-v015-accepted"
+          rm -rf "$ACCEPTED_ROOT"
+          git worktree add --detach "$ACCEPTED_ROOT" "$SOURCE_SHA"
+          BASE_SHA="$(python3 - <<'PY'
+          import json
+          data=json.load(open('production/known-good.json', encoding='utf-8'))
+          value=str(data.get('project_commit') or '')
+          if len(value) != 40:
+              raise SystemExit('BLOCKED: known-good project_commit missing')
+          print(value)
+          PY
+          )"
+          (
+            cd "$ACCEPTED_ROOT"
+            CHANGESET_BASE="$BASE_SHA" bash scripts/check-changeset-complete.sh | tee "$RUNNER_TEMP/arthur-v015-canonical-gates.log"
+          )
+          for marker in             CHANGE_IMPACT_GATE=PASS             BASELINE_INHERITANCE_GATE=PASS             EXPECTED_DIFF_GATE=PASS             IMPLEMENTATION_COMPLETE_GATE=PASS             CHANGESET_FREEZE=PASS; do
+            grep -Fqx "$marker" "$RUNNER_TEMP/arthur-v015-canonical-gates.log" || {
+              echo "BLOCKED: canonical gate marker missing: $marker" >&2
+              exit 1
+            }
+          done
+          echo "CANONICAL_PREBUILD_GATES=PASS source=$SOURCE_SHA baseline=$BASE_SHA"
+
+      - name: Resolve or dispatch exactly one formal Candidate build
+        if: ${{ steps.contract.outputs.skip != 'true' }}
+        id: candidate
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headBranch,headSha,status,conclusion,createdAt)"
+          MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$ARTHUR_SOURCE_REF" python3 - <<'PY'
+          import json, os
+          runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
+          sha=os.environ['SOURCE_SHA']; ref=os.environ['SOURCE_REF']
+          matches=[r for r in runs if str(r.get('headSha') or '') == sha and str(r.get('headBranch') or '') == ref]
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0), reverse=True)
+          if matches:
+              r=matches[0]
+              print(f"{r.get('databaseId')}|{r.get('status')}|{r.get('conclusion') or ''}")
+          PY
+          )"
+
+          RUN_ID=''
+          RUN_STATUS=''
+          RUN_CONCLUSION=''
+          if [[ -n "$MATCH" ]]; then
+            IFS='|' read -r RUN_ID RUN_STATUS RUN_CONCLUSION <<<"$MATCH"
+            if [[ "$RUN_STATUS" == completed && "$RUN_CONCLUSION" != success ]]; then
+              echo "BLOCKED: the formal Candidate for accepted source already failed run=$RUN_ID conclusion=$RUN_CONCLUSION; fix the real build failure before any replacement build." >&2
+              exit 1
+            fi
+            echo "FORMAL_CANDIDATE_REUSED=PASS run=$RUN_ID status=$RUN_STATUS conclusion=$RUN_CONCLUSION"
+          else
+            gh workflow run arthur-update-v3.yml --repo "$GITHUB_REPOSITORY" --ref "$ARTHUR_SOURCE_REF" -f mode=rebuild_known_good
+            for _ in $(seq 1 30); do
+              RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headBranch,headSha,status,conclusion,createdAt)"
+              MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$ARTHUR_SOURCE_REF" python3 - <<'PY'
+          import json, os
+          runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
+          sha=os.environ['SOURCE_SHA']; ref=os.environ['SOURCE_REF']
+          matches=[r for r in runs if str(r.get('headSha') or '') == sha and str(r.get('headBranch') or '') == ref]
+          matches.sort(key=lambda r: int(r.get('databaseId') or 0), reverse=True)
+          if matches:
+              r=matches[0]
+              print(f"{r.get('databaseId')}|{r.get('status')}|{r.get('conclusion') or ''}")
+          PY
+              )"
+              [[ -n "$MATCH" ]] && break
+              sleep 4
+            done
+            [[ -n "$MATCH" ]] || { echo 'BLOCKED: Candidate dispatch was not acknowledged.' >&2; exit 1; }
+            IFS='|' read -r RUN_ID RUN_STATUS RUN_CONCLUSION <<<"$MATCH"
+            echo "FORMAL_CANDIDATE_DISPATCHED=PASS run=$RUN_ID source=$SOURCE_SHA ref=$ARTHUR_SOURCE_REF"
+          fi
+
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: Candidate run id invalid.' >&2; exit 1; }
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "status=$RUN_STATUS" >> "$GITHUB_OUTPUT"
+          echo "conclusion=$RUN_CONCLUSION" >> "$GITHUB_OUTPUT"
+
+      - name: Persist canonical Gate evidence and bind BUILD
+        if: ${{ steps.contract.outputs.skip != 'true' }}
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
+          EXECUTION_ID: ${{ steps.contract.outputs.execution_id }}
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          source=os.environ['SOURCE_SHA'].lower()
+          release=os.environ['RELEASE_TAG']
+          execution=os.environ['EXECUTION_ID']
+          control_run=int(os.environ['GITHUB_RUN_ID'])
+          build_run=int(os.environ['CANDIDATE_RUN_ID'])
+          now=datetime.now(timezone.utc).isoformat()
+
+          resume_path=Path('production/resume-state.json')
+          intent_path=Path('production/operator-intent.json')
+          evidence_path=Path('production/evidence') / execution / 'index.json'
+          resume=json.loads(resume_path.read_text(encoding='utf-8'))
+          intent=json.loads(intent_path.read_text(encoding='utf-8'))
+          evidence=json.loads(evidence_path.read_text(encoding='utf-8'))
+
+          if resume.get('execution_id') != execution or intent.get('execution_id') != execution:
+              raise SystemExit('BLOCKED: execution identity changed before BUILD bind')
+          if resume.get('source',{}).get('accepted_source_sha','').lower() != source:
+              raise SystemExit('BLOCKED: accepted source changed before BUILD bind')
+          highest=intent.get('highest_machine_evidence') or {}
+          if highest.get('objective_id') != 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY':
+              raise SystemExit('BLOCKED: highest machine objective changed before BUILD bind')
+          if highest.get('accepted_source_sha','').lower() != source or highest.get('target_release') != release:
+              raise SystemExit('BLOCKED: highest machine source/release changed before BUILD bind')
+          if evidence.get('execution_id') != execution:
+              raise SystemExit('BLOCKED: evidence execution identity mismatch')
+
+          entries=list(evidence.get('evidence') or [])
+          def upsert(entry):
+              nonlocal_entries[:] = [x for x in nonlocal_entries if x.get('evidence_id') != entry['evidence_id']]
+              nonlocal_entries.append(entry)
+          nonlocal_entries=entries
+
+          gate_specs=[
+              ('CHANGE_IMPACT', f'change-impact-{source[:12]}'),
+              ('BASELINE_INHERITANCE', f'baseline-inheritance-{source[:12]}'),
+              ('EXPECTED_DIFF', f'expected-diff-{source[:12]}'),
+          ]
+          for gate_id,eid in gate_specs:
+              gate=resume['gates'][gate_id]
+              gate['status']='PASS'
+              gate['subject']={'source_sha':source}
+              gate['evidence_refs']=[f'evidence:{eid}']
+              gate['inherited']=False
+              gate['inherited_from']=''
+              gate['verified_at']=now
+              upsert({
+                  'evidence_id':eid,
+                  'gate_id':gate_id,
+                  'type':'GITHUB_ACTIONS_STATIC_GATE',
+                  'producer':'ARTHUR_CONTROL_PLANE_CANONICAL',
+                  'source_sha':source,
+                  'github_run_id':control_run,
+                  'artifact_id':0,
+                  'candidate_sha256':'',
+                  'device_build_id':'',
+                  'ref':f'github-actions:{os.environ["GITHUB_REPOSITORY"]}/runs/{control_run}',
+                  'sha256':'',
+                  'observed_at':now,
+                  'result':'PASS',
+              })
+
+          build_eid=f'build-run-{build_run}'
+          build=resume['gates']['BUILD']
+          build['status']='RUNNING'
+          build['subject']={'source_sha':source,'github_run_id':build_run}
+          build['evidence_refs']=[f'evidence:{build_eid}']
+          build['inherited']=False
+          build['inherited_from']=''
+          build['verified_at']=''
+          upsert({
+              'evidence_id':build_eid,
+              'gate_id':'BUILD',
+              'type':'GITHUB_ACTIONS_RUN',
+              'producer':'ARTHUR_KNOWN_GOOD_UPDATE_V3',
+              'source_sha':source,
+              'github_run_id':build_run,
+              'artifact_id':0,
+              'candidate_sha256':'',
+              'device_build_id':'',
+              'ref':f'github-actions:{os.environ["GITHUB_REPOSITORY"]}/runs/{build_run}',
+              'sha256':'',
+              'observed_at':now,
+              'result':'RUNNING',
+          })
+
+          evidence['evidence']=nonlocal_entries
+          resume['release']=release
+          resume['status']='RESUME_SAFE'
+          resume['instruction_allowed']=True
+          resume['current_gate']='BUILD'
+          resume['next_action']='BUILD'
+          resume['pending']=['BUILD']
+          resume.setdefault('checkpoint',{})['current']='BUILD'
+          resume['checkpoint']['next_action']='BUILD'
+          resume['checkpoint']['turn_count']=int(resume['checkpoint'].get('turn_count',0))+1
+          resume.setdefault('production',{})['github_run_id']=build_run
+          resume['production']['artifact_id']=0
+          resume['production']['candidate_sha256']=''
+          resume.setdefault('source',{})['accepted_source_sha']=source
+          resume['source']['repository_head']=source
+          resume['repository_head']=source
+          resume['conflicts']=[]
+          resume['evidence_timestamp']=now
+          resume.pop('semantic_sha256',None)
+          compact=json.dumps(resume,separators=(',',':'),ensure_ascii=False)
+          resume['semantic_sha256']=hashlib.sha256(compact.encode()).hexdigest()
+
+          evidence_path.write_text(json.dumps(evidence,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          resume_path.write_text(json.dumps(resume,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+          print(f'CANONICAL_STATE_BIND=PASS execution={execution} build_run={build_run} source={source}')
+          PY
+
+          pwsh -NoProfile -Command '
+            . ./scripts/arthur-firmware-event-ledger.ps1
+            $path = "./production/firmware-events.jsonl"
+            $execution = $env:EXECUTION_ID
+            $source = $env:SOURCE_SHA
+            $controlRun = [long]$env:GITHUB_RUN_ID
+            $buildRun = [long]$env:CANDIDATE_RUN_ID
+            foreach ($gate in @("CHANGE_IMPACT","BASELINE_INHERITANCE","EXPECTED_DIFF")) {
+              [void](Add-ArthurFirmwareEvent -Path $path -Event "GATE_PASSED" -Stage $gate -Source "ARTHUR_CONTROL_PLANE_CANONICAL" -Data ([ordered]@{
+                execution_id=$execution; gate_id=$gate; source_sha=$source; github_run_id=$controlRun
+              }))
+            }
+            [void](Add-ArthurFirmwareEvent -Path $path -Event "GATE_STARTED" -Stage "BUILD" -Source "ARTHUR_CONTROL_PLANE_CANONICAL" -Data ([ordered]@{
+              execution_id=$execution; gate_id="BUILD"; source_sha=$source; github_run_id=$buildRun
+            }))
+          '
+
+          git config user.name 'XinZhaoWrt State Bot'
+          git config user.email 'xinzhaowrt@users.noreply.github.com'
+          git add production/resume-state.json production/firmware-events.jsonl "production/evidence/$EXECUTION_ID/index.json"
+          if git diff --cached --quiet; then
+            echo 'CANONICAL_STATE_BIND=ALREADY_PERSISTED'
+          else
+            git commit -m "state: bind v0.1.5 canonical BUILD run $CANDIDATE_RUN_ID [skip ci]"
+            for attempt in 1 2 3; do
+              if git push origin HEAD:main; then
+                echo "CANONICAL_STATE_PERSIST=PASS attempt=$attempt"
+                break
+              fi
+              if [[ "$attempt" -eq 3 ]]; then
+                echo 'BLOCKED: unable to persist canonical BUILD binding after retries' >&2
+                exit 1
+              fi
+              git pull --rebase origin main
+            done
+          fi
+
+      - name: Reconcile already-completed Candidate if needed
+        if: ${{ steps.contract.outputs.skip != 'true' && steps.candidate.outputs.status == 'completed' && steps.candidate.outputs.conclusion == 'success' }}
+        shell: bash
+        env:
+          CANDIDATE_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+        run: |
+          set -Eeuo pipefail
+          gh workflow run arthur-production-state-sync.yml --repo "$GITHUB_REPOSITORY" --ref main -f source_run_id="$CANDIDATE_RUN_ID"
+          echo "STATE_SYNC_DISPATCHED=PASS source_run_id=$CANDIDATE_RUN_ID"
+
+      - name: Canonical release summary
         if: always()
-        shell: powershell
+        shell: bash
         run: |
-          $root = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane'
-          "## Arthur Control Plane Manual Recovery" >> $env:GITHUB_STEP_SUMMARY
-          "- Runner: $(whoami)" >> $env:GITHUB_STEP_SUMMARY
-          "- Canonical root: ``$root``" >> $env:GITHUB_STEP_SUMMARY
-          $heartbeat = Join-Path $root 'heartbeat.json'
-          if (Test-Path -LiteralPath $heartbeat) {
-            $h = Get-Content -Raw -LiteralPath $heartbeat
-            "- Heartbeat: ``$h``" >> $env:GITHUB_STEP_SUMMARY
-          }
-          $runtimeState = Join-Path $root 'state\runtime-state.json'
-          if (Test-Path -LiteralPath $runtimeState) {
-            $runtime = Get-Content -Raw -LiteralPath $runtimeState | ConvertFrom-Json
-            "- Runtime phase: ``$($runtime.phase)``" >> $env:GITHUB_STEP_SUMMARY
-            "- Runtime turn count: ``$($runtime.turn_count)``" >> $env:GITHUB_STEP_SUMMARY
-          }
+          {
+            echo '## Arthur canonical RELEASE_ONLY control plane'
+            echo
+            echo '- Highest objective: `PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY`'
+            echo '- Accepted source: `${{ steps.contract.outputs.source_sha }}`'
+            echo '- Frozen source ref: `release/v0.1.5-e037750`'
+            echo '- Target: `${{ steps.contract.outputs.release_tag }}`'
+            echo '- Device write/sysupgrade: forbidden'
+            echo '- Pre-release device test: not a gate'
+            echo '- Path: CHANGE_IMPACT -> BASELINE_INHERITANCE -> EXPECTED_DIFF -> BUILD -> ARTIFACT -> RELEASE_GATE -> RELEASE -> PRODUCTION_RELEASED'
+            if [[ -n "${{ steps.candidate.outputs.run_id }}" ]]; then
+              echo "- Candidate run: `${{ steps.candidate.outputs.run_id }}`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
