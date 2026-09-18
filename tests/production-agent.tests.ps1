@@ -26,6 +26,7 @@ $requiredFiles = @(
     'scripts/production-agent-status.ps1',
     'scripts/arthur-control-plane-gate.ps1',
     'scripts/arthur-operator-intent.ps1',
+    'scripts/arthur-fresh-runtime-supersession.ps1',
     'production/operator-intent.json',
     'production/production-agent.json',
     'production/arthur-flash-profile.json',
@@ -183,6 +184,9 @@ Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=ACTIVE' 'active Windows repai
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=RECOVERED' 'verified Windows recovery must hand control back to ordinary runner flow'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=BLOCKED' 'repair terminal failures must be surfaced explicitly'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=TRIGGERED' 'broken non-protected runtime must trigger Windows repair asynchronously'
+Assert-Contains $deploy 'arthur-fresh-runtime-supersession.ps1' 'fresh authorized execution must supersede stale local runtime through the dedicated helper'
+Assert-Contains $deploy 'FRESH_EXECUTION_RUNTIME_SUPERSESSION=APPLIED' 'runner wakeup must recognize a successful fresh-execution runtime handoff'
+Assert-Contains $deploy 'FRESH_EXECUTION_SUPERSEDED' 'fresh execution handoff must remain distinct from Windows runtime repair'
 Assert-Contains $deploy 'ARTIFACT_STOPPED_RUNTIME_HANDOFF' 'ARTIFACT must permit only a stopped non-crash-loop runtime to continue to the existing persistent Supervisor handoff'
 Assert-Contains $deploy "`$phase -eq 'ARTIFACT'" 'ARTIFACT runtime handoff must remain phase-scoped'
 Assert-Contains $deploy 'WINDOWS_REPAIR_CONTROLLER=PASS reason=artifact_stopped_runtime_handoff' 'ARTIFACT stopped-runtime path must not invoke the Windows repair controller'
@@ -191,8 +195,10 @@ Assert-True ($deploy -notmatch '(?i)Remove-Item[^\r\n]*supervisor-state\.json') 
 $repairIndex = $deploy.IndexOf('repair-status.json',[System.StringComparison]::OrdinalIgnoreCase)
 $resumeIndex = $deploy.IndexOf('Reconcile and resume Arthur Control Plane',[System.StringComparison]::OrdinalIgnoreCase)
 Assert-True ($repairIndex -ge 0 -and $resumeIndex -ge 0 -and $repairIndex -lt $resumeIndex) 'repair observer/trigger must execute before ordinary Control Plane resume'
+$freshSupersessionIndex = $deploy.IndexOf('arthur-fresh-runtime-supersession.ps1',[System.StringComparison]::OrdinalIgnoreCase)
 $artifactHandoffIndex = $deploy.IndexOf('ARTIFACT_STOPPED_RUNTIME_HANDOFF',[System.StringComparison]::OrdinalIgnoreCase)
 $protectedRuntimeIndex = $deploy.IndexOf('reason=protected_runtime',[System.StringComparison]::OrdinalIgnoreCase)
+Assert-True ($freshSupersessionIndex -ge 0 -and $protectedRuntimeIndex -ge 0 -and $freshSupersessionIndex -lt $protectedRuntimeIndex) 'fresh execution supersession must run before protected-phase fail-closed handling'
 Assert-True ($artifactHandoffIndex -ge 0 -and $protectedRuntimeIndex -ge 0 -and $artifactHandoffIndex -lt $protectedRuntimeIndex) 'ARTIFACT stopped-runtime handoff must precede the protected-phase fail-closed branch'
 
 Write-Host 'AUTO_ARTIFACT_FETCH_CONTRACT=PASS'
