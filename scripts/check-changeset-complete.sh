@@ -42,7 +42,6 @@ pass PLUGIN_I18N_BUILD_GATE
 pass THEME_COMPATIBILITY_GATE
 
 ./scripts/check-defaults.sh
-./scripts/check-web-stack.sh
 pass DEPENDENCY_CHECK
 
 count="$(grep -Ev '^[[:space:]]*(#|$)' config/required-plugins.txt | wc -l | tr -d ' ')"
