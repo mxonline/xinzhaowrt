@@ -12,10 +12,27 @@ pass() { echo "$1=PASS"; }
 for test_script in \
   tests/test-adguard-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
-  tests/test-functional-acceptance.sh \
-  tests/test-prebuild-feature-gate.sh; do
+  tests/test-functional-acceptance.sh; do
   bash "$test_script"
 done
+
+release_mode="$(python3 - <<'PY'
+import json
+with open('production/release-mode.json', encoding='utf-8') as f:
+    print(str(json.load(f).get('mode') or ''))
+PY
+)"
+case "$release_mode" in
+  RELEASE_ONLY)
+    echo 'PREBUILD_REAL_DEVICE_GATE=SKIPPED_RELEASE_ONLY'
+    ;;
+  FLASH_AND_VERIFY)
+    bash tests/test-prebuild-feature-gate.sh
+    ;;
+  *)
+    fail "unsupported release mode: $release_mode"
+    ;;
+esac
 pass CHANGE_IMPACT_GATE
 ./scripts/acceptance-contract-gate.sh
 pass ADGUARDHOME_IMPLEMENTATION_READY
