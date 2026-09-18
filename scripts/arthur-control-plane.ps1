@@ -61,6 +61,13 @@ try {
     catch { Fail "CONTROL_PLANE_RELEASE_MODE_INVALID: $($_.Exception.Message)" }
     $releaseMode = [string]$releasePolicy.mode
     Log "CONTROL_PLANE_RELEASE_MODE=PASS mode=$releaseMode automatic_flash=$([bool]$releasePolicy.automatic_flash)"
+    $operatorIntentPath = Join-Path $codeRoot 'production\operator-intent.json'
+    if (-not (Test-Path -LiteralPath $operatorIntentPath -PathType Leaf)) { Fail 'CONTROL_PLANE_OPERATOR_INTENT_MISSING' }
+    try { $operatorIntent = Get-Content -Raw -LiteralPath $operatorIntentPath | ConvertFrom-Json }
+    catch { Fail "CONTROL_PLANE_OPERATOR_INTENT_INVALID: $($_.Exception.Message)" }
+    $acceptedSourceSha = if ($operatorIntent.firmware_state) { ([string]$operatorIntent.firmware_state.active_source_sha).Trim().ToLowerInvariant() } else { '' }
+    if ($acceptedSourceSha -notmatch '^[0-9a-f]{40}$') { Fail 'CONTROL_PLANE_ACCEPTED_SOURCE_SHA_INVALID' }
+    Log "ACCEPTED_SOURCE_SHA=PASS sha=$acceptedSourceSha"
 
     function Save-Json([string]$Path, [object]$Value) {
         $tmp = "$Path.$PID.tmp"
@@ -494,7 +501,7 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
     }
     $previousGateRecords = @(Get-ArthurGateRecordsFromResumeState -ResumeState $previousResumeState)
     $currentSubjects = Get-ArthurCurrentSubjectsForRepositoryHead -GateRecords $previousGateRecords -RepositoryHead $repositoryHead
-    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -AllowBaselineFallbackForMissingLiveDevice:($releaseMode -eq 'RELEASE_ONLY') -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects
+    $resumeState = Resolve-ArthurResumeState -RepositoryHead $repositoryHead -RealDeviceBaseline $realDeviceBaseline -LiveDevice $device.live_build_info -RuntimeState $runtimeBefore -PreviousResumeState $previousResumeState -AllowBaselineFallbackForMissingLiveDevice:($releaseMode -eq 'RELEASE_ONLY') -ExecutionId $activeExecutionId -GateRecords $previousGateRecords -CurrentSubjects $currentSubjects -AcceptedSourceSha $acceptedSourceSha
     Publish-ResumeState $resumeState $resumeStatePath
     if (-not $resumeState.instruction_allowed) {
         Fail ("STATE_RECONCILIATION_REQUIRED: " + (@($resumeState.conflicts) -join ','))

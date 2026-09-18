@@ -364,3 +364,26 @@ Cover a stale `phase=ARTIFACT` with a rewritten `current_stage=CHANGE_IMPACT` an
 - [x] **Step 2: Implement dual-field comparison and verify**
 
 Compare both persisted fields against the active authoritative gate; the focused isolation test and PowerShell parser passed.
+
+### Task 10: Preserve the operator-accepted product source SHA
+
+**Files:**
+- Modify: `scripts/arthur-resume-state.ps1`
+- Modify: `scripts/arthur-control-plane.ps1`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: `production/operator-intent.json#firmware_state.active_source_sha`.
+- Produces: `production/resume-state.json#source.accepted_source_sha` remains bound to `e0377509dcc57c415935e9f779fe27117ce591be`; real-device baseline source remains separate evidence.
+
+- [x] **Step 1: Add the accepted-source regression**
+
+Reconcile with a baseline whose firmware source differs from the operator-accepted product source and assert the resulting resume state preserves the explicit accepted SHA.
+
+- [x] **Step 2: Implement explicit accepted-source binding**
+
+Add an optional resolver input and pass the operator-intent SHA from the control plane; invalid explicit values fail closed.
+
+- [x] **Step 3: Verify**
+
+Release-only isolation, control-plane gates, executor, production-agent release-only, and parser checks passed.

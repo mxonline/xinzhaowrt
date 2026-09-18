@@ -62,9 +62,11 @@ $fallback = Resolve-ArthurResumeState `
     -LiveDevice $null `
     -RuntimeState $runtime `
     -AllowBaselineFallbackForMissingLiveDevice:$true `
-    -ExecutionId 'arthur-v0.1.5-release-e037750-20260918'
+    -ExecutionId 'arthur-v0.1.5-release-e037750-20260918' `
+    -AcceptedSourceSha 'e0377509dcc57c415935e9f779fe27117ce591be'
 Assert-True ([bool]$fallback.instruction_allowed) 'RELEASE_ONLY must resume from the frozen baseline without live device evidence'
 Assert-Equal ([string]$fallback.device.evidence) 'BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED' 'RELEASE_ONLY must identify baseline fallback explicitly'
+Assert-Equal ([string]$fallback.source.accepted_source_sha) 'e0377509dcc57c415935e9f779fe27117ce591be' 'resume reconciliation must preserve the operator-accepted product source SHA'
 
 $historicalStatus = [pscustomobject]@{
     status = 'PRODUCTION_RELEASED'
@@ -158,6 +160,7 @@ Assert-Contains $controlPlane 'Test-ArthurControlPlaneTerminalStatusForActiveExe
 Assert-Contains $controlPlane 'HISTORICAL_STATUS_DIFFERENT_EXECUTION' 'historical terminal status must be explicitly skipped'
 Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_ASYNC_HANDOFF=PASS' 'historical supervisor terminal state must not block RELEASE_ONLY handoff'
 Assert-Contains $controlPlane 'RUNTIME_STATE_MIGRATION=PASS' 'historical runtime state must be rebound to the active execution checkpoint'
+Assert-Contains $controlPlane '-AcceptedSourceSha $acceptedSourceSha' 'resume reconciliation must bind accepted source SHA to operator intent'
 $flashRuntime = Get-Content -Raw -LiteralPath (Join-Path $Root 'scripts\production-agent-flash-legacy.ps1')
 Assert-Contains $flashRuntime 'REMOTE HOST IDENTIFICATION HAS CHANGED' 'FLASH_AND_VERIFY legacy runtime must retain host-key safety evidence'
 Assert-Contains $flashRuntime 'SSH_HOST_IDENTITY_MISMATCH' 'FLASH_AND_VERIFY legacy runtime must retain hard host-key mismatch classification'

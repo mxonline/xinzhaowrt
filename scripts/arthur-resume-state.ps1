@@ -237,7 +237,8 @@ function Resolve-ArthurResumeState {
         [object[]]$GateRecords = @(),
         [object]$CurrentSubjects = $null,
         [object]$RequirementDigests = $null,
-        [object]$ProductionIdentity = $null
+        [object]$ProductionIdentity = $null,
+        [string]$AcceptedSourceSha = ''
     )
 
     $conflicts = New-Object System.Collections.Generic.List[string]
@@ -330,9 +331,10 @@ function Resolve-ArthurResumeState {
     if ([string]::IsNullOrWhiteSpace($productionCandidateSha)) { $productionCandidateSha = [string](Get-ArthurResumeMember $baselineFirmware 'sha256') }
 
     $safe = ($conflicts.Count -eq 0)
+    $acceptedSource = if ($AcceptedSourceSha -match '^[0-9a-fA-F]{40}$') { $AcceptedSourceSha.ToLowerInvariant() } else { $baselineSourceSha }
     $source = [ordered]@{
         repository_head = $RepositoryHead.ToLowerInvariant()
-        accepted_source_sha = $baselineSourceSha
+        accepted_source_sha = $acceptedSource
     }
     $production = [ordered]@{
         github_run_id = $(if ($null -eq $productionRun -or [string]::IsNullOrWhiteSpace([string]$productionRun)) { [long]0 } else { [long]$productionRun })
