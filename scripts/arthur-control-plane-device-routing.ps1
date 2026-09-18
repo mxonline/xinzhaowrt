@@ -57,6 +57,17 @@ function Test-ArthurControlPlaneHistoricalSupervisorStatus {
     )
 
     if ([string]$SupervisorStatus.status -ne 'TERMINAL') { return $false }
+    return (Test-ArthurControlPlaneHistoricalRuntimeState -RuntimeState $RuntimeState -ResumeState $ResumeState -ExecutionId $ExecutionId)
+}
+
+function Test-ArthurControlPlaneHistoricalRuntimeState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][object]$RuntimeState,
+        [Parameter(Mandatory=$true)][object]$ResumeState,
+        [Parameter(Mandatory=$true)][string]$ExecutionId
+    )
+
     if ([string]$ResumeState.execution_id -ne $ExecutionId) { return $false }
 
     $currentGate = if ($ResumeState.PSObject.Properties['current_gate']) { [string]$ResumeState.current_gate } else { [string]$ResumeState.checkpoint.current }

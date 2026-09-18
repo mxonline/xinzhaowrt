@@ -323,3 +323,26 @@ Rebind a historical runtime snapshot to the authoritative resume checkpoint, pre
 - [x] **Step 4: Run all focused contracts**
 
 Run the release-only isolation, control-plane gates, executor, production-agent release-only, supervisor wiring, and PowerShell parser checks. All passed.
+
+### Task 8: Remove supervisor-snapshot timing from historical runtime detection
+
+**Files:**
+- Modify: `scripts/arthur-control-plane-device-routing.ps1`
+- Modify: `scripts/arthur-control-plane.ps1`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: authoritative resume checkpoint and persistent runtime checkpoint; supervisor status is diagnostic only.
+- Produces: deterministic RELEASE_ONLY rebind even when a live persistent supervisor updates its status between reads.
+
+- [x] **Step 1: Reproduce the timing-sensitive miss from the runner log**
+
+The runner showed `phase=ARTIFACT`, authoritative resume `CHANGE_IMPACT`, and `RECOVERY_SUPERVISOR_ALREADY_RUNNING=PASS status=TERMINAL`, but no migration evidence. The snapshot read was not a reliable prerequisite for identifying runtime drift.
+
+- [x] **Step 2: Implement deterministic runtime-drift classification**
+
+Use active execution identity, non-terminal authoritative resume, checkpoint mismatch, and `SAFETY_BLOCKED` exclusion. Treat the supervisor snapshot as supporting evidence only.
+
+- [x] **Step 3: Re-run focused verification**
+
+All release-only, control-plane, executor, release-agent, supervisor-wiring, and parser checks passed.

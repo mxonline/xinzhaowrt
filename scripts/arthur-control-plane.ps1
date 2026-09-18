@@ -514,49 +514,40 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
 
     $supervisorStatusPath = Join-Path $stateDir 'supervisor-status.json'
     $historicalSupervisorTerminal = $false
-    if (Test-Path -LiteralPath $supervisorStatusPath -PathType Leaf) {
-        try {
-            $previousSupervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json
-            if (Test-ArthurControlPlaneHistoricalSupervisorStatus `
-                    -SupervisorStatus $previousSupervisorStatus `
-                    -RuntimeState $runtimeBefore `
-                    -ResumeState $resumeState `
-                    -ExecutionId $activeExecutionId) {
-                $targetPhase = [string]$resumeState.checkpoint.current
-                $targetAction = if ($resumeState.next_action) { [string]$resumeState.next_action } else { [string]$resumeState.checkpoint.next_action }
-                $runtimeBefore.phase = $targetPhase
-                if ($runtimeBefore.PSObject.Properties['current_stage']) { $runtimeBefore.current_stage = $targetPhase }
-                else { $runtimeBefore | Add-Member -NotePropertyName current_stage -NotePropertyValue $targetPhase }
-                $runtimeBefore.next_action = $targetAction
-                $runtimeBefore.terminal_state = $null
-                $runtimeBefore.pending_human_gate = $null
-                $runtimeBefore.next_codex_prompt = "Resume Arthur execution $activeExecutionId at $targetPhase under RELEASE_ONLY. Do not flash, sysupgrade, probe or require SSH/device reachability; preserve existing candidate bytes and continue automatically through the release gates."
-                if ($runtimeBefore.PSObject.Properties['observability'] -and $runtimeBefore.observability) {
-                    $runtimeBefore.observability | Add-Member -NotePropertyName control_plane_runtime_migration -NotePropertyValue ([ordered]@{
-                        execution_id = $activeExecutionId
-                        from = $phaseBefore
-                        to = $targetPhase
-                        reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
-                    }) -Force
-                }
-                else {
-                    $runtimeBefore | Add-Member -NotePropertyName observability -NotePropertyValue ([pscustomobject]@{
-                        control_plane_runtime_migration = [ordered]@{
-                            execution_id = $activeExecutionId
-                            from = $phaseBefore
-                            to = $targetPhase
-                            reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
-                        }
-                    }) -Force
-                }
-                Save-Json $runtimeStatePath $runtimeBefore
-                $historicalSupervisorTerminal = $true
-                Log "RUNTIME_STATE_MIGRATION=PASS execution=$activeExecutionId from=$phaseBefore to=$targetPhase reason=HISTORICAL_SUPERVISOR_TERMINAL_REBOUND"
-            }
+    if ($releaseMode -eq 'RELEASE_ONLY' -and (Test-ArthurControlPlaneHistoricalRuntimeState `
+            -RuntimeState $runtimeBefore `
+            -ResumeState $resumeState `
+            -ExecutionId $activeExecutionId)) {
+        $targetPhase = [string]$resumeState.checkpoint.current
+        $targetAction = if ($resumeState.next_action) { [string]$resumeState.next_action } else { [string]$resumeState.checkpoint.next_action }
+        $runtimeBefore.phase = $targetPhase
+        if ($runtimeBefore.PSObject.Properties['current_stage']) { $runtimeBefore.current_stage = $targetPhase }
+        else { $runtimeBefore | Add-Member -NotePropertyName current_stage -NotePropertyValue $targetPhase }
+        $runtimeBefore.next_action = $targetAction
+        $runtimeBefore.terminal_state = $null
+        $runtimeBefore.pending_human_gate = $null
+        $runtimeBefore.next_codex_prompt = "Resume Arthur execution $activeExecutionId at $targetPhase under RELEASE_ONLY. Do not flash, sysupgrade, probe or require SSH/device reachability; preserve existing candidate bytes and continue automatically through the release gates."
+        if ($runtimeBefore.PSObject.Properties['observability'] -and $runtimeBefore.observability) {
+            $runtimeBefore.observability | Add-Member -NotePropertyName control_plane_runtime_migration -NotePropertyValue ([ordered]@{
+                execution_id = $activeExecutionId
+                from = $phaseBefore
+                to = $targetPhase
+                reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
+            }) -Force
         }
-        catch {
-            Fail "STATE_RECONCILIATION_REQUIRED: SUPERVISOR_STATUS_INVALID $($_.Exception.Message)"
+        else {
+            $runtimeBefore | Add-Member -NotePropertyName observability -NotePropertyValue ([pscustomobject]@{
+                control_plane_runtime_migration = [ordered]@{
+                    execution_id = $activeExecutionId
+                    from = $phaseBefore
+                    to = $targetPhase
+                    reason = 'HISTORICAL_SUPERVISOR_TERMINAL_REBOUND_TO_ACTIVE_RESUME'
+                }
+            }) -Force
         }
+        Save-Json $runtimeStatePath $runtimeBefore
+        $historicalSupervisorTerminal = $true
+        Log "RUNTIME_STATE_MIGRATION=PASS execution=$activeExecutionId from=$phaseBefore to=$targetPhase reason=HISTORICAL_SUPERVISOR_TERMINAL_REBOUND"
     }
 
     $supervisorPath = Join-Path $codeRoot 'scripts\run-supervisor.py'

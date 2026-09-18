@@ -108,6 +108,11 @@ Assert-True (Test-ArthurControlPlaneHistoricalSupervisorStatus `
         -ResumeState $newExecutionResume `
         -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
     'old terminal supervisor state must be recognized as historical for a new execution'
+Assert-True (Test-ArthurControlPlaneHistoricalRuntimeState `
+        -RuntimeState $historicalRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'runtime checkpoint drift must be recognized without depending on supervisor snapshot timing'
 
 $historicalReleasedRuntimeState = [pscustomobject]@{
     phase = 'PRODUCTION_RELEASED'
