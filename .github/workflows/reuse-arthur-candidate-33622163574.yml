@@ -1,4 +1,4 @@
-name: Reuse Arthur Candidate 33622163574
+name: Arthur v0.1.5 Post Release Device Test
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: arthur-existing-candidate-production
+  group: arthur-v0-1-5-post-release-device-test
   cancel-in-progress: false
 
 jobs:
@@ -27,7 +27,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
-      CANDIDATE_RUN_ID: '33622163574'
+      CANDIDATE_RUN_ID: '35356523348'
+      ARTHUR_ROOT_PASSWORD: password
     steps:
       - name: Checkout current control plane
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -74,11 +75,85 @@ jobs:
           $runtimeSha = (git -C $runtime rev-parse HEAD).Trim()
           Write-Host "REUSE_CANDIDATE_CONTROL_SHA=$runtimeSha"
 
+          # Separate operator authorization for the independent post-release device test.
+          $authPath = Join-Path $workspace 'production\post-release-device-test-authorization.json'
+          $auth = Get-Content -Raw -LiteralPath $authPath | ConvertFrom-Json
+          if ([string]$auth.status -ne 'AUTHORIZED' -or [string]$auth.task -ne 'POST_RELEASE_DEVICE_TEST' -or
+              $auth.device_write_authorized -ne $true -or $auth.sysupgrade_authorized -ne $true -or
+              [long]$auth.github_run_id -ne [long]$env:CANDIDATE_RUN_ID -or
+              [string]$auth.source_sha -ne 'e0377509dcc57c415935e9f779fe27117ce591be' -or
+              [string]$auth.firmware_sha256 -ne '6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d') {
+            throw 'POST_RELEASE_DEVICE_TEST_AUTHORIZATION_MISMATCH'
+          }
+          Write-Host 'POST_RELEASE_DEVICE_TEST_AUTHORIZATION=PASS'
+
+          # Prove the currently attached Arthur is the existing v0.1.3 device over Ethernet before enabling the write path.
+          $deviceIp = '192.168.6.1'
+          $build = (Invoke-WebRequest -UseBasicParsing -Uri "http://$deviceIp/luci-static/xinzhao/build-info.json" -TimeoutSec 10).Content | ConvertFrom-Json
+          if ([string]$build.Firmware -ne 'XinZhaoWrt' -or [string]$build.Version -ne '0.1.3' -or [string]$build.Target -ne 'qualcommax/ipq60xx' -or [string]$build.Profile -ne 'jdcloud_re-ss-01') {
+            throw 'PREFLASH_DEVICE_IDENTITY_MISMATCH'
+          }
+          $subnet = (($deviceIp -split '\.')[0..2] -join '.') + '.0/24'
+          $selected = $null
+          foreach ($route in @(Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.DestinationPrefix -eq "$deviceIp/32" -or $_.DestinationPrefix -eq $subnet } | Sort-Object RouteMetric)) {
+            $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
+            if (-not $adapter -or [string]$adapter.Status -ne 'Up') { continue }
+            if (("$($adapter.Name) $($adapter.InterfaceDescription)") -match '(?i)wi-?fi|wireless|wlan|802\.11') { continue }
+            $selected = $adapter
+            break
+          }
+          if (-not $selected) { throw 'PREFLASH_CONTROL_PATH_NOT_ETHERNET' }
+          Test-Connection -ComputerName $deviceIp -Count 1 -Quiet -ErrorAction SilentlyContinue | Out-Null
+          Start-Sleep -Milliseconds 300
+          $neighbor = Get-NetNeighbor -AddressFamily IPv4 -IPAddress $deviceIp -ErrorAction SilentlyContinue | Where-Object { $_.LinkLayerAddress -and $_.State -notin @('Unreachable','Incomplete') } | Select-Object -First 1
+          if (-not $neighbor) { throw 'PREFLASH_ETHERNET_NEIGHBOR_MISSING' }
+          $mac = ([string]$neighbor.LinkLayerAddress).ToLowerInvariant().Replace('-',':')
+
+          # The historical access policy file is absent on main; create it only in this disposable local runtime from live Ethernet evidence.
+          $accessPolicy = [ordered]@{
+            schema_version = 1
+            device = [ordered]@{
+              management_ip = $deviceIp
+              verified_management_mac = $mac
+              build_info_path = '/luci-static/xinzhao/build-info.json'
+              build_marker = 'XinZhaoWrt'
+              board_pattern = 'jdcloud,re-ss-01|RE-SS-01'
+            }
+          }
+          $accessPolicy | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $runtime 'production\arthur-control-plane.json')
+
+          # Switch only the disposable self-hosted runtime into the explicit compatibility write mode.
+          $modePath = Join-Path $runtime 'production\release-mode.json'
+          $modePolicy = Get-Content -Raw -LiteralPath $modePath | ConvertFrom-Json
+          $modePolicy.mode = 'FLASH_AND_VERIFY'
+          $modePolicy.automatic_flash = $false
+          $modePolicy | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 -LiteralPath $modePath
+
+          # Use the current real-device-confirmed v0.1.3 Known-Good itself as rollback authority in the disposable runtime.
+          $knownPath = Join-Path $runtime 'production\known-good.json'
+          $known = Get-Content -Raw -LiteralPath $knownPath | ConvertFrom-Json
+          $known.rollback.target = [string]$known.stable_tag
+          $known.rollback.firmware = [string]$known.firmware
+          $known.rollback.sha256 = [string]$known.sha256
+          $known | ConvertTo-Json -Depth 20 | Set-Content -Encoding UTF8 -LiteralPath $knownPath
+
+          # For this independent post-release test: no rebuild-on-failure, use PostFlash verification, and stop before legacy Stable/Release mutation.
+          $legacyPath = Join-Path $runtime 'scripts\production-agent-flash-legacy.ps1'
+          $legacy = Get-Content -Raw -LiteralPath $legacyPath
+          $legacy = $legacy.Replace('        Invoke-RepairController $State', "        Write-Host 'POST_RELEASE_FAILURE_NO_REBUILD=PASS'")
+          $legacy = $legacy.Replace('-Target $Target | Out-Host', '-Target $Target -Mode PostFlash | Out-Host')
+          $legacy = $legacy.Replace('        Complete-Release $state', "        Write-Host 'POST_RELEASE_STANDARD_VERIFY=PASS'")
+          Set-Content -Encoding UTF8 -LiteralPath $legacyPath -Value $legacy
+
+          . (Join-Path $runtime 'scripts\ensure-arthur-unattended-access.ps1')
+          $access = Ensure-ArthurUnattendedAccess -DeviceIp $deviceIp
+          Write-Host "PREFLASH_UNATTENDED_ACCESS=PASS mode=$($access.Mode) mac=$mac"
+
           $candidate = gh api "repos/${{ github.repository }}/actions/runs/$env:CANDIDATE_RUN_ID" | ConvertFrom-Json
           if ([string]$candidate.status -ne 'completed' -or [string]$candidate.conclusion -ne 'success') {
             throw "Existing Candidate Run $env:CANDIDATE_RUN_ID is not completed/success."
           }
-          if ([string]$candidate.head_sha -ne '0104d323c5cc1a3a838882b98c901d6f33e21e43') {
+          if ([string]$candidate.head_sha -ne 'e0377509dcc57c415935e9f779fe27117ce591be') {
             throw "Existing Candidate source SHA changed unexpectedly: $($candidate.head_sha)"
           }
           Write-Host "REUSE_CANDIDATE_RUN_VERIFIED=PASS run=$env:CANDIDATE_RUN_ID source=$($candidate.head_sha)"
@@ -99,3 +174,25 @@ jobs:
           & $pwsh -NoProfile -ExecutionPolicy Bypass -File $agent -Mode Status -RunId ([long]$env:CANDIDATE_RUN_ID)
           if ($LASTEXITCODE -ne 0) { throw 'Unable to read final Production Agent state.' }
           Write-Host "REUSE_CANDIDATE_EXECUTION_FINISHED=PASS run=$env:CANDIDATE_RUN_ID"
+          $statePath = Join-Path $runtime 'output\production-agent\state.json'
+          $postState = Get-Content -Raw -LiteralPath $statePath | ConvertFrom-Json
+          if ([string]$postState.stage -ne 'RELEASE_GATE' -or [string]$postState.status -ne 'VERIFIED') {
+            throw "POST_RELEASE_STANDARD_VERIFY_NOT_COMPLETE stage=$($postState.stage) status=$($postState.status)"
+          }
+          if ([string]$postState.source_sha -ne 'e0377509dcc57c415935e9f779fe27117ce591be' -or [string]$postState.candidate_sha256 -ne '6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d') {
+            throw 'POST_RELEASE_STANDARD_VERIFY_IDENTITY_MISMATCH'
+          }
+          $evidenceOut = Join-Path $workspace 'output\post-release-v015'
+          New-Item -ItemType Directory -Force -Path $evidenceOut | Out-Null
+          Copy-Item -Force (Join-Path $runtime 'output\real-device\real-device-verification.json') (Join-Path $evidenceOut 'real-device-verification.json')
+          Copy-Item -Force (Join-Path $runtime 'output\real-device\real-device-verification.md') (Join-Path $evidenceOut 'real-device-verification.md')
+          Write-Host 'POST_RELEASE_STANDARD_DEVICE_VERIFY=PASS'
+
+      - name: Upload standard post-release device evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v0.1.5-standard-post-release-device-test
+          path: output/post-release-v015/**
+          if-no-files-found: warn
+          retention-days: 30
