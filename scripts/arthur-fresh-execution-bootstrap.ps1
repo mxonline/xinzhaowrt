@@ -159,10 +159,34 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $releasePolicyText = Get-Content -Raw -LiteralPath $releasePolicyPath
 
     $frozen = @($intent.firmware_state.verified_frozen | ForEach-Object { ([string]$_).Trim().ToUpperInvariant() })
+    $previousEvidencePath = Get-ArthurEvidenceIndexPath -Root $rootPath -ExecutionId $previousExecutionId
+    $previousEvidenceIndex = Read-ArthurBootstrapJson -Path $previousEvidencePath -MissingCode 'FRESH_BOOTSTRAP_PREVIOUS_EVIDENCE_INDEX_MISSING'
+    $previousEvidenceById = @{}
+    foreach ($item in @($previousEvidenceIndex.evidence)) {
+        if ($null -eq $item -or -not $item.PSObject.Properties['evidence_id']) { continue }
+        $id = [string]$item.evidence_id
+        if (-not [string]::IsNullOrWhiteSpace($id)) { $previousEvidenceById[$id] = $item }
+    }
+    $inheritedEvidence = New-Object System.Collections.Generic.List[object]
+    $inheritedEvidenceIds = New-Object System.Collections.Generic.HashSet[string]
     $gateMap = [ordered]@{}
     foreach ($gateId in @('WIFI','LUCI_CHINESE','QUICKSTART')) {
         if ($frozen -contains $gateId) {
-            $gateMap[$gateId] = New-ArthurBootstrapInheritedGate -PreviousResume $previous -GateId $gateId -PreviousExecutionId $previousExecutionId
+            $gate = New-ArthurBootstrapInheritedGate -PreviousResume $previous -GateId $gateId -PreviousExecutionId $previousExecutionId
+            foreach ($ref in @($gate.evidence_refs)) {
+                $text = [string]$ref
+                if (-not $text.StartsWith('evidence:',[System.StringComparison]::Ordinal)) {
+                    throw "FRESH_BOOTSTRAP_INHERITED_EVIDENCE_REF_INVALID=$gateId:$text"
+                }
+                $evidenceId = $text.Substring('evidence:'.Length)
+                if (-not $previousEvidenceById.ContainsKey($evidenceId)) {
+                    throw "FRESH_BOOTSTRAP_INHERITED_EVIDENCE_REF_MISSING=$gateId:$evidenceId"
+                }
+                if ($inheritedEvidenceIds.Add($evidenceId)) {
+                    $inheritedEvidence.Add((Copy-ArthurBootstrapObject $previousEvidenceById[$evidenceId]))
+                }
+            }
+            $gateMap[$gateId] = $gate
         }
     }
 
@@ -236,7 +260,7 @@ function Invoke-ArthurFreshExecutionBootstrap {
     $evidenceIndex = [pscustomobject][ordered]@{
         schema_version = 1
         execution_id = $executionId
-        evidence = @()
+        evidence = @($inheritedEvidence)
     }
     $event = [pscustomobject][ordered]@{
         event = 'EXECUTION_STARTED'
