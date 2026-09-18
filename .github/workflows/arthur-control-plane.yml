@@ -143,6 +143,7 @@ jobs:
           )"
           (
             cd "$ACCEPTED_ROOT"
+            chmod +x scripts/*.sh tests/*.sh
             CHANGESET_BASE="$BASE_SHA" bash scripts/check-changeset-complete.sh | tee "$RUNNER_TEMP/arthur-v015-canonical-gates.log"
           )
           for marker in             CHANGE_IMPACT_GATE=PASS             BASELINE_INHERITANCE_GATE=PASS             EXPECTED_DIFF_GATE=PASS             IMPLEMENTATION_COMPLETE_GATE=PASS             CHANGESET_FREEZE=PASS; do
