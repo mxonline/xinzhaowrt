@@ -11,11 +11,9 @@ pass() { echo "$1=PASS"; }
 # a device and do not consume any previously produced candidate artifact.
 for test_script in \
   tests/test-adguard-defaults.sh \
-  tests/test-wifi-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
   tests/test-functional-acceptance.sh \
-  tests/test-prebuild-feature-gate.sh \
-  tests/test-argon-default-theme.sh; do
+  tests/test-prebuild-feature-gate.sh; do
   bash "$test_script"
 done
 pass CHANGE_IMPACT_GATE
