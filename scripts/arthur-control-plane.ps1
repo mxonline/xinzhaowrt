@@ -595,7 +595,59 @@ Resume the current Arthur production task arthur-adh-quickstart from the accepte
         Fail 'RECOVERY_SUPERVISOR_CRASH_LOOP_BLOCKED'
     }
     if ($supervisorState -in @('WAITING_HUMAN','DEFERRED_SAFETY_PHASE')) {
-        Fail "RECOVERY_SUPERVISOR_SAFETY_DEFERRED: status=$supervisorState"
+        $runtimeSafetyState = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json
+        $runtimeSafetyPhase = [string]$runtimeSafetyState.phase
+        $runtimeSafetyGate = if ($runtimeSafetyState.PSObject.Properties['pending_human_gate']) { [string]$runtimeSafetyState.pending_human_gate } else { '' }
+        $runtimeSafetyTerminal = if ($runtimeSafetyState.PSObject.Properties['terminal_state']) { [string]$runtimeSafetyState.terminal_state } else { '' }
+        $protectedRuntimePhases = @('FLASH','WAIT_DEVICE','AUTO_FLASH_SAFETY_GATE','RELEASE_GATE','RELEASE')
+        $activeHumanGate = -not [string]::IsNullOrWhiteSpace($runtimeSafetyGate)
+        $activeProtectedPhase = $protectedRuntimePhases -contains $runtimeSafetyPhase
+        $realSafetyDefer = (
+            ($supervisorState -eq 'WAITING_HUMAN' -and $activeHumanGate) -or
+            ($supervisorState -eq 'DEFERRED_SAFETY_PHASE' -and $activeProtectedPhase) -or
+            (-not [string]::IsNullOrWhiteSpace($runtimeSafetyTerminal))
+        )
+        if ($realSafetyDefer -or $releaseMode -ne 'RELEASE_ONLY' -or -not $resumeState.instruction_allowed) {
+            Fail "RECOVERY_SUPERVISOR_SAFETY_DEFERRED: status=$supervisorState phase=$runtimeSafetyPhase human_gate=$runtimeSafetyGate terminal=$runtimeSafetyTerminal"
+        }
+
+        Log "RECOVERY_SUPERVISOR_STALE_SAFETY_STATE=OBSERVED status=$supervisorState phase=$runtimeSafetyPhase human_gate=NONE execution=$activeExecutionId"
+        $persistentHelper = Join-Path $codeRoot 'scripts\ensure-arthur-persistent-supervisor.ps1'
+        if (-not (Test-Path -LiteralPath $persistentHelper -PathType Leaf)) {
+            Fail "RECOVERY_SUPERVISOR_RESTART_HELPER_MISSING: $persistentHelper"
+        }
+
+        $old = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $restartOutput = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $persistentHelper -StateDir $stateDir -ControlRoot $codeRoot -HeadlessPythonExe $runtimePython -RestartExisting 2>&1 | Out-String).Trim()
+            $restartCode = $LASTEXITCODE
+        }
+        finally { $ErrorActionPreference = $old }
+        if ($restartOutput) {
+            Add-Content -LiteralPath $logPath -Value $restartOutput -Encoding UTF8
+            Write-Host $restartOutput
+        }
+        if ($restartCode -ne 0) {
+            Fail "RECOVERY_SUPERVISOR_STALE_RESTART_FAILED: exit=$restartCode"
+        }
+
+        $convergeDeadline = (Get-Date).AddSeconds(35)
+        do {
+            Start-Sleep -Seconds 2
+            try {
+                $supervisorStatus = Get-Content -Raw -LiteralPath $supervisorStatusPath | ConvertFrom-Json
+                $supervisorState = [string]$supervisorStatus.status
+            }
+            catch {
+                $supervisorState = 'STATUS_RELOAD_PENDING'
+            }
+        } while ($supervisorState -in @('WAITING_HUMAN','DEFERRED_SAFETY_PHASE','STATUS_RELOAD_PENDING') -and (Get-Date) -lt $convergeDeadline)
+
+        if ($supervisorState -in @('WAITING_HUMAN','DEFERRED_SAFETY_PHASE','STATUS_RELOAD_PENDING')) {
+            Fail "RECOVERY_SUPERVISOR_STALE_SAFETY_STATE_TIMEOUT: status=$supervisorState phase=$runtimeSafetyPhase"
+        }
+        Log "RECOVERY_SUPERVISOR_STALE_SAFETY_STATE=RECOVERED status=$supervisorState phase=$runtimeSafetyPhase execution=$activeExecutionId"
     }
     if ($supervisorState -eq 'TERMINAL') {
         $runtimeTerminal = Get-Content -Raw -LiteralPath $runtimeStatePath | ConvertFrom-Json

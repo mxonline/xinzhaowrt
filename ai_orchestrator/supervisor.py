@@ -239,6 +239,10 @@ class RuntimeSupervisor:
         progress = status.get("last_progress_at") or state.get("observability", {}).get("last_progress_at")
         progress_age = age_seconds(progress)
         stalled = runtime == "STALLED" or status.get("action") == "STALL_DIAGNOSIS"
+        # A runtime process can remain alive after a human gate was cleared in
+        # durable state. Its in-memory ProductionRuntime still holds the old
+        # gate, so a fresh heartbeat alone must not make that child healthy.
+        stale_human_wait = runtime == "WAITING_HUMAN" and not state.get("pending_human_gate")
         daemon_pid = status.get("daemon_pid")
         daemon_alive = bool(daemon_pid and process_is_alive(daemon_pid))
         return {
@@ -247,6 +251,7 @@ class RuntimeSupervisor:
             "heartbeat_fresh": fresh,
             "progress_age_seconds": progress_age,
             "stalled": stalled,
+            "stale_human_wait": stale_human_wait,
             "child_pid": child_pid,
             "child_alive": child_alive,
             "daemon_pid": daemon_pid,
@@ -254,7 +259,7 @@ class RuntimeSupervisor:
             # A live PID is not sufficient: a wedged bridge can remain alive
             # while its persisted heartbeat is stale.  Require a fresh
             # heartbeat for every automatic-health decision.
-            "healthy": fresh and not stalled and (
+            "healthy": fresh and not stalled and not stale_human_wait and (
                 (runtime in ("LIVE", "RECOVERING") and daemon_alive) or child_alive
             ),
         }
@@ -334,6 +339,7 @@ class RuntimeSupervisor:
             "runtime": health["runtime"],
             "runtime_heartbeat_age_seconds": health["heartbeat_age_seconds"],
             "runtime_progress_age_seconds": health["progress_age_seconds"],
+            "stale_human_wait": health["stale_human_wait"],
             "daemon_pid": health["daemon_pid"],
             "daemon_alive": health["daemon_alive"],
             "child_pid": health["child_pid"],

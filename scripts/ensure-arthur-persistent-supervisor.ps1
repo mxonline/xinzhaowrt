@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true)][string]$ControlRoot,
     [Parameter(Mandatory=$true)][string]$HeadlessPythonExe,
     [string]$TaskName = 'XinZhaoWrt-Arthur-Persistent-Supervisor',
-    [switch]$DoNotStart
+    [switch]$DoNotStart,
+    [switch]$RestartExisting
 )
 
 $ErrorActionPreference = 'Stop'
@@ -187,7 +188,27 @@ $pythonPath = [IO.Path]::GetFullPath($HeadlessPythonExe)
 $shimPath = Join-Path $controlPath 'scripts\run-supervisor.py'
 
 $matchingSupervisor = @(Get-MatchingSupervisorProcess -StatePath $statePath -ControlPath $controlPath)
-if ($matchingSupervisor.Count -gt 0) {
+if ($matchingSupervisor.Count -gt 0 -and $RestartExisting) {
+    Write-Host "PERSISTENT_SUPERVISOR_STALE_RESTART=BEGIN count=$($matchingSupervisor.Count)"
+    if (Get-Command Stop-ScheduledTask -ErrorAction SilentlyContinue) {
+        try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
+    }
+    foreach ($process in $matchingSupervisor) {
+        try { Stop-Process -Id ([int]$process.ProcessId) -Force -ErrorAction Stop } catch {
+            Fail "PERSISTENT_SUPERVISOR_STALE_RESTART_FAILED: pid=$($process.ProcessId) error=$($_.Exception.Message)"
+        }
+    }
+    $deadline = (Get-Date).AddSeconds(15)
+    do {
+        Start-Sleep -Milliseconds 500
+        $matchingSupervisor = @(Get-MatchingSupervisorProcess -StatePath $statePath -ControlPath $controlPath)
+    } while ($matchingSupervisor.Count -gt 0 -and (Get-Date) -lt $deadline)
+    if ($matchingSupervisor.Count -gt 0) {
+        Fail "PERSISTENT_SUPERVISOR_STALE_RESTART_TIMEOUT: pids=$(@($matchingSupervisor.ProcessId) -join ',')"
+    }
+    Write-Host 'PERSISTENT_SUPERVISOR_STALE_RESTART=PASS'
+}
+elseif ($matchingSupervisor.Count -gt 0) {
     $supervisorPid = [int]$matchingSupervisor[0].ProcessId
     Write-Host "PERSISTENT_SUPERVISOR_DETACHED=REUSE pid=$supervisorPid"
     Write-Host 'PERSISTENT_SUPERVISOR_TASK=PASS'

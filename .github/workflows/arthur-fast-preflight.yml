@@ -102,6 +102,9 @@ jobs:
         shell: pwsh
         run: ./tests/arthur-recovery-supervisor-wiring.tests.ps1
 
+      - name: Test Arthur stale human-wait supervisor recovery
+        run: python3 -m unittest tests.test_supervisor_child_exit_observation -v
+
       - name: Test Arthur canonical resume-state contract
         shell: pwsh
         run: ./tests/arthur-resume-state.tests.ps1

@@ -116,6 +116,15 @@ Assert-Contains $recoveryRuntime 'resume_persisted_handoff' 'recovery supervisor
 Assert-Contains $supervisor '"resume"' 'supervisor child must run the continuous ai_orchestrator resume entrypoint'
 Assert-NotContains $supervisor '"--max-turns"' 'supervisor child must not be artificially bounded to a single turn'
 
+Assert-Contains $supervisor 'stale_human_wait' 'supervisor must treat a cleared durable human gate with stale WAITING_HUMAN runtime status as unhealthy'
+Assert-Contains $persistentSupervisorTask 'RestartExisting' 'persistent supervisor helper must support an explicit bounded restart for stale supervisor ownership'
+Assert-Contains $persistentSupervisorTask 'PERSISTENT_SUPERVISOR_STALE_RESTART=PASS' 'stale supervisor restart must emit machine evidence'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_STALE_SAFETY_STATE=OBSERVED' 'Control Plane must identify stale supervisor safety state separately from a real human gate'
+Assert-Contains $controlPlane 'RECOVERY_SUPERVISOR_STALE_SAFETY_STATE=RECOVERED' 'Control Plane must prove stale supervisor recovery before continuing'
+Assert-Contains $controlPlane 'pending_human_gate' 'Control Plane must inspect durable human-gate state before deciding whether WAITING_HUMAN is real'
+Assert-Contains $controlPlane '-RestartExisting' 'Control Plane may restart the persistent supervisor only after stale-state validation'
+Assert-Contains $controlPlane "'FLASH','WAIT_DEVICE','AUTO_FLASH_SAFETY_GATE','RELEASE_GATE','RELEASE'" 'protected device/release phases must remain fail-closed during stale-state recovery'
+
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_WIRING_CONTRACT=PASS'
 Write-Host 'ARTHUR_RECOVERY_SUPERVISOR_DIAGNOSTICS_CONTRACT=PASS'
 Write-Host 'ARTHUR_PERSISTENT_SUPERVISOR_TASK_CONTRACT=PASS'
