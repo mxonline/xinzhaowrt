@@ -346,3 +346,21 @@ Use active execution identity, non-terminal authoritative resume, checkpoint mis
 - [x] **Step 3: Re-run focused verification**
 
 All release-only, control-plane, executor, release-agent, supervisor-wiring, and parser checks passed.
+
+### Task 9: Detect drift in both persisted runtime phase fields
+
+**Files:**
+- Modify: `scripts/arthur-control-plane-device-routing.ps1`
+- Modify: `tests/arthur-control-plane-release-only-device-isolation.tests.ps1`
+
+**Interfaces:**
+- Consumes: persisted `runtime-state.json` `phase` and `current_stage` fields.
+- Produces: deterministic historical-runtime classification when either field is stale.
+
+- [x] **Step 1: Add the phase-only drift regression**
+
+Cover a stale `phase=ARTIFACT` with a rewritten `current_stage=CHANGE_IMPACT` and require migration.
+
+- [x] **Step 2: Implement dual-field comparison and verify**
+
+Compare both persisted fields against the active authoritative gate; the focused isolation test and PowerShell parser passed.

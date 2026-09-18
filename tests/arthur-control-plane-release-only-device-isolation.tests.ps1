@@ -113,6 +113,16 @@ Assert-True (Test-ArthurControlPlaneHistoricalRuntimeState `
         -ResumeState $newExecutionResume `
         -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
     'runtime checkpoint drift must be recognized without depending on supervisor snapshot timing'
+$phaseOnlyHistoricalRuntimeState = [pscustomobject]@{
+    phase = 'ARTIFACT'
+    current_stage = 'CHANGE_IMPACT'
+    terminal_state = $null
+}
+Assert-True (Test-ArthurControlPlaneHistoricalRuntimeState `
+        -RuntimeState $phaseOnlyHistoricalRuntimeState `
+        -ResumeState $newExecutionResume `
+        -ExecutionId 'arthur-v0.1.5-release-e037750-20260918') `
+    'phase drift must be recognized even when a stale current_stage was rewritten'
 
 $historicalReleasedRuntimeState = [pscustomobject]@{
     phase = 'PRODUCTION_RELEASED'

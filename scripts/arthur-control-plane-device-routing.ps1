@@ -75,9 +75,10 @@ function Test-ArthurControlPlaneHistoricalRuntimeState {
     if ($currentGate -eq 'PRODUCTION_RELEASED' -and $nextAction -eq 'NONE') { return $false }
     if ([string]$RuntimeState.terminal_state -eq 'SAFETY_BLOCKED') { return $false }
 
-    $runtimePhase = if ($RuntimeState.PSObject.Properties['current_stage']) { [string]$RuntimeState.current_stage } else { [string]$RuntimeState.phase }
+    $runtimePhase = [string]$RuntimeState.phase
+    $runtimeStage = if ($RuntimeState.PSObject.Properties['current_stage']) { [string]$RuntimeState.current_stage } else { $runtimePhase }
     $runtimeTerminal = [string]$RuntimeState.terminal_state
-    return ($runtimeTerminal -eq 'PRODUCTION_RELEASED' -or $runtimePhase -ne $currentGate)
+    return ($runtimeTerminal -eq 'PRODUCTION_RELEASED' -or $runtimePhase -ne $currentGate -or $runtimeStage -ne $currentGate)
 }
 
 function Test-ArthurControlPlaneRuntimeTerminalForActiveExecution {
