@@ -458,6 +458,28 @@ jobs:
           "ARTHUR_WINDOWS_REPAIR_SKIP_NORMAL=0" >> $env:GITHUB_ENV
           "ARTHUR_WINDOWS_REPAIR_STATE=NOT_REQUIRED" >> $env:GITHUB_ENV
 
+          # A fresh GitHub-authorized RELEASE_ONLY execution may supersede a stale
+          # local ARTIFACT runtime from the previous execution. Perform that narrow,
+          # evidence-preserving handoff before the legacy protected-phase repair guard.
+          $supersedeHelper = Join-Path $env:ARTHUR_CONTROL_PLANE_CODE_ROOT 'scripts\arthur-fresh-runtime-supersession.ps1'
+          if (-not (Test-Path -LiteralPath $supersedeHelper -PathType Leaf)) {
+            throw "FRESH_RUNTIME_SUPERSESSION_HELPER_MISSING: $supersedeHelper"
+          }
+          $supersedeOutput = (& $supersedeHelper `
+            -StateDir $stateDir `
+            -ControlRoot $env:ARTHUR_CONTROL_PLANE_CODE_ROOT `
+            -Repository $env:GITHUB_REPOSITORY 2>&1 | Out-String).Trim()
+          $supersedeCode = $LASTEXITCODE
+          if ($supersedeOutput) { Write-Host $supersedeOutput }
+          if ($supersedeCode -ne 0) {
+            throw "FRESH_RUNTIME_SUPERSESSION_FAILED: exit=$supersedeCode"
+          }
+          if ($supersedeOutput -match 'FRESH_EXECUTION_RUNTIME_SUPERSESSION=APPLIED') {
+            "ARTHUR_WINDOWS_REPAIR_STATE=FRESH_EXECUTION_SUPERSEDED" >> $env:GITHUB_ENV
+            Write-Host 'WINDOWS_REPAIR_CONTROLLER=PASS reason=fresh_execution_superseded_stale_runtime'
+            exit 0
+          }
+
           $repair = Read-JsonSafe $repairStatusPath
           if ($repair) {
             $repairStatus = [string](Get-Value $repair 'status' '')

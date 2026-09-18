@@ -21,18 +21,23 @@ TARGET_VERSION="${TARGET_RELEASE#v}"
 [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid target version: $TARGET_VERSION"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid VERSION: $VERSION"
 
-CURRENT_STABLE="$("$PYTHON_BIN" - "$ROOT/production/resume-state.json" <<'PY'
+CURRENT_STABLE="$(git -C "$ROOT" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+if [[ -z "$CURRENT_STABLE" ]]; then
+  CURRENT_STABLE="$("$PYTHON_BIN" - "$ROOT/production/resume-state.json" <<'PY'
 import json
 import pathlib
 import sys
 
 state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-stable = state.get("accepted_release") or state.get("production", {}).get("release")
+if state.get("status") != "PRODUCTION_RELEASED":
+    raise SystemExit("no published semantic-version tag and durable state is not terminal")
+stable = state.get("accepted_release") or state.get("production", {}).get("release") or state.get("release")
 if not isinstance(stable, str) or not stable.startswith("v"):
     raise SystemExit("missing accepted stable release")
 print(stable)
 PY
 )"
+fi
 CURRENT_STABLE_VERSION="${CURRENT_STABLE#v}"
 
 "$PYTHON_BIN" - "$CURRENT_STABLE_VERSION" "$TARGET_VERSION" <<'PY'
@@ -54,19 +59,24 @@ if git -C "$ROOT" show-ref --verify --quiet "refs/tags/$TARGET_RELEASE"; then
   fail "target tag already exists locally: $TARGET_RELEASE"
 fi
 
-STATE_RELEASES="$("$PYTHON_BIN" - "$ROOT/production/resume-state.json" <<'PY'
+"$PYTHON_BIN" - "$ROOT/production/resume-state.json" "$TARGET_RELEASE" <<'PY'
 import json
 import pathlib
 import sys
 
 state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+target = sys.argv[2]
+status = state.get("status")
 values = [state.get("accepted_release"), state.get("release"), state.get("production", {}).get("release")]
-print("\n".join(value for value in values if isinstance(value, str)))
+recorded = target in [value for value in values if isinstance(value, str)]
+
+if status == "PRODUCTION_RELEASED" and recorded:
+    raise SystemExit("target release is already recorded by a terminal production state")
+if status == "RESUME_SAFE":
+    execution_release = state.get("release")
+    if execution_release != target:
+        raise SystemExit(f"active fresh execution target mismatch: state={execution_release} target={target}")
 PY
-)"
-if grep -Fxq "$TARGET_RELEASE" <<<"$STATE_RELEASES"; then
-  fail "target release is already recorded in resume-state"
-fi
 
 CONFIG_VERSION="$(sed -nE 's/^CONFIG_VERSION_NUMBER="([^"]+)"$/\1/p' "$ROOT/config/arthur.config")"
 [[ "$CONFIG_VERSION" == "$VERSION" ]] || fail "config/arthur.config CONFIG_VERSION_NUMBER diverges from VERSION"
