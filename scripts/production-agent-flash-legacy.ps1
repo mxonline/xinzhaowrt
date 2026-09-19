@@ -11,6 +11,11 @@ Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ConfigPath = Join-Path $Root 'production\production-agent.json'
 $Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+$ProductGoalGatePath = Join-Path $Root 'scripts\arthur-product-goal-contract.ps1'
+if (-not (Test-Path -LiteralPath $ProductGoalGatePath -PathType Leaf)) { throw 'PRODUCT_GOAL_CONTRACT_GATE_MISSING' }
+. $ProductGoalGatePath
+$ProductGoal = Assert-ArthurProductGoalContract -Root $Root
+Write-Host "PRODUCT_GOAL_AUTHORITY=PASS contract=$($ProductGoal.contract_id) terminal=$($ProductGoal.goal.product_terminal)"
 $RealDeviceBaselineDefault = 'production\real-device-baseline.json'
 $ExpectedDiffDefault = 'production\expected-diff.json'
 $RealDeviceBaselineRelative = if ([string]$Config.real_device_baseline) { [string]$Config.real_device_baseline } else { $RealDeviceBaselineDefault }

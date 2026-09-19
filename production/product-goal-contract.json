@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "authority": "OPERATOR",
+  "priority_class": "HIGHEST",
+  "contract_id": "ARTHUR_PRODUCT_GOAL_V1",
+  "scope": "ALL_ARTHUR_LIFECYCLE_STAGES_AND_ALL_AUTOMATION",
+  "goal": {
+    "id": "ARTHUR_LONG_TERM_STABLE_USABLE_FIRMWARE",
+    "statement": "Produce an Arthur firmware that is genuinely suitable for long-term stable use, with all required product capabilities working on the real device as designed. OpenClash and AdGuardHome must be genuinely usable together, not merely have simultaneous processes. The end-to-end development, build, release, flash and validation system must remain unattended where safely possible, fast, safe and reproducible.",
+    "product_terminal": "PRODUCT_GOAL_VERIFIED",
+    "release_pipeline_terminal": "PRODUCTION_RELEASED"
+  },
+  "precedence": [
+    "PRODUCT_GOAL_CONTRACT",
+    "REAL_DEVICE_MACHINE_EVIDENCE",
+    "CURRENT_RUNTIME_STATE",
+    "PIPELINE_STAGE_STATUS",
+    "HUMAN_READABLE_HANDOFF",
+    "CHAT_OR_MEMORY"
+  ],
+  "required_real_device_capabilities": [
+    "LAN",
+    "DHCP",
+    "WAN",
+    "DNS",
+    "SSH",
+    "LUCI",
+    "WIFI",
+    "ISTORE_QUICKSTART",
+    "OPENCLASH_FULLY_USABLE",
+    "ADGUARDHOME_FULLY_USABLE",
+    "OPENCLASH_ADH_COEXISTENCE",
+    "REBOOT_PERSISTENCE",
+    "SYSTEM_HEALTH"
+  ],
+  "openclash_adguardhome_coexistence": {
+    "required": true,
+    "process_presence_is_insufficient": true,
+    "required_dns_chain": "LAN:dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874",
+    "required_markers": [
+      "OPENCLASH_FULLY_USABLE=PASS",
+      "ADGUARDHOME_FULLY_USABLE=PASS",
+      "OPENCLASH_ADH_COEXISTENCE=PASS"
+    ],
+    "must_verify": [
+      "no_dns_loop",
+      "no_port_conflict",
+      "no_oom_or_management_plane_loss",
+      "openclash_provider_and_rule_operation",
+      "openclash_controller_9090",
+      "real_proxy_traffic",
+      "adguardhome_filtering",
+      "adguardhome_query_log",
+      "adh_disable_leaves_openclash_working",
+      "adh_reenable_restores_chain",
+      "reboot_reconcile"
+    ]
+  },
+  "workflow_quality": {
+    "unattended_where_safely_possible": true,
+    "fast": true,
+    "safe": true,
+    "reproducible": true,
+    "no_routine_manual_confirmation": true,
+    "fail_closed_on_real_safety_ambiguity": true
+  },
+  "execution_rules": {
+    "every_stage_must_load_this_contract": true,
+    "stage_success_must_not_override_product_goal": true,
+    "build_success_is_not_product_success": true,
+    "release_success_is_not_product_success": true,
+    "static_verification_is_not_product_success": true,
+    "menu_or_package_presence_is_not_product_success": true,
+    "simultaneous_process_presence_is_not_coexistence_success": true,
+    "live_validate_before_build_when_safe_and_applicable": true,
+    "do_not_build_known_broken_behavior": true,
+    "do_not_promote_known_good_until_exact_release_real_device_acceptance_passes": true,
+    "post_release_failure_requires_separate_repair_execution": true,
+    "do_not_rewrite_or_revoke_an_already_valid_release_only_because_post_release_validation_failed": true
+  },
+  "evidence_rules": {
+    "machine_evidence_required": true,
+    "product_goal_verified_requires_exact_release_identity": true,
+    "required_final_markers": [
+      "OPENCLASH_FULLY_USABLE=PASS",
+      "ADGUARDHOME_FULLY_USABLE=PASS",
+      "OPENCLASH_ADH_COEXISTENCE=PASS",
+      "POST_RELEASE_VALIDATED",
+      "PRODUCT_GOAL_VERIFIED"
+    ],
+    "forbidden_completion_evidence": [
+      "BUILD_PASS_ONLY",
+      "RELEASE_PASS_ONLY",
+      "STATIC_PASS_ONLY",
+      "PACKAGE_PRESENT_ONLY",
+      "MENU_VISIBLE_ONLY",
+      "PROCESS_RUNNING_ONLY",
+      "PID_COEXISTENCE_ONLY"
+    ]
+  },
+  "claim_policy": {
+    "allowed_product_complete_claim": "Only when PRODUCT_GOAL_VERIFIED is backed by exact-release real-device evidence for every required capability.",
+    "otherwise": "Report the precise intermediate pipeline state or BLOCKED/FAIL; never describe the product goal as complete."
+  }
+}
