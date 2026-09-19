@@ -10,6 +10,8 @@ $ProductionAgentConfigPath = Join-Path $Root 'production\production-agent.json'
 $ControlPlaneGatePath = Join-Path $Root 'scripts\arthur-control-plane-gate.ps1'
 $LegacyAgentPath = Join-Path $Root 'scripts\production-agent-flash-legacy.ps1'
 $FastPreflightPath = Join-Path $Root '.github\workflows\arthur-fast-preflight.yml'
+$BuildCheckPath = Join-Path $Root 'scripts\check-product-goal-contract.py'
+$VerifyProjectPath = Join-Path $Root 'scripts\verify-project.sh'
 
 function Assert-True {
     param([bool]$Condition,[string]$Message)
