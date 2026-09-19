@@ -47,6 +47,10 @@ jobs:
         run: |
           chmod +x tests/*.sh scripts/*.sh || true
 
+      - name: Enforce highest-priority Arthur product goal contract
+        shell: pwsh
+        run: ./tests/arthur-product-goal-contract.tests.ps1
+
       - name: Test build-scope classifier
         run: ./tests/test-classify-build-scope.sh
 
