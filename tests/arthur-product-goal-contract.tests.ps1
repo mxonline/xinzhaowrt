@@ -25,7 +25,8 @@ function Assert-Contains {
 
 foreach ($path in @(
     $ContractPath,$GatePath,$ProductTargetsPath,$ReleasePolicyPath,
-    $ProductionAgentConfigPath,$ControlPlaneGatePath,$LegacyAgentPath,$FastPreflightPath
+    $ProductionAgentConfigPath,$ControlPlaneGatePath,$LegacyAgentPath,$FastPreflightPath,
+    $BuildCheckPath,$VerifyProjectPath
 )) {
     Assert-True (Test-Path -LiteralPath $path -PathType Leaf) "required product-goal contract path missing: $path"
 }
@@ -65,6 +66,12 @@ Assert-Contains $legacyAgent 'Assert-ArthurProductGoalContract' 'device/legacy p
 
 $fastPreflight = Get-Content -Raw -LiteralPath $FastPreflightPath
 Assert-Contains $fastPreflight 'arthur-product-goal-contract.tests.ps1' 'fast preflight must enforce the highest product-goal regression contract'
+
+$verifyProject = Get-Content -Raw -LiteralPath $VerifyProjectPath
+Assert-Contains $verifyProject 'check-product-goal-contract.py' 'every firmware build must pass the product-goal contract through verify-project'
+
+$buildCheck = Get-Content -Raw -LiteralPath $BuildCheckPath
+Assert-Contains $buildCheck 'ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS' 'cross-platform build gate must emit machine evidence'
 
 Write-Host 'ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS'
 Write-Host 'ARTHUR_PRODUCT_GOAL_MACHINE_EVIDENCE=PASS'
