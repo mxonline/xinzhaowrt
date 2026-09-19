@@ -2,7 +2,7 @@
 
 ## 冻结主原则
 
-本项目唯一主线仍为 `RELEASE-FIRST AUTOMATION MODE`，唯一生产成功终点仍为 `PRODUCTION_RELEASED`。
+本项目唯一主线仍为 `RELEASE-FIRST AUTOMATION MODE`。`PRODUCTION_RELEASED` 只代表固件发布流水线成功终点；整个 Arthur 项目的最高产品终点固定为 `PRODUCT_GOAL_VERIFIED`，其唯一机器权威是 `production/product-goal-contract.json`。任何 Build、Artifact、Release、`PRODUCTION_RELEASED`、静态检查、菜单/包存在或进程同时存在，都不得覆盖或替代该产品目标。
 
 从 2026-09-15 起，新 Arthur 固件生产的默认机器模式固定为 `RELEASE_ONLY`，其权威开关为 `production/release-mode.json`。`RELEASE_ONLY` 的含义是：允许无人值守完成变更影响判断、基线继承、预期 Diff、构建、Artifact 校验、Release Gate 与 GitHub Release；禁止把 `FIRMWARE_RELEASE` 授权解释为路由器写入授权，禁止自动 `sysupgrade`。
 
@@ -83,9 +83,9 @@ Release Gate PASS 后，系统允许无人值守创建正式 GitHub Release，�
 
 ## Production Released
 
-GitHub Release 创建成功且其资产、hash 和 provenance 回读一致后，本轮生产进入 `PRODUCTION_RELEASED`。这是固件生产的唯一成功终点。
+GitHub Release 创建成功且其资产、hash 和 provenance 回读一致后，本轮发布流水线进入 `PRODUCTION_RELEASED`。这是发布流水线的成功终点，不是整个项目的产品成功终点。
 
-`PRODUCTION_RELEASED` 不等于“已成为新的 known-good”。未经发布后真实设备测试的 Release 不得覆盖上一份经过真实设备确认的 rollback baseline。
+整个项目只有在 exact Release 的真实 Arthur 上完成所需能力验证，并产生 `POST_RELEASE_VALIDATED` 与 `PRODUCT_GOAL_VERIFIED` 机器证据后，才允许声称最终产品目标达成。`PRODUCTION_RELEASED` 不等于“已成为新的 known-good”，也不等于“固件已长期稳定可用”。未经发布后真实设备测试的 Release 不得覆盖上一份经过真实设备确认的 rollback baseline。
 
 ## Post Release Device Test
 
