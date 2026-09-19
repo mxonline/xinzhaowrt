@@ -6,6 +6,17 @@ Scope: JDCloud RE-SS-01 / Arthur (`qualcommax/ipq60xx`, profile `jdcloud_re-ss-0
 
 This document is the product-target Source of Truth for Arthur firmware. It complements `production/release-policy.md`, `production/release-mode.json`, `production/production-agent.json`, `production/arthur-known-good-v1.json`, and runtime HANDOFF/state. When a remembered/chat requirement conflicts with this document, the repository specification wins after the change has been reviewed and merged.
 
+## Highest product-goal contract
+
+The highest-priority machine-readable contract is `production/product-goal-contract.json`. Every Arthur lifecycle stage and automation path is subordinate to that contract.
+
+The final project/product endpoint is `PRODUCT_GOAL_VERIFIED`, not `BUILD`, `RELEASE`, or `PRODUCTION_RELEASED`. `PRODUCTION_RELEASED` remains the terminal of the release pipeline only. It must never be reported as proof that the firmware is genuinely ready for long-term stable use.
+
+A product-success claim requires exact-release real-device machine evidence that all required capabilities work as designed. For OpenClash + AdGuardHome, simultaneous PIDs or package/menu presence are explicitly insufficient. The required runtime product markers remain `OPENCLASH_FULLY_USABLE=PASS`, `ADGUARDHOME_FULLY_USABLE=PASS`, and `OPENCLASH_ADH_COEXISTENCE=PASS`, followed by `POST_RELEASE_VALIDATED` and `PRODUCT_GOAL_VERIFIED`.
+
+When a change can be safely live-validated on the real Arthur before a costly rebuild, the implementation must prove the intended behavior first. Known-broken behavior must not advance merely because static checks or a build can pass.
+
+
 ## Source-of-Truth split
 
 - Product intent and acceptance target: `production/ARTHUR_PRODUCT_TARGETS.md`
