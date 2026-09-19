@@ -15,6 +15,7 @@ $resumeGatePath = Join-Path $root 'scripts\arthur-firmware-resume.ps1'
 $failureRecoveryPath = Join-Path $root 'scripts\arthur-candidate-failure-recovery.ps1'
 $controlPlanePath = Join-Path $root 'scripts\arthur-control-plane.ps1'
 $bootstrapPath = Join-Path $root 'scripts\arthur-fresh-execution-bootstrap.ps1'
+$productGoalGatePath = Join-Path $root 'scripts\arthur-product-goal-contract.ps1'
 
 if (-not (Test-Path -LiteralPath $intentHelperPath -PathType Leaf)) {
     Write-Error 'OPERATOR_INTENT_HELPER_MISSING'
@@ -36,6 +37,14 @@ if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
     Write-Error 'FRESH_EXECUTION_BOOTSTRAP_MISSING'
     exit 1
 }
+if (-not (Test-Path -LiteralPath $productGoalGatePath -PathType Leaf)) {
+    Write-Error 'PRODUCT_GOAL_CONTRACT_GATE_MISSING'
+    exit 1
+}
+
+. $productGoalGatePath
+$productGoal = Assert-ArthurProductGoalContract -Root $root
+Write-Host "PRODUCT_GOAL_AUTHORITY=PASS contract=$($productGoal.contract_id) terminal=$($productGoal.goal.product_terminal)"
 
 . $intentHelperPath
 . $bootstrapPath
