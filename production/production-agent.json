@@ -8,6 +8,7 @@
   "recovery_addresses": ["192.168.6.1", "192.168.1.1"],
   "real_device_baseline": "production/real-device-baseline.json",
   "expected_diff": "production/expected-diff.json",
+  "product_goal_contract": "production/product-goal-contract.json",
   "luci_http_port": 80,
   "default_language": "zh_cn",
   "default_theme": "argon",
