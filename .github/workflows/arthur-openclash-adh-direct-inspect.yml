@@ -6,6 +6,7 @@ name: Arthur OpenClash ADH Direct Inspect
       - main
     paths:
       - '.github/workflows/arthur-openclash-adh-direct-inspect.yml'
+      - 'scripts/ensure-arthur-unattended-access.ps1'
 
 permissions:
   contents: read
