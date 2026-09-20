@@ -132,9 +132,9 @@ FNR == NR {
     if (in_tun && line ~ /^  enable:[[:space:]]*true[[:space:]]*$/) {
         line = "  enable: false"
     }
-    if (in_dns && line ~ /^  enhanced-mode:[[:space:]]*fake-ip[[:space:]]*$/) {
-        line = "  enhanced-mode: redir-host"
-    }
+    # Never override the selected DNS enhanced-mode. The upstream
+    # OpenClash YAML rewrite has already resolved fake-ip/redir-host, and this
+    # helper is only responsible for Arthur memory-safe runtime reductions.
 
     if (line ~ /^#?[[:space:]]*external-controller:/) {
         if (!controller_seen) {

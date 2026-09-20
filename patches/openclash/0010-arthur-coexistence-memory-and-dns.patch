@@ -85,6 +85,21 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
 +   fi
 +
     {
+@@ -3635,5 +3635,14 @@
+          "$geo_custom_url" "$geoip_custom_url" "$geosite_custom_url" "$geoasn_custom_url"\
+          "$lgbm_auto_update" "$lgbm_custom_url" "$lgbm_update_interval" "$smart_collect" "$smart_collect_size"\
+          "$fakeip_range6" "$fake_ip_range6_enable" "$global_ua"
+ 
++         if [ -x /usr/libexec/xinzhao-openclash-lowmem-config ]; then
++            XINZHAO_OC_SECRET="$da_password" /usr/libexec/xinzhao-openclash-lowmem-config \
++               "$TMP_CONFIG_FILE" "$dns_port" "$cn_port" "$da_password" \
++               "$proxy_port" "$tproxy_port" "$mixed_port" || {
++               LOG_ERROR "Arthur low-memory configuration preparation failed"
++               start_fail
++            }
++         fi
++
+          /usr/share/openclash/yml_rules_change.sh \
 @@ -3750,4 +3750,7 @@
        LOG_OUT "Step 4: Restart Dnsmasq..."
        revert_dnsmasq
