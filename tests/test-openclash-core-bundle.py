@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -49,6 +50,9 @@ def main() -> int:
     package_recipe = (ROOT / "package/xinzhao/openclash-core/Makefile").read_text(encoding="utf-8")
     if "/etc/openclash/core/clash_meta" not in package_recipe or "$(INSTALL_BIN)" not in package_recipe:
         raise AssertionError("Core package does not install an executable at OpenClash's runtime path")
+    package_version = re.search(r"^PKG_VERSION:=([^\s]+)$", package_recipe, re.MULTILINE)
+    if not package_version or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)*~alpha\.ge183c58", package_version.group(1)):
+        raise AssertionError("Core APK package version must be numeric and retain the immutable core identity")
     build_script = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
     if "fetch-openclash-core.sh" not in build_script or "verify-final-rootfs-openclash-core.py" not in build_script:
         raise AssertionError("Core fetch and final rootfs verification are not wired into the firmware build")
