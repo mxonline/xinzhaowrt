@@ -14,7 +14,7 @@ web_session_ttl: 720
 dns:
   bind_hosts:
   - 0.0.0.0
-  port: 5553
+  port: 1745
   statistics_interval: 1
   querylog_enabled: true
   querylog_file_enabled: true
@@ -56,7 +56,10 @@ dns:
   bogus_nxdomain: []
   aaaa_disabled: false
   enable_dnssec: false
-  edns_client_subnet: false
+  edns_client_subnet:
+    custom_ip: ""
+    enabled: false
+    use_custom: false
   max_goroutines: 300
   ipset: []
   filtering_enabled: true
@@ -215,7 +218,14 @@ dhcp:
     lease_duration: 86400
     ra_slaac_only: false
     ra_allow_slaac: false
-clients: []
+clients:
+  runtime_sources:
+    whois: true
+    arp: true
+    rdns: true
+    dhcp: true
+    hosts: true
+  persistent: []
 log_compress: false
 log_localtime: false
 log_max_backups: 0

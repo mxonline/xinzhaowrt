@@ -8,6 +8,11 @@ STOP=01
 CONFIGURATION=AdGuardHome
 CRON_FILE=/etc/crontabs/root
 
+xinzhao_dns_coexist() {
+	[ -x /usr/libexec/xinzhao-dns-coexist ] || return 0
+	/usr/libexec/xinzhao-dns-coexist "$@"
+}
+
 extra_command "do_redirect" "0 or 1"
 extra_command "testbackup" "backup or restore"
 extra_command "test_crontab"
@@ -424,6 +429,13 @@ start_service() {
 	local enabled
 	config_get_bool enabled $CONFIGURATION enabled 0
 
+	if [ "$enabled" = "1" ] && [ -x /usr/libexec/xinzhao-dns-coexist ]; then
+		xinzhao_dns_coexist prepare-adh || {
+			logger -t AdGuardHome -p daemon.err "Arthur DNS coexistence preparation failed"
+			return 1
+		}
+	fi
+
 	do_crontab
 
 	if [ "$enabled" = "0" ]; then
@@ -537,7 +549,17 @@ start_service() {
 	procd_close_instance
 
 	if [ -f "$configpath" ]; then
-		_do_redirect 1
+		if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
+			(
+				sleep 1
+				xinzhao_dns_coexist adh-ready || {
+					logger -t AdGuardHome -p daemon.err "Arthur DNS coexistence readiness failed"
+					xinzhao_dns_coexist adh-stopped >/dev/null 2>&1 || true
+				}
+			) &
+		else
+			_do_redirect 1
+		fi
 	else
 		_do_redirect 0
 		config_get redirect "$CONFIGURATION" redirect "none"
@@ -613,6 +635,9 @@ stop_service()
 
 	echo "AdGuardHome service disabled"
 	touch /var/run/AdGserverdis
+	if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
+		xinzhao_dns_coexist adh-stopped >/dev/null 2>&1 || true
+	fi
 }
 
 boot() {

@@ -1,0 +1,122 @@
+diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/root/etc/init.d/openclash
+--- a/luci-app-openclash/root/etc/init.d/openclash
++++ b/luci-app-openclash/root/etc/init.d/openclash
+@@ -32,4 +32,13 @@
+ QUICK_START_CHECK=false
+-QUICK_START=true
++# Arthur must execute the full config/provider/rule preparation path so the
++# low-memory local-provider transformation is applied before procd starts the
++# core. The released quick-start path bypasses that safety layer.
++QUICK_START=false
+ 
++arthur_coexist()
++{
++   [ -x /usr/libexec/xinzhao-dns-coexist ] || return 0
++   /usr/libexec/xinzhao-dns-coexist "$@"
++}
++
+ add_cron()
+@@ -707,3 +707,7 @@
+ check_core_status()
+ {
++   if command -v flock >/dev/null 2>&1; then
++      exec 873>/var/run/openclash-check-core.lock
++      flock -n 873 2>/dev/null || return 0
++   fi
+    TUN_WAIT=0
+@@ -785,6 +785,12 @@
+    if [ -z "$(pidof clash)" ]; then
+       LOG_ERROR "Core Start Failed, Please Check The Log Infos!"
+       start_fail
+    fi
+ 
++   if [ "$1" == "start" ] && [ -x /usr/libexec/xinzhao-dns-coexist ]; then
++      if ! arthur_coexist openclash-ready; then
++         LOG_WARN "Arthur DNS coexistence readiness failed; keeping OpenClash DNS redirect disabled"
++      fi
++   fi
++
+    # redirect dns setting after core started, prevent core dns lookup failure
+@@ -797,4 +803,8 @@
+    if [ "$1" == "start" ]; then
+-      change_dnsmasq "$enable_redirect_dns"
++      if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
++         enable_redirect_dns=0
++      else
++         change_dnsmasq "$enable_redirect_dns"
++      fi
+       set_firewall
+       LOG_TIP "OpenClash Start Successful!"
+@@ -803,7 +803,9 @@
+ start_run_core()
+ {
+    ulimit -SHn 1000000
+-   ulimit -v unlimited
+-   ulimit -u unlimited
+-
++   # Do not cap virtual address space: Go/Mihomo can fail page-summary
++   # reservation before readiness under a low VA cap. Bound Go heap/process
++   # behavior below instead, and let the coordinator reject low-memory starts.
++   ulimit -v unlimited 2>/dev/null || true
++
+    if ! $QUICK_START; then
+@@ -819,7 +820,9 @@
+    procd_set_param command /bin/sh -c "exec $CLASH -d $CLASH_CONFIG -f \"$CONFIG_FILE\" >> $LOG_FILE 2>&1"
+    procd_set_param user "root"
+    procd_set_param group "nogroup"
+-   procd_set_param limits nproc="unlimited" as="unlimited" memlock="unlimited" nofile="1000000 1000000"
++   procd_set_param limits nproc="128" as="unlimited" memlock="0" nofile="262144 262144"
++   procd_append_param env GOMAXPROCS="2"
++   procd_append_param env GOMEMLIMIT="96MiB"
+    procd_set_param respawn 300 5 3
+    procd_set_param stderr 1
+    procd_set_param no_new_privs 1
+@@ -3602,3 +3602,13 @@
+    LOG_TIP "OpenClash Start Running..."
+ 
++   if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
++      if ! arthur_coexist prepare-openclash; then
++         LOG_ERROR "Arthur memory/DNS preflight rejected OpenClash start"
++         return 0
++      fi
++      # The UCI mutation must also update this shell's already-loaded values.
++      enable_redirect_dns=0
++      redirect_dns=0
++   fi
++
+    {
+@@ -3750,4 +3750,7 @@
+       LOG_OUT "Step 4: Restart Dnsmasq..."
+       revert_dnsmasq
++      if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
++         arthur_coexist openclash-stopped || LOG_WARN "Arthur DNS state reconciliation after OpenClash stop failed"
++      fi
+ 
+       LOG_OUT "Step 5: Delete OpenClash Residue File..."
+@@ -3784,5 +3784,6 @@
+ start_watchdog()
+ {
++   procd_running "openclash-watchdog" >/dev/null && return 0
+    procd_open_instance "openclash-watchdog"
+    procd_set_param command "/usr/share/openclash/openclash_watchdog.sh"
+    procd_close_instance
+@@ -3834,4 +3841,7 @@
+ reload_service()
+ {
+    get_config
++   if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
++      enable_redirect_dns=0
++   fi
+    MAX_RELOAD=10
+@@ -3860,4 +3867,5 @@
+       LOG_OUT "【${CUR_RELOAD_NUM}/$MAX_RELOAD】Reload OpenClash Firewall Rules..."
+       revert_firewall
+       do_run_mode
++      [ -x /usr/libexec/xinzhao-dns-coexist ] && arthur_coexist openclash-ready || true
+       check_core_status &
+@@ -3866,4 +3875,5 @@
+       LOG_OUT "Manually Reload Firewall Rules..."
+       revert_firewall
+       do_run_mode
++      [ -x /usr/libexec/xinzhao-dns-coexist ] && arthur_coexist openclash-ready || true
+       check_core_status &

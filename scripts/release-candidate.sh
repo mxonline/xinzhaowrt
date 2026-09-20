@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+. "$ROOT/scripts/github-auth-preflight.sh"
 
 BASE_VERSION="$(tr -d '\r\n ' < VERSION)"
 if [[ -z "$BASE_VERSION" ]]; then
@@ -62,9 +63,17 @@ Candidate 预发布版本，仅表示云端编译与产物检查通过，尚未�
 EOF
 
 ASSETS=("${FIRMWARES[@]}" "$SHA_FILE")
-for optional in output/full.config output/build-info.txt output/required-plugins.txt; do
+for optional in \
+  output/full.config \
+  output/build-info.txt \
+  output/required-plugins.txt \
+  output/adh-manager-verification.txt \
+  output/openclash-core-source-verification.txt \
+  output/openclash-core-verification.txt; do
   [[ -s "$optional" ]] && ASSETS+=("$optional")
 done
+
+github_auth_preflight release "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}" "$RUN_ID" "$ROOT"
 
 if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
   echo "Candidate release $TAG already exists; uploading/refreshing assets."

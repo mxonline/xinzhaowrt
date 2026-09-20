@@ -8,7 +8,7 @@ name: Promote Arthur Update Candidate to Stable v3
         required: true
         type: string
       stable_tag:
-        description: Stable release tag matching VERSION, e.g. v0.1.1
+        description: Authorized Stable/Production release tag
         required: true
         type: string
       device_verified:
@@ -50,13 +50,10 @@ jobs:
             exit 1
           }
 
-          PROJECT_VERSION="$(tr -d '[:space:]' < VERSION)"
-          [[ "$PROJECT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "BLOCKED: invalid VERSION: $PROJECT_VERSION"
-            exit 1
-          }
-          [[ "$STABLE_TAG" == "v${PROJECT_VERSION}" ]] || {
-            echo "BLOCKED: stable tag $STABLE_TAG must match VERSION v${PROJECT_VERSION}"
+          EXPECTED_STABLE_TAG='arthur-production-34268801985'
+          EXPECTED_CANDIDATE_SHA='2f4d9a70e5675955bddaf51eb134131fac61bfc3'
+          [[ "$STABLE_TAG" == "$EXPECTED_STABLE_TAG" ]] || {
+            echo "BLOCKED: this promotion only authorizes Stable tag $EXPECTED_STABLE_TAG"
             exit 1
           }
 
@@ -65,6 +62,10 @@ jobs:
           CANDIDATE_SHA="$(git rev-list -n 1 "$CANDIDATE_TAG")"
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
             echo "BLOCKED: unable to resolve Candidate commit for $CANDIDATE_TAG"
+            exit 1
+          }
+          [[ "$CANDIDATE_SHA" == "$EXPECTED_CANDIDATE_SHA" ]] || {
+            echo "BLOCKED: Candidate commit $CANDIDATE_SHA does not match $EXPECTED_CANDIDATE_SHA"
             exit 1
           }
 
@@ -79,7 +80,6 @@ jobs:
           fi
 
           echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
-          echo "project_version=$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           echo "stable_exists=$STABLE_EXISTS" >> "$GITHUB_OUTPUT"
           echo "Candidate commit: $CANDIDATE_SHA"
 
@@ -112,15 +112,27 @@ jobs:
           require(data.get('required_plugins_passed') == 22, 'required_plugins_passed is not 22')
           require((data.get('device') or {}).get('target') == 'jdcloud_re-ss-01', 'device target mismatch')
 
-          features = data.get('prebuild_features') or {}
-          require(features.get('ADGUARD_LIVE') == 'PASS', 'ADGUARD_LIVE is not PASS')
-          require(features.get('QUICKSTART_LIVE') == 'PASS', 'QUICKSTART_LIVE is not PASS')
-          require(features.get('WIFI_LIVE') == 'PASS', 'WIFI_LIVE is not PASS')
-          require(features.get('FIRMWARE_BUILD_ALLOWED') == 'true', 'FIRMWARE_BUILD_ALLOWED is not true')
-          require(features.get('wifi_configuration_mutated') is False, 'Wi-Fi configuration mutation marker is not false')
+          if str(data.get('schema_version')) == '3.0':
+              checks = data.get('checks') or {}
+              for name in (
+                  'local_sha256', 'router_sha256', 'sysupgrade_test', 'single_sysupgrade_n',
+                  'reboot_recovery', 'lan', 'dhcp', 'gateway', 'dns', 'ssh_root_password',
+                  'http_80', 'https_443_disabled', 'luci_chinese', 'wifi_2g', 'wifi_5g',
+                  'adguardhome_management', 'adguardhome_default_disabled', 'quickstart',
+                  'istorex', 'quickfile', 'build_info_concrete'
+              ):
+                  require(checks.get(name) == 'PASS', f'{name} is not PASS')
+              require(checks.get('http_to_https_redirect') == 'NONE', 'HTTP to HTTPS redirect is not NONE')
+          else:
+              features = data.get('prebuild_features') or {}
+              require(features.get('ADGUARD_LIVE') == 'PASS', 'ADGUARD_LIVE is not PASS')
+              require(features.get('QUICKSTART_LIVE') == 'PASS', 'QUICKSTART_LIVE is not PASS')
+              require(features.get('WIFI_LIVE') == 'PASS', 'WIFI_LIVE is not PASS')
+              require(features.get('FIRMWARE_BUILD_ALLOWED') == 'true', 'FIRMWARE_BUILD_ALLOWED is not true')
+              require(features.get('wifi_configuration_mutated') is False, 'Wi-Fi configuration mutation marker is not false')
 
-          for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
-              require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
+              for name in ('ssh', 'storage', 'lan', 'wan', 'internet', 'dns', 'wifi_2g', 'wifi_5g', 'luci', 'reboot', 'persistence'):
+                  require((data.get(name) or {}).get('passed') is True, f'{name} did not pass')
 
           require(len(data.get('critical_log_errors') or []) == 0, 'critical_log_errors is not empty')
           require(len(data.get('failures') or []) == 0, 'failures is not empty')
@@ -156,11 +168,19 @@ jobs:
 
           SYSUPGRADE="$(find promote/assets -maxdepth 1 -type f -name '*sysupgrade*.bin' -size +0c | sort | head -n1 || true)"
           FACTORY="$(find promote/assets -maxdepth 1 -type f -name '*factory*.bin' -size +0c | sort | head -n1 || true)"
-          [[ -n "$SYSUPGRADE" || -n "$FACTORY" ]] || {
-            echo 'BLOCKED: Candidate contains no non-empty Arthur firmware .bin.'
+          [[ -n "$SYSUPGRADE" && -n "$FACTORY" ]] || {
+            echo 'BLOCKED: Candidate must contain non-empty Arthur sysupgrade and factory images.'
             exit 1
           }
-          if [[ -n "$SYSUPGRADE" ]]; then FIRMWARE="$SYSUPGRADE"; else FIRMWARE="$FACTORY"; fi
+          FIRMWARE="$SYSUPGRADE"
+          [[ "$(sha256sum "$SYSUPGRADE" | awk '{print $1}')" == 'f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557' ]] || {
+            echo 'BLOCKED: sysupgrade SHA256 does not match the authorized #74 Candidate.'
+            exit 1
+          }
+          [[ "$(sha256sum "$FACTORY" | awk '{print $1}')" == '060f3e100aabc02f3542466e802f049789343aba1969ccb75a19484df459311d' ]] || {
+            echo 'BLOCKED: factory SHA256 does not match the authorized #74 Candidate.'
+            exit 1
+          }
 
           CHECKSUM_FILE=''
           if [[ -s promote/assets/SHA256SUMS.local ]]; then
@@ -308,7 +328,7 @@ jobs:
 
           known.update({
               'schema_version': '2.0',
-              'status': 'verified',
+              'status': 'verified/frozen',
               'verified': True,
               'device': 'jdcloud_re-ss-01',
               'target': 'qualcommax',
@@ -338,10 +358,14 @@ jobs:
           with open(status_path, 'r', encoding='utf-8') as f:
               status = json.load(f)
           status.update({
+              'status': 'PRODUCTION_RELEASED',
+              'stage': 'production_release',
+              'conclusion': 'success',
               'project_commit': os.environ['CANDIDATE_SHA'],
               'upstream_commit': refs['IMMORTALWRT_REF'],
               'lock_sha256': os.environ['LOCK_SHA256'],
-              'workflow_version': '3.0'
+              'workflow_version': '3.0',
+              'verification': 'real-device-confirmed'
           })
           with open(status_path, 'w', encoding='utf-8') as f:
               json.dump(status, f, ensure_ascii=False, indent=2)
@@ -371,3 +395,46 @@ jobs:
             echo '- Real-device verification: `PASS`'
             echo '- Canonical Known-Good lock: `updated`'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify published Stable release and production baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch --tags origin
+          [[ "$(git rev-list -n 1 "$STABLE_TAG")" == "$CANDIDATE_SHA" ]] || {
+            echo 'BLOCKED: Stable tag does not resolve to the verified Candidate commit.'
+            exit 1
+          }
+          gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json isLatest,isPrerelease,tagName >/tmp/stable-release.json
+          python3 - <<'PY'
+          import json, os
+
+          release = json.load(open('/tmp/stable-release.json', encoding='utf-8'))
+          if release.get('tagName') != os.environ['STABLE_TAG']:
+              raise SystemExit('BLOCKED: Stable Release tag mismatch')
+          if release.get('isPrerelease'):
+              raise SystemExit('BLOCKED: Stable Release is marked pre-release')
+          if not release.get('isLatest'):
+              raise SystemExit('BLOCKED: Stable Release is not Latest')
+
+          known = json.load(open('production/known-good.json', encoding='utf-8'))
+          if not (known.get('verified') is True and known.get('status') == 'verified/frozen'):
+              raise SystemExit('BLOCKED: production/known-good.json is not frozen and verified')
+          if known.get('stable_tag') != os.environ['STABLE_TAG'] or known.get('candidate_tag') != os.environ['CANDIDATE_TAG']:
+              raise SystemExit('BLOCKED: production/known-good.json tag mismatch')
+          if known.get('project_commit') != os.environ['CANDIDATE_SHA']:
+              raise SystemExit('BLOCKED: production/known-good.json commit mismatch')
+
+          status = json.load(open('production/status.json', encoding='utf-8'))
+          if status.get('status') != 'PRODUCTION_RELEASED':
+              raise SystemExit('BLOCKED: production/status.json is not PRODUCTION_RELEASED')
+          PY
+          cmp -s config/arthur-known-good.lock promote/assets/arthur-known-good.lock || {
+            echo 'BLOCKED: canonical Known-Good lock differs from Candidate lock.'
+            exit 1
+          }
+          echo 'PASS: Stable tag, Latest Release, known-good, status, and canonical lock are consistent.'

@@ -30,6 +30,8 @@ require_config 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 require_config "CONFIG_VERSION_NUMBER=\"$VERSION\""
 require_config 'CONFIG_VERSION_MANUFACTURER="XinZhao Network"'
 require_config 'CONFIG_VERSION_PRODUCT="JDCloud Arthur RE-SS-01"'
+require_config 'CONFIG_PACKAGE_luci-app-adguardhome-manager=y'
+require_config 'CONFIG_PACKAGE_openclash-core=y'
 
 bash "$PROJECT_ROOT/scripts/check-config.sh" "$CONFIG"
 echo 'PASS: Arthur version identity survives real make defconfig normalization.'

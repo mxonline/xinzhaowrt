@@ -1,0 +1,248 @@
+#!/bin/sh
+
+set -eu
+
+FILE="${1:-}"
+DNS_PORT="${2:-7874}"
+CN_PORT="${3:-9090}"
+SECRET="${4:-}"
+REDIR_PORT="${5:-7892}"
+TPROXY_PORT="${6:-7895}"
+MIXED_PORT="${7:-7890}"
+TMP="${FILE}.xinzhao-lowmem.$$"
+DNS_UPSTREAM="${XINZHAO_OC_DNS_UPSTREAM:-}"
+if [ -z "$DNS_UPSTREAM" ] && command -v uci >/dev/null 2>&1; then
+    DNS_UPSTREAM="$(uci -q get openclash.config.xinzhao_dns_upstream || true)"
+fi
+
+[ -n "$FILE" ] && [ -s "$FILE" ] || exit 1
+
+awk -v dns_port="$DNS_PORT" -v dns_upstream="$DNS_UPSTREAM" -v cn_port="$CN_PORT" -v redir_port="$REDIR_PORT" -v tproxy_port="$TPROXY_PORT" -v mixed_port="$MIXED_PORT" '
+BEGIN {
+    in_dns = 0
+    in_proxy = 0
+    in_rules = 0
+    in_profile = 0
+    in_sniffer = 0
+    in_tun = 0
+    dns_listen_seen = 0
+    controller_seen = 0
+    secret_seen = 0
+    redir_seen = 0
+    tproxy_seen = 0
+    mixed_seen = 0
+    proxy_name = ""
+    proxy_path_seen = 0
+    proxy_local_ready = 0
+}
+
+function add_controller() {
+    print "external-controller: 0.0.0.0:" cn_port
+    controller_seen = 1
+    if (secret != "") {
+        print "secret: \"" secret "\""
+        secret_seen = 1
+    }
+}
+
+function add_proxy_ports() {
+    if (!redir_seen) {
+        print "redir-port: " redir_port
+        redir_seen = 1
+    }
+    if (!tproxy_seen) {
+        print "tproxy-port: " tproxy_port
+        tproxy_seen = 1
+    }
+    if (!mixed_seen) {
+        print "mixed-port: " mixed_port
+        mixed_seen = 1
+    }
+}
+
+BEGIN { secret = ENVIRON["XINZHAO_OC_SECRET"] }
+
+FNR == NR {
+    if ($0 ~ /^proxy-providers:/) scan_proxy = 1
+    else if ($0 ~ /^[^[:space:]#]/) scan_proxy = 0
+    if (scan_proxy && $0 ~ /^  [^[:space:]#][^:]*:/) {
+        scan_name = $0
+        sub(/^  /, "", scan_name)
+        sub(/:.*/, "", scan_name)
+    }
+    if (scan_proxy && $0 ~ /^    path:/) explicit_path[scan_name] = 1
+    next
+}
+
+{
+    line = $0
+    if (replace_nameserver) {
+        if (line ~ /^[[:space:]]*-/ || line ~ /^[[:space:]]*$/) next
+        replace_nameserver = 0
+    }
+    if (in_dns && dns_upstream != "" && line ~ /^  nameserver:[[:space:]]*$/) {
+        print "  nameserver:"
+        print "    - \"" dns_upstream "\""
+        replace_nameserver = 1
+        next
+    }
+
+    if (line ~ /^proxy-providers:/) {
+        in_proxy = 1
+        in_rules = 0
+        proxy_name = ""
+        proxy_path_seen = 0
+    } else if (line ~ /^rule-providers:/) {
+        in_proxy = 0
+        in_rules = 1
+        proxy_name = ""
+    } else if (line ~ /^[^[:space:]#]/ && line !~ /^proxy-providers:/ && line !~ /^rule-providers:/) {
+        in_proxy = 0
+        in_rules = 0
+        proxy_name = ""
+    }
+
+    if (line ~ /^profile:[[:space:]]*$/) {
+        in_profile = 1
+        in_sniffer = 0
+        in_tun = 0
+    } else if (line ~ /^sniffer:[[:space:]]*$/) {
+        in_profile = 0
+        in_sniffer = 1
+        in_tun = 0
+    } else if (line ~ /^tun:[[:space:]]*$/) {
+        in_profile = 0
+        in_sniffer = 0
+        in_tun = 1
+    } else if (line ~ /^[^[:space:]#]/) {
+        in_profile = 0
+        in_sniffer = 0
+        in_tun = 0
+    }
+
+    # Keep explicit DNS/proxy ports, but avoid the high-memory transparent
+    # proxy features on the 405 MB Arthur profile.  This applies only to the
+    # generated runtime copy, never to the approved source configuration.
+    if (in_profile && line ~ /^  store-fake-ip:[[:space:]]*true[[:space:]]*$/) {
+        line = "  store-fake-ip: false"
+    }
+    if (in_sniffer && line ~ /^  enable:[[:space:]]*true[[:space:]]*$/) {
+        line = "  enable: false"
+    }
+    if (in_tun && line ~ /^  enable:[[:space:]]*true[[:space:]]*$/) {
+        line = "  enable: false"
+    }
+    if (in_dns && line ~ /^  enhanced-mode:[[:space:]]*fake-ip[[:space:]]*$/) {
+        line = "  enhanced-mode: redir-host"
+    }
+
+    if (line ~ /^#?[[:space:]]*external-controller:/) {
+        if (!controller_seen) {
+            add_controller()
+        }
+        next
+    }
+
+    if (line ~ /^#?[[:space:]]*secret:/) {
+        if (!secret_seen && secret != "") {
+            print "secret: \"" secret "\""
+            secret_seen = 1
+        }
+        next
+    }
+
+    if (line ~ /^#?[[:space:]]*redir-port:/) {
+        print "redir-port: " redir_port
+        redir_seen = 1
+        next
+    }
+
+    if (line ~ /^#?[[:space:]]*tproxy-port:/) {
+        print "tproxy-port: " tproxy_port
+        tproxy_seen = 1
+        next
+    }
+
+    if (line ~ /^#?[[:space:]]*mixed-port:/) {
+        print "mixed-port: " mixed_port
+        mixed_seen = 1
+        next
+    }
+
+    if (line ~ /^[[:space:]]+dns-hijack:/) {
+        next
+    }
+
+    if (line ~ /^dns:/) {
+        in_dns = 1
+    } else if (in_dns && line ~ /^[^[:space:]]/) {
+        if (!dns_listen_seen) {
+            print "  listen: 0.0.0.0:" dns_port
+            dns_listen_seen = 1
+        }
+        in_dns = 0
+    }
+
+    if (line ~ /^external-controller:/) {
+        add_proxy_ports()
+    }
+
+    if (in_dns && line ~ /^  listen:/) {
+        print "  listen: 0.0.0.0:" dns_port
+        dns_listen_seen = 1
+        next
+    }
+
+    if (in_proxy && line ~ /^  [^[:space:]#][^:]*:/) {
+        proxy_name = line
+        sub(/^  /, "", proxy_name)
+        sub(/:.*/, "", proxy_name)
+        proxy_path_seen = 0
+        proxy_local_ready = (proxy_name ~ /^[A-Za-z0-9_!.-]+$/ && !explicit_path[proxy_name])
+    }
+
+	if (in_proxy && line ~ /^    path:/) {
+		proxy_path_seen = 1
+	}
+
+	# Keep HTTP providers, URL, interval and health checks intact. Mihomo owns
+	# cache loading and subscription refresh. Existing caches have no suffix.
+
+	if (in_rules && line ~ /^  [A-Za-z0-9_!.-]+:.*\{.*\}[[:space:]]*$/ && line !~ /path:/) {
+		rule_name = line
+		sub(/^  /, "", rule_name)
+		sub(/:.*/, "", rule_name)
+		# Preserve YAML merges, behavior, format and URL; only add the cache path.
+		sub(/}[[:space:]]*$/, ", path: ./rule_provider/" rule_name "}", line)
+	}
+
+    print line
+
+	if (in_proxy && proxy_local_ready && line ~ /^  [^[:space:]#][^:]*:[[:space:]]*$/ && proxy_name != "" && !proxy_path_seen) {
+        print "    path: ./proxy_provider/" proxy_name
+        proxy_path_seen = 1
+    }
+
+    if (!controller_seen && line ~ /^bind-address:/) {
+        add_controller()
+    }
+}
+
+END {
+    add_proxy_ports()
+    if (in_dns && !dns_listen_seen) {
+        print "  listen: 0.0.0.0:" dns_port
+    }
+    if (!controller_seen) {
+        add_controller()
+    }
+}
+' "$FILE" "$FILE" > "$TMP"
+
+if grep -q '^  listen: 0.0.0.0:' "$TMP" && grep -q '^external-controller: 0.0.0.0:' "$TMP"; then
+    mv -f "$TMP" "$FILE"
+    exit 0
+fi
+
+rm -f "$TMP"
+exit 1

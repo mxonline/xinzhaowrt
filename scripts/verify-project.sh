@@ -45,9 +45,17 @@ for test_script in \
   tests/test-openclash-runtime-forensics.sh \
   tests/test-openclash-watchdog-memory.sh \
   tests/test-openclash-sigsegv-fail-closed.sh \
+  tests/test-adguard-overlay-precedence.sh \
   tests/test-replacement-build-hard-gate.sh; do
   bash "$test_script"
 done
+
+python3 tests/test-final-rootfs-adh-manager.py
+python3 tests/test-openclash-core-bundle.py
+
+if [[ -n "${FEED_CHECK_ROOT:-}" ]]; then
+  bash tests/test-adguard-manager.sh
+fi
 
 for f in scripts/*.sh; do
   bash -n "$f"

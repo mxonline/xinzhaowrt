@@ -31,7 +31,9 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
+BUILD_TIMESTAMP="${BUILD_TIMESTAMP:-$(date -u +%FT%TZ)}"
 BUILD_ID="${BUILD_ID:-${GITHUB_RUN_ID:-local-${BUILD_DATE}-$$}}"
+export BUILD_TIMESTAMP
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -75,9 +77,22 @@ echo "[2/10] Update/install standard feeds"
 echo "[3/10] Add mandatory external package sources"
 USE_KNOWN_GOOD_LOCK="$USE_KNOWN_GOOD_LOCK" KNOWN_GOOD_LOCK="$LOCK_FILE" \
   "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
+echo "[3/10] Register firmware-owned packages in the xinzhao feed"
+mkdir -p "$SRC/package/xinzhao"
+rsync -a "$PROJECT_ROOT/package/xinzhao/luci-app-adguardhome-manager/" \
+  "$SRC/package/xinzhao/luci-app-adguardhome-manager/"
+rsync -a "$PROJECT_ROOT/package/xinzhao/openclash-core/" \
+  "$SRC/package/xinzhao/openclash-core/"
+ln -sfn "$SRC/package/xinzhao/luci-app-adguardhome-manager" \
+  "$SRC/.xinzhao-feed/luci-app-adguardhome-manager"
+ln -sfn "$SRC/package/xinzhao/openclash-core" \
+  "$SRC/.xinzhao-feed/openclash-core"
+./scripts/feeds update xinzhao
+./scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager openclash-core
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
+bash "$PROJECT_ROOT/scripts/fetch-openclash-core.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
@@ -133,6 +148,21 @@ done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
 [[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
 FEED_CHECK_ROOT="$SRC" bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
 bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR" "$SOURCE_SHA" "$BUILD_ID"
+
+TARGET_DIR="bin/targets/$DEVICE_TARGET/$DEVICE_SUBTARGET"
+FINAL_PACKAGE_MANIFEST="$(find "$TARGET_DIR" -maxdepth 1 -type f -name "*${DEVICE_PROFILE}*.manifest" -print | sort | sed -n '1p')"
+if [[ -z "$FINAL_PACKAGE_MANIFEST" ]]; then
+  FINAL_PACKAGE_MANIFEST="$(find "$TARGET_DIR" -maxdepth 1 -type f -name '*.manifest' -print | sort | sed -n '1p')"
+fi
+[[ -n "$FINAL_PACKAGE_MANIFEST" ]] || { echo 'ERROR: final firmware package manifest was not found'; exit 1; }
+python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-adh-manager.py" \
+  "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" \
+  "$SRC/package/feeds/xinzhao/luci-app-adguardhome/Makefile" \
+  "$SRC/package/feeds/xinzhao/luci-app-adguardhome-manager/Makefile" "$SRC" \
+  | tee "$OUT/adh-manager-verification.txt"
+python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-openclash-core.py" \
+  "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" "$SRC" \
+  | tee "$OUT/openclash-core-verification.txt"
 
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
 "$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"

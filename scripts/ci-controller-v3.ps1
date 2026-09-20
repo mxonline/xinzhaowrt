@@ -46,6 +46,7 @@ $AllowedRepairPrefixes = @(
 )
 
 New-Item -ItemType Directory -Force -Path $StateDir, $OutputRoot | Out-Null
+. (Join-Path $PSScriptRoot 'github-auth-preflight.ps1') -Library
 
 function Write-ControllerLog {
     param([string]$Message)
@@ -92,6 +93,22 @@ function Get-ControllerState {
 
 function Invoke-Captured {
     param([string]$FilePath,[string[]]$Arguments,[switch]$AllowFailure)
+    if ([IO.Path]::GetFileNameWithoutExtension($FilePath) -eq 'gh') {
+        $operation = 'read'
+        $joinedArguments = $Arguments -join ' '
+        if ($joinedArguments -match '(?i)\brun\s+cancel\b') { $operation = 'cancel' }
+        elseif ($joinedArguments -match '(?i)\bworkflow\s+run\b') { $operation = 'dispatch' }
+        elseif ($joinedArguments -match '(?i)\brelease\b') { $operation = 'release' }
+        elseif ($joinedArguments -match '(?i)\bworkflow\b') { $operation = 'workflow' }
+        $authResult = @(Invoke-GitHubAuthPreflight -PreflightOperation $operation -PreflightRepository $Repository `
+            -PreflightRunId ([string]$RunId) -PreflightQuiet)
+        $authContext = $authResult | Where-Object { $_ -isnot [string] -and $_.Status -eq 'AUTH_RECOVERED' } | Select-Object -First 1
+        if ($null -eq $authContext) {
+            $safeFailure = ($authResult | ForEach-Object { [string]$_ }) -join "`n"
+            if (-not $safeFailure) { $safeFailure = 'BLOCKED_AUTH_CREDENTIAL_MISSING' }
+            throw $safeFailure
+        }
+    }
     $previousPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -128,9 +145,11 @@ function Assert-Tools {
         }
     }
 
-    $auth = Invoke-Captured -FilePath 'gh' -Arguments @('auth','status','--hostname','github.com') -AllowFailure
-    if ($auth.ExitCode -ne 0) {
-        throw "GitHub CLI is not authenticated.`n$($auth.Output)"
+    $authResult = @(Invoke-GitHubAuthPreflight -PreflightOperation 'read' -PreflightRepository $Repository `
+        -PreflightRunId ([string]$RunId) -PreflightQuiet)
+    $authContext = $authResult | Where-Object { $_ -isnot [string] -and $_.Status -eq 'AUTH_RECOVERED' } | Select-Object -First 1
+    if ($null -eq $authContext) {
+        throw (($authResult | ForEach-Object { [string]$_ }) -join "`n")
     }
 }
 

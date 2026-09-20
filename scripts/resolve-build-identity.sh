@@ -12,15 +12,19 @@ VERSION="$(tr -d '\r\n' < "$VERSION_FILE")"
 [[ "$BUILD_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: invalid build ID" >&2; exit 1; }
 
 SHORT_COMMIT="${FULL_COMMIT:0:9}"
-BUILD_DATE="${BUILD_DATE:-$(date -u +%F)}"
+BUILD_TIMESTAMP="${BUILD_TIMESTAMP:-$(date -u +%FT%TZ)}"
+[[ "$BUILD_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || {
+  echo "ERROR: invalid build timestamp: $BUILD_TIMESTAMP" >&2
+  exit 1
+}
 mkdir -p "$DEST/etc" "$DEST/www/luci-static/xinzhao"
 
 cat > "$DEST/etc/xinzhao-build-info" <<INFO
 Firmware: XinZhaoWrt
 Version: $VERSION
 Builder: 新肇数码
-Build Date: $BUILD_DATE
-Git Commit: $SHORT_COMMIT
+Build Date: $BUILD_TIMESTAMP
+Git Commit: $FULL_COMMIT
 Build ID: $BUILD_ID
 Target: qualcommax/ipq60xx
 Profile: jdcloud_re-ss-01
@@ -31,8 +35,8 @@ cat > "$DEST/www/luci-static/xinzhao/build-info.json" <<JSON
   "Firmware": "XinZhaoWrt",
   "Version": "$VERSION",
   "Builder": "新肇数码",
-  "Build Date": "$BUILD_DATE",
-  "Git Commit": "$SHORT_COMMIT",
+  "Build Date": "$BUILD_TIMESTAMP",
+  "Git Commit": "$FULL_COMMIT",
   "Build ID": "$BUILD_ID",
   "Target": "qualcommax/ipq60xx",
   "Profile": "jdcloud_re-ss-01"
@@ -57,4 +61,4 @@ BUILD_ID='$BUILD_ID'
 PRETTY_NAME='XinZhaoWrt $VERSION r0+1-$SHORT_COMMIT'
 RELEASE
 
-echo "BUILD_IDENTITY_MATERIALIZED=PASS version=$VERSION commit=$SHORT_COMMIT build_id=$BUILD_ID"
+echo "BUILD_IDENTITY_MATERIALIZED=PASS version=$VERSION commit=$FULL_COMMIT build_id=$BUILD_ID timestamp=$BUILD_TIMESTAMP"

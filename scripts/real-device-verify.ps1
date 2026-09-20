@@ -43,16 +43,16 @@ function Invoke-NativeCaptured {
         [Parameter(Mandatory=$true)][string]$FilePath,
         [Parameter(Mandatory=$true)][string[]]$Arguments
     )
-    $previous = $ErrorActionPreference
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
         $raw = @(& $FilePath @Arguments 2>&1)
-        $code = $LASTEXITCODE
+        $exitCode = $LASTEXITCODE
     }
     finally {
-        $ErrorActionPreference = $previous
+        $ErrorActionPreference = $previousErrorActionPreference
     }
-    [pscustomobject]@{ ExitCode=$code; Output=(($raw | ForEach-Object { [string]$_ }) -join "`n").Trim() }
+    [pscustomobject]@{ ExitCode=$exitCode; Output=(($raw | ForEach-Object { [string]$_ }) -join "`n").Trim() }
 }
 
 function Invoke-Remote([string]$Command) {
@@ -277,7 +277,7 @@ function Run-Phase([string]$Prefix) {
     Test-Remote "$Prefix.kucat_theme" "test -d /www/luci-static/kucat; grep -R -F '/luci-static/kucat' /etc/config /etc/uci-defaults 2>/dev/null" { param($o) $o -match '/luci-static/kucat' } 'KuCat must remain selectable.' | Out-Null
     Test-Remote "$Prefix.branding" 'test -s /www/luci-static/xinzhao/logo.png && test -s /www/luci-static/xinzhao/favicon.ico && test -s /www/luci-static/xinzhao/branding.js && grep -R -F XinZhaoWrt /etc/xinzhao-build-info /www/luci-static/xinzhao/build-info.json 2>/dev/null' { param($o) $o -match 'XinZhaoWrt' } 'XinZhaoWrt branding/build information must be present.' | Out-Null
     Test-Remote "$Prefix.adguard_manager" 'test -s /www/luci-static/resources/view/adguardhome/config.js && test -s /etc/config/adguardhome && test -x /etc/init.d/adguardhome' { param($o) $true } 'Complete AdGuard Home manager, config and service must be present.' | Out-Null
-    Test-Remote "$Prefix.adguard_default_off" 'printf "enabled=%s\n" "$(uci -q get adguardhome.config.enabled 2>/dev/null || true)"; ! pidof AdGuardHome >/dev/null 2>&1; ! ls /etc/rc.d/S*adguardhome >/dev/null 2>&1' { param($o) $o -match '(?m)^enabled=0$' } 'AdGuard Home must remain disabled by default.' | Out-Null
+    Test-Remote "$Prefix.adguard_default_off" 'printf "enabled=%s\n" "$(uci -q get AdGuardHome.AdGuardHome.enabled 2>/dev/null || true)"; printf "redirect=%s\n" "$(uci -q get AdGuardHome.AdGuardHome.redirect 2>/dev/null || true)"; ! pidof AdGuardHome >/dev/null 2>&1' { param($o) $o -match '(?m)^enabled=0$' -and $o -match '(?m)^redirect=none$' } 'AdGuard Home must remain disabled by default.' | Out-Null
     Test-Remote "$Prefix.adguard_dns_53" '! pidof AdGuardHome >/dev/null 2>&1; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true)' { param($o) $o -notmatch '(?i)AdGuardHome.*:53' } 'AdGuard Home must not claim DNS port 53 while default-disabled.' | Out-Null
     Test-Remote "$Prefix.quickstart_page" 'test -s /usr/share/luci/menu.d/luci-app-quickstart.json; test -s /www/luci-static/quickstart/index.js; test -s /www/luci-static/quickstart/style.css' { param($o) $true } 'Official QuickStart route/assets must be present.' | Out-Null
     Test-Remote "$Prefix.quickstart_backend" 'command -v quickstart >/dev/null 2>&1; test -x /etc/init.d/quickstart; pidof quickstart >/dev/null 2>&1' { param($o) $true } 'QuickStart backend must exist and be running.' | Out-Null

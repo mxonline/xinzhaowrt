@@ -39,6 +39,7 @@ version = sys.argv[2]
 full_commit = sys.argv[3].lower()
 build_id = sys.argv[4]
 short_commit = full_commit[:9]
+accepted_commits = {full_commit, short_commit}
 
 def fail(message):
     raise SystemExit(f"ERROR: {message}")
@@ -61,16 +62,20 @@ info_text = read(info_path)
 info_expected = {
     "Firmware": "XinZhaoWrt",
     "Version": version,
-    "Git Commit": short_commit,
+    "Git Commit": accepted_commits,
     "Build ID": build_id,
     "Target": "qualcommax/ipq60xx",
     "Profile": "jdcloud_re-ss-01",
 }
 for key, value in info_expected.items():
-    if f"{key}: {value}" not in info_text.splitlines():
+    if key == "Git Commit":
+        if not any(line.startswith(f"{key}: ") and line.split(": ", 1)[1] in value for line in info_text.splitlines()):
+            fail(f"{info_path} has no exact {key} in {sorted(value)}")
+    elif f"{key}: {value}" not in info_text.splitlines():
         fail(f"{info_path} has no exact {key}={value}")
-if "@VERSION@" in info_text or "@BUILD_ID@" in info_text:
-    fail(f"{info_path} still contains a build placeholder")
+for placeholder in ("@VERSION@", "@BUILD_DATE@", "@GIT_COMMIT@", "@BUILD_ID@"):
+    if placeholder in info_text:
+        fail(f"{info_path} still contains build placeholder {placeholder}")
 
 json_path = root / "www" / "luci-static" / "xinzhao" / "build-info.json"
 try:
@@ -80,16 +85,21 @@ except json.JSONDecodeError as exc:
 json_expected = {
     "Firmware": "XinZhaoWrt",
     "Version": version,
-    "Git Commit": short_commit,
+    "Git Commit": accepted_commits,
     "Build ID": build_id,
     "Target": "qualcommax/ipq60xx",
     "Profile": "jdcloud_re-ss-01",
 }
 for key, value in json_expected.items():
-    if build_json.get(key) != value:
+    if key == "Git Commit":
+        if build_json.get(key) not in value:
+            fail(f"{json_path} has no exact {key} in {sorted(value)}: {build_json!r}")
+    elif build_json.get(key) != value:
         fail(f"{json_path} has no exact {key}={value}: {build_json!r}")
-if "@VERSION@" in json_path.read_text(encoding="utf-8") or "@BUILD_ID@" in json_path.read_text(encoding="utf-8"):
-    fail(f"{json_path} still contains a build placeholder")
+json_text = json_path.read_text(encoding="utf-8")
+for placeholder in ("@VERSION@", "@BUILD_DATE@", "@GIT_COMMIT@", "@BUILD_ID@"):
+    if placeholder in json_text:
+        fail(f"{json_path} still contains build placeholder {placeholder}")
 
 release = parse_shell_assignments(root / "etc" / "openwrt_release")
 release_expected = {

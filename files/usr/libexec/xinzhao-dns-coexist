@@ -1,0 +1,457 @@
+#!/bin/sh
+
+set -u
+
+SECTION="xinzhao-dns.main"
+STATE_FILE="$(uci -q get "$SECTION.state_file" 2>/dev/null || echo /etc/xinzhao-dns-coexist.state)"
+STATE_DIR="${STATE_FILE}.d"
+LOCK_DIR="/var/run/xinzhao-dns-coexist.lock"
+OC_PORT="$(uci -q get "$SECTION.openclash_dns_port" 2>/dev/null || echo 7874)"
+ADH_PORT="$(uci -q get "$SECTION.adguardhome_dns_port" 2>/dev/null || echo 1745)"
+MEMORY_FLOOR="$(uci -q get "$SECTION.memory_floor_kb" 2>/dev/null || echo 65536)"
+UCI_CHANGED=0
+
+log() {
+	logger -t xinzhao-dns-coexist "$*" 2>/dev/null || true
+}
+
+get() {
+	uci -q get "$1" 2>/dev/null || true
+}
+
+state_get() {
+	[ -s "$STATE_FILE" ] || return 0
+	awk -F '\t' -v key="$1" '$1 == key { sub(/^[^\t]*\t/, ""); print; exit }' "$STATE_FILE"
+}
+
+set_if_changed() {
+	local key="$1" value="$2" old
+	old="$(get "$key")"
+	[ "$old" = "$value" ] && return 0
+	uci -q set "$key=$value" || return 1
+	UCI_CHANGED=1
+}
+
+commit_if_changed() {
+	[ "$UCI_CHANGED" = "1" ] || return 0
+	uci -q commit dhcp || return 1
+	uci -q commit openclash || return 1
+	uci -q commit AdGuardHome || return 1
+	UCI_CHANGED=0
+}
+
+commit_all() {
+	if [ "$UCI_CHANGED" = "1" ]; then
+		uci -q commit dhcp || return 1
+		uci -q commit openclash || return 1
+		uci -q commit AdGuardHome || return 1
+		UCI_CHANGED=0
+	fi
+}
+
+oc_enabled() { [ "$(get openclash.config.enable)" = "1" ]; }
+adh_enabled() { [ "$(get AdGuardHome.AdGuardHome.enabled)" = "1" ]; }
+oc_running() { pidof clash >/dev/null 2>&1; }
+adh_running() { pidof AdGuardHome >/dev/null 2>&1; }
+
+port_listening() {
+	local port="$1"
+	if command -v ss >/dev/null 2>&1; then
+		ss -lntup 2>/dev/null | grep -Eq "([.:])${port}[[:space:]]"
+	else
+		netstat -lntup 2>/dev/null | grep -Eq "([.:])${port}[[:space:]]"
+	fi
+}
+
+wait_port() {
+	local port="$1" tries="${2:-30}" i=0
+	while [ "$i" -lt "$tries" ]; do
+		port_listening "$port" && return 0
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+memory_ok() {
+	local available
+	available="$(awk '/^MemAvailable:/ {print $2; found=1} END {if (!found) print 0}' /proc/meminfo 2>/dev/null)"
+	case "$available" in
+		''|*[!0-9]*) available=0 ;;
+	esac
+	if [ "$available" -lt "$MEMORY_FLOOR" ]; then
+		log "refusing OpenClash start: MemAvailable=${available}KB below ${MEMORY_FLOOR}KB"
+		return 1
+	fi
+	return 0
+}
+
+yaml_path() {
+	get AdGuardHome.AdGuardHome.configpath
+}
+
+yaml_ensure() {
+	local file
+	file="$(yaml_path)"
+	[ -n "$file" ] || file=/etc/AdGuardHome.yaml
+	if [ ! -s "$file" ]; then
+		mkdir -p "$(dirname "$file")" || return 1
+		cp -f /usr/share/AdGuardHome/AdGuardHome_template.yaml "$file" || return 1
+	fi
+	printf '%s\n' "$file"
+}
+
+yaml_save_upstream() {
+	local file="$1" tmp
+	mkdir -p "$STATE_DIR" || return 1
+	[ -e "$STATE_DIR/agh-upstream.block" ] && return 0
+	tmp="$STATE_DIR/agh-upstream.block.$$"
+	awk '
+		/^dns:[[:space:]]*$/ { in_dns=1; next }
+		in_dns && /^[^[:space:]]/ { in_dns=0 }
+		in_dns && /^  upstream_dns:[[:space:]]*$/ && !seen {
+			print
+			seen=1
+			in_upstream=1
+			next
+		}
+		in_upstream && /^    -[[:space:]]/ { print; next }
+		in_upstream && /^  [^[:space:]].*:/ { in_upstream=0 }
+		in_upstream { next }
+		END { if (!seen) exit 1 }
+	' "$file" > "$tmp" || return 1
+	if [ -s "$tmp" ]; then
+		mv -f "$tmp" "$STATE_DIR/agh-upstream.block" || return 1
+	else
+		rm -f "$tmp"
+	fi
+}
+
+yaml_set_port() {
+	local file="$1" port="$2" tmp
+	[ "$(awk '/^dns:/ {in_dns=1} in_dns && /^[^[:space:]]/ && $0 !~ /^dns:/ {in_dns=0} in_dns && /^  port:/ {sub(/^[^:]*:[[:space:]]*/, ""); print; exit}' "$file")" = "$port" ] && return 0
+	tmp="$file.xinzhao-port.$$"
+	awk -v port="$port" '
+		/^dns:/ { in_dns=1 }
+		in_dns && /^[^[:space:]]/ && $0 !~ /^dns:/ { in_dns=0 }
+		in_dns && /^  port:/ { sub(/:.*/, ": " port); changed=1 }
+		{ print }
+		END { if (!changed) exit 1 }
+	' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+	mv -f "$tmp" "$file" || return 1
+}
+
+yaml_set_upstream() {
+	local file="$1" upstream="$2" tmp
+	tmp="$file.xinzhao-upstream.$$"
+	awk -v upstream="$upstream" '
+		/^dns:[[:space:]]*$/ { in_dns=1; print; next }
+		in_dns && /^[^[:space:]]/ { in_dns=0; in_upstream=0 }
+		in_upstream && /^    -[[:space:]]/ { next }
+		in_upstream && /^  [^[:space:]].*:/ { in_upstream=0 }
+		in_dns && /^  upstream_dns:[[:space:]]*$/ {
+			if (!seen) {
+				print
+				print "    - " upstream
+				seen=1
+			}
+			in_upstream=1
+			changed=1
+			next
+		}
+		{ print }
+		END { if (!seen || !changed) exit 1 }
+	' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+	mv -f "$tmp" "$file" || return 1
+}
+
+yaml_restore_upstream() {
+	local file="$1" old="$STATE_DIR/agh-upstream.block" tmp
+	[ -s "$old" ] || return 0
+	tmp="$file.xinzhao-restore-check.$$"
+	awk -v old="$old" '
+		function emit_old( line) {
+			while ((getline line < old) > 0) {
+				if (line ~ /^    -[[:space:]]/) print line
+			}
+			close(old)
+		}
+		/^dns:[[:space:]]*$/ { in_dns=1; print; next }
+		in_dns && /^[^[:space:]]/ { in_dns=0; in_upstream=0 }
+		in_upstream && /^    -[[:space:]]/ { next }
+		in_upstream && /^  [^[:space:]].*:/ { in_upstream=0 }
+		in_dns && /^  upstream_dns:[[:space:]]*$/ {
+			if (!seen) {
+				print
+				emit_old()
+				seen=1
+			}
+			in_upstream=1
+			next
+		}
+		{ print }
+		END { if (!seen) exit 1 }
+	' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+	if cmp -s "$tmp" "$file"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	mv -f "$tmp" "$file" || return 1
+	return 0
+}
+
+save_state() {
+	local file tmp
+	[ -e "$STATE_FILE" ] && return 0
+	file="$(yaml_ensure)" || return 1
+	yaml_save_upstream "$file" || return 1
+	mkdir -p "$STATE_DIR" || return 1
+	tmp="$STATE_FILE.$$"
+	{
+		printf 'dnsmasq_server\t%s\n' "$(get dhcp.@dnsmasq[0].server)"
+		printf 'dnsmasq_resolvfile\t%s\n' "$(get dhcp.@dnsmasq[0].resolvfile)"
+		printf 'dnsmasq_noresolv\t%s\n' "$(get dhcp.@dnsmasq[0].noresolv)"
+		printf 'oc_enable_redirect_dns\t%s\n' "$(get openclash.config.enable_redirect_dns)"
+		printf 'oc_redirect_dns\t%s\n' "$(get openclash.config.redirect_dns)"
+		printf 'adh_redirect\t%s\n' "$(get AdGuardHome.AdGuardHome.redirect)"
+		printf 'adh_enabled\t%s\n' "$(get AdGuardHome.AdGuardHome.enabled)"
+		printf 'agh_configpath\t%s\n' "$file"
+	} > "$tmp" || return 1
+	mv -f "$tmp" "$STATE_FILE" || return 1
+}
+
+set_dnsmasq_upstream() {
+	local port="$1" addr="127.0.0.1#$1"
+	[ "$(get dhcp.@dnsmasq[0].server)" = "$addr" ] && [ -z "$(get dhcp.@dnsmasq[0].resolvfile)" ] && [ "$(get dhcp.@dnsmasq[0].noresolv)" = "1" ] && return 0
+	uci -q delete dhcp.@dnsmasq[0].server || true
+	uci -q add_list dhcp.@dnsmasq[0].server="$addr" || return 1
+	uci -q delete dhcp.@dnsmasq[0].resolvfile || true
+	uci -q set dhcp.@dnsmasq[0].noresolv=1 || return 1
+	uci -q set dhcp.@dnsmasq[0].localuse=1 || return 1
+	uci -q commit dhcp || return 1
+	/etc/init.d/dnsmasq restart || return 1
+}
+
+restore_dnsmasq() {
+	local servers noresolv resolvfile server current_server current_noresolv current_resolvfile
+	[ -e "$STATE_FILE" ] || return 0
+	servers="$(state_get dnsmasq_server)"
+	noresolv="$(state_get dnsmasq_noresolv)"
+	resolvfile="$(state_get dnsmasq_resolvfile)"
+	current_server="$(get dhcp.@dnsmasq[0].server)"
+	current_noresolv="$(get dhcp.@dnsmasq[0].noresolv)"
+	current_resolvfile="$(get dhcp.@dnsmasq[0].resolvfile)"
+	if [ "$current_server" = "$servers" ] && [ "$current_noresolv" = "$noresolv" ] && [ "$current_resolvfile" = "$resolvfile" ]; then
+		return 0
+	fi
+	uci -q delete dhcp.@dnsmasq[0].server || true
+	for server in $servers; do
+		[ -n "$server" ] && uci -q add_list dhcp.@dnsmasq[0].server="$server" || return 1
+	done
+	if [ -n "$noresolv" ]; then
+		uci -q set dhcp.@dnsmasq[0].noresolv="$noresolv" || return 1
+	else
+		uci -q delete dhcp.@dnsmasq[0].noresolv || true
+	fi
+	if [ -n "$resolvfile" ]; then
+		uci -q set dhcp.@dnsmasq[0].resolvfile="$resolvfile" || return 1
+	else
+		uci -q set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.d/resolv.conf.auto || return 1
+	fi
+	uci -q commit dhcp || return 1
+	/etc/init.d/dnsmasq restart || return 1
+}
+
+restore_agh() {
+	local file
+	file="$(yaml_ensure)" || return 1
+	yaml_restore_upstream "$file" || return 1
+	set_if_changed AdGuardHome.AdGuardHome.redirect none || return 1
+	commit_all || return 1
+}
+
+prepare_openclash() {
+	memory_ok || return 1
+	save_state || return 1
+	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
+	set_if_changed openclash.config.redirect_dns 0 || return 1
+	commit_all || return 1
+	log "OpenClash prepared with DNS redirect/hijack disabled"
+}
+
+prepare_adh() {
+	local file
+	save_state || return 1
+	file="$(yaml_ensure)" || return 1
+	yaml_set_port "$file" "$ADH_PORT" || return 1
+	if oc_running && port_listening "$OC_PORT"; then
+		yaml_set_upstream "$file" "127.0.0.1:$OC_PORT" || return 1
+	else
+		yaml_restore_upstream "$file" || return 1
+	fi
+	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
+	set_if_changed openclash.config.redirect_dns 0 || return 1
+	set_if_changed AdGuardHome.AdGuardHome.redirect none || return 1
+	commit_all || return 1
+}
+
+adh_ready() {
+	local file need_redirect=0
+	file="$(yaml_ensure)" || return 1
+	wait_port "$ADH_PORT" 30 || { log "AdGuardHome did not listen on $ADH_PORT"; return 1; }
+	yaml_set_port "$file" "$ADH_PORT" || return 1
+	if oc_running && port_listening "$OC_PORT"; then
+		yaml_set_upstream "$file" "127.0.0.1:$OC_PORT" || return 1
+	else
+		yaml_restore_upstream "$file" || return 1
+	fi
+	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
+	set_if_changed openclash.config.redirect_dns 0 || return 1
+	[ "$(get AdGuardHome.AdGuardHome.redirect)" = "dnsmasq-upstream" ] || need_redirect=1
+	set_if_changed AdGuardHome.AdGuardHome.redirect dnsmasq-upstream || return 1
+	commit_all || return 1
+	if [ "$need_redirect" = "1" ]; then
+		/etc/init.d/AdGuardHome do_redirect 1 >/dev/null 2>&1 || return 1
+	fi
+	set_dnsmasq_upstream "$ADH_PORT" || return 1
+	log "AdGuardHome ready: dnsmasq:53 -> AdGuardHome:$ADH_PORT"
+}
+
+openclash_ready() {
+	wait_port "$OC_PORT" 30 || { log "OpenClash did not listen on $OC_PORT"; return 1; }
+	save_state || return 1
+	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
+	set_if_changed openclash.config.redirect_dns 0 || return 1
+	if adh_enabled; then
+		if ! adh_running; then
+			/etc/init.d/AdGuardHome start || return 1
+		fi
+		adh_ready || return 1
+	else
+		restore_agh || return 1
+		set_dnsmasq_upstream "$OC_PORT" || return 1
+	fi
+	commit_all || return 1
+	log "OpenClash ready on $OC_PORT"
+}
+
+adh_stopped() {
+	local file
+	file="$(yaml_ensure)" || return 1
+	local need_redirect=0
+	[ "$(get AdGuardHome.AdGuardHome.redirect)" = "none" ] || need_redirect=1
+	set_if_changed AdGuardHome.AdGuardHome.redirect none || return 1
+	commit_all || return 1
+	[ "$need_redirect" = "1" ] && /etc/init.d/AdGuardHome do_redirect 0 >/dev/null 2>&1 || true
+	yaml_restore_upstream "$file" || return 1
+	commit_all || return 1
+	if oc_running && port_listening "$OC_PORT"; then
+		set_dnsmasq_upstream "$OC_PORT" || return 1
+		log "AdGuardHome stopped; dnsmasq now uses OpenClash:$OC_PORT"
+	else
+		restore_dnsmasq || return 1
+		log "AdGuardHome stopped; restored dnsmasq and upstream state"
+	fi
+}
+
+openclash_stopped() {
+	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
+	set_if_changed openclash.config.redirect_dns 0 || return 1
+	commit_all || return 1
+	if adh_enabled && adh_running; then
+		local file
+		file="$(yaml_ensure)" || return 1
+		yaml_restore_upstream "$file" || return 1
+		set_if_changed AdGuardHome.AdGuardHome.redirect dnsmasq-upstream || return 1
+		commit_all || return 1
+		set_dnsmasq_upstream "$ADH_PORT" || return 1
+	else
+		restore_dnsmasq || return 1
+	fi
+	log "OpenClash stopped; AdGuardHome state reconciled"
+}
+
+reconcile() {
+	if adh_enabled && oc_running && port_listening "$OC_PORT"; then
+		openclash_ready
+		return $?
+	fi
+	if adh_enabled && adh_running; then
+		adh_ready
+		return $?
+	fi
+	if ! adh_enabled; then
+		set_if_changed AdGuardHome.AdGuardHome.redirect none || return 1
+		commit_all || return 1
+		restore_agh || return 1
+		restore_dnsmasq || return 1
+	fi
+	return 0
+}
+
+cleanup_idle_state() {
+	if ! oc_running && ! adh_running && ! oc_enabled && ! adh_enabled; then
+		rm -f "$STATE_FILE"
+		rm -rf "$STATE_DIR"
+	fi
+}
+
+status() {
+	printf 'openclash_enabled=%s\n' "$(get openclash.config.enable)"
+	printf 'openclash_running=%s\n' "$(oc_running && echo 1 || echo 0)"
+	printf 'adguardhome_enabled=%s\n' "$(get AdGuardHome.AdGuardHome.enabled)"
+	printf 'adguardhome_running=%s\n' "$(adh_running && echo 1 || echo 0)"
+	printf 'dnsmasq_server=%s\n' "$(get dhcp.@dnsmasq[0].server)"
+	printf 'listeners:\n'
+	if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null; else netstat -lntup 2>/dev/null; fi
+}
+
+acquire() {
+	local waited=0
+	while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+		if [ "$waited" -ge 60 ]; then
+			log "timed out waiting for lifecycle transition lock"
+			return 1
+		fi
+		[ "$waited" -eq 0 ] && log "waiting for lifecycle transition lock"
+		waited=$((waited + 1))
+		sleep 1
+	done
+	[ "$waited" -gt 0 ] && log "acquired lifecycle transition lock after ${waited}s"
+	trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
+main() {
+	local action="${1:-reconcile}"
+	case "$action" in
+		status)
+			status
+			return 0
+			;;
+		boot-reconcile)
+			sleep 5
+			action=reconcile
+			;;
+		prepare-openclash|prepare-adh|adh-ready|openclash-ready|adh-stopped|openclash-stopped|reconcile)
+			;;
+		*)
+			echo "unknown action: $action" >&2
+			return 2
+			;;
+	esac
+	acquire || return 1
+	case "$action" in
+		prepare-openclash) prepare_openclash ;;
+		prepare-adh) prepare_adh ;;
+		adh-ready) adh_ready ;;
+		openclash-ready) openclash_ready ;;
+		adh-stopped) adh_stopped ;;
+		openclash-stopped) openclash_stopped ;;
+		reconcile) reconcile ;;
+	esac
+	local result=$?
+	[ "$result" -eq 0 ] && cleanup_idle_state
+	return "$result"
+}
+
+main "$@"

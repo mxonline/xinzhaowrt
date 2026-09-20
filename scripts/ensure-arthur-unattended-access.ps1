@@ -14,7 +14,7 @@ function Get-ArthurAccessPolicy {
 function Invoke-ArthurAccessNative {
     param(
         [Parameter(Mandatory=$true)][string]$FilePath,
-        [Parameter(Mandatory=$true)][string[]]$Arguments
+        [Parameter(Mandatory=$true)][AllowEmptyString()][string[]]$Arguments
     )
     $previous = $ErrorActionPreference
     try {
@@ -77,7 +77,11 @@ function Invoke-ArthurSshProbe {
         }
     }
 
-    $args += @('-o','BatchMode=yes',"root@$DeviceIp",$Command)
+    $privateKey = Join-Path (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.ssh') 'id_ed25519'
+    if (-not (Test-Path -LiteralPath $privateKey -PathType Leaf)) {
+        return [pscustomobject]@{ ExitCode = 62; Output = "UNRECOVERABLE_SSH_AUTH: explicit runner key is missing path=$privateKey" }
+    }
+    $args += @('-i',$privateKey,'-o','IdentitiesOnly=yes','-o','BatchMode=yes',"root@$DeviceIp",$Command)
     return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args
 }
 
@@ -85,20 +89,12 @@ function Get-ArthurAskPassHelper {
     if ($script:ArthurAccessAskPassExe -and (Test-Path -LiteralPath $script:ArthurAccessAskPassExe)) {
         return $script:ArthurAccessAskPassExe
     }
-    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-askpass-{0}.exe" -f $PID)
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-askpass-{0}.cmd" -f $PID)
     Remove-Item -Force -ErrorAction SilentlyContinue $path
-    $source = @'
-using System;
-public static class XinZhaoWrtArthurAskPass {
-    public static int Main(string[] args) {
-        string value = Environment.GetEnvironmentVariable("ARTHUR_ROOT_PASSWORD");
-        if (String.IsNullOrEmpty(value)) return 1;
-        Console.WriteLine(value);
-        return 0;
-    }
-}
-'@
-    Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $path -OutputType ConsoleApplication -ErrorAction Stop
+    # Add-Type no longer emits executable assemblies in PowerShell 7.  OpenSSH
+    # accepts a command wrapper for SSH_ASKPASS, so keep the credential in the
+    # inherited environment and create a short-lived wrapper instead.
+    [System.IO.File]::WriteAllText($path, ('@echo off' + [Environment]::NewLine + 'echo %ARTHUR_ROOT_PASSWORD%'), [System.Text.Encoding]::ASCII)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'ARTHUR_ASKPASS_HELPER_FAILED' }
     $script:ArthurAccessAskPassExe = $path
     return $path

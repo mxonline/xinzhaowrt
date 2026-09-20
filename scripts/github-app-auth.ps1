@@ -43,6 +43,16 @@ $ErrorActionPreference = 'Stop'
 $appId = 4785980
 $installationId = 158075076
 $repository = 'mxonline/xinzhaowrt'
+. (Join-Path $PSScriptRoot 'github-auth-preflight.ps1') -Library
+$authResult = @(Invoke-GitHubAuthPreflight -PreflightOperation 'read' -PreflightRepository $repository -PreflightQuiet)
+$authContext = $authResult | Where-Object {
+    if ($null -eq $_ -or $_ -is [string]) { return $false }
+    $statusProperty = $_.PSObject.Properties['Status']
+    $null -ne $statusProperty -and $statusProperty.Value -eq 'AUTH_RECOVERED'
+} | Select-Object -First 1
+if ($null -eq $authContext) {
+    throw (($authResult | ForEach-Object { [string]$_ }) -join "`n")
+}
 $configPath = Join-Path $PSScriptRoot '..\config\github-app.json'
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 $dpapiPath = [Environment]::ExpandEnvironmentVariables([string]$config.dpapi_path)

@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -u
+
+uci -q set xinzhao-dns.main.enabled='1'
+uci -q set xinzhao-dns.main.adguardhome_dns_port='1745'
+uci -q set xinzhao-dns.main.openclash_dns_port='7874'
+uci -q set xinzhao-dns.main.state_file='/etc/xinzhao-dns-coexist.state'
+uci -q set xinzhao-dns.main.memory_floor_kb='65536'
+uci -q commit xinzhao-dns
+
+# The product default is disabled. The coordinator remains enabled so a later
+# explicit service transition can be reconciled without a second DNS manager.
+uci -q set AdGuardHome.AdGuardHome.enabled='0'
+uci -q set AdGuardHome.AdGuardHome.redirect='none'
+uci -q commit AdGuardHome
+
+/etc/init.d/xinzhao-dns-coexist enable >/dev/null 2>&1 || true
+/etc/init.d/xinzhao-dns-coexist start >/dev/null 2>&1 || true
+exit 0

@@ -30,5 +30,21 @@ grep -Fq 'test-final-rootfs-quickstart-render.sh' "$build" || \
   fail 'production build does not run final-rootfs QuickStart parser/render smoke'
 grep -Fq 'verify-final-rootfs-identity.sh' "$build" || \
   fail 'production build does not verify final-rootfs identity'
+grep -Fq 'fetch-openclash-core.sh' "$build" || \
+  fail 'production build does not stage the pinned official OpenClash Core'
+grep -Fq '"$SRC/.xinzhao-feed/luci-app-adguardhome-manager"' "$build" || \
+  fail 'full AdGuard Home manager is not registered in the xinzhao feed'
+grep -Fq '"$SRC/.xinzhao-feed/openclash-core"' "$build" || \
+  fail 'OpenClash Core package is not registered in the xinzhao feed'
+grep -Fq './scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager openclash-core' "$build" || \
+  fail 'firmware-owned packages are not installed through the xinzhao feed before defconfig'
+grep -Fq 'verify-final-rootfs-adh-manager.py' "$build" || \
+  fail 'production build does not gate the full AdGuard Home manager in final rootfs'
+grep -Fq 'verify-final-rootfs-openclash-core.py' "$build" || \
+  fail 'production build does not gate the bundled Core in final rootfs'
+grep -Fq 'ADH_LUCI_FULL_MANAGER=PASS' "$workflow" || \
+  fail 'Candidate acceptance does not require the full AdGuard Home manager contract'
+grep -Fq 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS' "$workflow" || \
+  fail 'Candidate acceptance does not require offline first-start Core availability'
 
 echo 'PRODUCTION_WORKFLOW_CONTRACT: PASS'

@@ -141,12 +141,23 @@ jobs:
           grep -Fq 'Verified required plugins: 22' output/plugin-verification.txt
           test -s output/upload-oom-verification.txt
           grep -Fq 'PASS: Arthur upload guard verified: Nginx buffering is disk-backed and cgi-io uses the official /tmp same-filesystem handoff.' output/upload-oom-verification.txt
+          test -s output/adh-manager-verification.txt
+          grep -Fq 'ADH_LUCI_FULL_MANAGER=PASS' output/adh-manager-verification.txt
+          grep -Fq 'ADH_LIFECYCLE_START_STOP_RESTART=PASS' output/adh-manager-verification.txt
+          grep -Fq 'ADH_ENABLE_DISABLE=PASS' output/adh-manager-verification.txt
+          grep -Fq 'ADH_DEFAULT_STATE=DISABLED' output/adh-manager-verification.txt
+          test -s output/openclash-core-source-verification.txt
+          grep -Fq 'OPENCLASH_CORE_BUNDLED=PASS' output/openclash-core-source-verification.txt
+          grep -Fq 'OPENCLASH_CORE_ARCH=PASS' output/openclash-core-source-verification.txt
+          grep -Fq 'OPENCLASH_CORE_EXECUTABLE=PASS' output/openclash-core-source-verification.txt
+          test -s output/openclash-core-verification.txt
+          grep -Fq 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS' output/openclash-core-verification.txt
           find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
           test -s output/firmware/SHA256SUMS.local
           (cd output/firmware && sha256sum -c SHA256SUMS.local)
           test -s output/arthur-known-good.lock
           cmp -s output/arthur-known-good.lock "${{ steps.prep.outputs.lock_path }}"
-          echo 'PASS: firmware, 22/22 plugins, large-upload OOM guard, SHA256 and Candidate lock verified.'
+          echo 'PASS: firmware, ADH full-manager/Core contracts, 22/22 plugins, upload OOM guard, SHA256 and Candidate lock verified.'
 
       - name: Analyze failure
         if: failure()
@@ -208,6 +219,9 @@ jobs:
             output/full.config
             output/plugin-verification.txt
             output/upload-oom-verification.txt
+            output/adh-manager-verification.txt
+            output/openclash-core-source-verification.txt
+            output/openclash-core-verification.txt
             output/update-lock.diff
             output/update-metadata.json
             output/candidate-lock.txt
@@ -225,6 +239,9 @@ jobs:
             output/build-info.txt
             output/plugin-verification.txt
             output/upload-oom-verification.txt
+            output/adh-manager-verification.txt
+            output/openclash-core-source-verification.txt
+            output/openclash-core-verification.txt
             output/arthur-known-good.lock
             output/required-plugins.txt
             output/update-lock.diff
@@ -246,6 +263,9 @@ jobs:
             output/firmware/* \
             output/plugin-verification.txt \
             output/upload-oom-verification.txt \
+            output/adh-manager-verification.txt \
+            output/openclash-core-source-verification.txt \
+            output/openclash-core-verification.txt \
             output/arthur-known-good.lock \
             output/build-info.txt \
             output/required-plugins.txt \
