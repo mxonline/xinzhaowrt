@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Fail-closed prebuild gate for Arthur runtime-affecting firmware changes.
+"""Trusted fail-closed Arthur prebuild live gate.
 
-A Candidate build is allowed only after the currently running Arthur has
-machine evidence proving OpenClash and AdGuardHome work together for the
-validated source.  Evidence is bound to the validated source commit; only the
-durable evidence file itself may be committed after that source before Build.
+This checker runs from the default branch but validates the exact Candidate
+commit supplied on argv. It accepts the durable LIVE_NON_DISRUPTIVE evidence
+schema produced by the Arthur live-repair flow and rejects any firmware/runtime
+source drift after the validated source commit.
 """
 
 from __future__ import annotations
@@ -18,25 +18,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_PATH = "production/evidence/prebuild-openclash-adh-live.json"
 
-REQUIRED_MARKERS = (
-    "OPENCLASH_FULLY_USABLE",
-    "ADGUARDHOME_FULLY_USABLE",
-    "OPENCLASH_ADH_COEXISTENCE",
-    "OPENCLASH_CONTROLLER",
-    "ZASHBOARD_RUNTIME",
-    "OPENCLASH_RUNTIME_CONFIG_PARITY",
-    "OPENCLASH_DNS_RUNTIME",
-    "OPENCLASH_ADH_DNS_CHAIN",
-    "REAL_PROXY_TRAFFIC",
-    "ADGUARDHOME_FILTERING",
-    "ADGUARDHOME_QUERY_LOG",
-    "NO_DNS_LOOP",
-    "NO_PORT_CONFLICT",
-    "NO_OOM_OR_MANAGEMENT_PLANE_LOSS",
-    "ADH_DISABLE_LEAVES_OPENCLASH_WORKING",
-    "ADH_REENABLE_RESTORES_CHAIN",
-    "FINAL_ADH_DEFAULT_OFF",
-)
+# Files allowed after the validated runtime/source commit. These are evidence
+# and gate-only metadata; they must not alter firmware/runtime behavior.
+POST_VALIDATION_ALLOWLIST = {
+    EVIDENCE_PATH,
+    "scripts/check-openclash-adh-prebuild-live.py",
+}
 
 RUNTIME_PREFIXES = (
     "config/",
@@ -58,72 +45,63 @@ RUNTIME_FILES = {
 }
 
 
-def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_git(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(ROOT), *args],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=check,
+        check=False,
     )
 
 
-def fail(message: str) -> None:
+def fail(messages: list[str]) -> int:
     print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=FAIL")
-    print(f"BLOCKED: {message}")
-    raise SystemExit(1)
+    for message in messages:
+        print(f"- {message}")
+    return 1
 
 
 def show_text(commit: str, path: str) -> str:
-    proc = run_git("show", f"{commit}:{path}", check=False)
+    proc = run_git("show", f"{commit}:{path}")
     if proc.returncode != 0:
-        fail(f"missing {path} at {commit}: {proc.stderr.strip()}")
+        raise RuntimeError(f"missing {path} at {commit}: {proc.stderr.strip()}")
     return proc.stdout
 
 
 def changed_files(base: str, head: str) -> list[str]:
-    proc = run_git("diff", "--name-only", f"{base}..{head}", check=False)
+    proc = run_git("diff", "--name-only", f"{base}..{head}")
     if proc.returncode != 0:
-        fail(f"cannot diff {base}..{head}: {proc.stderr.strip()}")
+        raise RuntimeError(f"cannot diff {base}..{head}: {proc.stderr.strip()}")
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
 def is_runtime_impact(path: str) -> bool:
-    if path in RUNTIME_FILES:
-        return True
-    if path.startswith(RUNTIME_PREFIXES):
+    if path in POST_VALIDATION_ALLOWLIST:
+        return False
+    if path in RUNTIME_FILES or path.startswith(RUNTIME_PREFIXES):
         return True
     lowered = path.lower()
     return any(token in lowered for token in ("openclash", "adguardhome", "dns-coexist"))
 
 
+def http_ok(value: object) -> bool:
+    return isinstance(value, int) and 200 <= value < 400
+
+
 target = sys.argv[1] if len(sys.argv) > 1 else "HEAD"
-target_proc = run_git("rev-parse", target, check=False)
-if target_proc.returncode != 0:
-    fail(f"target commit is unavailable: {target}")
-target_sha = target_proc.stdout.strip()
+resolved = run_git("rev-parse", target)
+if resolved.returncode != 0:
+    raise SystemExit(fail([f"cannot resolve target commit {target}: {resolved.stderr.strip()}"]))
+target_sha = resolved.stdout.strip()
+
+errors: list[str] = []
 
 try:
     known_good = json.loads(show_text(target_sha, "production/known-good.json"))
-except json.JSONDecodeError as exc:
-    fail(f"invalid production/known-good.json at target: {exc}")
-
-baseline = str(known_good.get("project_commit") or known_good.get("source_commit") or "")
-if not re.fullmatch(r"[0-9a-f]{40}", baseline):
-    fail("Known-Good baseline project/source commit is missing or invalid")
-
-impact = [path for path in changed_files(baseline, target_sha) if is_runtime_impact(path)]
-if not impact:
-    print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=SKIPPED_NO_RUNTIME_IMPACT")
-    print(f"PREBUILD_TARGET_SHA={target_sha}")
-    raise SystemExit(0)
-
-try:
     evidence = json.loads(show_text(target_sha, EVIDENCE_PATH))
-except json.JSONDecodeError as exc:
-    fail(f"invalid {EVIDENCE_PATH}: {exc}")
-
-errors: list[str] = []
+except (RuntimeError, json.JSONDecodeError) as exc:
+    raise SystemExit(fail([str(exc)]))
 
 
 def require(condition: bool, message: str) -> None:
@@ -131,40 +109,120 @@ def require(condition: bool, message: str) -> None:
         errors.append(message)
 
 
+baseline = str(known_good.get("project_commit") or known_good.get("source_commit") or "")
+require(bool(re.fullmatch(r"[0-9a-f]{40}", baseline)), "Known-Good project/source commit is missing or invalid")
+
 require(evidence.get("schema_version") == 1, "schema_version must be 1")
-require(str(evidence.get("mode") or "") == "LIVE_RUNTIME_PREBUILD", "mode must be LIVE_RUNTIME_PREBUILD")
-require(str(evidence.get("status") or "").upper() == "PASS", "status must be PASS")
-require(evidence.get("safe_live_validation") is True, "safe_live_validation must be true")
-require(str(evidence.get("device") or "") == "jdcloud_re-ss-01", "device must be jdcloud_re-ss-01")
-require(bool(str(evidence.get("observed_at") or "").strip()), "observed_at is required")
-require(isinstance(evidence.get("errors"), list) and len(evidence.get("errors") or []) == 0, "errors must be an empty list")
+require(evidence.get("gate") == "PREBUILD_OPENCLASH_ADH_LIVE_GATE", "gate identity mismatch")
+require(evidence.get("status") == "PASS", "evidence.status must be PASS")
+require(evidence.get("mode") == "LIVE_NON_DISRUPTIVE", "mode must be LIVE_NON_DISRUPTIVE")
+require(bool(str(evidence.get("generated_at") or "").strip()), "generated_at is required")
+
+device = evidence.get("device") or {}
+require(device.get("address") == "192.168.6.1", "device.address must be 192.168.6.1")
+require(device.get("firmware") == "v0.1.5", "device.firmware must be v0.1.5")
+require("JDCloud RE-SS-01" in str(device.get("model") or ""), "device.model must identify JDCloud RE-SS-01")
+require("jdcloud_re-ss-01" in str(device.get("target") or ""), "device.target must identify jdcloud_re-ss-01")
+
+restrictions = evidence.get("restrictions") or {}
+for key in ("build_forbidden", "release_forbidden", "sysupgrade_forbidden"):
+    require(restrictions.get(key) is True, f"restrictions.{key} must be true")
+for key in ("build_executed", "release_executed", "sysupgrade_executed"):
+    require(restrictions.get(key) is False, f"restrictions.{key} must be false")
+
+live = evidence.get("live_runtime_prebuild") or {}
+require(live.get("status") == "PASS", "live_runtime_prebuild.status must be PASS")
+require(live.get("source_content_matches_validated_source_commit") is True, "validated source content parity must be true")
+require(live.get("final_live_assert") == "PASS", "final_live_assert must be PASS")
 
 validated_sha = str(evidence.get("validated_source_sha") or "")
 require(bool(re.fullmatch(r"[0-9a-f]{40}", validated_sha)), "validated_source_sha must be a full commit SHA")
+require((evidence.get("source_fix") or {}).get("source_commit") == validated_sha, "source_fix.source_commit must equal validated_source_sha")
+require((evidence.get("source_fix") or {}).get("status") == "HOT_DEPLOYED_AND_VERIFIED", "source_fix.status must be HOT_DEPLOYED_AND_VERIFIED")
 
-markers = evidence.get("markers") or {}
-for marker in REQUIRED_MARKERS:
-    require(markers.get(marker) == "PASS", f"{marker}=PASS is required")
+require(evidence.get("openclash_fully_usable") == "PASS", "OPENCLASH_FULLY_USABLE=PASS is required")
+require(evidence.get("adguardhome_fully_usable") == "PASS", "ADGUARDHOME_FULLY_USABLE=PASS is required")
+require(evidence.get("openclash_adh_coexistence") == "PASS", "OPENCLASH_ADH_COEXISTENCE=PASS is required")
+
+fake = evidence.get("fake_ip_runtime") or {}
+require(fake.get("consistent") is True, "fake-ip source/runtime parity must be true")
+require(fake.get("runtime_mode") == "fake-ip", "runtime_mode must remain fake-ip")
+require(fake.get("external_ui") == "/usr/share/openclash/ui", "external_ui mismatch")
+require(fake.get("external_ui_name") == "zashboard", "external_ui_name must be zashboard")
+require(fake.get("zashboard_http") == 200, "Zashboard HTTP 200 is required")
+
+openclash = evidence.get("openclash") or {}
+require(openclash.get("status") == "PASS", "OpenClash status must be PASS")
+controller = openclash.get("controller_api") or {}
+for key in ("version", "configs", "providers_proxies", "providers_rules", "proxies", "rules"):
+    require(controller.get(key) == 200, f"OpenClash controller {key} HTTP 200 is required")
+proxy_http = openclash.get("real_proxy_http") or {}
+require(proxy_http.get("google_generate_204") == 204, "real Google proxy HTTP 204 is required")
+require(proxy_http.get("gstatic_generate_204") == 204, "real gstatic proxy HTTP 204 is required")
+require(proxy_http.get("example_com") == 200, "real example.com proxy HTTP 200 is required")
+
+adh = evidence.get("adguardhome") or {}
+require(adh.get("status") == "PASS", "AdGuardHome status must be PASS")
+require(adh.get("dns_port") == 1745, "AdGuardHome DNS port must be 1745")
+for key in ("status", "profile", "dns_info", "querylog", "stats", "filtering"):
+    require((adh.get("api_http") or {}).get(key) == 200, f"AdGuardHome API {key} HTTP 200 is required")
+require(adh.get("real_dns") is True, "AdGuardHome real DNS must pass")
+require(adh.get("query_log_recorded") is True, "AdGuardHome query log evidence is required")
+require(adh.get("filter_blocked_ipv4") == "0.0.0.0", "AdGuardHome IPv4 filtering evidence is required")
+require(adh.get("filter_blocked_ipv6") == "::", "AdGuardHome IPv6 filtering evidence is required")
+
+dns_chain = evidence.get("dns_chain") or {}
+require(dns_chain.get("off") == "dnsmasq:53 -> OpenClash:7874", "ADH OFF DNS chain mismatch")
+require(dns_chain.get("on") == "dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874", "ADH ON DNS chain mismatch")
+pcap = dns_chain.get("coexistence_packet_capture") or {}
+require(isinstance(pcap.get("packets_to_1745"), int) and pcap.get("packets_to_1745", 0) > 0, "packet evidence to 1745 is required")
+require(isinstance(pcap.get("packets_to_7874"), int) and pcap.get("packets_to_7874", 0) > 0, "packet evidence to 7874 is required")
+require(pcap.get("runtime_upstream_7874") is True, "AdGuardHome runtime upstream to 7874 is required")
+
+lifecycle = evidence.get("lifecycle") or {}
+require(lifecycle.get("sequence") == "OFF -> ON -> OFF -> ON -> OFF", "lifecycle sequence mismatch")
+require(lifecycle.get("status") == "PASS", "lifecycle status must be PASS")
+require(lifecycle.get("off_states") == 3 and lifecycle.get("on_states") == 2, "full five-stage lifecycle counts are required")
+require(lifecycle.get("openclash_pid_remained_stable") is True, "OpenClash must remain stable through ADH lifecycle")
+require(all(v == 204 for v in lifecycle.get("proxy_http_results", [])) and len(lifecycle.get("proxy_http_results", [])) == 5, "five proxy HTTP 204 lifecycle results are required")
+require(all(v == 200 for v in lifecycle.get("zashboard_http_results", [])) and len(lifecycle.get("zashboard_http_results", [])) == 5, "five Zashboard HTTP 200 lifecycle results are required")
+require(all(v == 200 for v in lifecycle.get("luci_root_http_results", [])) and len(lifecycle.get("luci_root_http_results", [])) == 5, "five LuCI HTTP 200 lifecycle results are required")
+require(all(v == 0 for v in lifecycle.get("ssh_ubus_results", [])) and len(lifecycle.get("ssh_ubus_results", [])) == 5, "five SSH/ubus lifecycle results are required")
+
+safety = evidence.get("safety") or {}
+require(safety.get("no_dns_loop") is True, "no DNS loop evidence is required")
+require(safety.get("no_port_conflict") is True, "no port conflict evidence is required")
+require(safety.get("no_oom") is True and safety.get("oom_count") == 0, "OOM=0 evidence is required")
+require(safety.get("ssh_luci_stable") is True, "SSH/LuCI stability evidence is required")
 
 final_state = evidence.get("final_state") or {}
-require(final_state.get("adguardhome_enabled") is False, "final_state.adguardhome_enabled must be false")
-require(final_state.get("openclash_running") is True, "final_state.openclash_running must be true")
+require(final_state.get("adguardhome") == "OFF", "final AdGuardHome state must be OFF")
+require(final_state.get("adguardhome_uci_enabled") == 0, "final AdGuardHome UCI enabled must be 0")
+require(final_state.get("adguardhome_init_enabled") is False, "final AdGuardHome init state must be disabled")
+require(final_state.get("openclash") == "RUNNING", "final OpenClash state must be RUNNING")
+require(final_state.get("dnsmasq_server") == "127.0.0.1#7874", "final dnsmasq upstream must be OpenClash:7874")
+require(final_state.get("zashboard_http") == 200, "final Zashboard HTTP 200 is required")
+require(final_state.get("controller_authenticated_http") == 200, "final controller authenticated HTTP 200 is required")
+require(final_state.get("ssh_ubus") == "PASS", "final SSH/ubus must PASS")
+require(final_state.get("luci_root_http") == 200, "final LuCI HTTP 200 is required")
 
 if re.fullmatch(r"[0-9a-f]{40}", validated_sha):
-    ancestor = run_git("merge-base", "--is-ancestor", validated_sha, target_sha, check=False)
+    ancestor = run_git("merge-base", "--is-ancestor", validated_sha, target_sha)
     require(ancestor.returncode == 0, "validated_source_sha is not an ancestor of the build target")
     if ancestor.returncode == 0:
-        post_validation_changes = changed_files(validated_sha, target_sha)
-        disallowed = [path for path in post_validation_changes if path != EVIDENCE_PATH]
-        require(
-            not disallowed,
-            "source changed after live validation: " + ", ".join(disallowed[:20]),
-        )
+        try:
+            post_validation_changes = changed_files(validated_sha, target_sha)
+        except RuntimeError as exc:
+            errors.append(str(exc))
+            post_validation_changes = []
+        disallowed = [p for p in post_validation_changes if p not in POST_VALIDATION_ALLOWLIST]
+        runtime_drift = [p for p in post_validation_changes if is_runtime_impact(p)]
+        require(not disallowed, "post-validation changes are not evidence/gate-only: " + ", ".join(disallowed[:20]))
+        require(not runtime_drift, "runtime/source changed after live validation: " + ", ".join(runtime_drift[:20]))
 
 if errors:
     print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=FAIL")
     print(f"PREBUILD_TARGET_SHA={target_sha}")
-    print("RUNTIME_IMPACT_FILES=" + ",".join(impact[:40]))
     for error in errors:
         print(f"- {error}")
     raise SystemExit(1)
