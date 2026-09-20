@@ -1,0 +1,65 @@
+name: Arthur OpenClash ADH Direct Inspect
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/arthur-openclash-adh-direct-inspect.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout current control source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect persistent workspace and live Arthur
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $persistent = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace'
+          Write-Host 'PERSISTENT_WORKSPACE_STATUS_BEGIN'
+          if (Test-Path (Join-Path $persistent '.git')) {
+            git -C $persistent status --short --branch
+            Write-Host "PERSISTENT_HEAD=$((& git -C $persistent rev-parse HEAD).Trim())"
+            Write-Host "PERSISTENT_BRANCH=$((& git -C $persistent branch --show-current).Trim())"
+            Write-Host 'PERSISTENT_RELEVANT_DIFF_BEGIN'
+            git -C $persistent diff -- "package/xinzhao/openclash-core/Makefile" "tests/test-openclash-core-bundle.py" "files/usr/libexec/xinzhao-dns-coexist" "files/etc/init.d/xinzhao-dns-coexist" "files/etc/uci-defaults/98-xinzhao-dns-coexist" "scripts/add-custom-packages.sh" "patches/openclash" "tests" 2>$null
+            Write-Host 'PERSISTENT_RELEVANT_DIFF_END'
+          } else {
+            Write-Host 'PERSISTENT_WORKSPACE_MISSING'
+          }
+          Write-Host 'PERSISTENT_WORKSPACE_STATUS_END'
+
+          . (Join-Path $env:GITHUB_WORKSPACE 'scripts\ensure-arthur-unattended-access.ps1')
+          $access = Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1'
+          Write-Host "ARTHUR_ACCESS=PASS mode=$($access.Mode)"
+
+          function Remote([string]$Label,[string]$Command) {
+            $r = Invoke-ArthurSshProbe -DeviceIp '192.168.6.1' -KnownHostsFile ([string]$access.KnownHosts) -StrictMode yes -Command $Command
+            Write-Host "$($Label)_EXIT=$($r.ExitCode)"
+            Write-Host "$($Label)_BEGIN"
+            Write-Host $r.Output
+            Write-Host "$($Label)_END"
+            if ($r.ExitCode -ne 0) { throw "REMOTE_INSPECT_FAILED label=$Label" }
+          }
+
+          Remote 'ARTHUR_IDENTITY' "ubus call system board; printf '\n---BUILD---\n'; cat /www/luci-static/xinzhao/build-info.json 2>/dev/null || true"
+          Remote 'OPENCLASH_UCI' "for k in enable config_path en_mode enable_redirect_dns redirect_dns default_dashboard dns_port cn_port dashboard_password; do v=$(uci -q get openclash.config.$k 2>/dev/null || true); [ \"$k\" = dashboard_password ] && v='<REDACTED>'; printf '%s=%s\n' \"$k\" \"$v\"; done"
+          Remote 'OPENCLASH_RUNTIME' "printf '%s\n' '---PROC---'; ps w | grep -E '[c]lash|[m]ihomo' || true; printf '%s\n' '---LISTEN---'; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true) | grep -E ':(53|1745|7874|9090)([[:space:]]|$)' || true; printf '%s\n' '---CONFIG---'; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); [ -n \"$cfg\" ] && grep -nE '^(external-controller|external-ui|external-ui-name|secret:|[[:space:]]*enhanced-mode:|[[:space:]]*listen:)' \"$cfg\" 2>/dev/null | sed -E 's/^(secret:).*/\1 <REDACTED>/' || true"
+          Remote 'ZASHBOARD_FILES' "find /usr/share/openclash/ui/zashboard -maxdepth 2 -type f 2>/dev/null | head -n 40; test -s /usr/share/openclash/ui/zashboard/index.html && echo ZASHBOARD_INDEX=YES || echo ZASHBOARD_INDEX=NO"
+          Remote 'DASHBOARD_HTTP' "for u in http://127.0.0.1:9090/ui/zashboard/ http://192.168.6.1:9090/ui/zashboard/; do code=$(curl -sS -o /tmp/xz-dashboard-body -w '%{http_code}' --max-time 8 \"$u\" 2>/dev/null || true); printf '%s %s\n' \"$code\" \"$u\"; head -c 120 /tmp/xz-dashboard-body 2>/dev/null | tr '\n' ' '; echo; done; rm -f /tmp/xz-dashboard-body"
+          Remote 'DNS_UCI' "printf '%s\n' '---DNSMASQ---'; uci -q show dhcp.@dnsmasq[0] 2>/dev/null | grep -E '(server=|noresolv=|resolvfile=|localuse=)' || true; printf '%s\n' '---ADH_UCI---'; uci -q show AdGuardHome 2>/dev/null | grep -E '(enabled=|redirect=|configpath=)' || uci -q show adguardhome 2>/dev/null | grep -E '(enabled=|redirect=|configpath=)' || true; printf '%s\n' '---ADH_PROC---'; pidof AdGuardHome 2>/dev/null || true; printf '%s\n' '---ADH_YAML_DNS---'; f=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null || echo /etc/AdGuardHome.yaml); [ -s \"$f\" ] && awk '/^dns:/{p=1} p&&/^(  port:|  upstream_dns:|    - )/{print} p&&/^[^[:space:]]/&&$0!~/^dns:/{exit}' \"$f\" | head -n 30 || true"
+          Remote 'MEMORY' "grep -E '^(MemTotal|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo; uptime; logread -l 200 2>/dev/null | grep -Ei 'out of memory|oom-killer|killed process|segfault' | tail -n 30 || true"
