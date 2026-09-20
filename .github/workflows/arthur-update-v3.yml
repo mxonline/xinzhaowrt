@@ -49,6 +49,11 @@ jobs:
           test "$(grep -cvE '^[[:space:]]*(#|$)' config/required-plugins.txt)" -eq 22
           echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
 
+      - name: Enforce prebuild OpenClash + AdGuardHome live gate
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/check-openclash-adh-prebuild-live.py "$GITHUB_SHA"
+
       - name: Free runner disk space
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
