@@ -28,6 +28,70 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
+      - name: Repair and verify Codex sandbox helper
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sandbox = 'C:\ProgramData\xinzhaowrt-codex\.sandbox'
+          $marker = Join-Path $sandbox 'setup_marker.json'
+          $identity = (whoami).Trim()
+          Write-Host "CODEX_SANDBOX_REPAIR_IDENTITY=$identity"
+
+          New-Item -ItemType Directory -Force -Path $sandbox | Out-Null
+
+          function Test-SandboxWrite {
+            $probe = Join-Path $sandbox ("runner-write-probe-{0}.tmp" -f $PID)
+            try {
+              'probe' | Set-Content -LiteralPath $probe -Encoding ASCII
+              Remove-Item -Force -LiteralPath $probe
+              return $true
+            }
+            catch {
+              Write-Host "CODEX_SANDBOX_WRITE_PROBE_ERROR=$($_.Exception.GetType().Name)"
+              return $false
+            }
+          }
+
+          if (Test-Path -LiteralPath $marker) {
+            try {
+              Remove-Item -Force -LiteralPath $marker
+              Write-Host 'CODEX_SANDBOX_STALE_MARKER_REMOVED=PASS'
+            }
+            catch {
+              Write-Warning 'Codex sandbox marker cannot be removed with current ACL; applying the minimum runner Modify grant.'
+              & icacls.exe $sandbox /grant "${identity}:(OI)(CI)M" /T /C
+              if ($LASTEXITCODE -ne 0) { throw "CODEX_SANDBOX_ACL_REPAIR_FAILED exit=$LASTEXITCODE" }
+              Remove-Item -Force -LiteralPath $marker
+              Write-Host 'CODEX_SANDBOX_STALE_MARKER_REMOVED_AFTER_ACL_REPAIR=PASS'
+            }
+          }
+
+          if (-not (Test-SandboxWrite)) {
+            & icacls.exe $sandbox /grant "${identity}:(OI)(CI)M" /T /C
+            if ($LASTEXITCODE -ne 0) { throw "CODEX_SANDBOX_ACL_REPAIR_FAILED exit=$LASTEXITCODE" }
+            if (-not (Test-SandboxWrite)) { throw 'CODEX_SANDBOX_WRITE_STILL_BLOCKED' }
+          }
+
+          Write-Host 'CODEX_SANDBOX_FILESYSTEM=PASS'
+
+          $workspace = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace'
+          $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
+          $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
+          if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
+          $probeLast = Join-Path $env:RUNNER_TEMP 'codex-sandbox-exec-probe.last.txt'
+          $probePrompt = 'Use exec_command once to run Get-Location. If the command executes successfully, reply exactly CODEX_SANDBOX_EXEC_OK. Do not modify repository files.'
+          $oldPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          $probeOutput = ($probePrompt | & $codexCmd exec --sandbox workspace-write -c 'approval_policy="never"' -C $workspace -o $probeLast - 2>&1 | Out-String)
+          $probeExit = $LASTEXITCODE
+          $ErrorActionPreference = $oldPreference
+          Write-Host $probeOutput
+          if ($probeExit -ne 0) { throw "CODEX_SANDBOX_EXEC_PROBE_FAILED exit=$probeExit" }
+          if (-not (Test-Path -LiteralPath $probeLast)) { throw 'CODEX_SANDBOX_EXEC_PROBE_NO_LAST_MESSAGE' }
+          $probeFinal = (Get-Content -Raw -LiteralPath $probeLast).Trim()
+          if ($probeFinal -ne 'CODEX_SANDBOX_EXEC_OK') { throw "CODEX_SANDBOX_EXEC_PROBE_UNEXPECTED=$probeFinal" }
+          Write-Host 'CODEX_SANDBOX_EXEC=PASS'
+
       - name: Execute Codex live repair on persistent Arthur workspace
         shell: powershell
         run: |
