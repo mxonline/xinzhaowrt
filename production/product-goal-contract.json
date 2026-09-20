@@ -101,5 +101,31 @@
   "claim_policy": {
     "allowed_product_complete_claim": "Only when PRODUCT_GOAL_VERIFIED is backed by exact-release real-device evidence for every required capability.",
     "otherwise": "Report the precise intermediate pipeline state or BLOCKED/FAIL; never describe the product goal as complete."
+  },
+  "prebuild_live_validation": {
+    "required_for_runtime_affecting_changes": true,
+    "fail_closed_without_valid_evidence": true,
+    "source_binding_required": true,
+    "evidence_path": "production/evidence/prebuild-openclash-adh-live.json",
+    "final_default_adguardhome_enabled": false,
+    "required_markers": [
+      "OPENCLASH_FULLY_USABLE=PASS",
+      "ADGUARDHOME_FULLY_USABLE=PASS",
+      "OPENCLASH_ADH_COEXISTENCE=PASS",
+      "OPENCLASH_CONTROLLER=PASS",
+      "ZASHBOARD_RUNTIME=PASS",
+      "OPENCLASH_RUNTIME_CONFIG_PARITY=PASS",
+      "OPENCLASH_DNS_RUNTIME=PASS",
+      "OPENCLASH_ADH_DNS_CHAIN=PASS",
+      "REAL_PROXY_TRAFFIC=PASS",
+      "ADGUARDHOME_FILTERING=PASS",
+      "ADGUARDHOME_QUERY_LOG=PASS",
+      "NO_DNS_LOOP=PASS",
+      "NO_PORT_CONFLICT=PASS",
+      "NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS",
+      "ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS",
+      "ADH_REENABLE_RESTORES_CHAIN=PASS",
+      "FINAL_ADH_DEFAULT_OFF=PASS"
+    ]
   }
 }
