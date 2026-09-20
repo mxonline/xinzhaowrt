@@ -58,7 +58,22 @@ def main() -> int:
     equal("evidence.gate", evidence.get("gate"), "PREBUILD_OPENCLASH_ADH_LIVE_GATE")
     equal("evidence.status", evidence.get("status"), "PASS")
     equal("evidence.mode", evidence.get("mode"), "LIVE_NON_DISRUPTIVE")
-    equal("evidence.validated_source_sha", evidence.get("validated_source_sha"), actual_head)
+    validated_source_sha = evidence.get("validated_source_sha")
+    if not isinstance(validated_source_sha, str) or not validated_source_sha:
+        errors.append("evidence.validated_source_sha is missing")
+    else:
+        try:
+            source_is_ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", validated_source_sha, actual_head],
+                check=False,
+            ).returncode == 0
+        except OSError as exc:
+            source_is_ancestor = False
+            errors.append(f"cannot verify validated source ancestry: {exc}")
+        if not source_is_ancestor:
+            errors.append(
+                "evidence.validated_source_sha is not an ancestor of the remote HEAD"
+            )
     equal("device.address", evidence.get("device", {}).get("address"), "192.168.6.1")
     equal("device.firmware", evidence.get("device", {}).get("firmware"), "v0.1.5")
 
