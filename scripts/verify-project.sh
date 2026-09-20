@@ -37,6 +37,7 @@ bash tests/test-functional-acceptance.sh
 bash tests/test-live-preview-contract.sh
 bash tests/test-package-source-provenance.sh
 bash tests/test-full-openclash-adh-contract.sh
+bash tests/test-prebuild-openclash-adh-live-gate.sh
 "$PYTHON_BIN" tests/test-openclash-adguardhome-coexistence.py
 "$PYTHON_BIN" scripts/check-product-goal-contract.py
 "$PYTHON_BIN" -m json.tool production/live-preview-policy.json >/dev/null
