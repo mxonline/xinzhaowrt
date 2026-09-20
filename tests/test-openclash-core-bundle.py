@@ -110,8 +110,10 @@ def main() -> int:
         final_core = rootfs / "etc/openclash/core/clash_meta"
         staged.parent.mkdir(parents=True, exist_ok=True)
         final_core.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(destination, staged)
-        shutil.copyfile(destination, final_core)
+        shutil.copy2(destination, staged)
+        shutil.copy2(destination, final_core)
+        if os.name != "nt" and not final_core.stat().st_mode & 0o111:
+            raise AssertionError("synthetic final rootfs Core fixture is not executable")
         package_recipe_copy = source_root / "package/xinzhao/openclash-core/Makefile"
         shutil.copyfile(ROOT / "package/xinzhao/openclash-core/Makefile", package_recipe_copy)
         init = source_root / "feeds/luci/applications/luci-app-openclash/root/etc/init.d/openclash"
