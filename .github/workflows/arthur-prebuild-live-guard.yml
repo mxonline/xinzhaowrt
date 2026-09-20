@@ -1,0 +1,54 @@
+name: Arthur Prebuild Live Guard
+
+'on':
+  workflow_run:
+    workflows:
+      - Arthur Known-Good Update v3
+    types:
+      - requested
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: arthur-prebuild-live-guard-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  enforce-live-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout guard from default branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch requested Candidate source
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$TARGET_SHA" || { echo 'BLOCKED: target workflow head SHA missing'; exit 1; }
+          git fetch --no-tags origin "$TARGET_SHA"
+
+      - name: Enforce OpenClash + AdGuardHome prebuild live gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_RUN_ID: ${{ github.event.workflow_run.id }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set +e
+          python3 scripts/check-openclash-adh-prebuild-live.py "$TARGET_SHA"
+          status=$?
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            echo "BLOCKED: cancelling Arthur Candidate run $TARGET_RUN_ID because live OpenClash + AdGuardHome evidence is missing, stale, or failed."
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/cancel" >/dev/null 2>&1 || true
+            exit "$status"
+          fi
+
+          echo "PREBUILD_LIVE_GUARD=PASS"
