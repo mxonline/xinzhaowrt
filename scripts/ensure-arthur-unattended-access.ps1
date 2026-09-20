@@ -6,7 +6,7 @@ function Get-ArthurAccessPolicy {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "ARTHUR_CONTROL_POLICY_MISSING path=$path"
     }
-    $policy = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -Depth 12
+    $policy = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
     if ([int]$policy.schema_version -ne 1) { throw 'ARTHUR_CONTROL_POLICY_SCHEMA_UNSUPPORTED' }
     return $policy
 }
