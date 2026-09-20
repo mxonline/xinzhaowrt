@@ -9,14 +9,14 @@
       "source": "sources/live-preview-mature/adguardhome/htdocs/luci-static/resources/adguardhome/adg.css",
       "remote": "/www/luci-static/resources/adguardhome/adg.css",
       "overlay": "files/www/luci-static/resources/adguardhome/adg.css",
-      "sha256": "354212bd6a064001508f2ea0380fb63d3c3b8d1d00eb683bdd9a1ba13a7511c2",
+      "sha256": "5f75026b3f6a54021f867d206f79773b2cf27cef23aeb2624bab50cd201e3ee7",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/htdocs/luci-static/resources/view/luci-app-adguardhome/index.js",
       "remote": "/www/luci-static/resources/view/luci-app-adguardhome/index.js",
       "overlay": "files/www/luci-static/resources/view/luci-app-adguardhome/index.js",
-      "sha256": "097a17a25ea4daedc60ee4f0d692c5d9269c5d36a4b4f890c9d30b743f07bb72",
+      "sha256": "acac1e045699c7b60f4e6e7e7e7cbec608225d88a0b93973fca072563f962f26",
       "mode": "0644"
     },
     {
@@ -30,35 +30,35 @@
       "source": "sources/live-preview-mature/adguardhome/luasrc/model/cbi/AdGuardHome/base.lua",
       "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/base.lua",
       "overlay": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/base.lua",
-      "sha256": "b2ce630c980d0a626b457ed69bf23d82f2deb4458d747a4a7a83bd2ca641d6fb",
+      "sha256": "4a6dd412f09f50abea02cb89a9e1ecb6fa353016d4a90410b260a71064568ddc",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/model/cbi/AdGuardHome/log.lua",
       "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/log.lua",
       "overlay": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/log.lua",
-      "sha256": "1de1b79cf7948f9848e96352150a5cee6e638b15a289f87e24fb521742ffb23e",
+      "sha256": "366d64dfa219bfdf88b084e5400bff3d571bb8d9ec4f1a335a1a1fdee7f8cd4c",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/model/cbi/AdGuardHome/manual.lua",
       "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/manual.lua",
       "overlay": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/manual.lua",
-      "sha256": "e8e64764da42e36cee1b9e36c3e55b793e048b2caca254590926d11308bc583f",
+      "sha256": "0fa3473ce67bf0eda3e0cd51fd428cb3ea8af470005ca13a0f5075e124c9767e",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/model/cbi/AdGuardHome/overview.lua",
       "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/overview.lua",
       "overlay": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/overview.lua",
-      "sha256": "6cc1f0309d810b842430ad56aaf74fa79c81dc70242f5906a893b61446f7ae93",
+      "sha256": "c19b22347c5933c11e9cf64e95a591d32be00c46187327a2d6951e98107e6a12",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/model/cbi/AdGuardHome/tools.lua",
       "remote": "/usr/lib/lua/luci/model/cbi/AdGuardHome/tools.lua",
       "overlay": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/tools.lua",
-      "sha256": "8aa6b54cfd7b0ab24178a06db22cfc6e89593133d30f7c3201c9122288668a8c",
+      "sha256": "f4005433efab77a9c52394edb17901ba96b534d0d52a8d2ad7da456586e5063a",
       "mode": "0644"
     },
     {
@@ -72,42 +72,42 @@
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/AdGuardHome_chpass.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_chpass.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_chpass.htm",
-      "sha256": "d123849be09db3f3c0cf981e42c7909e47c677df7d99ef8fb840836d5f6ad5ca",
+      "sha256": "29d735830ea73ba97b5f9b9f0f47619f7497b8238fe4024514e59c48c1a869ce",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/AdGuardHome_status.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_status.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_status.htm",
-      "sha256": "21b5bb4744e8b3bb808e501a57f3c7ac8775039d2da97d8a7f12e7e327e7a185",
+      "sha256": "feca477525993b9d6c7738e06df5eb5078600b02bfd18a670a88b4f21286e185",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/enable_switch.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/enable_switch.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/enable_switch.htm",
-      "sha256": "2a91e5d8fde9b4a071ba12f6ef11a38f72ced98636bfcba47b688897b3b6e0a2",
+      "sha256": "a51d0073b5ae4d5cd41f1f9118439c99eeedd64b7e4135e3f94f7fa743b22ffb",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/head.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/head.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/head.htm",
-      "sha256": "bf1e1720ee47b2dc019e1bc3487430883d1fb169c047e8c3f4048da8be00a493",
+      "sha256": "d893b70ec1fea614d37978d21cd7c66c64282ed1493081cc3fa59018eccd346c",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/log_empty.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/log_empty.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/log_empty.htm",
-      "sha256": "0f115595a1db2f7147b67250bc4d6012073b073802dfe2ebc44ad7e18a1b8c50",
+      "sha256": "57df8ceb3ac140d589fbadf111446eb010d93d9d99ed3faa4c9e16148a7ef1d6",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/log.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/log.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/log.htm",
-      "sha256": "4d6d957775632e9420a7b437383f7fb106dc33beb82a2bbd8f1fba31ddfeda48",
+      "sha256": "10e23b0dd2c6c557f620700fbe818acf11d7a683747e96ef76377c2f063241a6",
       "mode": "0644"
     },
     {
@@ -121,28 +121,28 @@
       "source": "sources/live-preview-mature/adguardhome/luasrc/view/AdGuardHome/yamleditor.htm",
       "remote": "/usr/lib/lua/luci/view/AdGuardHome/yamleditor.htm",
       "overlay": "files/usr/lib/lua/luci/view/AdGuardHome/yamleditor.htm",
-      "sha256": "0e6433412d5c76deeae94e00fabfedc49404a9c52165e790ae3c70cd53225521",
+      "sha256": "6a1e48d58292238b37052c48c92e89d697446477bedc9176b9fcbf83e5564e16",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/etc/AdGuardHome.yaml",
       "remote": "/etc/AdGuardHome.yaml",
       "overlay": "files/etc/AdGuardHome.yaml",
-      "sha256": "5f8f681a1c4030c80ec8125883359cdfca566f304502e539a1bb3bfe92d1dfc1",
+      "sha256": "76f6b167fb888a0a48b7a9b5a56d59c17ae9fd5051223af7949fc535529b85c9",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/etc/config/AdGuardHome",
       "remote": "/etc/config/AdGuardHome",
       "overlay": "files/etc/config/AdGuardHome",
-      "sha256": "61ebaabd790b0227e68a3640bfe807c231eff0698929b11734dd8ea28c6d557d",
+      "sha256": "893a6d325aeb2c4c943ee2a0bac9aad708deb326ab322deff7378c3f9e10a529",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/etc/init.d/AdGuardHome",
       "remote": "/etc/init.d/AdGuardHome",
       "overlay": "files/etc/init.d/AdGuardHome",
-      "sha256": "b51911f5365e813e2d14b31e3d6bf31cb2d01cb7d2350862471934a72bdfbcc8",
+      "sha256": "99f61104b01c590b90fd36a4a5cd99edf8c9eef3630aa828975f76ba7fdcb95d",
       "mode": "0755"
     },
     {
@@ -156,70 +156,70 @@
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/addhost.sh",
       "remote": "/usr/share/AdGuardHome/addhost.sh",
       "overlay": "files/usr/share/AdGuardHome/addhost.sh",
-      "sha256": "e5e461398bed8cc01de5b78f60669433d2d577e3cb0ef38999d95aa5646356b8",
+      "sha256": "3fdb15f26729d43bcff93b5eadb2ffe06842f5350676105565bfc87ffec7bd99",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/AdGuardHome_template.yaml",
       "remote": "/usr/share/AdGuardHome/AdGuardHome_template.yaml",
       "overlay": "files/usr/share/AdGuardHome/AdGuardHome_template.yaml",
-      "sha256": "5ef428c7d83993fe6f8792067757d54dda0aee91efc0b678189e8da0c4fc6d32",
+      "sha256": "bd9da296244a3ed7f34beee293cec19cd4b8481f567d0b5d035e3fe965192cff",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/firewall.start",
       "remote": "/usr/share/AdGuardHome/firewall.start",
       "overlay": "files/usr/share/AdGuardHome/firewall.start",
-      "sha256": "48d348cdaa61368d47dcfdb28b7ae90a4732b2072cc9f801e529c1cadfa09af1",
+      "sha256": "dba1698e0f997de51779bfaccaddf665d9af5d944f81017e50e6f1e879926325",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/getsyslog.sh",
       "remote": "/usr/share/AdGuardHome/getsyslog.sh",
       "overlay": "files/usr/share/AdGuardHome/getsyslog.sh",
-      "sha256": "5116824bc33c485dde29f73baa3ab05ae933bd70ef3765bea7fb494268244e77",
+      "sha256": "c836feb0bb187aef93534c2e0c9b058a562fa1f2aa41633959dad7d072093c08",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/links.txt",
       "remote": "/usr/share/AdGuardHome/links.txt",
       "overlay": "files/usr/share/AdGuardHome/links.txt",
-      "sha256": "58a61ae866eb2620ecef0da9c45f138c1d8f931a49d2d34e496702dcf4a1d62d",
+      "sha256": "651075585ac460977a09b44a45640bfefcf68ae3a128948dcc706e4a614a9108",
       "mode": "0644"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/tailto.sh",
       "remote": "/usr/share/AdGuardHome/tailto.sh",
       "overlay": "files/usr/share/AdGuardHome/tailto.sh",
-      "sha256": "479798cee737c60c0c0ea3755b90710848c0506b4b2ce2003c9322a896f06084",
+      "sha256": "16209de1bfe69f06c30e0614716ca53e9b4a21fdd69766f37da47fd7882a176f",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/update_core.sh",
       "remote": "/usr/share/AdGuardHome/update_core.sh",
       "overlay": "files/usr/share/AdGuardHome/update_core.sh",
-      "sha256": "9656e9c29a48f24b751b9e3600c2a3b01587b9397dd9bebe14e11ad69441643e",
+      "sha256": "85ac61f4d6d75580e9058dc324bb791f1d0fcac833f7da61041e769c00cc07f3",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/waitnet.sh",
       "remote": "/usr/share/AdGuardHome/waitnet.sh",
       "overlay": "files/usr/share/AdGuardHome/waitnet.sh",
-      "sha256": "0fc9ac561000c0f2b24f06669f09564550d1af420d0a9b13d3ddfbd67cd12d0b",
+      "sha256": "aea3eb9b604caa19dd7d497966ffc6f24637b379b94878c93c8e5f078dad7f29",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/watchconfig.sh",
       "remote": "/usr/share/AdGuardHome/watchconfig.sh",
       "overlay": "files/usr/share/AdGuardHome/watchconfig.sh",
-      "sha256": "0bcbe5243421ac14de857d953b265512f0603e850f9dc7f0f125e1602f2a55d7",
+      "sha256": "9ae1fba1250ca9bd4ce57a55fce206f09a6f261bc0ca289a31b7b3b373dc0a6d",
       "mode": "0755"
     },
     {
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/luci/menu.d/luci-app-adguardhome.json",
       "remote": "/usr/share/luci/menu.d/luci-app-adguardhome.json",
       "overlay": "files/usr/share/luci/menu.d/luci-app-adguardhome.json",
-      "sha256": "7f5d50e1ffb50d301902a7f7b22e4bccc6f912e616c0c2608d392f55f9c0c85b",
+      "sha256": "4b08725b765239dcc3144856bdbc5439ba652a145aeb4e05d6f971119af8c0f8",
       "mode": "0644"
     },
     {
@@ -240,7 +240,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/www/luci-static/resources/codemirror/addon/fold/foldgutter.css",
       "remote": "/www/luci-static/resources/codemirror/addon/fold/foldgutter.css",
       "overlay": "files/www/luci-static/resources/codemirror/addon/fold/foldgutter.css",
-      "sha256": "f643889591deffba22e46509012284c4a0f3f99d276ab82a48560bfcfab318ca",
+      "sha256": "b59366c33c2144243785d8ce87be82752bbe87b8a8d348e4b9a4ac21a2835b49",
       "mode": "0644"
     },
     {
@@ -261,7 +261,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/www/luci-static/resources/codemirror/lib/codemirror.css",
       "remote": "/www/luci-static/resources/codemirror/lib/codemirror.css",
       "overlay": "files/www/luci-static/resources/codemirror/lib/codemirror.css",
-      "sha256": "bebb8d07082fad4a8086bfdd3d0285940344ca7204b9a2eeb57f367165133ab3",
+      "sha256": "8dac61076d375ee1e378cbb531f2ea7ca7fa29506a822a7ccb8b0f5b91ac1b13",
       "mode": "0644"
     },
     {
@@ -282,7 +282,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/www/luci-static/resources/codemirror/theme/dracula.css",
       "remote": "/www/luci-static/resources/codemirror/theme/dracula.css",
       "overlay": "files/www/luci-static/resources/codemirror/theme/dracula.css",
-      "sha256": "6eef075bbaebb3b3d1ff537c09858a8cf41af2029ebef35d1221086c8a4142aa",
+      "sha256": "035536054651b5ddfffbe9ac1cc0320a5c1e4a4422282052e7f6113a580311b0",
       "mode": "0644"
     },
     {
@@ -337,7 +337,7 @@
       "source": "sources/live-preview-mature/quickstart/luasrc/controller/istore_backend.lua",
       "remote": "/usr/lib/lua/luci/controller/istore_backend.lua",
       "overlay": "files/usr/lib/lua/luci/controller/istore_backend.lua",
-      "sha256": "63b6a846d98559b3d8e1c866933cda7722379d5111df4a6bf8aa84960ab234f6",
+      "sha256": "cec4b600b3f481f22670a1c43c380d2f43793d9d4dbd37c1e3e921083dfff700",
       "mode": "0644"
     },
     {
