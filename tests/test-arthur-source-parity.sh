@@ -25,6 +25,9 @@ grep -Fq "list listen '[::]:80'" "$ROOT/files/etc/config/nginx" || fail 'IPv6 HT
 ! grep -Eq '(^|[^0-9])443([^0-9]|$)|ssl|_redirect2ssl' "$ROOT/files/etc/config/nginx" || fail 'HTTPS/443 or redirect remains in source Nginx config'
 grep -Fq 'AdGuardHome.AdGuardHome.enabled' "$ROOT/scripts/real-device-verify.ps1" || fail 'device verifier uses the wrong AdGuardHome UCI namespace'
 ! grep -Fq 'uci -q get adguardhome.config.enabled' "$ROOT/scripts/real-device-verify.ps1" || fail 'device verifier trusts the non-authoritative namespace'
+grep -Fq 'grep -F XinZhaoWrt /www/luci-static/xinzhao/build-info.json' "$ROOT/scripts/real-device-verify.ps1" || fail 'branding verifier does not tolerate the optional legacy build-info path'
+! grep -Fq 'grep -R -F XinZhaoWrt /etc/xinzhao-build-info /www/luci-static/xinzhao/build-info.json' "$ROOT/scripts/real-device-verify.ps1" || fail 'branding verifier still fails on a missing optional legacy file'
+grep -Fq '/usr/lib/lua/luci/controller/AdGuardHome.lua' "$ROOT/scripts/real-device-verify.ps1" || fail 'AdGuardHome uppercase CBI manager path is not accepted'
 
 test -x "$SWAP_DEFAULTS" || fail 'native swap first-boot source is missing'
 grep -Fq '/dev/mmcblk0p28' "$SWAP_DEFAULTS" || fail 'Arthur native swap device is missing'
