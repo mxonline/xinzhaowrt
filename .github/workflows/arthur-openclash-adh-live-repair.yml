@@ -1,0 +1,271 @@
+name: Arthur OpenClash ADH Live Repair
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/arthur-openclash-adh-live-repair.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: arthur-openclash-adh-live-repair
+  cancel-in-progress: false
+
+jobs:
+  live-repair:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Execute Codex live repair on persistent Arthur workspace
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspace = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace'
+          if (-not (Test-Path (Join-Path $workspace '.git'))) {
+            throw "BLOCKED: persistent Arthur workspace missing: $workspace"
+          }
+
+          gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: gh auth setup-git failed' }
+
+          $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
+          $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
+          if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
+
+          $promptPath = Join-Path $env:RUNNER_TEMP 'arthur-openclash-adh-live-repair.prompt.txt'
+          $lastMessage = Join-Path $env:RUNNER_TEMP 'arthur-openclash-adh-live-repair.last.txt'
+
+          @'
+          Execute the current Arthur repair task to the next legal terminal. Do not stop at explanation.
+
+          Highest product goal: a genuinely long-term stable usable JDCloud RE-SS-01 / Arthur firmware. For this task the immediate legal terminal is PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS.
+
+          FIRST:
+          - Work in the current persistent repository workspace exactly as found.
+          - Preserve all uncommitted user/Codex work. Do not reset, clean, force-push, or discard changes.
+          - Read production/product-goal-contract.json, production/ARTHUR_PRODUCT_TARGETS.md, production/release-policy.md, current Git status/branch, and current live-device evidence.
+          - Reconcile local uncommitted work with the active repair branch. Do not create duplicate competing fixes.
+          - Current real device is 192.168.6.1, target jdcloud_re-ss-01. Use the existing verified unattended SSH/auth path already configured on this machine. Never print passwords, tokens, cookies, private keys, or credentials.
+
+          HARD BOUNDARIES:
+          - NO firmware Build.
+          - NO Candidate dispatch.
+          - NO Release.
+          - NO sysupgrade / flash.
+          - NO raw partition writes.
+          - Do not change Wi-Fi, LAN address, WAN configuration, target/profile, storage layout, credentials, or known-good.
+          - Live changes must be narrowly scoped, backed up first, reversible, and limited to OpenClash / AdGuardHome / DNS-coexistence / dashboard runtime validation.
+          - AdGuardHome final product default must be OFF.
+          - Do not claim PASS from package/menu/PID/static evidence alone.
+
+          CURRENT KNOWN PROBLEMS TO CLOSE:
+          1. OpenClash core APK package version invalid repair must remain correct.
+          2. Zashboard /ui/zashboard/ returned HTTP 404 while Mihomo controller 9090 was live.
+          3. UCI/UI selected fake-ip while final runtime YAML was redir-host; low-memory logic must not silently override the user's explicit enhanced-mode.
+          4. OpenClash + AdGuardHome must genuinely coexist with the product DNS topology.
+
+          REQUIRED EXECUTION ORDER:
+
+          A. SOURCE FREEZE
+          - Inspect current local fixes first.
+          - Complete only the minimum source repair required for the four problems above.
+          - Run relevant static/source tests.
+          - Commit the firmware/runtime source fixes on the existing active repair branch and push it.
+          - Record the resulting full 40-character commit as VALIDATED_SOURCE_SHA.
+          - After this source commit, do not modify firmware/runtime source until live validation is complete. If a source defect is found, fix it, commit a NEW source SHA, and restart the entire live validation.
+
+          B. LIVE BACKUP
+          Before changing the live Arthur, capture machine evidence and backup every remote file/UCI item to be touched, including at minimum:
+          /etc/config/openclash
+          /etc/config/dhcp
+          /etc/config/AdGuardHome or actual deployed AdGuardHome UCI path
+          /etc/openclash relevant runtime/config files
+          /etc/AdGuardHome.yaml if present
+          /usr/share/openclash/ui relevant dashboard files
+          /usr/libexec/xinzhao-dns-coexist if present
+          /etc/init.d/xinzhao-dns-coexist if present
+          Record SHA256 where applicable, service states, listeners 53/1745/7874/9090, MemAvailable, SwapFree, load and runtime YAML.
+          Never log secrets.
+
+          C. EXACT-SOURCE LIVE DEPLOY
+          - Hot-deploy only the reversible runtime-equivalent bytes/configuration represented by VALIDATED_SOURCE_SHA that are needed to validate these repairs.
+          - Do not invent a device-only fix that is not represented in source.
+          - If exact source bytes cannot be safely live-deployed, mark that specific component BLOCKED and do not Build.
+
+          D. OPENCLASH STANDALONE, ADH OFF
+          Require real evidence:
+          - OpenClash/Mihomo running
+          - 9090 LISTEN and Controller API HTTP 200
+          - 7874 LISTEN
+          - provider/rule-provider APIs healthy
+          - real DNS query PASS
+          - real proxy traffic PASS (use practical HTTPS traffic/routing evidence, not ping-only)
+          - no OOM/core crash/LuCI loss/SSH loss
+          - dnsmasq:53 -> OpenClash:7874
+          If UI/UCI says fake-ip, final runtime YAML dns.enhanced-mode must be fake-ip.
+          Do not silently downgrade fake-ip to redir-host merely because physical RAM is ~400MB; evaluate actual MemAvailable/Swap/OOM evidence.
+
+          E. ZASHBOARD
+          - Verify /usr/share/openclash/ui/zashboard/index.html and required static assets actually exist.
+          - Verify final runtime dashboard/external-ui configuration uses the current official OpenClash/Mihomo semantics.
+          - Test the real URLs from localhost and LAN, including http://127.0.0.1:9090/ui/zashboard/ and http://192.168.6.1:9090/ui/zashboard/ as applicable.
+          - Required page and key JS/CSS assets must return HTTP 200.
+          - If default_dashboard selection matters, test the real supported switch semantics; do not hardcode a fake PASS.
+          Required marker only after real success: ZASHBOARD_RUNTIME=PASS.
+
+          F. ADGUARDHOME COEXISTENCE
+          Product topology:
+          ADH OFF:
+            LAN -> dnsmasq:53 -> OpenClash:7874
+          ADH ON:
+            LAN -> dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874
+
+          With ADH ON, prove:
+          - 53 owned by dnsmasq
+          - 1745 owned by AdGuardHome
+          - 7874 owned by OpenClash/Mihomo
+          - dnsmasq upstream is 127.0.0.1#1745
+          - AdGuardHome upstream is 127.0.0.1:7874
+          - real client DNS query works
+          - AdGuardHome query log receives real queries
+          - an actual filtering rule is proven to work
+          - OpenClash providers/rules/controller remain healthy
+          - real proxy traffic works
+          - no DNS loop
+          - no port conflict
+          - no OOM or management-plane loss
+
+          Run the full lifecycle:
+          OFF -> validate
+          ON -> validate
+          OFF -> validate OpenClash restored
+          ON -> validate coexistence restored
+          OFF -> final product default
+          Each transition must be machine-verified, not assumed.
+
+          G. MACHINE EVIDENCE
+          When and only when every required live check is PASS, create:
+          production/evidence/prebuild-openclash-adh-live.json
+
+          It must include:
+          schema_version=1
+          mode=LIVE_RUNTIME_PREBUILD
+          status=PASS
+          safe_live_validation=true
+          device=jdcloud_re-ss-01
+          validated_source_sha=<exact source commit validated>
+          observed_at=<actual timestamp>
+          errors=[]
+          markers object with PASS for:
+          OPENCLASH_FULLY_USABLE
+          ADGUARDHOME_FULLY_USABLE
+          OPENCLASH_ADH_COEXISTENCE
+          OPENCLASH_CONTROLLER
+          ZASHBOARD_RUNTIME
+          OPENCLASH_RUNTIME_CONFIG_PARITY
+          OPENCLASH_DNS_RUNTIME
+          OPENCLASH_ADH_DNS_CHAIN
+          REAL_PROXY_TRAFFIC
+          ADGUARDHOME_FILTERING
+          ADGUARDHOME_QUERY_LOG
+          NO_DNS_LOOP
+          NO_PORT_CONFLICT
+          NO_OOM_OR_MANAGEMENT_PLANE_LOSS
+          ADH_DISABLE_LEAVES_OPENCLASH_WORKING
+          ADH_REENABLE_RESTORES_CHAIN
+          FINAL_ADH_DEFAULT_OFF
+
+          final_state must show:
+          adguardhome_enabled=false
+          openclash_running=true
+
+          Include enough structured observations in the JSON to make the PASS auditable, but redact secrets.
+
+          H. EVIDENCE COMMIT + GATE
+          - After successful live validation, commit ONLY production/evidence/prebuild-openclash-adh-live.json after VALIDATED_SOURCE_SHA and push the same repair branch.
+          - Do not change runtime/firmware source in that evidence commit.
+          - Run the canonical gate from current main if necessary, or an exact equivalent copy:
+            python3 scripts/check-openclash-adh-prebuild-live.py HEAD
+          - Required terminal:
+            PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS
+
+          FAILURE LOOP:
+          If any live test fails:
+          forensic -> root cause -> minimum source fix -> tests -> commit new source SHA -> redeploy exact source -> rerun the ENTIRE live validation.
+          Do not Build.
+          Do not ask the operator about recoverable failures.
+          Stop only for a genuine external/safety/credential blocker, and then produce exact BLOCKED evidence and next_action.
+
+          Final response must be concise and machine-evidence based. State the exact branch, validated source SHA, evidence commit SHA, live markers, final ADH/OpenClash state, and gate result. Never claim success without the actual evidence.
+          '@ | Set-Content -LiteralPath $promptPath -Encoding UTF8
+
+          Push-Location $workspace
+          try {
+            $before = (& git status --short --branch 2>&1 | Out-String).Trim()
+            Write-Host 'WORKSPACE_BEFORE_BEGIN'
+            Write-Host $before
+            Write-Host 'WORKSPACE_BEFORE_END'
+
+            $oldPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            $output = (Get-Content -Raw -LiteralPath $promptPath | & $codexCmd exec --sandbox workspace-write -c 'approval_policy="never"' -o $lastMessage - 2>&1 | Out-String)
+            $exitCode = $LASTEXITCODE
+            $ErrorActionPreference = $oldPreference
+
+            Write-Host 'CODEX_OUTPUT_BEGIN'
+            Write-Host $output
+            Write-Host 'CODEX_OUTPUT_END'
+            if ($exitCode -ne 0) { throw "CODEX_LIVE_REPAIR_FAILED exit=$exitCode" }
+
+            if (Test-Path -LiteralPath $lastMessage) {
+              Write-Host 'CODEX_FINAL_BEGIN'
+              Get-Content -Raw -LiteralPath $lastMessage | Write-Host
+              Write-Host 'CODEX_FINAL_END'
+            }
+
+            $after = (& git status --short --branch 2>&1 | Out-String).Trim()
+            Write-Host 'WORKSPACE_AFTER_BEGIN'
+            Write-Host $after
+            Write-Host 'WORKSPACE_AFTER_END'
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Verify durable prebuild live evidence exists remotely
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspace = Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace'
+          Push-Location $workspace
+          try {
+            git fetch --prune origin
+            $branch = (& git branch --show-current).Trim()
+            $head = (& git rev-parse HEAD).Trim()
+            Write-Host "LIVE_REPAIR_BRANCH=$branch"
+            Write-Host "LIVE_REPAIR_HEAD=$head"
+            if (-not (Test-Path 'production\evidence\prebuild-openclash-adh-live.json')) {
+              throw 'BLOCKED: durable prebuild live evidence was not produced'
+            }
+            $e = Get-Content -Raw 'production\evidence\prebuild-openclash-adh-live.json' | ConvertFrom-Json
+            if ($e.status -ne 'PASS') { throw "BLOCKED: live evidence status=$($e.status)" }
+            if ($e.final_state.adguardhome_enabled -ne $false) { throw 'BLOCKED: final ADH state is not OFF' }
+            if ($e.final_state.openclash_running -ne $true) { throw 'BLOCKED: final OpenClash state is not running' }
+            Write-Host "LIVE_EVIDENCE_VALIDATED_SOURCE_SHA=$($e.validated_source_sha)"
+            Write-Host 'ARTHUR_OPENCLASH_ADH_LIVE_REPAIR=PASS'
+          }
+          finally {
+            Pop-Location
+          }
