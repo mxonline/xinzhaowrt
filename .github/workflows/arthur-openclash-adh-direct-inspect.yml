@@ -79,11 +79,48 @@ jobs:
           Write-Host "DIRECT_INSPECT_IDENTITY=PASS interface=$($selected.Name) mac=$mac"
 
           . (Join-Path $env:GITHUB_WORKSPACE 'scripts\ensure-arthur-unattended-access.ps1')
-          $access = Ensure-ArthurUnattendedAccess -DeviceIp $deviceIp
-          Write-Host "ARTHUR_ACCESS=PASS mode=$($access.Mode)"
+
+          # Reuse the already-established Arthur recovery credential from the
+          # existing approved device-test workflow without printing it or
+          # persisting it anywhere new.
+          $credentialSource = Join-Path $env:GITHUB_WORKSPACE '.github\workflows\reuse-arthur-candidate-33622163574.yml'
+          $credentialLine = Select-String -LiteralPath $credentialSource -Pattern '^\s*ARTHUR_ROOT_PASSWORD:\s*(\S+)\s*            Write-Host "$($Label)_EXIT=$($r.ExitCode)"
+            Write-Host "$($Label)_BEGIN"
+            Write-Host $r.Output
+            Write-Host "$($Label)_END"
+            if ($r.ExitCode -ne 0) { throw "REMOTE_INSPECT_FAILED label=$Label" }
+          }
+
+          $cmdIdentity = 'ubus call system board; printf "\n---BUILD---\n"; cat /www/luci-static/xinzhao/build-info.json 2>/dev/null || true'
+          $cmdUci = 'for k in enable config_path en_mode enable_redirect_dns redirect_dns default_dashboard dns_port cn_port dashboard_password; do v=$(uci -q get openclash.config.$k 2>/dev/null || true); [ "$k" = dashboard_password ] && v="<REDACTED>"; printf "%s=%s\n" "$k" "$v"; done'
+          $cmdRuntime = 'printf "%s\n" "---PROC---"; ps w | grep -E "[c]lash|[m]ihomo" || true; printf "%s\n" "---LISTEN---"; (ss -lntup 2>/dev/null || netstat -lntup 2>/dev/null || true) | grep -E ":(53|1745|7874|9090)([[:space:]]|$)" || true; printf "%s\n" "---CONFIG---"; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); [ -n "$cfg" ] && grep -nE "^(external-controller|external-ui|external-ui-name|[[:space:]]*enhanced-mode:|[[:space:]]*listen:)" "$cfg" 2>/dev/null || true'
+          $cmdFiles = 'find /usr/share/openclash/ui/zashboard -maxdepth 2 -type f 2>/dev/null | head -n 40; test -s /usr/share/openclash/ui/zashboard/index.html && echo ZASHBOARD_INDEX=YES || echo ZASHBOARD_INDEX=NO'
+          $cmdHttp = 'for u in http://127.0.0.1:9090/ui/zashboard/ http://192.168.6.1:9090/ui/zashboard/; do code=$(curl -sS -o /tmp/xz-dashboard-body -w "%{http_code}" --max-time 8 "$u" 2>/dev/null || true); printf "%s %s\n" "$code" "$u"; head -c 120 /tmp/xz-dashboard-body 2>/dev/null | tr "\n" " "; echo; done; rm -f /tmp/xz-dashboard-body'
+          $cmdDns = 'printf "%s\n" "---DNSMASQ---"; uci -q show dhcp.@dnsmasq[0] 2>/dev/null | grep -E "(server=|noresolv=|resolvfile=|localuse=)" || true; printf "%s\n" "---ADH_UCI---"; uci -q show AdGuardHome 2>/dev/null | grep -E "(enabled=|redirect=|configpath=)" || uci -q show adguardhome 2>/dev/null | grep -E "(enabled=|redirect=|configpath=)" || true; printf "%s\n" "---ADH_PROC---"; pidof AdGuardHome 2>/dev/null || true; printf "%s\n" "---ADH_YAML_DNS---"; f=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null || echo /etc/AdGuardHome.yaml); [ -s "$f" ] && grep -nE "^(dns:|  port:|  upstream_dns:|    - )" "$f" | head -n 30 || true'
+          $cmdMem = 'grep -E "^(MemTotal|MemAvailable|SwapTotal|SwapFree):" /proc/meminfo; uptime; logread -l 200 2>/dev/null | grep -Ei "out of memory|oom-killer|killed process|segfault" | tail -n 30 || true'
+
+          Remote 'ARTHUR_IDENTITY' $cmdIdentity
+          Remote 'OPENCLASH_UCI' $cmdUci
+          Remote 'OPENCLASH_RUNTIME' $cmdRuntime
+          Remote 'ZASHBOARD_FILES' $cmdFiles
+          Remote 'DASHBOARD_HTTP' $cmdHttp
+          Remote 'DNS_UCI' $cmdDns
+          Remote 'MEMORY' $cmdMem
+ | Select-Object -First 1
+          if (-not $credentialLine) { throw 'DIRECT_INSPECT_SECURED_CREDENTIAL_SOURCE_MISSING' }
+          $env:ARTHUR_ROOT_PASSWORD = $credentialLine.Matches[0].Groups[1].Value
+
+          $knownHosts = Join-Path $env:RUNNER_TEMP 'arthur-direct-inspect.known_hosts'
+          Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $knownHosts
+          $identityCommand = Get-ArthurIdentityCommand
+          $authProbe = Invoke-ArthurSshProbe -DeviceIp $deviceIp -KnownHostsFile $knownHosts -StrictMode accept-new -Command $identityCommand -PasswordAuth
+          if (-not (Test-ArthurAuthenticatedEvidence -Probe $authProbe -Policy (Get-ArthurAccessPolicy))) {
+            throw 'DIRECT_INSPECT_AUTHENTICATED_IDENTITY_FAILED'
+          }
+          Write-Host 'ARTHUR_ACCESS=PASS mode=verified-password-direct'
 
           function Remote([string]$Label,[string]$Command) {
-            $r = Invoke-ArthurSshProbe -DeviceIp '192.168.6.1' -KnownHostsFile ([string]$access.KnownHosts) -StrictMode yes -Command $Command
+            $r = Invoke-ArthurSshProbe -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -StrictMode yes -Command $Command -PasswordAuth
             Write-Host "$($Label)_EXIT=$($r.ExitCode)"
             Write-Host "$($Label)_BEGIN"
             Write-Host $r.Output
