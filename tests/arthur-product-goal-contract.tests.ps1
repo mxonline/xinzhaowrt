@@ -44,6 +44,9 @@ Assert-True ($contract.execution_rules.release_success_is_not_product_success -e
 Assert-True ($contract.execution_rules.live_validate_before_build_when_safe_and_applicable -eq $true) 'safe applicable live validation must precede wasteful build'
 Assert-True ($contract.execution_rules.do_not_build_known_broken_behavior -eq $true) 'known-broken behavior must not be built'
 Assert-True ($contract.openclash_adguardhome_coexistence.process_presence_is_insufficient -eq $true) 'PID coexistence alone must never pass coexistence'
+Assert-True ($contract.prebuild_live_validation.required_for_runtime_affecting_changes -eq $true) 'runtime-affecting changes must require prebuild live validation'
+Assert-True ($contract.prebuild_live_validation.fail_closed_without_valid_evidence -eq $true) 'prebuild live gate must fail closed without valid evidence'
+Assert-True ([string]$contract.prebuild_live_validation.evidence_path -eq 'production/evidence/prebuild-openclash-adh-live.json') 'prebuild live evidence path must remain canonical'
 
 $productTargets = Get-Content -Raw -LiteralPath $ProductTargetsPath
 Assert-Contains $productTargets 'production/product-goal-contract.json' 'product target Source of Truth must bind the highest product-goal contract'
