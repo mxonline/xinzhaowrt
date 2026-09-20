@@ -6,6 +6,7 @@ name: Arthur Prebuild Live Guard
       - Arthur Known-Good Update v3
     types:
       - requested
+      - in_progress
 
 permissions:
   contents: read
