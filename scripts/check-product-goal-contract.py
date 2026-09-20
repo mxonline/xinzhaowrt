@@ -32,6 +32,10 @@ checks = [
     (contract.get("execution_rules", {}).get("live_validate_before_build_when_safe_and_applicable") is True, "live-before-build"),
     (contract.get("execution_rules", {}).get("do_not_build_known_broken_behavior") is True, "no-known-broken-build"),
     (contract.get("evidence_rules", {}).get("machine_evidence_required") is True, "machine-evidence"),
+    (contract.get("prebuild_live_validation", {}).get("required_for_runtime_affecting_changes") is True, "prebuild-live-required"),
+    (contract.get("prebuild_live_validation", {}).get("fail_closed_without_valid_evidence") is True, "prebuild-live-fail-closed"),
+    (contract.get("prebuild_live_validation", {}).get("source_binding_required") is True, "prebuild-live-source-binding"),
+    (contract.get("prebuild_live_validation", {}).get("evidence_path") == "production/evidence/prebuild-openclash-adh-live.json", "prebuild-live-evidence-path"),
 ]
 for ok, label in checks:
     if not ok:
@@ -58,6 +62,31 @@ actual_markers = set(contract.get("evidence_rules", {}).get("required_final_mark
 missing = sorted(required_markers - actual_markers)
 if missing:
     fail("missing final markers=" + ",".join(missing))
+
+
+prebuild_required_markers = {
+    "OPENCLASH_FULLY_USABLE=PASS",
+    "ADGUARDHOME_FULLY_USABLE=PASS",
+    "OPENCLASH_ADH_COEXISTENCE=PASS",
+    "OPENCLASH_CONTROLLER=PASS",
+    "ZASHBOARD_RUNTIME=PASS",
+    "OPENCLASH_RUNTIME_CONFIG_PARITY=PASS",
+    "OPENCLASH_DNS_RUNTIME=PASS",
+    "OPENCLASH_ADH_DNS_CHAIN=PASS",
+    "REAL_PROXY_TRAFFIC=PASS",
+    "ADGUARDHOME_FILTERING=PASS",
+    "ADGUARDHOME_QUERY_LOG=PASS",
+    "NO_DNS_LOOP=PASS",
+    "NO_PORT_CONFLICT=PASS",
+    "NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS",
+    "ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS",
+    "ADH_REENABLE_RESTORES_CHAIN=PASS",
+    "FINAL_ADH_DEFAULT_OFF=PASS",
+}
+actual_prebuild_markers = set(contract.get("prebuild_live_validation", {}).get("required_markers", []))
+missing = sorted(prebuild_required_markers - actual_prebuild_markers)
+if missing:
+    fail("missing prebuild live markers=" + ",".join(missing))
 
 print("ARTHUR_PRODUCT_GOAL_CONTRACT=PASS")
 print("ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS")
