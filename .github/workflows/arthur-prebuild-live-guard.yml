@@ -1,6 +1,13 @@
 name: Arthur Prebuild Live Guard
 
 'on':
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/arthur-prebuild-live-guard.yml
+      - scripts/check-openclash-adh-prebuild-live.py
+      - production/product-goal-contract.json
   workflow_run:
     workflows:
       - Arthur Known-Good Update v3
@@ -13,8 +20,8 @@ permissions:
   actions: write
 
 concurrency:
-  group: arthur-prebuild-live-guard-${{ github.event.workflow_run.id }}
-  cancel-in-progress: true
+  group: arthur-prebuild-live-guard
+  cancel-in-progress: false
 
 jobs:
   enforce-live-validation:
@@ -27,29 +34,65 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch requested Candidate source
-        env:
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -Eeuo pipefail
-          test -n "$TARGET_SHA" || { echo 'BLOCKED: target workflow head SHA missing'; exit 1; }
-          git fetch --no-tags origin "$TARGET_SHA"
-
-      - name: Enforce OpenClash + AdGuardHome prebuild live gate
+      - name: Enforce live evidence on requested and active Candidate runs
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_RUN_ID: ${{ github.event.workflow_run.id }}
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          set +e
-          python3 scripts/check-openclash-adh-prebuild-live.py "$TARGET_SHA"
-          status=$?
-          set -e
+          set -Eeuo pipefail
 
-          if [ "$status" -ne 0 ]; then
-            echo "BLOCKED: cancelling Arthur Candidate run $TARGET_RUN_ID because live OpenClash + AdGuardHome evidence is missing, stale, or failed."
-            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN_ID/cancel" >/dev/null 2>&1 || true
-            exit "$status"
+          targets="$RUNNER_TEMP/arthur-prebuild-live-targets.tsv"
+          : > "$targets"
+
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            test -n "$EVENT_RUN_ID" || { echo 'BLOCKED: workflow_run id missing'; exit 1; }
+            test -n "$EVENT_HEAD_SHA" || { echo 'BLOCKED: workflow_run head SHA missing'; exit 1; }
+            printf '%s\t%s\n' "$EVENT_RUN_ID" "$EVENT_HEAD_SHA" >> "$targets"
+          else
+            for state in queued in_progress; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/arthur-update-v3.yml/runs?status=$state&per_page=100" \
+                --jq '.workflow_runs[] | [.id,.head_sha] | @tsv' >> "$targets" || true
+            done
           fi
 
-          echo "PREBUILD_LIVE_GUARD=PASS"
+          sort -u "$targets" -o "$targets"
+
+          if [ ! -s "$targets" ]; then
+            echo 'PREBUILD_LIVE_GUARD=PASS_NO_ACTIVE_CANDIDATE'
+            exit 0
+          fi
+
+          failed=0
+          while IFS=$'\t' read -r run_id target_sha; do
+            [ -n "$run_id" ] || continue
+            [ -n "$target_sha" ] || {
+              echo "BLOCKED: run $run_id has no source SHA"
+              gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" >/dev/null 2>&1 || true
+              failed=1
+              continue
+            }
+
+            git fetch --no-tags origin "$target_sha"
+
+            set +e
+            python3 scripts/check-openclash-adh-prebuild-live.py "$target_sha"
+            status=$?
+            set -e
+
+            if [ "$status" -ne 0 ]; then
+              echo "BLOCKED: cancelling Arthur Candidate run $run_id because live OpenClash + AdGuardHome evidence is missing, stale, or failed."
+              gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" >/dev/null 2>&1 || true
+              failed=1
+            else
+              echo "PREBUILD_LIVE_GUARD_RUN=PASS run_id=$run_id source=$target_sha"
+            fi
+          done < "$targets"
+
+          if [ "$failed" -ne 0 ]; then
+            echo 'PREBUILD_LIVE_GUARD=FAIL_CANDIDATE_CANCELLED'
+            exit 1
+          fi
+
+          echo 'PREBUILD_LIVE_GUARD=PASS'
