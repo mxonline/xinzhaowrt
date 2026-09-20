@@ -43,8 +43,42 @@ jobs:
           }
           Write-Host 'PERSISTENT_WORKSPACE_STATUS_END'
 
+          $deviceIp = '192.168.6.1'
+          $build = (Invoke-WebRequest -UseBasicParsing -Uri "http://$deviceIp/luci-static/xinzhao/build-info.json" -TimeoutSec 10).Content | ConvertFrom-Json
+          if ([string]$build.Firmware -ne 'XinZhaoWrt' -or [string]$build.Target -ne 'qualcommax/ipq60xx' -or [string]$build.Profile -ne 'jdcloud_re-ss-01') {
+            throw 'DIRECT_INSPECT_DEVICE_IDENTITY_MISMATCH'
+          }
+          $subnet = (($deviceIp -split '\.')[0..2] -join '.') + '.0/24'
+          $selected = $null
+          foreach ($route in @(Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.DestinationPrefix -eq "$deviceIp/32" -or $_.DestinationPrefix -eq $subnet } | Sort-Object RouteMetric)) {
+            $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
+            if (-not $adapter -or [string]$adapter.Status -ne 'Up') { continue }
+            if (("$($adapter.Name) $($adapter.InterfaceDescription)") -match '(?i)wi-?fi|wireless|wlan|802\.11') { continue }
+            $selected = $adapter
+            break
+          }
+          if (-not $selected) { throw 'DIRECT_INSPECT_CONTROL_PATH_NOT_ETHERNET' }
+          Test-Connection -ComputerName $deviceIp -Count 1 -Quiet -ErrorAction SilentlyContinue | Out-Null
+          Start-Sleep -Milliseconds 300
+          $neighbor = Get-NetNeighbor -AddressFamily IPv4 -IPAddress $deviceIp -ErrorAction SilentlyContinue | Where-Object { $_.LinkLayerAddress -and $_.State -notin @('Unreachable','Incomplete') } | Select-Object -First 1
+          if (-not $neighbor) { throw 'DIRECT_INSPECT_ETHERNET_NEIGHBOR_MISSING' }
+          $mac = ([string]$neighbor.LinkLayerAddress).ToLowerInvariant().Replace('-',':')
+          $policy = [ordered]@{
+            schema_version = 1
+            device = [ordered]@{
+              management_ip = $deviceIp
+              verified_management_mac = $mac
+              build_info_path = '/luci-static/xinzhao/build-info.json'
+              build_marker = 'XinZhaoWrt'
+              board_pattern = 'jdcloud,re-ss-01|RE-SS-01'
+            }
+          }
+          $policyPath = Join-Path $env:GITHUB_WORKSPACE 'production\arthur-control-plane.json'
+          $policy | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 -LiteralPath $policyPath
+          Write-Host "DIRECT_INSPECT_IDENTITY=PASS interface=$($selected.Name) mac=$mac"
+
           . (Join-Path $env:GITHUB_WORKSPACE 'scripts\ensure-arthur-unattended-access.ps1')
-          $access = Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1'
+          $access = Ensure-ArthurUnattendedAccess -DeviceIp $deviceIp
           Write-Host "ARTHUR_ACCESS=PASS mode=$($access.Mode)"
 
           function Remote([string]$Label,[string]$Command) {
