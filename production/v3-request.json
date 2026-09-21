@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-openclash-adh-repair-34845c3e-20260921",
+  "request_id": "arthur-openclash-adh-validation-fix-87ee88dc-20260921",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-production-34268801985",
   "device": "jdcloud_re-ss-01",
   "source_ref": "codex/arthur-repair-candidate-20260920",
-  "source_sha": "34845c3e015162812ea1ce724a50a97a5db36159",
+  "source_sha": "87ee88dcdfaab3191540a6722bd75a1a4fbad356",
   "feature_id": "arthur-openclash-adh-coexistence",
-  "reason": "Dispatch Arthur Known-Good Update v3 from the exact repair branch source after PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS and verified PACKAGE_METADATA_ONLY OpenClash core APK version repair. Build only; no sysupgrade authorization."
+  "reason": "Dispatch Arthur Known-Good Update v3 from the exact repair branch after verified validation-only APK archive pattern correction. Runtime behavior unchanged; reuse existing live evidence. Build only; no sysupgrade authorization."
 }
