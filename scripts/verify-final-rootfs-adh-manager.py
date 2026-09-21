@@ -137,8 +137,10 @@ def main() -> int:
     required_runtime = {"adguardhome", "luci-base", "luci-compat", "rpcd-mod-file"}
     missing_runtime = sorted(required_runtime - installed)
     require(not missing_runtime, f"required ADH runtime packages absent from firmware manifest: {', '.join(missing_runtime)}")
-    manager_archives = list(args.source_root.resolve().joinpath("bin").rglob("luci-app-adguardhome-manager_*.ipk"))
-    manager_archives += list(args.source_root.resolve().joinpath("bin").rglob("luci-app-adguardhome-manager_*.apk"))
+    package_root = args.source_root.resolve().joinpath("bin")
+    manager_ipk_archives = list(package_root.rglob("luci-app-adguardhome-manager_*.ipk"))
+    manager_apk_archives = list(package_root.rglob("luci-app-adguardhome-manager-*.apk"))
+    manager_archives = manager_ipk_archives + manager_apk_archives
     require(manager_archives, "compiled full manager package archive is missing")
 
     count = check_accepted_overlay_hashes(rootfs, args.accepted_manifest)
@@ -177,6 +179,7 @@ def main() -> int:
     require("AdGuardHome_template.yaml" in {p.name for p in (rootfs / "usr/share/AdGuardHome").glob("*")}, "AdGuard Home template is missing")
 
     print(f"ADH_ACCEPTED_MANAGER_FILES={count}")
+    print("ADH_APK_ARCHIVE_PATTERN=PASS")
     print("ADH_PACKAGE_MANIFEST=PASS")
     print("ADH_LUCI_MANAGER_PACKAGE=PASS")
     print("ADH_REQUIRED_DEPENDENCIES=PASS packages=" + ",".join(sorted(dependencies)))

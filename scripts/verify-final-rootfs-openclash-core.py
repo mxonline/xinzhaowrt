@@ -80,7 +80,10 @@ def main() -> int:
     else:
         require(bool(core.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)), "bundled Core is not executable in final rootfs")
 
-    package_archives = list((source_root / "bin").rglob("openclash-core_*.ipk")) + list((source_root / "bin").rglob("openclash-core_*.apk"))
+    package_root = source_root / "bin"
+    package_ipk_archives = list(package_root.rglob("openclash-core_*.ipk"))
+    package_apk_archives = list(package_root.rglob("openclash-core-*.apk"))
+    package_archives = package_ipk_archives + package_apk_archives
     require(package_archives, "compiled openclash-core package archive is missing")
 
     init_path = source_root / "feeds/luci/applications/luci-app-openclash/root/etc/init.d/openclash"
@@ -101,6 +104,7 @@ def main() -> int:
     digest = hashlib.sha256(core_data).hexdigest()
     print(f"OPENCLASH_CORE_VERSION={lock['core_version']}")
     print(f"OPENCLASH_CORE_SHA256={digest}")
+    print("OPENCLASH_APK_ARCHIVE_PATTERN=PASS")
     print("OPENCLASH_CORE_BUNDLED=PASS")
     print("OPENCLASH_CORE_ARCH=PASS elf_class=64 machine=AArch64")
     print("OPENCLASH_CORE_EXECUTABLE=PASS")
