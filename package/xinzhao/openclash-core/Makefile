@@ -1,10 +1,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=openclash-core
-# APK versions must start with a numeric component. Keep the immutable core
-# identity in the package version without exposing the upstream "alpha-..."
-# label as an invalid APK version.
-PKG_VERSION:=0.1.0~alpha.ge183c58
+# APK versions must start with a numeric component and use apk-tools suffix syntax.
+# The immutable upstream core identity remains pinned separately in openclash-core.lock.json.
+PKG_VERSION:=0.1.0_alpha
 PKG_RELEASE:=1
 PKGARCH:=aarch64_cortex-a53
 
