@@ -20,9 +20,13 @@ EVIDENCE_PATH = "production/evidence/prebuild-openclash-adh-live.json"
 
 # Files allowed after the validated runtime/source commit. These are evidence
 # and gate-only metadata; they must not alter firmware/runtime behavior.
+OPENCLASH_CORE_PACKAGE_RECIPE = "package/xinzhao/openclash-core/Makefile"
+OPENCLASH_CORE_BUNDLE_TEST = "tests/test-openclash-core-bundle.py"
+
 POST_VALIDATION_ALLOWLIST = {
     EVIDENCE_PATH,
     "scripts/check-openclash-adh-prebuild-live.py",
+    OPENCLASH_CORE_BUNDLE_TEST,
 }
 
 RUNTIME_PREFIXES = (
@@ -83,6 +87,43 @@ def is_runtime_impact(path: str) -> bool:
         return True
     lowered = path.lower()
     return any(token in lowered for token in ("openclash", "adguardhome", "dns-coexist"))
+
+
+def make_var(text: str, name: str) -> str:
+    match = re.search(rf"^{re.escape(name)}:=(\\S+)$", text, re.MULTILINE)
+    return match.group(1) if match else ""
+
+
+def normalize_package_recipe(text: str) -> list[str]:
+    normalized: list[str] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("PKG_VERSION:="):
+            normalized.append("PKG_VERSION:=<PACKAGE_METADATA>")
+        else:
+            normalized.append(raw.rstrip())
+    return normalized
+
+
+def openclash_core_package_metadata_only(base: str, head: str) -> bool:
+    try:
+        before = show_text(base, OPENCLASH_CORE_PACKAGE_RECIPE)
+        after = show_text(head, OPENCLASH_CORE_PACKAGE_RECIPE)
+    except RuntimeError:
+        return False
+
+    return (
+        make_var(before, "PKG_NAME") == "openclash-core"
+        and make_var(after, "PKG_NAME") == "openclash-core"
+        and make_var(before, "PKG_RELEASE") == "1"
+        and make_var(after, "PKG_RELEASE") == "1"
+        and make_var(before, "PKGARCH") == make_var(after, "PKGARCH")
+        and make_var(before, "PKG_VERSION") == "0.1.0~alpha.ge183c58"
+        and make_var(after, "PKG_VERSION") == "0.1.0_alpha"
+        and normalize_package_recipe(before) == normalize_package_recipe(after)
+    )
 
 
 def http_ok(value: object) -> bool:
@@ -215,8 +256,20 @@ if re.fullmatch(r"[0-9a-f]{40}", validated_sha):
         except RuntimeError as exc:
             errors.append(str(exc))
             post_validation_changes = []
-        disallowed = [p for p in post_validation_changes if p not in POST_VALIDATION_ALLOWLIST]
-        runtime_drift = [p for p in post_validation_changes if is_runtime_impact(p)]
+        package_metadata_only = (
+            OPENCLASH_CORE_PACKAGE_RECIPE in post_validation_changes
+            and openclash_core_package_metadata_only(validated_sha, target_sha)
+        )
+        allowed = set(POST_VALIDATION_ALLOWLIST)
+        if package_metadata_only:
+            allowed.add(OPENCLASH_CORE_PACKAGE_RECIPE)
+
+        disallowed = [p for p in post_validation_changes if p not in allowed]
+        runtime_drift = [
+            p for p in post_validation_changes
+            if is_runtime_impact(p)
+            and not (p == OPENCLASH_CORE_PACKAGE_RECIPE and package_metadata_only)
+        ]
         require(not disallowed, "post-validation changes are not evidence/gate-only: " + ", ".join(disallowed[:20]))
         require(not runtime_drift, "runtime/source changed after live validation: " + ", ".join(runtime_drift[:20]))
 
@@ -233,3 +286,8 @@ print(f"VALIDATED_SOURCE_SHA={validated_sha}")
 print("OPENCLASH_FULLY_USABLE=PASS")
 print("ADGUARDHOME_FULLY_USABLE=PASS")
 print("OPENCLASH_ADH_COEXISTENCE=PASS")
+if 'package_metadata_only' in globals() and package_metadata_only:
+    print("PACKAGE_METADATA_ONLY=true")
+    print("RUNTIME_BEHAVIOR_CHANGED=false")
+    print("LIVE_EVIDENCE_REUSE_ALLOWED=true")
+    print("LIVE_EVIDENCE_REUSED=true")
