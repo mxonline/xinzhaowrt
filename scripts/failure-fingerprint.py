@@ -28,6 +28,8 @@ PATTERNS = {
     'missing-source': re.compile(r'(?i)\bMISSING_SOURCE\b[:= ]*([^\r\n]*)'),
 }
 
+FINAL_GATE_RE = re.compile(r'(?i)(FINAL_ROOTFS_[A-Z0-9_]+=FAIL|[A-Z0-9_]+_VERIFICATION=FAIL|GateError)')
+
 STRONG_ERROR_RE = re.compile(
     r'(?i)('
     r'\bERROR:\s*|\bfatal:\s*|No rule to make target|undefined reference|'
@@ -97,6 +99,7 @@ def main():
 
     buckets = {kind: [] for kind in PATTERNS}
     error_lines = []
+    final_gate_lines = []
 
     for _, text in texts:
         for raw in text.splitlines():
@@ -117,11 +120,17 @@ def main():
                 if value and value not in buckets[kind]:
                     buckets[kind].append(value)
 
+            if FINAL_GATE_RE.search(line) and line not in final_gate_lines:
+                final_gate_lines.append(line)
             if 'WARNING:' not in line.upper() and STRONG_ERROR_RE.search(line):
                 if line not in error_lines:
                     error_lines.append(line)
 
-    if buckets['missing-config']:
+    if final_gate_lines:
+        stage = 'final rootfs / acceptance gate'
+        kind = 'final-gate'
+        signals = final_gate_lines[:12]
+    elif buckets['missing-config']:
         kind = 'missing-config'
         signals = sorted(buckets['missing-config'])
     elif buckets['missing-package']:

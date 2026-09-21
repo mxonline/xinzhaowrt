@@ -50,7 +50,7 @@ if (( IS_FEED_FAILURE == 1 )); then
 fi
 
 # 中文说明：覆盖 package、feed、Makefile、依赖、shell、资源和下载错误。
-ERROR_PATTERN='ERROR:|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Ignoring feed.*(failed|error|index missing)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE'
+ERROR_PATTERN='FINAL_ROOTFS_[A-Z0-9_]+=FAIL|[A-Z0-9_]+_VERIFICATION=FAIL|GateError|ERROR:|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Ignoring feed.*(failed|error|index missing)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE'
 # 中文说明：先让 grep 完整读取并写入临时文件，禁止使用 grep | head，避免大日志触发 Broken pipe。
 MATCH_FILE="$(mktemp)"
 REAL_ERROR_FILE="$(mktemp)"
@@ -61,13 +61,17 @@ trap cleanup_match_files EXIT
 grep -nEi "$ERROR_PATTERN" "$LOG" > "$MATCH_FILE" || true
 
 # 中文说明：优先识别第一个真实 ERROR；若日志只出现分类错误，则回退到第一个匹配项。
-REAL_ERROR_PATTERN='(^|[^[:alpha:]])ERROR(:|[[:space:]])|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)'
+REAL_ERROR_PATTERN='FINAL_ROOTFS_[A-Z0-9_]+=FAIL|[A-Z0-9_]+_VERIFICATION=FAIL|GateError|(^|[^[:alpha:]])ERROR(:|[[:space:]])|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)'
 grep -nEi "$REAL_ERROR_PATTERN" "$LOG" > "$REAL_ERROR_FILE" || true
+EXPLICIT_GATE_MATCH="$(grep -nEm1 'FINAL_ROOTFS_[A-Z0-9_]+=FAIL|[A-Z0-9_]+_VERIFICATION=FAIL|GateError' "$LOG" || true)"
 FIRST_ERROR="$(sed -n '1p' "$REAL_ERROR_FILE")"
+[[ -n "$EXPLICIT_GATE_MATCH" ]] && FIRST_ERROR="$EXPLICIT_GATE_MATCH"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="$(sed -n '1p' "$MATCH_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="未匹配到预定义错误模式；请查看完整 build.log。"
 
-if (( IS_FEED_FAILURE == 1 )); then
+if [[ -n "$EXPLICIT_GATE_MATCH" ]]; then
+  STAGE='final rootfs / acceptance gate'
+elif (( IS_FEED_FAILURE == 1 )); then
   STAGE='Feed Check'
   [[ -n "$FEED_FIRST_ERROR" ]] && FIRST_ERROR="$FEED_FIRST_ERROR"
 else

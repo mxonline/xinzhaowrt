@@ -85,16 +85,19 @@ rsync -a "$PROJECT_ROOT/package/xinzhao/openclash-core/" \
   "$SRC/package/xinzhao/openclash-core/"
 ln -sfn "$SRC/package/xinzhao/luci-app-adguardhome-manager" \
   "$SRC/.xinzhao-feed/luci-app-adguardhome-manager"
-ln -sfn "$SRC/package/xinzhao/openclash-core" \
-  "$SRC/.xinzhao-feed/openclash-core"
+# openclash-core is firmware-owned and lives directly under package/xinzhao.
+# Do not also expose it through the xinzhao feed: two package registration paths
+# make source authority ambiguous even when they happen to contain identical bytes.
+rm -f "$SRC/.xinzhao-feed/openclash-core" "$SRC/package/feeds/xinzhao/openclash-core"
 ./scripts/feeds update xinzhao
-./scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager openclash-core
+./scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 bash "$PROJECT_ROOT/scripts/fetch-openclash-core.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
+"$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
 FEED_CHECK_ROOT="$SRC" "$PROJECT_ROOT/scripts/verify-project.sh"
