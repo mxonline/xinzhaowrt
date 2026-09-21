@@ -57,8 +57,11 @@ jobs:
           RESOLVED_SHA="$(git rev-parse HEAD)"
 
           if [[ "$SOURCE_REF" != 'main' ]]; then
-            RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SOURCE_REF" --jq '.object.sha')"
-            [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "BLOCKED: source_ref did not resolve to commit: $SOURCE_REF"; exit 1; }
+            RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$SOURCE_REF" --jq '.object.sha' 2>/dev/null || true)"
+            if [[ ! "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              RESOLVED_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$SOURCE_REF" --jq '.object.sha' 2>/dev/null || true)"
+            fi
+            [[ "$RESOLVED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "BLOCKED: source_ref did not resolve to branch/tag commit: $SOURCE_REF"; exit 1; }
             if [[ -n "$SOURCE_SHA" && "$RESOLVED_SHA" != "$SOURCE_SHA" ]]; then
               echo "BLOCKED: source_ref SHA mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA"; exit 1
             fi
