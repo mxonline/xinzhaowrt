@@ -119,7 +119,7 @@ def main() -> int:
             "DEPENDS:=+luci-app-adguardhome +luci-compat +rpcd-mod-file\n",
             encoding="utf-8",
         )
-        package_archive = tmp / "source-root/bin/packages/test/luci-app-adguardhome-manager_1.0_all.ipk"
+        package_archive = tmp / "source-root/bin/packages/test/luci-app-adguardhome-manager-1.0-r1.apk"
         package_archive.parent.mkdir(parents=True, exist_ok=True)
         package_archive.write_bytes(b"test package archive marker")
 

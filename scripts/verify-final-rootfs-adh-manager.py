@@ -138,7 +138,7 @@ def main() -> int:
     missing_runtime = sorted(required_runtime - installed)
     require(not missing_runtime, f"required ADH runtime packages absent from firmware manifest: {', '.join(missing_runtime)}")
     manager_archives = list(args.source_root.resolve().joinpath("bin").rglob("luci-app-adguardhome-manager_*.ipk"))
-    manager_archives += list(args.source_root.resolve().joinpath("bin").rglob("luci-app-adguardhome-manager_*.apk"))
+    manager_archives += list(args.source_root.resolve().joinpath("bin").rglob("luci-app-adguardhome-manager-*.apk"))
     require(manager_archives, "compiled full manager package archive is missing")
 
     count = check_accepted_overlay_hashes(rootfs, args.accepted_manifest)

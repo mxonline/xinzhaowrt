@@ -134,7 +134,7 @@ def main() -> int:
         uci.write_text("option small_flash_memory '0'\noption smart_enable '0'\n", encoding="utf-8")
         manifest = tmp / "firmware.manifest"
         manifest.write_text("luci-app-openclash - 0.47.test\nopenclash-core - alpha.test\n", encoding="utf-8")
-        archive_marker = source_root / "bin/packages/test/openclash-core_1_test_aarch64.ipk"
+        archive_marker = source_root / "bin/packages/test/openclash-core-0.1.0_alpha-r1.apk"
         archive_marker.parent.mkdir(parents=True, exist_ok=True)
         archive_marker.write_bytes(b"test package archive marker")
 
