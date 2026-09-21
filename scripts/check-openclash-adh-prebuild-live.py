@@ -23,6 +23,21 @@ EVIDENCE_PATH = "production/evidence/prebuild-openclash-adh-live.json"
 OPENCLASH_CORE_PACKAGE_RECIPE = "package/xinzhao/openclash-core/Makefile"
 OPENCLASH_CORE_BUNDLE_TEST = "tests/test-openclash-core-bundle.py"
 
+VALIDATION_ONLY_APK_FIXES = {
+    "scripts/verify-final-rootfs-adh-manager.py": (
+        'rglob("luci-app-adguardhome-manager_*.apk")',
+        'rglob("luci-app-adguardhome-manager-*.apk")',
+    ),
+    "scripts/verify-final-rootfs-openclash-core.py": (
+        'rglob("openclash-core_*.apk")',
+        'rglob("openclash-core-*.apk")',
+    ),
+    "tests/test-final-rootfs-adh-manager.py": (
+        '"source-root/bin/packages/test/luci-app-adguardhome-manager_1.0_all.ipk"',
+        '"source-root/bin/packages/test/luci-app-adguardhome-manager-1.0-r1.apk"',
+    ),
+}
+
 POST_VALIDATION_ALLOWLIST = {
     EVIDENCE_PATH,
     "scripts/check-openclash-adh-prebuild-live.py",
@@ -124,6 +139,20 @@ def openclash_core_package_metadata_only(base: str, head: str) -> bool:
         and make_var(after, "PKG_VERSION") == "0.1.0_alpha"
         and normalize_package_recipe(before) == normalize_package_recipe(after)
     )
+
+
+def validation_only_apk_fix(base: str, head: str) -> bool:
+    for path, (before_token, after_token) in VALIDATION_ONLY_APK_FIXES.items():
+        try:
+            before = show_text(base, path)
+            after = show_text(head, path)
+        except RuntimeError:
+            return False
+        if before_token not in before or after_token not in after:
+            return False
+        if before.replace(before_token, after_token, 1) != after:
+            return False
+    return True
 
 
 def http_ok(value: object) -> bool:
@@ -260,9 +289,16 @@ if re.fullmatch(r"[0-9a-f]{40}", validated_sha):
             OPENCLASH_CORE_PACKAGE_RECIPE in post_validation_changes
             and openclash_core_package_metadata_only(validated_sha, target_sha)
         )
+        validation_only_fix = (
+            all(path in post_validation_changes for path in VALIDATION_ONLY_APK_FIXES)
+            and validation_only_apk_fix(validated_sha, target_sha)
+        )
+
         allowed = set(POST_VALIDATION_ALLOWLIST)
         if package_metadata_only:
             allowed.add(OPENCLASH_CORE_PACKAGE_RECIPE)
+        if validation_only_fix:
+            allowed.update(VALIDATION_ONLY_APK_FIXES)
 
         disallowed = [p for p in post_validation_changes if p not in allowed]
         runtime_drift = [
@@ -288,6 +324,12 @@ print("ADGUARDHOME_FULLY_USABLE=PASS")
 print("OPENCLASH_ADH_COEXISTENCE=PASS")
 if 'package_metadata_only' in globals() and package_metadata_only:
     print("PACKAGE_METADATA_ONLY=true")
+if 'validation_only_fix' in globals() and validation_only_fix:
+    print("VALIDATION_ONLY_FIX=true")
+if (
+    ('package_metadata_only' in globals() and package_metadata_only)
+    or ('validation_only_fix' in globals() and validation_only_fix)
+):
     print("RUNTIME_BEHAVIOR_CHANGED=false")
     print("LIVE_EVIDENCE_REUSE_ALLOWED=true")
     print("LIVE_EVIDENCE_REUSED=true")
