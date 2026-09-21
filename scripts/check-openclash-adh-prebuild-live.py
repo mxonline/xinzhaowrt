@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Active-candidate scan revision: package-closure proof path.
 EVIDENCE_PATH = "production/evidence/prebuild-openclash-adh-live.json"
 PACKAGE_CLOSURE_EVIDENCE_PATH = "production/evidence/prebuild-package-closure.json"
 PROVEN_PACKAGE_CLOSURE_SOURCE = "4befe60e77bcaa8dd8270d466be26f4f739f4ed3"
