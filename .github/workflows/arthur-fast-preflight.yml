@@ -439,6 +439,7 @@ jobs:
             echo 'PACKAGE_ONLY_TESTS=PASS'
           } | tee -a openclash-core-package-only.txt
 
+          chmod +x candidate/scripts/*.sh candidate/tests/*.sh || true
           bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
 
       - name: Upload OpenClash package-only closure evidence
