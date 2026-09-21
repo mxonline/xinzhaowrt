@@ -1,13 +1,11 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-final-release-20260906-resume-after-pr86",
+  "request_id": "arthur-openclash-adh-repair-34845c3e-20260921",
   "mode": "rebuild_known_good",
-  "base_stable": "arthur-known-good-v1",
+  "base_stable": "arthur-production-34268801985",
   "device": "jdcloud_re-ss-01",
-  "source_ref": "main",
-  "feature_id": "arthur-adh-quickstart",
-  "accepted_preview_source_sha": "f4190c7ce51984ae0ba99b59829323fef12b692a",
-  "accepted_diff_sha256": "6a8493619c088dd6adb0c5477412518a0f242116df3369654b11bccbd1e58feb",
-  "preview_manifest_sha256": "771bc19690c6ec8227ed4bd6490c77d161138ddc5d0ffae66078039d39b55757",
-  "reason": "Resume the final Arthur release from the already successful Build #29 artifact. Reuse GitHub Actions run 34056525562 / artifact 9998837025 produced from source SHA 750f62dcdd26b9227cfa6c857427f430340b8c9a. Do not rebuild, do not create a second Candidate, and do not repeat feature development. Preserve accepted ADH full manager, LuCI Chinese, official iStoreOS QuickStart and WIFI=VERIFIED_FROZEN. Continue only through ARTIFACT validation -> formal Candidate publication -> PRE_FLASH -> at-most-once sysupgrade -> PostFlash real-device verification -> PRODUCTION_RELEASED. If provenance, SHA256, PRE_FLASH safety gate, or real-device verification fails, stop at that real blocker rather than returning to BUILD."
+  "source_ref": "codex/arthur-repair-candidate-20260920",
+  "source_sha": "34845c3e015162812ea1ce724a50a97a5db36159",
+  "feature_id": "arthur-openclash-adh-coexistence",
+  "reason": "Dispatch Arthur Known-Good Update v3 from the exact repair branch source after PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS and verified PACKAGE_METADATA_ONLY OpenClash core APK version repair. Build only; no sysupgrade authorization."
 }
