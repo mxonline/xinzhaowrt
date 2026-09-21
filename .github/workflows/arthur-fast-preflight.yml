@@ -443,7 +443,7 @@ jobs:
 
           # Prepare only the exact pinned AdGuard Home LuCI source needed by the
           # existing static acceptance contract; this is still prebuild-only.
-          LUCI_REF="$(sed -n 's/^LUCI_REF="//; s/"$//p' candidate/config/arthur-known-good.lock | head -1)"
+          LUCI_REF="$(sed -n 's/^LUCI_REF="\([^"]*\)"$/\1/p' candidate/config/arthur-known-good.lock | head -1)"
           test -n "$LUCI_REF"
           git init adh-luci-src
           git -C adh-luci-src remote add origin https://github.com/immortalwrt/luci.git
