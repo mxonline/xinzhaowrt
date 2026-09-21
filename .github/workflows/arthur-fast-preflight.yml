@@ -440,7 +440,20 @@ jobs:
           } | tee -a openclash-core-package-only.txt
 
           chmod +x candidate/scripts/*.sh candidate/tests/*.sh || true
-          bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
+
+          # Prepare only the exact pinned AdGuard Home LuCI source needed by the
+          # existing static acceptance contract; this is still prebuild-only.
+          LUCI_REF="$(sed -n 's/^LUCI_REF="//; s/"$//p' candidate/config/arthur-known-good.lock | head -1)"
+          test -n "$LUCI_REF"
+          git init adh-luci-src
+          git -C adh-luci-src remote add origin https://github.com/immortalwrt/luci.git
+          git -C adh-luci-src fetch --depth=1 origin "$LUCI_REF"
+          git -C adh-luci-src checkout --detach FETCH_HEAD
+          mkdir -p prepared-source/package/feeds/xinzhao
+          ln -s "$PWD/adh-luci-src/applications/luci-app-adguardhome" prepared-source/package/feeds/xinzhao/luci-app-adguardhome
+
+          FEED_CHECK_ROOT="$PWD/prepared-source" \
+            bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
 
       - name: Upload OpenClash package-only closure evidence
         if: always()
