@@ -335,7 +335,7 @@ jobs:
       - name: Checkout exact Arthur repair candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: 753d5c56e4066829f8eb2547b74de8ca4e82a0cd
+          ref: 4befe60e77bcaa8dd8270d466be26f4f739f4ed3
           fetch-depth: 0
           path: candidate
 
@@ -414,7 +414,7 @@ jobs:
           SYNTHETIC_SHA="$(sha256sum synthetic-rootfs/etc/openclash/core/clash_meta | awk '{print $1}')"
 
           {
-            echo "CANDIDATE_SOURCE_SHA=753d5c56e4066829f8eb2547b74de8ca4e82a0cd"
+            echo "CANDIDATE_SOURCE_SHA=4befe60e77bcaa8dd8270d466be26f4f739f4ed3"
             echo "OFFICIAL_LOCKED_CORE_SHA256=$OFFICIAL_SHA"
             echo "STAGED_CORE_SHA256=$STAGED_SHA"
             echo "PKG_BUILD_CORE_SHA256=$PKG_BUILD_SHA"
@@ -432,10 +432,14 @@ jobs:
           grep -Eq 'Machine:[[:space:]]+AArch64' openclash-core-readelf.txt
           test -x "$PAYLOAD"
 
-          echo 'OPENCLASH_CORE_APK=PASS'
-          echo 'OPENCLASH_CORE_ARCH=PASS'
-          echo 'OPENCLASH_CORE_PAYLOAD_IDENTITY=PASS'
-          echo 'PACKAGE_ONLY_TESTS=PASS'
+          {
+            echo 'OPENCLASH_CORE_APK=PASS'
+            echo 'OPENCLASH_CORE_ARCH=PASS'
+            echo 'OPENCLASH_CORE_PAYLOAD_IDENTITY=PASS'
+            echo 'PACKAGE_ONLY_TESTS=PASS'
+          } | tee -a openclash-core-package-only.txt
+
+          bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
 
       - name: Upload OpenClash package-only closure evidence
         if: always()
