@@ -397,7 +397,7 @@ jobs:
 
           rm -rf package-root synthetic-rootfs
           mkdir -p package-root synthetic-rootfs/etc/openclash/core
-          "$APK_TOOL" extract --destination package-root "$APK"
+          "$APK_TOOL" --allow-untrusted extract --destination package-root "$APK"
 
           STAGED="$SDK_DIR/package/xinzhao/openclash-core/files/clash_meta"
           PKG_BUILD="$(find "$SDK_DIR/build_dir" -type f -path '*/openclash-core-*/clash_meta' -print -quit)"
