@@ -48,6 +48,8 @@ def main() -> int:
     if "CONFIG_PACKAGE_openclash-core=y" not in arthur_config:
         raise AssertionError("Arthur config does not install the Core package")
     package_recipe = (ROOT / "package/xinzhao/openclash-core/Makefile").read_text(encoding="utf-8")
+    if "RSTRIP:=:" not in package_recipe or "STRIP:=:" not in package_recipe:
+        raise AssertionError("Prebuilt pinned Core package must disable package-level ELF stripping")
     if "/etc/openclash/core/clash_meta" not in package_recipe or "$(INSTALL_BIN)" not in package_recipe:
         raise AssertionError("Core package does not install an executable at OpenClash's runtime path")
     package_version = re.search(r"^PKG_VERSION:=([^\s]+)$", package_recipe, re.MULTILINE)

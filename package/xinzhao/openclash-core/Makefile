@@ -9,6 +9,11 @@ PKGARCH:=aarch64_cortex-a53
 
 include $(INCLUDE_DIR)/package.mk
 
+# Preserve the pinned upstream prebuilt Meta Core byte-for-byte.
+# OpenWrt's package pack step otherwise runs rstrip on ELF payloads.
+RSTRIP:=:
+STRIP:=:
+
 define Package/openclash-core
   SECTION:=net
   CATEGORY:=Network
