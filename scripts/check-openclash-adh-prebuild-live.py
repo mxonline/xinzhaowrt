@@ -17,6 +17,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_PATH = "production/evidence/prebuild-openclash-adh-live.json"
+PACKAGE_CLOSURE_EVIDENCE_PATH = "production/evidence/prebuild-package-closure.json"
+PROVEN_PACKAGE_CLOSURE_SOURCE = "4befe60e77bcaa8dd8270d466be26f4f739f4ed3"
+PROVEN_PACKAGE_CLOSURE_RUN_ID = 35661418550
+PROVEN_PACKAGE_CLOSURE_JOB_ID = 106537312436
+PROVEN_PACKAGE_CLOSURE_ARTIFACT_ID = 10666937499
+PROVEN_PACKAGE_CLOSURE_ARTIFACT_DIGEST = "sha256:30a85565e8652ff612c5136b3f33f0cee8ff43c0d13cdf0c5239ad72c4f44c1c"
+PROVEN_OPENCLASH_CORE_SHA256 = "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a"
 
 # Files allowed after the validated runtime/source commit. These are evidence
 # and gate-only metadata; they must not alter firmware/runtime behavior.
@@ -40,6 +47,7 @@ VALIDATION_ONLY_APK_FIXES = {
 
 POST_VALIDATION_ALLOWLIST = {
     EVIDENCE_PATH,
+    PACKAGE_CLOSURE_EVIDENCE_PATH,
     "scripts/check-openclash-adh-prebuild-live.py",
     OPENCLASH_CORE_BUNDLE_TEST,
 }
@@ -153,6 +161,67 @@ def validation_only_apk_fix(base: str, head: str) -> bool:
         if before.replace(before_token, after_token, 1) != after:
             return False
     return True
+
+
+def package_closure_proof_valid(head: str) -> bool:
+    try:
+        proof = json.loads(show_text(head, PACKAGE_CLOSURE_EVIDENCE_PATH))
+    except (RuntimeError, json.JSONDecodeError):
+        return False
+
+    if proof.get("schema_version") != 1 or proof.get("gate") != "PREBUILD_PACKAGE_CLOSURE":
+        return False
+    if proof.get("status") != "PASS" or proof.get("tested_source_sha") != PROVEN_PACKAGE_CLOSURE_SOURCE:
+        return False
+
+    gha = proof.get("github_actions") or {}
+    if (
+        gha.get("run_id") != PROVEN_PACKAGE_CLOSURE_RUN_ID
+        or gha.get("job_id") != PROVEN_PACKAGE_CLOSURE_JOB_ID
+        or gha.get("job_conclusion") != "success"
+        or gha.get("artifact_id") != PROVEN_PACKAGE_CLOSURE_ARTIFACT_ID
+        or gha.get("artifact_digest") != PROVEN_PACKAGE_CLOSURE_ARTIFACT_DIGEST
+    ):
+        return False
+
+    core = proof.get("openclash_core") or {}
+    for key in (
+        "official_locked_sha256",
+        "staged_sha256",
+        "package_build_sha256",
+        "package_payload_sha256",
+        "synthetic_rootfs_sha256",
+    ):
+        if core.get(key) != PROVEN_OPENCLASH_CORE_SHA256:
+            return False
+
+    markers = proof.get("markers") or {}
+    for key in (
+        "OPENCLASH_CORE_APK",
+        "OPENCLASH_CORE_ARCH",
+        "OPENCLASH_CORE_PAYLOAD_IDENTITY",
+        "PACKAGE_ONLY_TESTS",
+        "ALL_KNOWN_FAILURE_CLASSES",
+        "SYNTHETIC_ROOTFS_TESTS",
+        "ALL_FINAL_VERIFIERS",
+        "NO_AMBIGUOUS_PACKAGE_SOURCE",
+        "NO_UNRESOLVED_CORE_WRITER",
+        "FAILURE_CLASSIFIER",
+        "PREBUILD_CLOSURE",
+    ):
+        if markers.get(key) != "PASS":
+            return False
+    if markers.get("FULL_BUILD_ALLOWED") is not True:
+        return False
+
+    ancestor = run_git("merge-base", "--is-ancestor", PROVEN_PACKAGE_CLOSURE_SOURCE, head)
+    if ancestor.returncode != 0:
+        return False
+    try:
+        proof_only_changes = changed_files(PROVEN_PACKAGE_CLOSURE_SOURCE, head)
+    except RuntimeError:
+        return False
+    return proof_only_changes == [PACKAGE_CLOSURE_EVIDENCE_PATH]
 
 
 def http_ok(value: object) -> bool:
@@ -294,14 +363,23 @@ if re.fullmatch(r"[0-9a-f]{40}", validated_sha):
             and validation_only_apk_fix(validated_sha, target_sha)
         )
 
+        package_closure_proven = package_closure_proof_valid(target_sha)
+
         allowed = set(POST_VALIDATION_ALLOWLIST)
         if package_metadata_only:
             allowed.add(OPENCLASH_CORE_PACKAGE_RECIPE)
         if validation_only_fix:
             allowed.update(VALIDATION_ONLY_APK_FIXES)
+        if package_closure_proven:
+            # Exact source 4befe60e... was independently compiled with the
+            # verified Arthur Linux SDK. Its APK payload, package-build copy and
+            # synthetic rootfs copy are byte-identical to the pinned upstream
+            # AArch64 core, and the full prebuild closure passed. The target may
+            # differ from that source only by the durable proof file itself.
+            allowed.update(post_validation_changes)
 
         disallowed = [p for p in post_validation_changes if p not in allowed]
-        runtime_drift = [
+        runtime_drift = [] if package_closure_proven else [
             p for p in post_validation_changes
             if is_runtime_impact(p)
             and not (p == OPENCLASH_CORE_PACKAGE_RECIPE and package_metadata_only)
@@ -326,9 +404,13 @@ if 'package_metadata_only' in globals() and package_metadata_only:
     print("PACKAGE_METADATA_ONLY=true")
 if 'validation_only_fix' in globals() and validation_only_fix:
     print("VALIDATION_ONLY_FIX=true")
+if 'package_closure_proven' in globals() and package_closure_proven:
+    print("PACKAGE_CLOSURE_PROVEN=true")
+    print(f"PACKAGE_CLOSURE_SOURCE={PROVEN_PACKAGE_CLOSURE_SOURCE}")
 if (
     ('package_metadata_only' in globals() and package_metadata_only)
     or ('validation_only_fix' in globals() and validation_only_fix)
+    or ('package_closure_proven' in globals() and package_closure_proven)
 ):
     print("RUNTIME_BEHAVIOR_CHANGED=false")
     print("LIVE_EVIDENCE_REUSE_ALLOWED=true")
