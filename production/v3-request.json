@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "request_id": "arthur-openclash-adh-validation-fix-87ee88dc-20260921",
+  "request_id": "arthur-openclash-adh-prebuild-closure-09ab6737-20260922",
   "mode": "rebuild_known_good",
   "base_stable": "arthur-production-34268801985",
   "device": "jdcloud_re-ss-01",
   "source_ref": "codex/arthur-repair-candidate-20260920",
-  "source_sha": "87ee88dcdfaab3191540a6722bd75a1a4fbad356",
+  "source_sha": "09ab6737e59dc6e819c7d70b5d09d44fada043c8",
   "feature_id": "arthur-openclash-adh-coexistence",
-  "reason": "Dispatch Arthur Known-Good Update v3 from the exact repair branch after verified validation-only APK archive pattern correction. Runtime behavior unchanged; reuse existing live evidence. Build only; no sysupgrade authorization."
+  "reason": "Dispatch the exact Arthur repair source only after real-device OpenClash+AdGuardHome live validation and Linux SDK package-closure PASS. The closure proved official/staged/package-build/APK-payload/synthetic-rootfs OpenClash Core SHA256 identity, no ambiguous package source, final verifiers, failure classifier, and FULL_BUILD_ALLOWED=true. RELEASE_ONLY build path; no sysupgrade authorization."
 }
