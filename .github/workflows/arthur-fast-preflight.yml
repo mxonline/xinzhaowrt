@@ -360,6 +360,7 @@ jobs:
           tar --zstd -xf toolchain/immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst -C sdk
           SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
           test -n "$SDK_DIR"
+          cp toolchain/full.config "$SDK_DIR/.config"
 
           mkdir -p "$SDK_DIR/package/xinzhao"
           rm -rf "$SDK_DIR/package/xinzhao/openclash-core"
