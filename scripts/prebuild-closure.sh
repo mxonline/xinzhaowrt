@@ -12,8 +12,7 @@ EVIDENCE="${1:-${PACKAGE_ONLY_EVIDENCE:-}}"
 
 bash "$ROOT/tests/test-openclash-core-authority.sh"
 bash "$ROOT/tests/test-failure-classifier.sh"
-python3 "$ROOT/tests/test-openclash-core-bundle.py"
-python3 "$ROOT/tests/test-final-rootfs-adh-manager.py"
+bash "$ROOT/scripts/verify-project.sh"
 
 for marker in \
   OPENCLASH_CORE_APK=PASS \
