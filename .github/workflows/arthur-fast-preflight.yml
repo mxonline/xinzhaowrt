@@ -449,8 +449,19 @@ jobs:
           git -C adh-luci-src remote add origin https://github.com/immortalwrt/luci.git
           git -C adh-luci-src fetch --depth=1 origin "$LUCI_REF"
           git -C adh-luci-src checkout --detach FETCH_HEAD
-          mkdir -p prepared-source/package/feeds/xinzhao
+          mkdir -p prepared-source/package/feeds/xinzhao prepared-source/feeds prepared-source/.xinzhao-sources
           ln -s "$PWD/adh-luci-src/applications/luci-app-adguardhome" prepared-source/package/feeds/xinzhao/luci-app-adguardhome
+          ln -s "$PWD/adh-luci-src" prepared-source/feeds/luci
+
+          OPENCLASH_REF="$(sed -n 's/^OPENCLASH_REF="\([^"]*\)"$/\1/p' candidate/config/arthur-known-good.lock | head -1)"
+          test -n "$OPENCLASH_REF"
+          git init prepared-source/.xinzhao-sources/OpenClash
+          git -C prepared-source/.xinzhao-sources/OpenClash remote add origin https://github.com/vernesong/OpenClash.git
+          git -C prepared-source/.xinzhao-sources/OpenClash fetch --depth=1 origin "$OPENCLASH_REF"
+          git -C prepared-source/.xinzhao-sources/OpenClash checkout --detach FETCH_HEAD
+          for patch in candidate/patches/openclash/*.patch; do
+            git -C prepared-source/.xinzhao-sources/OpenClash apply "$PWD/$patch"
+          done
 
           FEED_CHECK_ROOT="$PWD/prepared-source" \
             bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
