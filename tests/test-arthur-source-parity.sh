@@ -38,8 +38,8 @@ grep -Fq 'enabled=1' "$SWAP_DEFAULTS" || fail 'native swap is not enabled in sou
 for yaml in "$ADH_YAML" "$ADH_TEMPLATE"; do
   test -s "$yaml" || fail "missing AdGuardHome YAML source: $yaml"
   ! grep -Fq 'edns_client_subnet: false' "$yaml" || fail "legacy EDNS scalar remains: $yaml"
-  ! grep -Eq '^[[:space:]]*clients:[[:space:]]*\[\]' "$yaml" || fail "legacy clients list remains: $yaml"
-  grep -Fq 'runtime_sources:' "$yaml" || fail "compatible clients mapping missing: $yaml"
+  grep -Eq '^clients:[[:space:]]*\[\][[:space:]]*$' "$yaml" || fail "legacy schema seed must use clients: []: $yaml"
+  ! grep -Fq 'runtime_sources:' "$yaml" || fail "runtime_sources must be created by schema migration: $yaml"
   grep -Fq 'custom_ip: ""' "$yaml" || fail "compatible EDNS mapping missing: $yaml"
 done
 

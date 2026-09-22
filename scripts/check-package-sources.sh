@@ -6,6 +6,10 @@ FEED_DIR="$SRC/package/feeds/xinzhao"
 ISTORE_FEED_DIR="$SRC/package/feeds/istore"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+OPENCLASH_SELECTED_MAKEFILE="$SRC/package/feeds/xinzhao/openclash-core/Makefile" \
+  bash "$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" \
+  "$SRC" "$PROJECT_ROOT/package/xinzhao/openclash-core"
+
 required=(
   luci-app-istorex
   luci-app-lucky

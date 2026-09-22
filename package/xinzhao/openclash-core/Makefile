@@ -8,6 +8,12 @@ PKGARCH:=aarch64_cortex-a53
 
 include $(INCLUDE_DIR)/package.mk
 
+# This package carries a reviewed, prebuilt AArch64 executable. ImmortalWrt's
+# package-pack.mk invokes $(RSTRIP) for every package payload; keep the pinned
+# Core bytes unchanged without disabling stripping for any other package.
+RSTRIP:=:
+STRIP:=:
+
 define Package/openclash-core
   SECTION:=net
   CATEGORY:=Network

@@ -1,0 +1,7 @@
+新肇网络Wrt 自动失败摘要
+GitHub Actions Run ID: 35597970023
+Failure stage: make defconfig / 配置保留检查
+First real error: 119: FINAL_ROOTFS_OPENCLASH_CORE=FAIL -- final rootfs Core differs from the verified staged package payload
+GateError: final rootfs verification gate rejected the candidate
+make defconfig / 配置保留检查
+MISSING: CONFIG_PACKAGE_openclash-core=y

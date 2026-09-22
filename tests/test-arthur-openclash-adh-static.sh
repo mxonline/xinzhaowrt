@@ -11,6 +11,7 @@ coordinator="$root/files/usr/libexec/xinzhao-dns-coexist"
 agh_init="$root/files/etc/init.d/AdGuardHome"
 openclash_patch="$root/patches/openclash/0010-arthur-coexistence-memory-and-dns.patch"
 default_dns_patch="$root/patches/openclash/0011-arthur-default-no-dns-hijack.patch"
+lowmem_helper="$root/files/usr/libexec/xinzhao-openclash-lowmem-config"
 device_verify="$root/scripts/real-device-verify.ps1"
 
 [[ -s "$sot" ]] || fail 'coexistence Source of Truth is missing'
@@ -36,8 +37,8 @@ grep -Fq 'port: 1745' "$root/files/etc/AdGuardHome.yaml" || fail 'Arthur AdGuard
 ! grep -Fq 'port: 5553' "$root/files/etc/AdGuardHome.yaml" || fail 'released 5553 DNS port remains in candidate YAML'
 ! grep -Fq 'edns_client_subnet: false' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome EDNS client subnet uses the incompatible legacy scalar form'
 grep -Fq 'custom_ip: ""' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome EDNS client subnet compatibility mapping is missing'
-! grep -Eq '^[[:space:]]*clients:[[:space:]]*\[\]' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome clients uses the incompatible legacy list form'
-grep -Fq 'runtime_sources:' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome clients runtime_sources mapping is missing'
+grep -Eq '^clients:[[:space:]]*\[\][[:space:]]*$' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome legacy schema seed must use clients: []'
+! grep -Fq 'runtime_sources:' "$root/files/etc/AdGuardHome.yaml" || fail 'AdGuardHome runtime_sources must be created by schema migration'
 grep -Fq "option maxprocs '1'" "$root/files/etc/config/AdGuardHome" || fail 'AdGuardHome GOMAXPROCS guard missing'
 grep -Fq "option memlimit '64'" "$root/files/etc/config/AdGuardHome" || fail 'AdGuardHome GOMEMLIMIT guard missing'
 
@@ -56,11 +57,19 @@ grep -Fq 'GOMEMLIMIT="96MiB"' "$openclash_patch" || fail 'OpenClash core memory 
 grep -Fq 'procd_running "openclash-watchdog"' "$openclash_patch" || fail 'OpenClash watchdog single-flight guard is missing'
 grep -Fq 'openclash-ready' "$openclash_patch" || fail 'OpenClash readiness hook is missing'
 grep -Fq 'prepare-openclash' "$openclash_patch" || fail 'OpenClash preflight hook is missing'
+grep -Fq 'xinzhao-openclash-lowmem-config' "$openclash_patch" || fail 'OpenClash low-memory staging is not source-integrated'
+grep -Fq '"$TMP_CONFIG_FILE" "$dns_port" "$cn_port"' "$openclash_patch" || fail 'low-memory staging does not run on the generated OpenClash YAML'
+grep -Fq 'QUICK_START=false' "$openclash_patch" || fail 'OpenClash quick-start bypasses dashboard/DNS runtime generation'
+! grep -Fq 'line = "  enhanced-mode: redir-host"' "$lowmem_helper" || fail 'low-memory helper still overrides user DNS enhanced-mode'
 grep -Fq "option enable_redirect_dns '0'" "$default_dns_patch" || fail 'OpenClash default DNS hijack disable patch is missing'
 
 source_root="${OPENCLASH_SOURCE_ROOT:-$root/work/feed-check/immortalwrt/feeds/luci/applications}"
 source_dir="$source_root/luci-app-openclash"
 [[ -d "$source_dir" ]] || fail "prepared OpenClash source is missing: $source_dir"
+yaml_rewrite="$source_dir/root/usr/share/openclash/yml_change.sh"
+grep -Fq "Value['external-ui'] = '/usr/share/openclash/ui'" "$yaml_rewrite" || fail 'OpenClash native dashboard path generation is missing'
+grep -Fq "Value['external-ui-name'] = default_dashboard" "$yaml_rewrite" || fail 'OpenClash native dashboard selection is missing'
+grep -Fq "Value['dns']['enhanced-mode'] = 'fake-ip'" "$yaml_rewrite" || fail 'OpenClash native fake-ip generation is missing'
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 cp -R "$source_dir" "$tmp_dir/luci-app-openclash"

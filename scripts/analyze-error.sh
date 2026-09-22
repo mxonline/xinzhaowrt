@@ -3,7 +3,7 @@ set -uo pipefail
 
 # 中文说明：分析完整云端日志，定位 feeds、defconfig 和正式编译阶段的真实错误。
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="$PROJECT_ROOT/output/logs"
+OUT_DIR="${ANALYZE_ERROR_OUT_DIR:-$PROJECT_ROOT/output/logs}"
 LOG="${1:-$OUT_DIR/build.log}"
 FEED_ERROR="${2:-$OUT_DIR/feed-error.txt}"
 SUMMARY="$OUT_DIR/error-summary.txt"
@@ -50,7 +50,8 @@ if (( IS_FEED_FAILURE == 1 )); then
 fi
 
 # 中文说明：覆盖 package、feed、Makefile、依赖、shell、资源和下载错误。
-ERROR_PATTERN='ERROR:|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Ignoring feed.*(failed|error|index missing)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE'
+FINAL_GATE_PATTERN='FINAL_ROOTFS_[A-Z0-9_]+[[:space:]]*=[[:space:]]*FAIL|[A-Z0-9_]+_VERIFICATION[[:space:]]*=[[:space:]]*FAIL|GateError'
+ERROR_PATTERN="$FINAL_GATE_PATTERN|ERROR:|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Ignoring feed.*(failed|error|index missing)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)|MISSING_PACKAGE|MISSING_SOURCE|MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE"
 # 中文说明：先让 grep 完整读取并写入临时文件，禁止使用 grep | head，避免大日志触发 Broken pipe。
 MATCH_FILE="$(mktemp)"
 REAL_ERROR_FILE="$(mktemp)"
@@ -61,17 +62,20 @@ trap cleanup_match_files EXIT
 grep -nEi "$ERROR_PATTERN" "$LOG" > "$MATCH_FILE" || true
 
 # 中文说明：优先识别第一个真实 ERROR；若日志只出现分类错误，则回退到第一个匹配项。
-REAL_ERROR_PATTERN='(^|[^[:alpha:]])ERROR(:|[[:space:]])|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)'
+REAL_ERROR_PATTERN="$FINAL_GATE_PATTERN|(^|[^[:alpha:]])ERROR(:|[[:space:]])|failed to build|make\[[^]]*\].*(Error|error)|configure error|Collecting package info.*(failed|error)|package info.*failed|feeds[[:space:]]+(update|install).*(failed|error)|Updating feed.*(failed|error)|Create index file.*(failed|error)|package index.*(failed|error)|Makefile.*(parse|syntax|error)|parse error|Error evaluating|duplicate package|package conflict|conflict.*package|dependency( on)? .*does not exist|dependency error|syntax error|shell error|/bin/(ba)?sh:.*(not found|error)|No space left|out of memory|(^|[^[:alpha:]])killed([^[:alpha:]]|$)|download[[:space:]_-]*(failure|failed|error)|failed.*download|fatal:|clone.*(failed|error)|git.*(failed|error)|feed.*(failed|error|missing)"
 grep -nEi "$REAL_ERROR_PATTERN" "$LOG" > "$REAL_ERROR_FILE" || true
 FIRST_ERROR="$(sed -n '1p' "$REAL_ERROR_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="$(sed -n '1p' "$MATCH_FILE")"
 [[ -n "$FIRST_ERROR" ]] || FIRST_ERROR="未匹配到预定义错误模式；请查看完整 build.log。"
+EXPLICIT_GATE_ERROR="$(grep -nEi "$FINAL_GATE_PATTERN" "$LOG" | sed -n '1p')"
 
 if (( IS_FEED_FAILURE == 1 )); then
   STAGE='Feed Check'
   [[ -n "$FEED_FIRST_ERROR" ]] && FIRST_ERROR="$FEED_FIRST_ERROR"
 else
-  if grep -qiE 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|make defconfig|configuration written to .config' "$LOG"; then
+  if [[ -n "$EXPLICIT_GATE_ERROR" ]]; then
+    STAGE='Final rootfs/package verifier gate'
+  elif grep -qiE 'MISSING: CONFIG_PACKAGE|MISSING CONFIG_PACKAGE|make defconfig|configuration written to .config' "$LOG"; then
     STAGE='make defconfig / 配置保留检查'
   elif grep -qiE 'Collecting package info.*(failed|error)|feeds[[:space:]]+(update|install)|Updating feed|Create index file|package index|MISSING_PACKAGE|MISSING_SOURCE' "$LOG"; then
     STAGE='OpenWrt feeds / package index / source preflight'
@@ -82,6 +86,10 @@ else
   else
     STAGE='构建初始化或依赖安装'
   fi
+fi
+
+if [[ -n "$EXPLICIT_GATE_ERROR" ]]; then
+  FIRST_ERROR="$EXPLICIT_GATE_ERROR"
 fi
 
 FIRST_ERROR_LINE="$(printf '%s\n' "$FIRST_ERROR" | cut -d: -f1)"
