@@ -42,5 +42,6 @@ fi
 
 grep -Fq 'runs-on: ubuntu-24.04' "$WORKFLOW" || fail 'closure must run on GitHub-hosted Linux'
 grep -Fq 'scripts/zram-closure.sh' "$WORKFLOW" || fail 'workflow does not invoke the closure script'
+grep -Fq 'LZ4_ARTIFACT=' "$SCRIPT" || fail 'closure does not verify the LZ4 kernel dependency artifact'
 
 echo 'ZRAM_CLOSURE_SCRIPT_CONTRACT=PASS'

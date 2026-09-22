@@ -110,10 +110,6 @@ require_config 'CONFIG_TARGET_qualcommax=y'
 require_config 'CONFIG_TARGET_qualcommax_ipq60xx=y'
 require_config 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01=y'
 
-grep -qxF 'CONFIG_PACKAGE_kmod-lib-lz4=y' "$SRC/.config" || {
-  echo 'ERROR: defconfig did not select kmod-lib-lz4 for the LZ4 ZRAM backend' >&2
-  exit 1
-}
 grep -Fq "uci -q set system.@system[0].zram_size_mb='192'" \
   "$SRC/files/etc/uci-defaults/98-xinzhao-zram-defaults" || fail '192 MiB default missing from staged source'
 grep -Fq "uci -q set system.@system[0].zram_comp_algo='lz4'" \
@@ -128,9 +124,11 @@ run_make package/system/zram-swap/compile V=s -j"$JOBS"
 assert_no_firmware_artifacts
 
 KMOD_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-zram_*.apk' -o -name 'kmod-zram_*.ipk' \) -print -quit 2>/dev/null || true)"
+LZ4_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-lib-lz4_*.apk' -o -name 'kmod-lib-lz4_*.ipk' \) -print -quit 2>/dev/null || true)"
 ZRAM_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'zram-swap_*.apk' -o -name 'zram-swap_*.ipk' \) -print -quit 2>/dev/null || true)"
 ZRAM_KO="$(find "$SRC/build_dir" -type f -path '*/drivers/block/zram/zram.ko' -print -quit 2>/dev/null || true)"
 [[ -n "$KMOD_ARTIFACT" && -n "$ZRAM_KO" ]] || fail 'kmod-zram package or zram.ko artifact is missing'
+[[ -n "$LZ4_ARTIFACT" ]] || fail 'kmod-lib-lz4 dependency artifact is missing'
 [[ -n "$ZRAM_ARTIFACT" ]] || fail 'zram-swap package artifact is missing'
 
 printf '%s\n' \
@@ -144,6 +142,7 @@ printf '%s\n' \
   "SOURCE_REF=$SOURCE_REF" \
   "SOURCE_SHA=$(git -C "$SRC" rev-parse HEAD)" \
   "KMOD_ZRAM_ARTIFACT=$KMOD_ARTIFACT" \
+  "LZ4_ARTIFACT=$LZ4_ARTIFACT" \
   "ZRAM_SWAP_ARTIFACT=$ZRAM_ARTIFACT" \
   "ZRAM_KO=$ZRAM_KO" > "$OUT_DIR/markers.txt"
 

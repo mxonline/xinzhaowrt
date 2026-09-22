@@ -128,7 +128,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/etc/AdGuardHome.yaml",
       "remote": "/etc/AdGuardHome.yaml",
       "overlay": "files/etc/AdGuardHome.yaml",
-      "sha256": "76f6b167fb888a0a48b7a9b5a56d59c17ae9fd5051223af7949fc535529b85c9",
+      "sha256": "aa5254d428467600642427fd4baa5dddefab6a605eb621662cc781bb57fccf7a",
       "mode": "0644"
     },
     {
@@ -163,7 +163,7 @@
       "source": "sources/live-preview-mature/adguardhome/root/usr/share/AdGuardHome/AdGuardHome_template.yaml",
       "remote": "/usr/share/AdGuardHome/AdGuardHome_template.yaml",
       "overlay": "files/usr/share/AdGuardHome/AdGuardHome_template.yaml",
-      "sha256": "bd9da296244a3ed7f34beee293cec19cd4b8481f567d0b5d035e3fe965192cff",
+      "sha256": "17358a0f2961703e9b021dacf77045acded2b7d5fb742f828f824c6eb7e64508",
       "mode": "0644"
     },
     {
