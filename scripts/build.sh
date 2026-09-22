@@ -14,6 +14,21 @@ source "$PROJECT_ROOT/build.env"
 # any build output is removed or recreated so every build entrypoint fails
 # closed, including local/CI callers that invoke build.sh directly.
 BUILD_SOURCE_SHA="${BUILD_SOURCE_SHA:-${GITHUB_SHA:-$(git -C "$PROJECT_ROOT" rev-parse HEAD)}}"
+FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
+FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
+FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
+"$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
+  --closure "$FINAL_GATE_CLOSURE" \
+  --live "$FINAL_GATE_LIVE" \
+  --output "$FINAL_GATE_OUTPUT"
+grep -Fqx 'BUILD_ALLOWED=true' "$FINAL_GATE_OUTPUT" || {
+  echo 'ERROR: final source gate did not emit BUILD_ALLOWED=true' >&2
+  exit 1
+}
+grep -Fqx "FINAL_SOURCE_SHA=$BUILD_SOURCE_SHA" "$FINAL_GATE_OUTPUT" || {
+  echo 'ERROR: final source gate SHA does not match BUILD_SOURCE_SHA' >&2
+  exit 1
+}
 PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
 PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
 export PREBUILD_LIVE_EVIDENCE
