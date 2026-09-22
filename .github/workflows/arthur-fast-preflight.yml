@@ -321,3 +321,160 @@ jobs:
             echo '- Firmware source download: not run after closure PASS.'
             echo '- Firmware compile: not run.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+
+  openclash-package-closure:
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'ci/arthur-openclash-package-closure-20260922' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout exact Arthur repair candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: 4befe60e77bcaa8dd8270d466be26f4f739f4ed3
+          fetch-depth: 0
+          path: candidate
+
+      - name: Download verified Arthur SDK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p toolchain
+          gh run download 33196164359             --repo "$GITHUB_REPOSITORY"             --name Arthur-v4-toolchain-33196164359             --dir toolchain
+          (
+            cd toolchain
+            sha256sum -c SHA256SUMS
+          )
+          test -s toolchain/immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst
+          echo 'ARTHUR_VERIFIED_SDK=PASS'
+
+      - name: Compile and verify OpenClash Core package only
+        run: |
+          set -Eeuo pipefail
+          mkdir -p sdk
+          tar --zstd -xf toolchain/immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst -C sdk
+          SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
+          test -n "$SDK_DIR"
+          cp toolchain/full.config "$SDK_DIR/.config"
+
+          mkdir -p "$SDK_DIR/package/xinzhao"
+          rm -rf "$SDK_DIR/package/xinzhao/openclash-core"
+          cp -a candidate/package/xinzhao/openclash-core "$SDK_DIR/package/xinzhao/openclash-core"
+
+          grep -Fxq 'RSTRIP:=:' candidate/package/xinzhao/openclash-core/Makefile
+          grep -Fxq 'STRIP:=:' candidate/package/xinzhao/openclash-core/Makefile
+
+          bash candidate/scripts/fetch-openclash-core.sh "$SDK_DIR"
+          test -s candidate/output/openclash-core-source-verification.txt
+
+          sed -i             -e '/^CONFIG_PACKAGE_openclash-core=/d'             -e '/^# CONFIG_PACKAGE_openclash-core is not set$/d'             "$SDK_DIR/.config"
+          printf '\nCONFIG_PACKAGE_openclash-core=m\n' >> "$SDK_DIR/.config"
+
+          make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/xinzhao/openclash-core/clean V=s
+          make -C "$SDK_DIR" package/xinzhao/openclash-core/compile V=s
+
+          APK="$(find "$SDK_DIR/bin/packages" -type f -name 'openclash-core-*.apk' -print -quit)"
+          test -n "$APK"
+          APK_TOOL="$(find "$SDK_DIR/staging_dir" -type f -path '*/host/bin/apk' -print -quit)"
+          test -x "$APK_TOOL"
+
+          "$APK_TOOL" adbdump --format json "$APK" > openclash-core-apk.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('openclash-core-apk.json', encoding='utf-8'))
+          info=d['info']
+          assert info['name']=='openclash-core', info
+          assert info['version']=='0.1.0_alpha-r1', info
+          assert info['arch']=='aarch64_cortex-a53', info
+          print('OPENCLASH_CORE_APK_METADATA=PASS')
+          PY
+
+          rm -rf package-root synthetic-rootfs
+          mkdir -p package-root synthetic-rootfs/etc/openclash/core
+          "$APK_TOOL" --allow-untrusted extract --destination package-root "$APK"
+
+          STAGED="$SDK_DIR/package/xinzhao/openclash-core/files/clash_meta"
+          PKG_BUILD="$(find "$SDK_DIR/build_dir" -type f -path '*/openclash-core-*/clash_meta' -print -quit)"
+          PAYLOAD="package-root/etc/openclash/core/clash_meta"
+          test -f "$STAGED"
+          test -f "$PKG_BUILD"
+          test -f "$PAYLOAD"
+          install -m0755 "$PAYLOAD" synthetic-rootfs/etc/openclash/core/clash_meta
+
+          OFFICIAL_SHA="$(sed -n 's/^OPENCLASH_CORE_BINARY_SHA256=//p' candidate/output/openclash-core-source-verification.txt | head -1)"
+          STAGED_SHA="$(sha256sum "$STAGED" | awk '{print $1}')"
+          PKG_BUILD_SHA="$(sha256sum "$PKG_BUILD" | awk '{print $1}')"
+          PAYLOAD_SHA="$(sha256sum "$PAYLOAD" | awk '{print $1}')"
+          SYNTHETIC_SHA="$(sha256sum synthetic-rootfs/etc/openclash/core/clash_meta | awk '{print $1}')"
+
+          {
+            echo "CANDIDATE_SOURCE_SHA=4befe60e77bcaa8dd8270d466be26f4f739f4ed3"
+            echo "OFFICIAL_LOCKED_CORE_SHA256=$OFFICIAL_SHA"
+            echo "STAGED_CORE_SHA256=$STAGED_SHA"
+            echo "PKG_BUILD_CORE_SHA256=$PKG_BUILD_SHA"
+            echo "PACKAGE_PAYLOAD_CORE_SHA256=$PAYLOAD_SHA"
+            echo "SYNTHETIC_ROOTFS_CORE_SHA256=$SYNTHETIC_SHA"
+          } | tee openclash-core-package-only.txt
+
+          test "$OFFICIAL_SHA" = "$STAGED_SHA"
+          test "$OFFICIAL_SHA" = "$PKG_BUILD_SHA"
+          test "$OFFICIAL_SHA" = "$PAYLOAD_SHA"
+          test "$OFFICIAL_SHA" = "$SYNTHETIC_SHA"
+
+          readelf -h "$PAYLOAD" | tee openclash-core-readelf.txt
+          grep -Eq 'Class:[[:space:]]+ELF64' openclash-core-readelf.txt
+          grep -Eq 'Machine:[[:space:]]+AArch64' openclash-core-readelf.txt
+          test -x "$PAYLOAD"
+
+          {
+            echo 'OPENCLASH_CORE_APK=PASS'
+            echo 'OPENCLASH_CORE_ARCH=PASS'
+            echo 'OPENCLASH_CORE_PAYLOAD_IDENTITY=PASS'
+            echo 'PACKAGE_ONLY_TESTS=PASS'
+          } | tee -a openclash-core-package-only.txt
+
+          chmod +x candidate/scripts/*.sh candidate/tests/*.sh || true
+
+          # Prepare only the exact pinned AdGuard Home LuCI source needed by the
+          # existing static acceptance contract; this is still prebuild-only.
+          LUCI_REF="$(sed -n 's/^LUCI_REF="\([^"]*\)"$/\1/p' candidate/config/arthur-known-good.lock | head -1)"
+          test -n "$LUCI_REF"
+          git init adh-luci-src
+          git -C adh-luci-src remote add origin https://github.com/immortalwrt/luci.git
+          git -C adh-luci-src fetch --depth=1 origin "$LUCI_REF"
+          git -C adh-luci-src checkout --detach FETCH_HEAD
+          mkdir -p prepared-source/package/feeds/xinzhao prepared-source/feeds prepared-source/.xinzhao-sources
+          ln -s "$PWD/adh-luci-src/applications/luci-app-adguardhome" prepared-source/package/feeds/xinzhao/luci-app-adguardhome
+          ln -s "$PWD/adh-luci-src" prepared-source/feeds/luci
+
+          OPENCLASH_REF="$(sed -n 's/^OPENCLASH_REF="\([^"]*\)"$/\1/p' candidate/config/arthur-known-good.lock | head -1)"
+          test -n "$OPENCLASH_REF"
+          git init prepared-source/.xinzhao-sources/OpenClash
+          git -C prepared-source/.xinzhao-sources/OpenClash remote add origin https://github.com/vernesong/OpenClash.git
+          git -C prepared-source/.xinzhao-sources/OpenClash fetch --depth=1 origin "$OPENCLASH_REF"
+          git -C prepared-source/.xinzhao-sources/OpenClash checkout --detach FETCH_HEAD
+          for patch in candidate/patches/openclash/*.patch; do
+            git -C prepared-source/.xinzhao-sources/OpenClash apply "$PWD/$patch"
+          done
+
+          FEED_CHECK_ROOT="$PWD/prepared-source" \
+            bash candidate/scripts/prebuild-closure.sh openclash-core-package-only.txt
+
+      - name: Upload OpenClash package-only closure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Arthur-openclash-package-closure-${{ github.run_id }}
+          path: |
+            openclash-core-package-only.txt
+            openclash-core-apk.json
+            openclash-core-readelf.txt
+            candidate/output/openclash-core-source-verification.txt
+          if-no-files-found: warn
+          retention-days: 14
