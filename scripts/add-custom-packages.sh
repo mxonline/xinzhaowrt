@@ -311,6 +311,14 @@ OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH="$PROJECT_ROOT/patches/openclash/0011-arthur-
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH"
 echo "APPLIED_PATCH: Arthur OpenClash default DNS redirect disabled"
+OPENCLASH_ACTIVE_POINTER_PATCH="$PROJECT_ROOT/patches/openclash/0012-active-config-pointer-after-save.patch"
+[[ -f "$OPENCLASH_ACTIVE_POINTER_PATCH" ]] || {
+  echo "ERROR: OpenClash active config pointer patch missing: $OPENCLASH_ACTIVE_POINTER_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_ACTIVE_POINTER_PATCH"
+git -C "$SOURCES/OpenClash" apply "$OPENCLASH_ACTIVE_POINTER_PATCH"
+echo "APPLIED_PATCH: OpenClash active config pointer after import/save"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.

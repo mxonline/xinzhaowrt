@@ -1,0 +1,59 @@
+name: Arthur Prebuild Clean-State Product Gate
+
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact project commit validated on the real Arthur device
+        required: true
+        type: string
+      evidence_artifact_run_id:
+        description: Completed run ID that uploaded the clean-state live evidence
+        required: true
+        type: string
+      evidence_artifact_name:
+        description: Artifact containing prebuild-clean-state-product.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact validated source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Download exact-source live evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_artifact_run_id }}
+          EVIDENCE_ARTIFACT: ${{ inputs.evidence_artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$EVIDENCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: evidence run ID must be numeric'; exit 1; }
+          [[ -n "$EVIDENCE_ARTIFACT" ]] || { echo 'BLOCKED: evidence artifact name is required'; exit 1; }
+          mkdir -p output/real-device
+          gh run download "$EVIDENCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$EVIDENCE_ARTIFACT" \
+            --dir output/real-device
+          evidence="$(find output/real-device -type f -name 'prebuild-clean-state-product.json' -print -quit)"
+          [[ -n "$evidence" ]] || { echo 'BLOCKED: clean-state product evidence is missing from artifact'; exit 1; }
+          cp -- "$evidence" output/real-device/prebuild-clean-state-product.json
+
+      - name: Enforce exact-source clean-state product gate
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/check-openclash-adh-prebuild-live.py \
+            --contract production/product-goal-contract.json \
+            --evidence output/real-device/prebuild-clean-state-product.json \
+            --source-sha '${{ inputs.source_sha }}'
+

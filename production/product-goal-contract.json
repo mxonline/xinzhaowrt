@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "gate": "PREBUILD_CLEAN_STATE_PRODUCT_GATE",
+  "evidence_path": "output/real-device/prebuild-clean-state-product.json",
+  "required_live_markers": [
+    "OPENCLASH_CLEAN_STATE",
+    "OPENCLASH_CONFIG_IMPORT",
+    "OPENCLASH_CONFIG_SAVE",
+    "OPENCLASH_ACTIVE_CONFIG_POINTER",
+    "OPENCLASH_FIRST_START",
+    "OPENCLASH_RESTART",
+    "OPENCLASH_CONTROLLER",
+    "ZASHBOARD_RUNTIME",
+    "OPENCLASH_RUNTIME_CONFIG_PARITY",
+    "OPENCLASH_DNS_RUNTIME",
+    "REAL_PROXY_TRAFFIC",
+    "OPENCLASH_FULLY_USABLE",
+    "ADGUARDHOME_FULLY_USABLE",
+    "ADGUARDHOME_FILTERING",
+    "ADGUARDHOME_QUERY_LOG",
+    "OPENCLASH_ADH_DNS_CHAIN",
+    "ADH_DISABLE_LEAVES_OPENCLASH_WORKING",
+    "ADH_REENABLE_RESTORES_CHAIN",
+    "NO_DNS_LOOP",
+    "NO_PORT_CONFLICT",
+    "NO_OOM_OR_MANAGEMENT_PLANE_LOSS",
+    "OPENCLASH_ADH_COEXISTENCE",
+    "FINAL_ADH_DEFAULT_OFF",
+    "REBOOT_PERSISTENCE",
+    "SYSTEM_HEALTH"
+  ],
+  "required_build_markers": [
+    "REAL_DEVICE_FULL_VALIDATION",
+    "FINAL_SOURCE_FROZEN",
+    "EXACT_SOURCE_BINDING"
+  ],
+  "source_binding": {
+    "evidence_field": "final_source_sha",
+    "validation_rerun_field": "validation_rerun_after_final_source_commit",
+    "validation_reuse_field": "validation_reused_without_rerun_after_commit",
+    "validation_reuse_must_equal": false,
+    "known_runtime_defects_field": "known_runtime_defects",
+    "known_runtime_defects_must_be_empty": true
+  },
+  "fail_closed": {
+    "missing_evidence": true,
+    "missing_marker": true,
+    "source_sha_mismatch": true,
+    "stale_evidence": true,
+    "known_runtime_defect": true
+  }
+}

@@ -1,118 +1,137 @@
 #!/usr/bin/env python3
-"""Verify the immutable Arthur OpenClash/AdGuardHome live-prebuild evidence."""
+"""Fail-closed machine gate for exact-source Arthur product evidence."""
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def fail(messages: list[str]) -> int:
-    print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=FAIL")
-    for message in messages:
-        print(f"- {message}")
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def fail(errors: list[str]) -> int:
+    print("PREBUILD_CLEAN_STATE_PRODUCT_GATE=FAIL")
+    print("REAL_DEVICE_FULL_VALIDATION=FAIL")
+    print("FINAL_SOURCE_FROZEN=FAIL")
+    print("EXACT_SOURCE_BINDING=FAIL")
+    print("BUILD_ALLOWED=false")
+    for error in errors:
+        print(f"- {error}")
     return 1
 
 
-def git_head() -> str:
+def load_json(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"missing {label}: {path}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot parse {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object: {path}")
+    return value
+
+
+def current_source_sha() -> str:
     return subprocess.check_output(
         ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.STDOUT
     ).strip()
 
 
+def get_required_list(contract: dict[str, Any], key: str) -> list[str]:
+    value = contract.get(key)
+    if not isinstance(value, list) or not value or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        raise ValueError(f"contract.{key} must be a non-empty list of marker names")
+    return value
+
+
 def main() -> int:
-    root = Path(__file__).resolve().parents[1]
-    requested = sys.argv[1] if len(sys.argv) > 1 else "HEAD"
-    try:
-        actual_head = git_head()
-        requested_head = subprocess.check_output(
-            ["git", "rev-parse", requested],
-            text=True,
-            stderr=subprocess.STDOUT,
-        ).strip()
-    except subprocess.CalledProcessError as exc:
-        return fail([f"cannot resolve source revision {requested}: {exc.output.strip()}"])
-
-    evidence_path = root / "production" / "evidence" / "prebuild-openclash-adh-live.json"
-    if not evidence_path.is_file():
-        return fail([f"missing evidence: {evidence_path}"])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("legacy_source_sha", nargs="?", help="deprecated positional source SHA")
+    parser.add_argument("--contract", default="production/product-goal-contract.json")
+    parser.add_argument(
+        "--evidence",
+        default=None,
+        help="exact live evidence JSON; defaults to PREBUILD_LIVE_EVIDENCE or the contract path",
+    )
+    parser.add_argument("--source-sha", default=None)
+    args = parser.parse_args()
 
     try:
-        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return fail([f"cannot parse evidence: {exc}"])
+        contract_path = Path(args.contract)
+        contract = load_json(contract_path, "product-goal-contract")
+        evidence_name = args.evidence or os.environ.get("PREBUILD_LIVE_EVIDENCE")
+        evidence_path = Path(evidence_name) if evidence_name else Path(contract["evidence_path"])
+        evidence = load_json(evidence_path, "live evidence")
+    except (ValueError, KeyError, TypeError) as exc:
+        return fail([str(exc)])
 
     errors: list[str] = []
-
-    def equal(path: str, actual: object, expected: object) -> None:
-        if actual != expected:
-            errors.append(f"{path} expected {expected!r}, got {actual!r}")
-
-    def true(path: str, actual: object) -> None:
-        if actual is not True:
-            errors.append(f"{path} must be true")
-
-    equal("requested revision", requested_head, actual_head)
-    equal("evidence.gate", evidence.get("gate"), "PREBUILD_OPENCLASH_ADH_LIVE_GATE")
-    equal("evidence.status", evidence.get("status"), "PASS")
-    equal("evidence.mode", evidence.get("mode"), "LIVE_NON_DISRUPTIVE")
-    validated_source_sha = evidence.get("validated_source_sha")
-    if not isinstance(validated_source_sha, str) or not validated_source_sha:
-        errors.append("evidence.validated_source_sha is missing")
-    else:
+    requested_sha = args.source_sha or args.legacy_source_sha
+    if requested_sha is None:
         try:
-            source_is_ancestor = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", validated_source_sha, actual_head],
-                check=False,
-            ).returncode == 0
-        except OSError as exc:
-            source_is_ancestor = False
-            errors.append(f"cannot verify validated source ancestry: {exc}")
-        if not source_is_ancestor:
-            errors.append(
-                "evidence.validated_source_sha is not an ancestor of the remote HEAD"
-            )
-    equal("device.address", evidence.get("device", {}).get("address"), "192.168.6.1")
-    equal("device.firmware", evidence.get("device", {}).get("firmware"), "v0.1.5")
+            requested_sha = current_source_sha()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            return fail([f"cannot resolve build source SHA: {exc}"])
+    if not isinstance(requested_sha, str) or not SHA_RE.fullmatch(requested_sha):
+        errors.append(f"build source SHA must be a 40-character lowercase Git SHA, got {requested_sha!r}")
 
-    restrictions = evidence.get("restrictions", {})
-    true("restrictions.build_forbidden", restrictions.get("build_forbidden"))
-    true("restrictions.release_forbidden", restrictions.get("release_forbidden"))
-    true("restrictions.sysupgrade_forbidden", restrictions.get("sysupgrade_forbidden"))
-    equal("restrictions.build_executed", restrictions.get("build_executed"), False)
-    equal("restrictions.release_executed", restrictions.get("release_executed"), False)
-    equal("restrictions.sysupgrade_executed", restrictions.get("sysupgrade_executed"), False)
+    if contract.get("gate") != "PREBUILD_CLEAN_STATE_PRODUCT_GATE":
+        errors.append("contract.gate is not PREBUILD_CLEAN_STATE_PRODUCT_GATE")
 
-    live = evidence.get("live_runtime_prebuild", {})
-    equal("live_runtime_prebuild.status", live.get("status"), "PASS")
+    try:
+        live_markers = get_required_list(contract, "required_live_markers")
+        build_markers = get_required_list(contract, "required_build_markers")
+    except ValueError as exc:
+        return fail([str(exc)])
 
-    equal("openclash.fully_usable", evidence.get("openclash_fully_usable"), "PASS")
-    equal("adguardhome.fully_usable", evidence.get("adguardhome_fully_usable"), "PASS")
-    equal("coexistence", evidence.get("openclash_adh_coexistence"), "PASS")
+    for marker in live_markers + build_markers:
+        if evidence.get(marker) != "PASS":
+            errors.append(f"{marker} must equal PASS")
 
-    fake_ip = evidence.get("fake_ip_runtime", {})
-    true("fake_ip_runtime.consistent", fake_ip.get("consistent"))
-    equal("fake_ip_runtime.mode", fake_ip.get("runtime_mode"), "fake-ip")
-    equal("fake_ip_runtime.zashboard", fake_ip.get("external_ui_name"), "zashboard")
+    binding = contract.get("source_binding")
+    if not isinstance(binding, dict):
+        return fail(["contract.source_binding is missing or invalid"])
 
-    lifecycle = evidence.get("lifecycle", {})
-    equal("lifecycle.sequence", lifecycle.get("sequence"), "OFF -> ON -> OFF -> ON -> OFF")
-    equal("lifecycle.status", lifecycle.get("status"), "PASS")
+    evidence_sha = evidence.get(binding.get("evidence_field", "final_source_sha"))
+    if not isinstance(evidence_sha, str) or not SHA_RE.fullmatch(evidence_sha):
+        errors.append("evidence.final_source_sha must be a 40-character lowercase Git SHA")
+    elif evidence_sha != requested_sha:
+        errors.append(
+            f"evidence.final_source_sha {evidence_sha} does not match build source SHA {requested_sha}"
+        )
 
-    final_state = evidence.get("final_state", {})
-    equal("final_state.adguardhome", final_state.get("adguardhome"), "OFF")
-    equal("final_state.openclash", final_state.get("openclash"), "RUNNING")
-    equal("final_state.dnsmasq_server", final_state.get("dnsmasq_server"), "127.0.0.1#7874")
+    rerun_field = binding.get("validation_rerun_field", "validation_rerun_after_final_source_commit")
+    if evidence.get(rerun_field) is not True:
+        errors.append(f"{rerun_field} must be true")
+
+    reuse_field = binding.get("validation_reuse_field", "validation_reused_without_rerun_after_commit")
+    if evidence.get(reuse_field) is not binding.get("validation_reuse_must_equal", False):
+        errors.append(f"{reuse_field} must be false")
+
+    defects_field = binding.get("known_runtime_defects_field", "known_runtime_defects")
+    defects = evidence.get(defects_field)
+    if binding.get("known_runtime_defects_must_be_empty", True) and defects not in ([], None):
+        errors.append(f"{defects_field} must be an empty list")
 
     if errors:
         return fail(errors)
 
-    print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS")
-    print("OPENCLASH_FULLY_USABLE=PASS")
-    print("ADGUARDHOME_FULLY_USABLE=PASS")
-    print("OPENCLASH_ADH_COEXISTENCE=PASS")
+    print("PREBUILD_CLEAN_STATE_PRODUCT_GATE=PASS")
+    print("REAL_DEVICE_FULL_VALIDATION=PASS")
+    print("FINAL_SOURCE_FROZEN=PASS")
+    print("EXACT_SOURCE_BINDING=PASS")
+    print(f"FINAL_SOURCE_SHA={requested_sha}")
+    print("BUILD_ALLOWED=true")
     return 0
 
 

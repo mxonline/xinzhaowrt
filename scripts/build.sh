@@ -9,6 +9,19 @@ source "$PROJECT_ROOT/build.env"
 # gate before touching the build output or source tree.
 "$PROJECT_ROOT/scripts/check-replacement-build-hard-gate.sh" "$PROJECT_ROOT/config/replacement-build-gate.env"
 
+# A firmware build is forbidden until a clean-state, exact-source live product
+# validation has passed.  Keep this gate before source acquisition and before
+# any build output is removed or recreated so every build entrypoint fails
+# closed, including local/CI callers that invoke build.sh directly.
+BUILD_SOURCE_SHA="${BUILD_SOURCE_SHA:-${GITHUB_SHA:-$(git -C "$PROJECT_ROOT" rev-parse HEAD)}}"
+PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
+PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
+export PREBUILD_LIVE_EVIDENCE
+"$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
+  --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
+  --evidence "$PREBUILD_LIVE_EVIDENCE" \
+  --source-sha "$BUILD_SOURCE_SHA"
+
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 [[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }
 export FIRMWARE_VERSION
@@ -89,6 +102,9 @@ ln -sfn "$SRC/package/xinzhao/openclash-core" \
   "$SRC/.xinzhao-feed/openclash-core"
 ./scripts/feeds update xinzhao
 ./scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager openclash-core
+OPENCLASH_SELECTED_MAKEFILE="$SRC/package/feeds/xinzhao/openclash-core/Makefile" \
+  bash "$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" \
+  "$SRC" "$PROJECT_ROOT/package/xinzhao/openclash-core"
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a

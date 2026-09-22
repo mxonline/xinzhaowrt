@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGER = ROOT / "scripts/stage-openclash-core.py"
 FINAL_VERIFIER = ROOT / "scripts/verify-final-rootfs-openclash-core.py"
 SOURCE_LOCK = ROOT / "config/openclash-core.lock.json"
+PREBUILD_GATE = ROOT / "scripts/check-openclash-adh-prebuild-live.py"
+
+BUILD_SOURCE_SHA = "34845c3e015162812ea1ce724a50a97a5db36159"
 
 
 def git_blob_sha1(data: bytes) -> str:
@@ -34,7 +37,31 @@ def fake_aarch64_elf() -> bytes:
     return bytes(image)
 
 
+def verify_prebuild_gate_rejects_legacy_reused_live_evidence() -> None:
+    result = subprocess.run(
+        [sys.executable, str(PREBUILD_GATE), BUILD_SOURCE_SHA],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        raise AssertionError(
+            "legacy prebuild evidence reuse must be rejected by the exact-source gate:\n"
+            + result.stdout
+        )
+    for marker in (
+        "PREBUILD_CLEAN_STATE_PRODUCT_GATE=FAIL",
+        "BUILD_ALLOWED=false",
+    ):
+        if marker not in result.stdout:
+            raise AssertionError(f"prebuild gate output is missing {marker!r}:\n{result.stdout}")
+
+
 def main() -> int:
+    verify_prebuild_gate_rejects_legacy_reused_live_evidence()
+
     lock_source = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
     if lock_source.get("source_repository") != "vernesong/OpenClash":
         raise AssertionError("Core source is not the official OpenClash repository")
@@ -50,6 +77,8 @@ def main() -> int:
     package_recipe = (ROOT / "package/xinzhao/openclash-core/Makefile").read_text(encoding="utf-8")
     if "/etc/openclash/core/clash_meta" not in package_recipe or "$(INSTALL_BIN)" not in package_recipe:
         raise AssertionError("Core package does not install an executable at OpenClash's runtime path")
+    if "RSTRIP:=:" not in package_recipe or "STRIP:=:" not in package_recipe:
+        raise AssertionError("Core package must disable stripping locally after forensic RSTRIP proof")
     package_version = re.search(r"^PKG_VERSION:=([^\s]+)$", package_recipe, re.MULTILINE)
     if not package_version or not re.fullmatch(r"0\.1\.0_alpha", package_version.group(1)):
         raise AssertionError("Core APK package version metadata must remain 0.1.0_alpha")

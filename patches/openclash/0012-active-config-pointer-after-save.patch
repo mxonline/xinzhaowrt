@@ -1,0 +1,55 @@
+diff --git a/luci-app-openclash/luasrc/controller/openclash.lua b/luci-app-openclash/luasrc/controller/openclash.lua
+--- a/luci-app-openclash/luasrc/controller/openclash.lua
++++ b/luci-app-openclash/luasrc/controller/openclash.lua
+@@ -4278,7 +4278,25 @@ function FindProxyForURLEx(url, host) {
+ local function is_safe_filename(filename)
+ 	return filename and filename:match("^[%w%._%-]+$") and not filename:match("^%.")
+ end
+ 
++-- Keep the active config pointer durable for every config-management path.
++-- The custom upload/save endpoints write the file directly and otherwise leave
++-- config_path empty on clean flash, so a later start cannot bind the saved file.
++local function ensure_active_config_path(config_path)
++	if not config_path or not config_path:match("^/etc/openclash/config/[^/]+%.ya?ml$") then
++		return false
++	end
++	if not fs.access(config_path) then
++		return false
++	end
++	local current = uci:get("openclash", "config", "config_path")
++	if not current or current == "" or not fs.access(current) then
++		uci:set("openclash", "config", "config_path", config_path)
++		uci:commit("openclash")
++	end
++	return true
++end
++
+ local function kill_process()
+ 	local cmd = string.format("%s |grep -E 'openclash|clash|mihomo' |grep -v grep |awk '{print $1}' |xargs -r kill -9 >/dev/null 2>&1", fs.ps_cmd())
+ 	SYS.call(cmd)
+@@ -4301,5 +4318,6 @@ function action_oc_action()
+ 
+ 		if uci:get("openclash", "config", "config_path") ~= config_path then
+ 			uci:set("openclash", "config", "config_path", config_path)
++			uci:commit("openclash")
+ 		end
+ 	end
+@@ -4527,6 +4544,7 @@ function action_upload_config()
+ 			return
+ 		end
+ 
++		ensure_active_config_path(target_path)
+ 		HTTP.write_json({
+ 			status = "success",
+ 			message = "Config file uploaded successfully",
+@@ -4748,6 +4765,10 @@ function action_config_file_save()
+ 		}
+ 	end
+ 
++	if not is_overwrite then
++		ensure_active_config_path(config_file)
++	end
++
+ 	HTTP.write_json({
+ 		status = "success",
+ 		message = "Config file saved successfully",

@@ -29,7 +29,7 @@ jobs:
             exit 1
           }
 
-          MODE="$(python3 - <<'PY'
+          mapfile -t REQUEST_VALUES < <(python3 - <<'PY'
           import json
           with open('production/v3-request.json', 'r', encoding='utf-8') as f:
               data = json.load(f)
@@ -46,20 +46,36 @@ jobs:
           request_id = data.get('request_id') or ''
           if not request_id:
               raise SystemExit('BLOCKED: request_id is required')
+          evidence_run_id = str(data.get('prebuild_evidence_run_id') or '')
+          if not evidence_run_id.isdigit():
+              raise SystemExit('BLOCKED: prebuild_evidence_run_id must be a numeric completed live-validation run ID')
+          evidence_artifact = data.get('prebuild_evidence_artifact_name') or ''
+          if not isinstance(evidence_artifact, str) or not evidence_artifact:
+              raise SystemExit('BLOCKED: prebuild_evidence_artifact_name is required')
           print(mode)
+          print(evidence_run_id)
+          print(evidence_artifact)
           PY
-          )"
+          )
+          [[ "${#REQUEST_VALUES[@]}" -eq 3 ]] || { echo 'BLOCKED: malformed v3 request'; exit 1; }
+          MODE="${REQUEST_VALUES[0]}"
+          PREBUILD_EVIDENCE_RUN_ID="${REQUEST_VALUES[1]}"
+          PREBUILD_EVIDENCE_ARTIFACT="${REQUEST_VALUES[2]}"
 
-          echo "Dispatching Arthur Known-Good Update v3 with mode=$MODE"
+          echo "Dispatching Arthur Known-Good Update v3 with mode=$MODE and exact-source evidence run=$PREBUILD_EVIDENCE_RUN_ID"
           gh workflow run arthur-update-v3.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f mode="$MODE"
+            -f mode="$MODE" \
+            -f prebuild_evidence_run_id="$PREBUILD_EVIDENCE_RUN_ID" \
+            -f prebuild_evidence_artifact_name="$PREBUILD_EVIDENCE_ARTIFACT"
 
           {
             echo '## Arthur v3 auto trigger'
             echo
             echo "- Request commit: \`${GITHUB_SHA}\`"
             echo "- Mode: \`${MODE}\`"
+            echo "- Exact-source evidence run: \`${PREBUILD_EVIDENCE_RUN_ID}\`"
+            echo "- Evidence artifact: \`${PREBUILD_EVIDENCE_ARTIFACT}\`"
             echo '- Dispatched workflow: `Arthur Known-Good Update v3`'
           } >> "$GITHUB_STEP_SUMMARY"

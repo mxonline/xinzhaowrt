@@ -14,6 +14,14 @@ name: Arthur Known-Good Update v3
           - update_feeds
           - update_plugins
           - update_all
+      prebuild_evidence_run_id:
+        description: Completed real-device validation run that uploaded exact-source clean-state evidence
+        required: true
+        type: string
+      prebuild_evidence_artifact_name:
+        description: Artifact containing prebuild-clean-state-product.json
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -123,6 +131,32 @@ jobs:
             arthur-known-good-${{ runner.os }}-
             arthur-${{ runner.os }}-
 
+      - name: Download exact-source clean-state product evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN_ID: ${{ inputs.prebuild_evidence_run_id }}
+          EVIDENCE_ARTIFACT: ${{ inputs.prebuild_evidence_artifact_name }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$EVIDENCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: prebuild evidence run ID must be numeric'; exit 1; }
+          [[ -n "$EVIDENCE_ARTIFACT" ]] || { echo 'BLOCKED: prebuild evidence artifact name is required'; exit 1; }
+          mkdir -p output/real-device
+          gh run download "$EVIDENCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$EVIDENCE_ARTIFACT" \
+            --dir output/real-device
+          evidence="$(find output/real-device -type f -name 'prebuild-clean-state-product.json' -print -quit)"
+          [[ -n "$evidence" ]] || { echo 'BLOCKED: exact-source clean-state product evidence is missing'; exit 1; }
+          cp -- "$evidence" output/real-device/prebuild-clean-state-product.json
+
+      - name: Enforce PREBUILD_CLEAN_STATE_PRODUCT_GATE
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/check-openclash-adh-prebuild-live.py \
+            --contract production/product-goal-contract.json \
+            --evidence output/real-device/prebuild-clean-state-product.json \
+            --source-sha "$GITHUB_SHA"
+
       - name: Build Candidate from locked sources
         env:
           USE_KNOWN_GOOD_LOCK: '1'
@@ -130,6 +164,8 @@ jobs:
           JOBS: '2'
           QUIET_BUILD: '1'
           REUSE_SOURCE: '0'
+          BUILD_SOURCE_SHA: ${{ github.sha }}
+          PREBUILD_LIVE_EVIDENCE: ${{ github.workspace }}/output/real-device/prebuild-clean-state-product.json
         run: ./scripts/build.sh
 
       - name: Enforce Candidate acceptance gates
