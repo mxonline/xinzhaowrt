@@ -1,0 +1,41 @@
+name: Arthur ZRAM Minimal Linux Closure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zram-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout final repair source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux build dependencies
+        run: ./scripts/codex-setup.sh
+
+      - name: Restore closure caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/zram-closure/immortalwrt/dl
+            work/zram-closure/immortalwrt/.ccache
+          key: arthur-zram-closure-${{ runner.os }}-${{ hashFiles('build.env', 'config/**', 'scripts/**', 'files/**') }}
+
+      - name: Run kernel/package-only ZRAM closure
+        run: |
+          set -Eeuo pipefail
+          bash ./scripts/zram-closure.sh
+
+      - name: Upload closure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arthur-zram-closure-${{ github.run_id }}
+          path: output/zram-closure
+          if-no-files-found: error

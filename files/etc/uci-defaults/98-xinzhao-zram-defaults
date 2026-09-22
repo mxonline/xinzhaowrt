@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -u
+
+# zram-swap reads these values from the first system UCI section. This overlay
+# configures compressed RAM only; it never creates or enables a swapfile.
+uci -q set system.@system[0].zram_size_mb='192'
+uci -q set system.@system[0].zram_comp_algo='lz4'
+uci -q commit system || exit 0
+
+exit 0
