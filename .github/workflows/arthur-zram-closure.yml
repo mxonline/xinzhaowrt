@@ -1,7 +1,15 @@
 name: Arthur ZRAM Minimal Linux Closure
 
 on:
+  push:
+    branches:
+      - codex/arthur-repair-candidate-20260920
   workflow_dispatch:
+
+env:
+  CONTROL_ONLY: "true"
+  RUNTIME_BEHAVIOR_CHANGED: "false"
+  REAL_DEVICE_EVIDENCE_REUSE_ALLOWED: "true"
 
 permissions:
   contents: read
@@ -11,6 +19,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
+      - name: Record control-only provenance
+        run: |
+          echo "CONTROL_ONLY=true"
+          echo "RUNTIME_BEHAVIOR_CHANGED=false"
+          echo "REAL_DEVICE_EVIDENCE_REUSE_ALLOWED=true"
+
       - name: Checkout final repair source
         uses: actions/checkout@v4
         with:
