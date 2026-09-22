@@ -218,14 +218,7 @@ dhcp:
     lease_duration: 86400
     ra_slaac_only: false
     ra_allow_slaac: false
-clients:
-  runtime_sources:
-    whois: true
-    arp: true
-    rdns: true
-    dhcp: true
-    hosts: true
-  persistent: []
+clients: []
 log_compress: false
 log_localtime: false
 log_max_backups: 0
