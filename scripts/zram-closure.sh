@@ -42,7 +42,7 @@ run_make() {
   local target="$1"
   shift
   case "$target" in
-    world|target/install|target/linux/install|package/install|tools/install|toolchain/install)
+    world|target/install|target/linux/install|package/install|tools/install)
       fail "forbidden make target requested: $target"
       ;;
   esac
@@ -116,6 +116,7 @@ grep -Fq "uci -q set system.@system[0].zram_comp_algo='lz4'" \
   "$SRC/files/etc/uci-defaults/98-xinzhao-zram-defaults" || fail 'LZ4 default missing from staged source'
 
 assert_no_firmware_artifacts
+run_make toolchain/install V=s -j"$JOBS"
 run_make target/linux/prepare V=s -j"$JOBS"
 run_make target/linux/compile V=s -j"$JOBS"
 run_make package/kernel/linux/prepare V=s -j"$JOBS"
