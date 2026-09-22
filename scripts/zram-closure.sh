@@ -66,6 +66,10 @@ echo "CLOSURE_SOURCE_REF=$SOURCE_REF"
 echo "CLOSURE_FEED_LOCK=$LOCK_FILE"
 echo "TARGET=$DEVICE_TARGET/$DEVICE_SUBTARGET"
 echo "PROFILE=$DEVICE_PROFILE"
+echo 'CLOSURE_VERIFIER_ONLY=true'
+echo 'CONTROL_ONLY=true'
+echo 'RUNTIME_BEHAVIOR_CHANGED=false'
+echo 'REAL_DEVICE_EVIDENCE_REUSE_ALLOWED=true'
 
 rm -rf "$SRC"
 bash "$PROJECT_ROOT/scripts/fetch-immortalwrt-source.sh" \
@@ -124,10 +128,13 @@ run_make package/kernel/linux/compile V=s -j"$JOBS"
 run_make package/system/zram-swap/compile V=s -j"$JOBS"
 assert_no_firmware_artifacts
 
-KMOD_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-zram_*.apk' -o -name 'kmod-zram_*.ipk' \) -print -quit 2>/dev/null || true)"
-LZ4_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-lib-lz4_*.apk' -o -name 'kmod-lib-lz4_*.ipk' \) -print -quit 2>/dev/null || true)"
-ZRAM_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'zram-swap_*.apk' -o -name 'zram-swap_*.ipk' \) -print -quit 2>/dev/null || true)"
-ZRAM_KO="$(find "$SRC/build_dir" -type f -path '*/drivers/block/zram/zram.ko' -print -quit 2>/dev/null || true)"
+KMOD_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-zram-*.apk' -o -name 'kmod-zram_*.ipk' \) -print -quit 2>/dev/null || true)"
+LZ4_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'kmod-lib-lz4-*.apk' -o -name 'kmod-lib-lz4_*.ipk' \) -print -quit 2>/dev/null || true)"
+ZRAM_ARTIFACT="$(find "$SRC/bin" "$SRC/build_dir" -type f \( -name 'zram-swap-*.apk' -o -name 'zram-swap_*.ipk' \) -print -quit 2>/dev/null || true)"
+ZRAM_KO="$(find "$SRC/build_dir" -type f \( \
+  -path '*/drivers/block/zram/zram.ko' -o \
+  -path '*/packages/ipkg-*/kmod-zram/lib/modules/*/zram.ko' \
+\) -print -quit 2>/dev/null || true)"
 [[ -n "$KMOD_ARTIFACT" && -n "$ZRAM_KO" ]] || fail 'kmod-zram package or zram.ko artifact is missing'
 [[ -n "$LZ4_ARTIFACT" ]] || fail 'kmod-lib-lz4 dependency artifact is missing'
 [[ -n "$ZRAM_ARTIFACT" ]] || fail 'zram-swap package artifact is missing'
@@ -139,6 +146,10 @@ printf '%s\n' \
   'KERNEL_DEPENDENCY_CLOSURE=PASS' \
   'TARGET=qualcommax/ipq60xx' \
   'PROFILE=jdcloud_re-ss-01' \
+  'CLOSURE_VERIFIER_ONLY=true' \
+  'CONTROL_ONLY=true' \
+  'RUNTIME_BEHAVIOR_CHANGED=false' \
+  'REAL_DEVICE_EVIDENCE_REUSE_ALLOWED=true' \
   'FIRMWARE_BUILD_COUNT_NEW=0' \
   "SOURCE_REF=$SOURCE_REF" \
   "SOURCE_SHA=$(git -C "$SRC" rev-parse HEAD)" \

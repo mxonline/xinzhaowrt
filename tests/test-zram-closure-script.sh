@@ -43,5 +43,12 @@ fi
 grep -Fq 'runs-on: ubuntu-24.04' "$WORKFLOW" || fail 'closure must run on GitHub-hosted Linux'
 grep -Fq 'scripts/zram-closure.sh' "$WORKFLOW" || fail 'workflow does not invoke the closure script'
 grep -Fq 'LZ4_ARTIFACT=' "$SCRIPT" || fail 'closure does not verify the LZ4 kernel dependency artifact'
+grep -Fq -- "-name 'kmod-zram-*.apk'" "$SCRIPT" || fail 'closure does not match actual kmod-zram APK names'
+grep -Fq -- "-name 'kmod-lib-lz4-*.apk'" "$SCRIPT" || fail 'closure does not match actual kmod-lib-lz4 APK names'
+grep -Fq -- "-name 'zram-swap-*.apk'" "$SCRIPT" || fail 'closure does not match actual zram-swap APK names'
+grep -Fq -- "-path '*/packages/ipkg-*/kmod-zram/lib/modules/*/zram.ko'" "$SCRIPT" || fail 'closure does not accept the packaged zram.ko output path'
+grep -Fq 'CONTROL_ONLY=true' "$WORKFLOW" || fail 'workflow does not mark the run control-only'
+grep -Fq 'RUNTIME_BEHAVIOR_CHANGED=false' "$WORKFLOW" || fail 'workflow does not declare runtime behavior unchanged'
+grep -Fq 'REAL_DEVICE_EVIDENCE_REUSE_ALLOWED=true' "$WORKFLOW" || fail 'workflow does not allow reuse of real-device evidence'
 
 echo 'ZRAM_CLOSURE_SCRIPT_CONTRACT=PASS'
