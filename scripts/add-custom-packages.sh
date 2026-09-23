@@ -303,14 +303,6 @@ OPENCLASH_ARTHUR_RUNTIME_PATCH="$PROJECT_ROOT/patches/openclash/0010-arthur-coex
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_ARTHUR_RUNTIME_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_ARTHUR_RUNTIME_PATCH"
 echo "APPLIED_PATCH: Arthur OpenClash memory guard and DNS coexistence lifecycle"
-OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH="$PROJECT_ROOT/patches/openclash/0011-arthur-default-no-dns-hijack.patch"
-[[ -f "$OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH" ]] || {
-  echo "ERROR: Arthur OpenClash default DNS patch missing: $OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH" >&2
-  exit 1
-}
-git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH"
-git -C "$SOURCES/OpenClash" apply "$OPENCLASH_ARTHUR_DEFAULT_DNS_PATCH"
-echo "APPLIED_PATCH: Arthur OpenClash default DNS redirect disabled"
 OPENCLASH_ACTIVE_POINTER_PATCH="$PROJECT_ROOT/patches/openclash/0012-active-config-pointer-after-save.patch"
 [[ -f "$OPENCLASH_ACTIVE_POINTER_PATCH" ]] || {
   echo "ERROR: OpenClash active config pointer patch missing: $OPENCLASH_ACTIVE_POINTER_PATCH" >&2

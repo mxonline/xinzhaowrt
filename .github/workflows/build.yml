@@ -55,7 +55,7 @@ jobs:
           VALIDATION_BUILD: ${{ inputs.validation_build }}
           PUBLISH_CANDIDATE: ${{ github.event.inputs.publish_candidate || 'true' }}
           ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
-          EXPECTED_ARTHUR_CANDIDATE_SHA: f664a1cf83e73b23caedf9d09a70e93df49f9e24
+          EXPECTED_ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
           PROJECT_ROOT: ${{ github.workspace }}
         run: bash build-controller/scripts/check-arthur-validation-build.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -165,7 +165,7 @@ jobs:
           VALIDATION_BUILD: ${{ inputs.validation_build }}
           PUBLISH_CANDIDATE: ${{ github.event.inputs.publish_candidate || 'true' }}
           ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
-          EXPECTED_ARTHUR_CANDIDATE_SHA: f664a1cf83e73b23caedf9d09a70e93df49f9e24
+          EXPECTED_ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
         run: |
           REF='${{ github.event.inputs.source_ref }}'
           if [ -z "$REF" ]; then REF=main; fi
