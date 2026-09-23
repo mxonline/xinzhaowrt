@@ -1,19 +1,16 @@
 diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/root/etc/init.d/openclash
 --- a/luci-app-openclash/root/etc/init.d/openclash
 +++ b/luci-app-openclash/root/etc/init.d/openclash
-@@ -532,12 +532,23 @@ do_run_file()
+@@ -583,22 +583,31 @@ do_run_file()
     rm -rf "/etc/openclash/cache.db"
     rm -rf "/etc/openclash/clash"
-
+-
++
 -   ln -s "$meta_core_path" /etc/openclash/clash
 -
 -   if [ -n "$OIX_TOKEN" ]; then
 -      core_type="Oix"
 -   elif [ "$smart_enable" -eq 1 ] || [ "$core_type" == "Smart" ]; then
--      core_type="Smart"
--   else
--      core_type="Meta"
--   fi
 +   smart_core_path="${meta_core_path%/*}/clash_smart"
 +   smart_core_sha_path="${meta_core_path%/*}/clash_smart.sha256"
 +   selected_core_path=$(/bin/sh /usr/libexec/xinzhao-openclash-core-select \
@@ -22,21 +19,30 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
 +      start_fail
 +   }
 +   if [ "$selected_core_path" = "$smart_core_path" ]; then
-+      core_type="Smart"
+       core_type="Smart"
 +      meta_core_path="$smart_core_path"
 +      LOG_TIP "SMART_CORE_EXECUTABLE=PASS pinned bundle hash verified"
 +      LOG_TIP "SMART_CORE_SELECTED=PASS active config contains type: smart"
 +   elif [ -n "$OIX_TOKEN" ]; then
 +      core_type="Oix"
-+   else
-+      core_type="Meta"
-+   fi
+    else
+       core_type="Meta"
+    fi
 +   ln -s "$meta_core_path" /etc/openclash/clash
-@@ -549,1 +560,1 @@ do_run_file()
+-
++
+    if [ -f "$CLASH" ] && [ ! -x "$CLASH" ]; then
+       chmod 4755 "$CLASH"
+       chown root:root "$CLASH"
+    fi
+-
++
 -   [ ! -f "$CLASH" ] || { [ "$core_type" = "Smart" ] && [ -z "$($CLASH -v | grep 'smart')" ] && [ -z "$($CLASH -v | grep 'oix')" ]; } || { [ "$core_type" = "Oix" ] && [ -z "$($CLASH -v | grep 'oix')" ]; } && {
 +   [ "$core_type" != "Smart" ] && { [ ! -f "$CLASH" ] || { [ "$core_type" = "Smart" ] && [ -z "$($CLASH -v | grep 'smart')" ] && [ -z "$($CLASH -v | grep 'oix')" ]; } || { [ "$core_type" = "Oix" ] && [ -z "$($CLASH -v | grep 'oix')" ]; } && {
-@@ -740,6 +752,10 @@ check_core_status()
-    if [ -z "$(pidof clash)" ]; then
+       LOG_TIP "【$core_type】Core is not Detected installed, Ready to Download..."
+       /usr/share/openclash/openclash_core.sh "$core_type"
+       if [ ! -f "$meta_core_path" ]; then
+@@ -808,6 +817,10 @@ check_core_status()
        LOG_ERROR "Core Start Failed, Please Check The Log Infos!"
        start_fail
     fi
@@ -44,12 +50,16 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
 +      LOG_TIP "SMART_CONFIG_PARSE=PASS"
 +      LOG_TIP "OPENCLASH_SMART_START=PASS"
 +   fi
-    # redirect dns setting after core started, prevent core dns lookup failure
-    if [ "$1" == "start" ]; then
+-
++
+    if [ "$1" == "start" ] && [ -x /usr/libexec/xinzhao-dns-coexist ]; then
+       if ! arthur_coexist openclash-ready; then
 diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 --- a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 +++ b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
-@@ -43,2 +43,8 @@
+@@ -109,12 +109,24 @@ if [ -z "$DIRECT_CORE_URL" ]; then
+    fi
+ fi
  CORE_TYPE="$1"
 +if [ "$CORE_TYPE" = "Smart" ]; then
 +   LOG_TIP "Pinned firmware Smart Core is immutable; online Smart Core replacement is disabled"
@@ -69,5 +79,6 @@ diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luc
 +   del_lock
 +   exit 0
 +fi
-
  small_flash_memory=$(uci_get_config "small_flash_memory")
+ CPU_MODEL=$(uci_get_config "core_version")
+ RELEASE_BRANCH=$(uci_get_config "release_branch" || echo "master")
