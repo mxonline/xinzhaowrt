@@ -32,19 +32,15 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
  
 +   if [ "$1" == "start" ] && [ -x /usr/libexec/xinzhao-dns-coexist ]; then
 +      if ! arthur_coexist openclash-ready; then
-+         LOG_WARN "Arthur DNS coexistence readiness failed; keeping OpenClash DNS redirect disabled"
++         LOG_WARN "Arthur DNS coexistence readiness failed; preserving OpenClash DNS redirect configuration"
 +      fi
 +   fi
 +
     # redirect dns setting after core started, prevent core dns lookup failure
-@@ -797,4 +803,8 @@
+@@ -797,4 +803,4 @@
     if [ "$1" == "start" ]; then
 -      change_dnsmasq "$enable_redirect_dns"
-+      if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
-+         enable_redirect_dns=0
-+      else
-+         change_dnsmasq "$enable_redirect_dns"
-+      fi
++      change_dnsmasq "$enable_redirect_dns"
        set_firewall
        LOG_TIP "OpenClash Start Successful!"
 @@ -803,7 +803,9 @@
@@ -71,7 +67,7 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
     procd_set_param respawn 300 5 3
     procd_set_param stderr 1
     procd_set_param no_new_privs 1
-@@ -3602,3 +3602,13 @@
+@@ -3602,3 +3602,10 @@
     LOG_TIP "OpenClash Start Running..."
  
 +   if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
@@ -79,9 +75,6 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
 +         LOG_ERROR "Arthur memory/DNS preflight rejected OpenClash start"
 +         return 0
 +      fi
-+      # The UCI mutation must also update this shell's already-loaded values.
-+      enable_redirect_dns=0
-+      redirect_dns=0
 +   fi
 +
     {
@@ -115,13 +108,11 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
     procd_open_instance "openclash-watchdog"
     procd_set_param command "/usr/share/openclash/openclash_watchdog.sh"
     procd_close_instance
-@@ -3834,4 +3841,7 @@
+@@ -3834,4 +3841,5 @@
  reload_service()
  {
     get_config
-+   if [ -x /usr/libexec/xinzhao-dns-coexist ]; then
-+      enable_redirect_dns=0
-+   fi
++   # DNS redirect stays OpenClash-owned.
     MAX_RELOAD=10
 @@ -3860,4 +3867,5 @@
        LOG_OUT "【${CUR_RELOAD_NUM}/$MAX_RELOAD】Reload OpenClash Firewall Rules..."

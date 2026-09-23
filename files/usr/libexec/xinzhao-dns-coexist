@@ -273,10 +273,8 @@ restore_agh() {
 prepare_openclash() {
 	memory_ok || return 1
 	save_state || return 1
-	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
-	set_if_changed openclash.config.redirect_dns 0 || return 1
 	commit_all || return 1
-	log "OpenClash prepared with DNS redirect/hijack disabled"
+	log "OpenClash memory preflight complete; DNS redirect remains OpenClash-owned"
 }
 
 prepare_adh() {
@@ -289,8 +287,6 @@ prepare_adh() {
 	else
 		yaml_restore_upstream "$file" || return 1
 	fi
-	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
-	set_if_changed openclash.config.redirect_dns 0 || return 1
 	set_if_changed AdGuardHome.AdGuardHome.redirect none || return 1
 	commit_all || return 1
 }
@@ -305,8 +301,6 @@ adh_ready() {
 	else
 		yaml_restore_upstream "$file" || return 1
 	fi
-	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
-	set_if_changed openclash.config.redirect_dns 0 || return 1
 	[ "$(get AdGuardHome.AdGuardHome.redirect)" = "dnsmasq-upstream" ] || need_redirect=1
 	set_if_changed AdGuardHome.AdGuardHome.redirect dnsmasq-upstream || return 1
 	commit_all || return 1
@@ -320,8 +314,6 @@ adh_ready() {
 openclash_ready() {
 	wait_port "$OC_PORT" 30 || { log "OpenClash did not listen on $OC_PORT"; return 1; }
 	save_state || return 1
-	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
-	set_if_changed openclash.config.redirect_dns 0 || return 1
 	if adh_enabled; then
 		if ! adh_running; then
 			/etc/init.d/AdGuardHome start || return 1
@@ -355,8 +347,6 @@ adh_stopped() {
 }
 
 openclash_stopped() {
-	set_if_changed openclash.config.enable_redirect_dns 0 || return 1
-	set_if_changed openclash.config.redirect_dns 0 || return 1
 	commit_all || return 1
 	if adh_enabled && adh_running; then
 		local file

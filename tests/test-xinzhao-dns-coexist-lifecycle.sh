@@ -50,6 +50,45 @@ adh_stopped
 echo XINZHAO_DNS_COEXIST_ADH_STOP_OC_READY=PASS
 
 (
+  # OpenClash owns its DNS redirect lifecycle when AdGuardHome is disabled.
+  set_if_changed() {
+    case "$1" in
+      openclash.config.enable_redirect_dns|openclash.config.redirect_dns)
+        echo "FAIL: coordinator overrode OpenClash-owned DNS state: $1=$2" >&2
+        exit 1
+        ;;
+    esac
+  }
+  memory_ok() { return 0; }
+  save_state() { :; }
+  get() {
+    case "$1" in
+      openclash.config.enable_redirect_dns) echo 1 ;;
+      openclash.config.redirect_dns) echo 1 ;;
+      AdGuardHome.AdGuardHome.enabled) echo 0 ;;
+      *) echo '' ;;
+    esac
+  }
+  oc_running() { return 0; }
+  adh_enabled() { return 1; }
+  adh_running() { return 1; }
+  wait_port() { [ "$1" = 7874 ]; }
+  restore_agh() { :; }
+  commit_all() { :; }
+  set_dnsmasq_upstream() {
+    [ "$1" = 7874 ] || {
+      echo "FAIL: ADH-off OpenClash upstream changed to $1" >&2
+      exit 1
+    }
+  }
+
+  prepare_openclash
+  openclash_ready
+)
+
+echo XINZHAO_DNS_COEXIST_ADH_OFF_PRESERVES_OPENCLASH_DNS=PASS
+
+(
   attempts=0
   mkdir() {
     attempts=$((attempts + 1))

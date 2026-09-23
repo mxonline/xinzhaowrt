@@ -10,7 +10,6 @@ targets="$root/production/ARTHUR_PRODUCT_TARGETS.md"
 coordinator="$root/files/usr/libexec/xinzhao-dns-coexist"
 agh_init="$root/files/etc/init.d/AdGuardHome"
 openclash_patch="$root/patches/openclash/0010-arthur-coexistence-memory-and-dns.patch"
-default_dns_patch="$root/patches/openclash/0011-arthur-default-no-dns-hijack.patch"
 lowmem_helper="$root/files/usr/libexec/xinzhao-openclash-lowmem-config"
 device_verify="$root/scripts/real-device-verify.ps1"
 
@@ -61,7 +60,7 @@ grep -Fq 'xinzhao-openclash-lowmem-config' "$openclash_patch" || fail 'OpenClash
 grep -Fq '"$TMP_CONFIG_FILE" "$dns_port" "$cn_port"' "$openclash_patch" || fail 'low-memory staging does not run on the generated OpenClash YAML'
 grep -Fq 'QUICK_START=false' "$openclash_patch" || fail 'OpenClash quick-start bypasses dashboard/DNS runtime generation'
 ! grep -Fq 'line = "  enhanced-mode: redir-host"' "$lowmem_helper" || fail 'low-memory helper still overrides user DNS enhanced-mode'
-grep -Fq "option enable_redirect_dns '0'" "$default_dns_patch" || fail 'OpenClash default DNS hijack disable patch is missing'
+[[ ! -e "$root/patches/openclash/0011-arthur-default-no-dns-hijack.patch" ]] || fail 'obsolete patch still disables OpenClash DNS hijack'
 
 source_root="${OPENCLASH_SOURCE_ROOT:-$root/work/feed-check/immortalwrt/feeds/luci/applications}"
 source_dir="$source_root/luci-app-openclash"
@@ -79,6 +78,9 @@ cp -R "$source_dir" "$tmp_dir/luci-app-openclash"
     git apply --no-index "$patch"
   done
 )
+grep -Fq "option enable_redirect_dns '1'" "$tmp_dir/luci-app-openclash/root/etc/config/openclash" || fail 'OpenClash Dnsmasq Redirect is not enabled by package default'
+! grep -Eq '^\+.*(enable_redirect_dns|redirect_dns)=0' "$openclash_patch" || fail 'Arthur OpenClash patch still forces DNS hijack off'
+grep -Fq 'change_dnsmasq "$enable_redirect_dns"' "$tmp_dir/luci-app-openclash/root/etc/init.d/openclash" || fail 'native OpenClash Dnsmasq Redirect handler was removed'
 pass 'complete OpenClash candidate patch series applies to prepared source'
 
 pass 'SOT, ports, default state, lifecycle, memory guards and patch application verified'
