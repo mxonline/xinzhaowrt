@@ -148,9 +148,6 @@ def main() -> int:
     selector_included = selector_included and rootfs_selector.read_bytes() == selector.read_bytes()
     require(selector_included,
             "final rootfs Smart Core selector differs from the verified source selector")
-    selector_executable = bool(rootfs_selector.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
-    if os.name != "nt":
-        require(selector_executable, "Smart Core selector is not executable in final rootfs")
 
     config = read(rootfs / "etc/config/openclash", "OpenClash default UCI config")
     require(re.search(r"(?m)^\s*option small_flash_memory '0'\s*$", config) is not None,
@@ -185,9 +182,8 @@ def main() -> int:
     print(f"SMART_CORE_EXECUTABLE={'PASS' if smart_executable else 'UNVERIFIED' if os.name == 'nt' else 'FAIL'}")
     print(f"SMART_CORE_SHA256_VALUE={smart_digest}")
     emit_marker("SMART_CORE_SHA256", smart_sha_verified and hashlib.sha256(smart_data).hexdigest() == expected_smart_digest)
-    emit_marker("SMART_CORE_SELECTOR_INCLUDED", selector_included and (os.name == "nt" or bool(rootfs_selector.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))))
+    emit_marker("SMART_CORE_SELECTOR_INCLUDED", selector_included)
     print(f"SMART_CORE_SELECTOR_SHA256={hashlib.sha256(rootfs_selector.read_bytes()).hexdigest()}")
-    print(f"SMART_CORE_SELECTOR_EXECUTABLE={'PASS' if selector_executable else 'UNVERIFIED' if os.name == 'nt' else 'FAIL'}")
     return 0
 
 

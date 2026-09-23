@@ -245,9 +245,8 @@ def main() -> int:
         expected_exec_marker = "SMART_CORE_EXECUTABLE=PASS" if os.name != "nt" else "SMART_CORE_EXECUTABLE=UNVERIFIED"
         if expected_exec_marker not in final.stdout.splitlines():
             raise AssertionError(f"final verifier did not report executable status from rootfs mode bits:\n{final.stdout}")
-        expected_selector_exec = "SMART_CORE_SELECTOR_EXECUTABLE=PASS" if os.name != "nt" else "SMART_CORE_SELECTOR_EXECUTABLE=UNVERIFIED"
-        if expected_selector_exec not in final.stdout.splitlines():
-            raise AssertionError(f"final verifier did not report selector executable status from rootfs mode bits:\n{final.stdout}")
+        if os.name != "nt" and rootfs_selector.stat().st_mode & 0o111:
+            raise AssertionError("selector fixture must model the mode-0644 shell script invoked through /bin/sh")
 
         original_smart = final_smart.read_bytes()
         final_smart.write_bytes(original_smart[:-1] + bytes([original_smart[-1] ^ 1]))
@@ -323,19 +322,6 @@ def main() -> int:
             if not_executable.returncode == 0 or "SMART_CORE_EXECUTABLE=PASS" in not_executable.stdout:
                 raise AssertionError(f"non-executable Smart Core was accepted or emitted an executable PASS:\n{not_executable.stdout}")
             final_smart.chmod(smart_mode)
-
-            selector_mode = rootfs_selector.stat().st_mode
-            rootfs_selector.chmod(selector_mode & ~0o111)
-            selector_not_executable = subprocess.run(
-                [sys.executable, str(FINAL_VERIFIER), str(rootfs), str(manifest), str(source_root), "--lock", str(SOURCE_LOCK)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-            )
-            if selector_not_executable.returncode == 0 or "SMART_CORE_SELECTOR_INCLUDED=PASS" in selector_not_executable.stdout:
-                raise AssertionError(f"non-executable selector was accepted or emitted an inclusion PASS:\n{selector_not_executable.stdout}")
-            rootfs_selector.chmod(selector_mode)
 
         corrupted_core = bytearray(core)
         corrupted_core[30] = 1
