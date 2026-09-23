@@ -24,7 +24,7 @@ ARTHUR_CANDIDATE_SHA="${ARTHUR_CANDIDATE_SHA:?ERROR: ARTHUR_CANDIDATE_SHA must b
   exit 1
 }
 if [[ "${VALIDATION_BUILD:-false}" == true ]]; then
-  PROJECT_ROOT="$PROJECT_ROOT" "$CONTROL_ROOT/scripts/check-arthur-validation-build.sh"
+  PROJECT_ROOT="$PROJECT_ROOT" bash "$CONTROL_ROOT/scripts/check-arthur-validation-build.sh"
 else
   FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
   FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/source-binding.txt}"
