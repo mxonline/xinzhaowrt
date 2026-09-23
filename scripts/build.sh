@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_ROOT}"
+CONTROL_ROOT="${CONTROL_ROOT:-$SCRIPT_ROOT}"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
 
@@ -21,31 +23,35 @@ ARTHUR_CANDIDATE_SHA="${ARTHUR_CANDIDATE_SHA:?ERROR: ARTHUR_CANDIDATE_SHA must b
   echo 'ERROR: ARTHUR_CANDIDATE_SHA must be a 40-character lowercase Git SHA' >&2
   exit 1
 }
-FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
-FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/source-binding.txt}"
-FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
-FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
-"$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
-  --candidate-sha "$ARTHUR_CANDIDATE_SHA" \
-  --closure "$FINAL_GATE_CLOSURE" \
-  --source-binding "$FINAL_GATE_SOURCE_BINDING" \
-  --live "$FINAL_GATE_LIVE" \
-  --output "$FINAL_GATE_OUTPUT"
-grep -Fqx 'BUILD_ALLOWED=true' "$FINAL_GATE_OUTPUT" || {
-  echo 'ERROR: final source gate did not emit BUILD_ALLOWED=true' >&2
-  exit 1
-}
-grep -Fqx "FINAL_SOURCE_SHA=$ARTHUR_CANDIDATE_SHA" "$FINAL_GATE_OUTPUT" || {
-  echo 'ERROR: final source gate SHA does not match ARTHUR_CANDIDATE_SHA' >&2
-  exit 1
-}
-PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
-PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
-export PREBUILD_LIVE_EVIDENCE
-"$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
-  --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
-  --evidence "$PREBUILD_LIVE_EVIDENCE" \
-  --source-sha "$ARTHUR_CANDIDATE_SHA"
+if [[ "${VALIDATION_BUILD:-false}" == true ]]; then
+  PROJECT_ROOT="$PROJECT_ROOT" "$CONTROL_ROOT/scripts/check-arthur-validation-build.sh"
+else
+  FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
+  FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/source-binding.txt}"
+  FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
+  FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
+  "$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
+    --candidate-sha "$ARTHUR_CANDIDATE_SHA" \
+    --closure "$FINAL_GATE_CLOSURE" \
+    --source-binding "$FINAL_GATE_SOURCE_BINDING" \
+    --live "$FINAL_GATE_LIVE" \
+    --output "$FINAL_GATE_OUTPUT"
+  grep -Fqx 'BUILD_ALLOWED=true' "$FINAL_GATE_OUTPUT" || {
+    echo 'ERROR: final source gate did not emit BUILD_ALLOWED=true' >&2
+    exit 1
+  }
+  grep -Fqx "FINAL_SOURCE_SHA=$ARTHUR_CANDIDATE_SHA" "$FINAL_GATE_OUTPUT" || {
+    echo 'ERROR: final source gate SHA does not match ARTHUR_CANDIDATE_SHA' >&2
+    exit 1
+  }
+  PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
+  PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
+  export PREBUILD_LIVE_EVIDENCE
+  "$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
+    --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
+    --evidence "$PREBUILD_LIVE_EVIDENCE" \
+    --source-sha "$ARTHUR_CANDIDATE_SHA"
+fi
 
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 [[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }

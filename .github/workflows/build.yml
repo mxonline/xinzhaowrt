@@ -3,6 +3,16 @@ name: Build XinZhaoWrt Arthur
 'on':
   workflow_dispatch:
     inputs:
+      validation_build:
+        description: Build the frozen Arthur candidate for validation only; never publish
+        required: true
+        default: true
+        type: boolean
+      arthur_candidate_sha:
+        description: Exact frozen Arthur firmware candidate SHA
+        required: true
+        default: f664a1cf83e73b23caedf9d09a70e93df49f9e24
+        type: string
       source_ref:
         description: Verified immortalwrt commit, branch or tag
         required: true
@@ -24,8 +34,30 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout build project
+      - name: Checkout exact Arthur candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.arthur_candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout validation build controller
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: build-controller
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate validation-build-only dispatch
+        env:
+          GITHUB_ACTIONS: 'true'
+          VALIDATION_BUILD: ${{ inputs.validation_build }}
+          PUBLISH_CANDIDATE: ${{ github.event.inputs.publish_candidate || 'true' }}
+          ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
+          EXPECTED_ARTHUR_CANDIDATE_SHA: f664a1cf83e73b23caedf9d09a70e93df49f9e24
+          PROJECT_ROOT: ${{ github.workspace }}
+        run: bash build-controller/scripts/check-arthur-validation-build.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Free runner disk space
         run: |
@@ -128,13 +160,41 @@ jobs:
           JOBS: '2'
           QUIET_BUILD: '1'
           REUSE_SOURCE: '0'
+          PROJECT_ROOT: ${{ github.workspace }}
+          CONTROL_ROOT: ${{ github.workspace }}/build-controller
+          VALIDATION_BUILD: ${{ inputs.validation_build }}
+          PUBLISH_CANDIDATE: ${{ github.event.inputs.publish_candidate || 'true' }}
+          ARTHUR_CANDIDATE_SHA: ${{ inputs.arthur_candidate_sha }}
+          EXPECTED_ARTHUR_CANDIDATE_SHA: f664a1cf83e73b23caedf9d09a70e93df49f9e24
         run: |
           REF='${{ github.event.inputs.source_ref }}'
           if [ -z "$REF" ]; then REF=main; fi
           mkdir -p output/logs
           export IMMORTAL_SOURCE_REPO='https://github.com/immortalwrt/immortalwrt.git'
           export IMMORTAL_SOURCE_REF="$REF"
-          ./scripts/build.sh "$REF"
+          bash ./build-controller/scripts/build.sh "$REF"
+          echo 'FIRMWARE_BUILD_COUNT_NEW=1' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify validation build artifact
+        if: success() && inputs.validation_build == true
+        run: |
+          set -Eeuo pipefail
+          markers=output/openclash-core-verification.txt
+          for marker in \
+            'META_CORE_INCLUDED=PASS' \
+            'SMART_CORE_INCLUDED=PASS' \
+            'SMART_CORE_ARCH=PASS' \
+            'SMART_CORE_SHA256=PASS' \
+            'SMART_CORE_EXECUTABLE=PASS' \
+            'SMART_CORE_SELECTOR_INCLUDED=PASS'; do
+            grep -Fqx "$marker" "$markers" || { echo "ARTIFACT_VERIFY=FAIL missing $marker" >&2; exit 1; }
+          done
+          grep -Fqx 'SMART_CORE_ARCH_VALUE=aarch64/linux-arm64' "$markers"
+          grep -Fqx 'Target: qualcommax/ipq60xx' output/build-info.txt
+          grep -Fqx 'Profile: jdcloud_re-ss-01' output/build-info.txt
+          compgen -G 'output/firmware/*sysupgrade.bin' >/dev/null
+          (cd output/firmware && sha256sum -c SHA256SUMS.local)
+          echo 'SMART_CORE_ARTIFACT_VERIFICATION=PASS' | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Analyze build failure
         if: failure()
@@ -217,6 +277,7 @@ jobs:
             output/logs/failure-fingerprint.json
             output/logs/repair-regression.json
             output/plugin-verification.txt
+            output/openclash-core-verification.txt
             output/full.config
             config/required-plugins.txt
           if-no-files-found: warn
@@ -233,11 +294,12 @@ jobs:
             output/build-info.txt
             output/required-plugins.txt
             output/plugin-verification.txt
+            output/openclash-core-verification.txt
           if-no-files-found: warn
           retention-days: 14
 
       - name: Publish Candidate GitHub Release
-        if: success() && inputs.publish_candidate == true
+        if: success() && inputs.publish_candidate == true && inputs.validation_build != true
         id: candidate_release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -247,7 +309,7 @@ jobs:
           ./scripts/release-candidate.sh
 
       - name: Persist Candidate release status
-        if: success() && inputs.publish_candidate == true
+        if: success() && inputs.publish_candidate == true && inputs.validation_build != true
         env:
           CANDIDATE_TAG: ${{ steps.candidate_release.outputs.tag }}
           FIRMWARE_NAME: ${{ steps.candidate_release.outputs.firmware_name }}
