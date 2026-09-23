@@ -17,19 +17,23 @@ STRIP:=:
 define Package/openclash-core
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Official OpenClash Mihomo Meta Core for Arthur
+  TITLE:=Official OpenClash Mihomo Meta and Smart Cores for Arthur
   DEPENDS:=@TARGET_qualcommax_ipq60xx
 endef
 
 define Package/openclash-core/description
-  Pinned official OpenClash Meta Core for JDCloud Arthur RE-SS-01.
-  The build stages the upstream arm64 binary and verifies its immutable Git blob pin.
+  Pinned official OpenClash Meta and Smart Cores for JDCloud Arthur RE-SS-01.
+  Both arm64 binaries are staged from immutable upstream Git blob pins.
 endef
 
 define Build/Prepare
 	[ -x "$(CURDIR)/files/clash_meta" ] || { echo "Verified OpenClash Core was not staged" >&2; exit 1; }
+	[ -x "$(CURDIR)/files/clash_smart" ] || { echo "Verified OpenClash Smart Core was not staged" >&2; exit 1; }
+	[ -s "$(CURDIR)/files/clash_smart.sha256" ] || { echo "Verified OpenClash Smart Core SHA-256 is missing" >&2; exit 1; }
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)
 	$(INSTALL_BIN) $(CURDIR)/files/clash_meta $(PKG_BUILD_DIR)/clash_meta
+	$(INSTALL_BIN) $(CURDIR)/files/clash_smart $(PKG_BUILD_DIR)/clash_smart
+	$(INSTALL_DATA) $(CURDIR)/files/clash_smart.sha256 $(PKG_BUILD_DIR)/clash_smart.sha256
 endef
 
 define Build/Configure
@@ -41,6 +45,8 @@ endef
 define Package/openclash-core/install
 	$(INSTALL_DIR) $(1)/etc/openclash/core
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/clash_meta $(1)/etc/openclash/core/clash_meta
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/clash_smart $(1)/etc/openclash/core/clash_smart
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/clash_smart.sha256 $(1)/etc/openclash/core/clash_smart.sha256
 endef
 
 $(eval $(call BuildPackage,openclash-core))

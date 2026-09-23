@@ -13,20 +13,30 @@ source "$PROJECT_ROOT/build.env"
 # validation has passed.  Keep this gate before source acquisition and before
 # any build output is removed or recreated so every build entrypoint fails
 # closed, including local/CI callers that invoke build.sh directly.
-BUILD_SOURCE_SHA="${BUILD_SOURCE_SHA:-${GITHUB_SHA:-$(git -C "$PROJECT_ROOT" rev-parse HEAD)}}"
+# CONTROL_ONLY=true
+# RUNTIME_BEHAVIOR_CHANGED=false
+# FIRMWARE_CANDIDATE_CHANGED=false
+ARTHUR_CANDIDATE_SHA="${ARTHUR_CANDIDATE_SHA:?ERROR: ARTHUR_CANDIDATE_SHA must be supplied explicitly}"
+[[ "$ARTHUR_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+  echo 'ERROR: ARTHUR_CANDIDATE_SHA must be a 40-character lowercase Git SHA' >&2
+  exit 1
+}
 FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
+FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/source-binding.txt}"
 FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
 FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
 "$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
+  --candidate-sha "$ARTHUR_CANDIDATE_SHA" \
   --closure "$FINAL_GATE_CLOSURE" \
+  --source-binding "$FINAL_GATE_SOURCE_BINDING" \
   --live "$FINAL_GATE_LIVE" \
   --output "$FINAL_GATE_OUTPUT"
 grep -Fqx 'BUILD_ALLOWED=true' "$FINAL_GATE_OUTPUT" || {
   echo 'ERROR: final source gate did not emit BUILD_ALLOWED=true' >&2
   exit 1
 }
-grep -Fqx "FINAL_SOURCE_SHA=$BUILD_SOURCE_SHA" "$FINAL_GATE_OUTPUT" || {
-  echo 'ERROR: final source gate SHA does not match BUILD_SOURCE_SHA' >&2
+grep -Fqx "FINAL_SOURCE_SHA=$ARTHUR_CANDIDATE_SHA" "$FINAL_GATE_OUTPUT" || {
+  echo 'ERROR: final source gate SHA does not match ARTHUR_CANDIDATE_SHA' >&2
   exit 1
 }
 PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
@@ -35,7 +45,7 @@ export PREBUILD_LIVE_EVIDENCE
 "$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
   --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
   --evidence "$PREBUILD_LIVE_EVIDENCE" \
-  --source-sha "$BUILD_SOURCE_SHA"
+  --source-sha "$ARTHUR_CANDIDATE_SHA"
 
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 [[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }

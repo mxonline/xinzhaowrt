@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_repository": "vernesong/OpenClash",
+  "source_ref": "dc71e38205fd2d83cc934592d3da8cf6da3e0b51",
+  "core_version": "alpha-ge183c58",
+  "core_type": "Smart",
+  "asset_path": "master/smart/clash-linux-arm64.tar.gz",
+  "asset_size_bytes": 10914664,
+  "asset_git_blob_sha1": "3f2a4c135b739ea823ed29d8a7661d8eb0e5d444",
+  "binary_name": "clash",
+  "install_path": "/etc/openclash/core/clash_smart",
+  "elf_class": 64,
+  "elf_machine": 183
+}

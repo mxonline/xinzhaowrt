@@ -60,6 +60,7 @@ done
 
 "$PYTHON_BIN" tests/test-final-rootfs-adh-manager.py
 "$PYTHON_BIN" tests/test-openclash-core-bundle.py
+"$PYTHON_BIN" tests/test-openclash-smart-core.py
 
 if [[ -n "${PREBUILD_PACKAGE_ONLY_ROOT:-}" ]]; then
   PYTHON_BIN="${PYTHON_BIN:-python3}"

@@ -319,6 +319,14 @@ OPENCLASH_ACTIVE_POINTER_PATCH="$PROJECT_ROOT/patches/openclash/0012-active-conf
 git -C "$SOURCES/OpenClash" apply --check "$OPENCLASH_ACTIVE_POINTER_PATCH"
 git -C "$SOURCES/OpenClash" apply "$OPENCLASH_ACTIVE_POINTER_PATCH"
 echo "APPLIED_PATCH: OpenClash active config pointer after import/save"
+OPENCLASH_SMART_CORE_PATCH="$PROJECT_ROOT/patches/openclash/0014-smart-core-bundle-and-runtime-selection.patch"
+[[ -f "$OPENCLASH_SMART_CORE_PATCH" ]] || {
+  echo "ERROR: OpenClash Smart Core selection patch missing: $OPENCLASH_SMART_CORE_PATCH" >&2
+  exit 1
+}
+git -C "$SOURCES/OpenClash" apply --recount --check "$OPENCLASH_SMART_CORE_PATCH"
+git -C "$SOURCES/OpenClash" apply --recount "$OPENCLASH_SMART_CORE_PATCH"
+echo "APPLIED_PATCH: OpenClash active-config Smart Core selection and fail-fast"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.

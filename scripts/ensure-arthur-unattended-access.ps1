@@ -113,24 +113,142 @@ function Normalize-ArthurMac([string]$Mac) {
     return (($Mac.Trim().ToLowerInvariant()) -replace '-',':')
 }
 
+function ConvertFrom-ArthurRoutePrint {
+    param([Parameter(Mandatory=$true)][string]$Text,[Parameter(Mandatory=$true)][string]$DeviceIp)
+    $device = [System.Net.IPAddress]::Parse($DeviceIp).GetAddressBytes()
+    foreach ($line in ($Text -split "`r?`n")) {
+        $fields = @($line.Trim() -split '\s+')
+        if ($fields.Count -lt 5) { continue }
+        $destination = $null
+        $mask = $null
+        $interfaceAddress = $null
+        try {
+            $destination = [System.Net.IPAddress]::Parse($fields[0]).GetAddressBytes()
+            $mask = [System.Net.IPAddress]::Parse($fields[1]).GetAddressBytes()
+            $interfaceAddress = [System.Net.IPAddress]::Parse($fields[3]).ToString()
+        }
+        catch { continue }
+
+        # route.exe prints "On-link" for direct routes; 0.0.0.0 is accepted
+        # for equivalent output from tooling/localization. Never accept a gateway.
+        if ($fields[2] -notin @('On-link','0.0.0.0')) { continue }
+        $prefixLength = 0
+        $maskBits = (($mask | ForEach-Object { [Convert]::ToString($_,2).PadLeft(8,'0') }) -join '')
+        if ($maskBits -notmatch '^1*0*$') { continue }
+        $prefixLength = ([regex]::Matches($maskBits,'1')).Count
+        if ($prefixLength -lt 24) { continue }
+
+        $matchesDevice = $true
+        for ($index = 0; $index -lt 4; $index++) {
+            if (($destination[$index] -band $mask[$index]) -ne ($device[$index] -band $mask[$index])) {
+                $matchesDevice = $false
+                break
+            }
+        }
+        if (-not $matchesDevice) { continue }
+        [pscustomobject]@{
+            DestinationPrefix = '{0}/{1}' -f ([System.Net.IPAddress]::new($destination).ToString()),$prefixLength
+            NextHop = '0.0.0.0'
+            InterfaceAddress = $interfaceAddress
+            InterfaceIndex = $null
+            RouteMetric = [int]$fields[4]
+        }
+    }
+}
+
+function Get-ArthurNativeInterfaceByIndex {
+    param([Parameter(Mandatory=$true)][int]$InterfaceIndex)
+    foreach ($networkInterface in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        try {
+            $ipv4 = $networkInterface.GetIPProperties().GetIPv4Properties()
+            if ($ipv4 -and [int]$ipv4.Index -eq $InterfaceIndex) {
+                return [pscustomobject]@{
+                    Name = [string]$networkInterface.Name
+                    InterfaceDescription = [string]$networkInterface.Description
+                    Status = if ($networkInterface.OperationalStatus -eq [System.Net.NetworkInformation.OperationalStatus]::Up) { 'Up' } else { [string]$networkInterface.OperationalStatus }
+                    NetworkInterfaceType = $networkInterface.NetworkInterfaceType
+                    InterfaceIndex = [int]$ipv4.Index
+                    UnicastAddresses = @($networkInterface.GetIPProperties().UnicastAddresses | ForEach-Object { [string]$_.Address })
+                }
+            }
+        }
+        catch { continue }
+    }
+    return $null
+}
+
+function Test-ArthurOnLinkRouteForDevice {
+    param([string]$DestinationPrefix,[string]$NextHop,[string]$DeviceIp)
+    if ([string]$NextHop -ne '0.0.0.0' -or $DestinationPrefix -notmatch '^([^/]+)/([0-9]{1,2})$') { return $false }
+    $prefixLength = [int]$Matches[2]
+    if ($prefixLength -lt 24 -or $prefixLength -gt 32) { return $false }
+    try {
+        $destination = [System.Net.IPAddress]::Parse($Matches[1]).GetAddressBytes()
+        $device = [System.Net.IPAddress]::Parse($DeviceIp).GetAddressBytes()
+    }
+    catch { return $false }
+    for ($index = 0; $index -lt 4; $index++) {
+        $remainingBits = $prefixLength - ($index * 8)
+        $mask = if ($remainingBits -ge 8) { 255 } elseif ($remainingBits -le 0) { 0 } else { (256 - (1 -shl (8 - $remainingBits))) }
+        if (($destination[$index] -band $mask) -ne ($device[$index] -band $mask)) { return $false }
+    }
+    return $true
+}
+
+function Get-ArthurDirectRoutes {
+    param([Parameter(Mandatory=$true)][string]$DeviceIp)
+    $routes = @()
+    try {
+        $routes = @(Get-NetRoute -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { Test-ArthurOnLinkRouteForDevice -DestinationPrefix ([string]$_.DestinationPrefix) -NextHop ([string]$_.NextHop) -DeviceIp $DeviceIp })
+    }
+    catch { $routes = @() }
+    if ($routes.Count -gt 0) { return $routes }
+
+    $routeExe = Get-Command 'route.exe' -ErrorAction SilentlyContinue
+    if (-not $routeExe) { return @() }
+    $result = Invoke-ArthurAccessNative -FilePath $routeExe.Source -Arguments @('print','-4')
+    if ($result.ExitCode -ne 0) { return @() }
+    $parsed = @(ConvertFrom-ArthurRoutePrint -Text $result.Output -DeviceIp $DeviceIp)
+    if ($parsed.Count -eq 0) { return @() }
+
+    foreach ($route in $parsed) {
+        foreach ($networkInterface in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+            try {
+                $properties = $networkInterface.GetIPProperties()
+                $ownsAddress = @($properties.UnicastAddresses | ForEach-Object { [string]$_.Address }) -contains [string]$route.InterfaceAddress
+                if ($ownsAddress) {
+                    $route.InterfaceIndex = [int]$properties.GetIPv4Properties().Index
+                    break
+                }
+            }
+            catch { continue }
+        }
+    }
+    return @($parsed | Where-Object { $_.InterfaceIndex })
+}
+
 function Assert-ArthurEthernetIdentity {
     param([Parameter(Mandatory=$true)][string]$DeviceIp,$Policy)
     if (-not (Get-Command Get-NetRoute -ErrorAction SilentlyContinue) -or -not (Get-Command Get-NetAdapter -ErrorAction SilentlyContinue) -or -not (Get-Command Get-NetNeighbor -ErrorAction SilentlyContinue)) {
         throw 'UNSAFE_CONTROL_PATH: Windows route/adapter/neighbor commands are required.'
     }
 
-    $subnetPrefix = (($DeviceIp -split '\.')[0..2] -join '.') + '.0/24'
-    $routes = @(Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.DestinationPrefix -eq "$DeviceIp/32" -or $_.DestinationPrefix -eq $subnetPrefix } |
-        Sort-Object RouteMetric)
+    $routes = @(Get-ArthurDirectRoutes -DeviceIp $DeviceIp | Sort-Object RouteMetric)
     if ($routes.Count -eq 0) { throw "UNSAFE_CONTROL_PATH: no direct route to $DeviceIp" }
 
     $selected = $null
     foreach ($route in $routes) {
         $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
+        $nativeAdapter = Get-ArthurNativeInterfaceByIndex -InterfaceIndex ([int]$route.InterfaceIndex)
+        if (-not $adapter) { $adapter = $nativeAdapter }
         if (-not $adapter -or [string]$adapter.Status -ne 'Up') { continue }
+        if ($adapter.PSObject.Properties['NetworkInterfaceType'] -and $adapter.NetworkInterfaceType -ne [System.Net.NetworkInformation.NetworkInterfaceType]::Ethernet) { continue }
         $label = "{0} {1}" -f [string]$adapter.Name,[string]$adapter.InterfaceDescription
         if ($label -match '(?i)wi-?fi|wireless|wlan|802\.11') { continue }
+        if ([string]::IsNullOrWhiteSpace([string]$route.InterfaceAddress) -and $nativeAdapter) {
+            $route | Add-Member -NotePropertyName InterfaceAddress -NotePropertyValue (@($nativeAdapter.UnicastAddresses | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' } | Select-Object -First 1)) -Force
+        }
         $selected = [pscustomobject]@{ Route=$route; Adapter=$adapter }
         break
     }
@@ -140,6 +258,19 @@ function Assert-ArthurEthernetIdentity {
     Start-Sleep -Milliseconds 250
     $neighbors = @(Get-NetNeighbor -AddressFamily IPv4 -IPAddress $DeviceIp -ErrorAction SilentlyContinue |
         Where-Object { $_.LinkLayerAddress -and $_.State -notin @('Unreachable','Incomplete') })
+    if ($neighbors.Count -eq 0) {
+        $arp = Get-Command 'arp.exe' -ErrorAction SilentlyContinue
+        if ($arp) {
+            $arpResult = Invoke-ArthurAccessNative -FilePath $arp.Source -Arguments @('-a','-N',[string]$selected.Route.InterfaceAddress)
+            if ($arpResult.ExitCode -eq 0) {
+                $escapedIp = [regex]::Escape($DeviceIp)
+                $entry = [regex]::Match($arpResult.Output,"(?im)^\s*$escapedIp\s+([0-9a-f]{2}(?:-[0-9a-f]{2}){5})\s+dynamic\s*$")
+                if ($entry.Success) {
+                    $neighbors = @([pscustomobject]@{ LinkLayerAddress=$entry.Groups[1].Value; State='Reachable' })
+                }
+            }
+        }
+    }
     if ($neighbors.Count -lt 1) { throw "DEVICE_UNREACHABLE: no Ethernet neighbor entry for $DeviceIp" }
     $actualMac = Normalize-ArthurMac ([string]$neighbors[0].LinkLayerAddress)
     $expectedMac = Normalize-ArthurMac ([string]$Policy.device.verified_management_mac)

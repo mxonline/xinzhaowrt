@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify and stage the pinned official OpenClash Meta Core archive."""
+"""Verify and stage one pinned official OpenClash AArch64 Core archive."""
 from __future__ import annotations
 
 import argparse
@@ -38,9 +38,12 @@ def main() -> int:
     require(lock.get("schema_version") == 1, "unsupported OpenClash Core lock schema")
     require(lock.get("source_repository") == "vernesong/OpenClash", "Core source must be the official OpenClash repository")
     require(re.fullmatch(r"[0-9a-f]{40}", str(lock.get("source_ref", ""))) is not None, "Core source ref must be a full immutable commit")
-    require(lock.get("core_type") == "Meta", "Arthur bundle must select the Meta Core")
-    require(lock.get("asset_path") == "master/meta/clash-linux-arm64.tar.gz", "unexpected official Core asset path")
-    require(lock.get("install_path") == "/etc/openclash/core/clash_meta", "OpenClash Core install path mismatch")
+    core_type = lock.get("core_type")
+    require(core_type in ("Meta", "Smart"), "Arthur bundle supports only Meta and Smart Cores")
+    expected_asset = f"master/{core_type.lower()}/clash-linux-arm64.tar.gz"
+    expected_install = f"/etc/openclash/core/clash_{core_type.lower()}"
+    require(lock.get("asset_path") == expected_asset, "unexpected official Core asset path")
+    require(lock.get("install_path") == expected_install, "OpenClash Core install path mismatch")
     require(lock.get("binary_name") == "clash", "official archive member name mismatch")
     require(lock.get("elf_class") == 64 and lock.get("elf_machine") == 183, "lock does not identify 64-bit AArch64")
 
@@ -74,6 +77,11 @@ def main() -> int:
     temporary.chmod(0o755)
     temporary.replace(args.destination)
     digest = hashlib.sha256(core).hexdigest()
+    if core_type == "Smart":
+        sidecar = args.destination.with_suffix(".sha256")
+        sidecar_tmp = sidecar.with_name(sidecar.name + ".verified-tmp")
+        sidecar_tmp.write_text(digest + "\n", encoding="ascii")
+        sidecar_tmp.replace(sidecar)
 
     url = (
         "https://raw.githubusercontent.com/"
@@ -84,6 +92,7 @@ def main() -> int:
         + lock["asset_path"]
     )
     lines = [
+        f"OPENCLASH_CORE_TYPE={core_type}",
         f"OPENCLASH_CORE_VERSION={lock['core_version']}",
         f"OPENCLASH_CORE_SOURCE={url}",
         f"OPENCLASH_CORE_SOURCE_REF={lock['source_ref']}",
@@ -91,12 +100,13 @@ def main() -> int:
         f"OPENCLASH_CORE_BINARY_SHA256={digest}",
         f"OPENCLASH_CORE_BINARY_BYTES={len(core)}",
         "OPENCLASH_CORE_BUNDLED=PASS",
+        f"OPENCLASH_{core_type.upper()}_CORE_BUNDLED=PASS",
         "OPENCLASH_CORE_ARCH=PASS elf_class=64 machine=AArch64",
         "OPENCLASH_CORE_EXECUTABLE=PASS mode=0755",
     ]
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("OPENCLASH_CORE_STAGE=PASS " + " ".join(lines[-3:]))
+    print(f"OPENCLASH_{core_type.upper()}_CORE_STAGE=PASS " + " ".join(lines[-3:]))
     return 0
 
 
