@@ -110,6 +110,7 @@ def main() -> int:
         smart = tmp / f"clash_smart{executable_suffix}"
         digest = tmp / "clash_smart.sha256"
         meta.write_bytes(b"meta-core-must-remain-untouched")
+        meta.chmod(0o755)
         shutil.copyfile(staged, smart)
         shutil.copyfile(sidecar, digest)
         smart.chmod(0o755)
