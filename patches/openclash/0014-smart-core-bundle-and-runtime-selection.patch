@@ -1,7 +1,12 @@
 diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/root/etc/init.d/openclash
 --- a/luci-app-openclash/root/etc/init.d/openclash
 +++ b/luci-app-openclash/root/etc/init.d/openclash
-@@ -583,22 +583,31 @@ do_run_file()
+@@ -578,38 +578,48 @@ do_run_file()
+       [ ! -h "/etc/openclash/ASN.mmdb" ] && mv "/etc/openclash/ASN.mmdb" "$asn_path"
+       [ ! -h "/etc/openclash/Model.bin" ] && mv "/etc/openclash/Model.bin" "$lgbm_path"
+       mv "/etc/openclash/core/" "/tmp/etc/openclash"
+    fi
+ 
     rm -rf "/etc/openclash/cache.db"
     rm -rf "/etc/openclash/clash"
 -
@@ -42,7 +47,24 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
        LOG_TIP "【$core_type】Core is not Detected installed, Ready to Download..."
        /usr/share/openclash/openclash_core.sh "$core_type"
        if [ ! -f "$meta_core_path" ]; then
-@@ -808,6 +817,10 @@ check_core_status()
+          start_fail
+       fi
+    }
++   }
+ 
+    if [ "$china_ip_route" != "0" ] || [ "$china_ip6_route" != "0" ] || [ "$disable_udp_quic" = "1" ]; then
+       if [ ! -f "$chnr_path" ] || [ ! -f "$chnr6_path" ]; then
+          LOG_TIP "Detected that the Chnroute Cidr is not Installed, Ready to Download..."
+          /usr/share/openclash/openclash_chnroute.sh
+       fi
+       if [ -n "$FW4" ]; then
+          if [ -z "$(cat "$chnr_path" |grep "define china_ip_route")" ] || [ -z "$(cat "$chnr6_path" |grep "define china_ip6_route")" ]; then
+@@ -803,16 +813,20 @@ check_core_status()
+          LOG_ERROR "Core Initial Configuration Timeout, Please Check The Log Infos!"
+          start_fail
+       fi
+    fi
+    if [ -z "$(pidof clash)" ]; then
        LOG_ERROR "Core Start Failed, Please Check The Log Infos!"
        start_fail
     fi
@@ -54,6 +76,11 @@ diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/r
 +
     if [ "$1" == "start" ] && [ -x /usr/libexec/xinzhao-dns-coexist ]; then
        if ! arthur_coexist openclash-ready; then
+          LOG_WARN "Arthur DNS coexistence readiness failed; preserving OpenClash DNS redirect configuration"
+       fi
+    fi
+ 
+    # redirect dns setting after core started, prevent core dns lookup failure
 diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 --- a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
 +++ b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
