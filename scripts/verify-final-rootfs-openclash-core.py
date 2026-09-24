@@ -124,7 +124,7 @@ def main() -> int:
     package_archives = package_ipk_archives + package_apk_archives
     require(package_archives, "compiled openclash-core package archive is missing")
 
-    init_path = source_root / "feeds/luci/applications/luci-app-openclash/root/etc/init.d/openclash"
+    init_path = source_root / ".xinzhao-sources/OpenClash/luci-app-openclash/root/etc/init.d/openclash"
     init = read(init_path, "OpenClash init script")
     require('meta_core_path="/etc/openclash/core/clash_meta"' in init, "OpenClash Meta Core path does not match the bundled path")
     require('/usr/libexec/xinzhao-openclash-core-select' in init, "OpenClash startup does not select Core from the active config")
@@ -134,7 +134,7 @@ def main() -> int:
             "OpenClash startup does not emit Smart Core selection/parse/start evidence")
     require('[ "$core_type" != "Smart" ]' in init,
             "Smart Core startup can enter the online Core fallback path")
-    updater = source_root / "feeds/luci/applications/luci-app-openclash/root/usr/share/openclash/openclash_core.sh"
+    updater = source_root / ".xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/openclash_core.sh"
     updater_text = read(updater, "OpenClash Core updater")
     require('Pinned firmware Smart Core is immutable' in updater_text,
             "manual Smart Core update can overwrite the pinned bundled Core or Meta Core")

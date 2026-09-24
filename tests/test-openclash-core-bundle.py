@@ -164,7 +164,7 @@ def main() -> int:
             raise AssertionError("synthetic final rootfs Core fixture is not executable")
         package_recipe_copy = source_root / "package/xinzhao/openclash-core/Makefile"
         shutil.copyfile(ROOT / "package/xinzhao/openclash-core/Makefile", package_recipe_copy)
-        init = source_root / "feeds/luci/applications/luci-app-openclash/root/etc/init.d/openclash"
+        init = source_root / ".xinzhao-sources/OpenClash/luci-app-openclash/root/etc/init.d/openclash"
         init.parent.mkdir(parents=True, exist_ok=True)
         init.write_text(
             'CLASH="/etc/openclash/clash"\n'
@@ -187,7 +187,7 @@ def main() -> int:
         rootfs_selector = rootfs / "usr/libexec/xinzhao-openclash-core-select"
         rootfs_selector.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(selector, rootfs_selector)
-        updater = source_root / "feeds/luci/applications/luci-app-openclash/root/usr/share/openclash/openclash_core.sh"
+        updater = source_root / ".xinzhao-sources/OpenClash/luci-app-openclash/root/usr/share/openclash/openclash_core.sh"
         updater.parent.mkdir(parents=True, exist_ok=True)
         updater.write_text('LOG_TIP "Pinned firmware Smart Core is immutable; online Smart Core replacement is disabled"\n', encoding="utf-8")
         uci = rootfs / "etc/config/openclash"
