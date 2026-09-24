@@ -55,6 +55,13 @@ def run_selector(config: Path, meta: Path, smart: Path, digest: Path) -> subproc
 
 
 def main() -> int:
+    selector_source = SELECTOR.read_text(encoding="utf-8")
+    if "tr -d '[:space:]'" in selector_source:
+        raise AssertionError(
+            "Smart Core SHA pin parsing must not use tr's [:space:] class; "
+            "OpenWrt BusyBox tr treats it as a literal delete set"
+        )
+
     patch_stats = subprocess.run(
         ["git", "apply", "--recount", "--stat", str(SMART_PATCH)],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False,

@@ -26,7 +26,7 @@ if grep -Eq "^[[:space:]]*(-[[:space:]]*)?type:[[:space:]]*['\"]?smart['\"]?([[:
     echo "OpenClash Smart Core SHA-256 pin is missing" >&2
     exit 1
   }
-  expected_sha="$(tr -d '[:space:]' < "$smart_sha_file")"
+  expected_sha="$(awk 'BEGIN { ORS = "" } { gsub(/[[:space:]]/, ""); printf "%s", $0 }' "$smart_sha_file")"
   case "$expected_sha" in
     *[!0-9a-fA-F]*|'')
       echo "OpenClash Smart Core SHA-256 pin is malformed" >&2
