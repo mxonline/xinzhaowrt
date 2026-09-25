@@ -1,0 +1,23 @@
+#!/bin/sh
+# Use OpenClash's native Smart Core and subscription User-Agent defaults.
+# This only seeds missing/legacy values during first boot; later user changes
+# remain untouched.
+
+set -u
+
+uci -q set openclash.config.smart_enable='1'
+uci -q set openclash.config.core_type='Smart'
+
+sections="$(uci -q show openclash 2>/dev/null | sed -n 's/^openclash\.\([^.=]*\)=config_subscribe$/\1/p' || true)"
+for section in $sections; do
+    ua="$(uci -q get "openclash.$section.sub_ua" 2>/dev/null || true)"
+    case "$ua" in
+        ''|clash)
+            uci -q set "openclash.$section.sub_ua=clash-verge/v2.4.5"
+            ;;
+    esac
+done
+
+uci -q commit openclash
+logger -t xinzhao 'OPENCLASH_NATIVE_DEFAULTS_PASS smart=1 ua=clash-verge/v2.4.5' 2>/dev/null || true
+exit 0

@@ -187,7 +187,7 @@ jobs:
           grep -Fq 'OPENCLASH_CORE_ARCH=PASS' output/openclash-core-source-verification.txt
           grep -Fq 'OPENCLASH_CORE_EXECUTABLE=PASS' output/openclash-core-source-verification.txt
           test -s output/openclash-core-verification.txt
-          grep -Fq 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS' output/openclash-core-verification.txt
+          grep -Fq 'OPENCLASH_NATIVE_SMART_DEFAULT=PASS' output/openclash-core-verification.txt
           find output/firmware -maxdepth 1 -type f -name '*Arthur*sysupgrade.bin' -size +0c -print -quit | grep -q .
           test -s output/firmware/SHA256SUMS.local
           (cd output/firmware && sha256sum -c SHA256SUMS.local)

@@ -44,7 +44,7 @@ grep -Fq 'verify-final-rootfs-openclash-core.py' "$build" || \
   fail 'production build does not gate the bundled Core in final rootfs'
 grep -Fq 'ADH_LUCI_FULL_MANAGER=PASS' "$workflow" || \
   fail 'Candidate acceptance does not require the full AdGuard Home manager contract'
-grep -Fq 'OPENCLASH_FIRST_START_NO_CORE_DOWNLOAD_REQUIRED=PASS' "$workflow" || \
-  fail 'Candidate acceptance does not require offline first-start Core availability'
+grep -Fq 'OPENCLASH_NATIVE_SMART_DEFAULT=PASS' "$workflow" || \
+  fail 'Candidate acceptance does not require the native Smart Core default'
 
 echo 'PRODUCTION_WORKFLOW_CONTRACT: PASS'

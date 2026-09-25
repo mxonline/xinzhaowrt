@@ -46,9 +46,6 @@ for test_script in \
   tests/test-memory-source-defaults.sh \
   tests/test-memory-source-runtime.sh \
   tests/test-openclash-runtime-forensics.sh \
-  tests/test-openclash-watchdog-memory.sh \
-  tests/test-openclash-sigsegv-fail-closed.sh \
-  tests/test-openclash-active-config-pointer.sh \
   tests/test-openclash-core-authority.sh \
   tests/test-failure-classifier.sh \
   tests/test-prebuild-closure.sh \
@@ -61,6 +58,7 @@ done
 "$PYTHON_BIN" tests/test-final-rootfs-adh-manager.py
 "$PYTHON_BIN" tests/test-openclash-core-bundle.py
 "$PYTHON_BIN" tests/test-openclash-smart-core.py
+"$PYTHON_BIN" tests/test-openclash-native-runtime.py
 
 if [[ -n "${PREBUILD_PACKAGE_ONLY_ROOT:-}" ]]; then
   PYTHON_BIN="${PYTHON_BIN:-python3}"

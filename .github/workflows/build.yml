@@ -186,7 +186,8 @@ jobs:
             'SMART_CORE_ARCH=PASS' \
             'SMART_CORE_SHA256=PASS' \
             'SMART_CORE_EXECUTABLE=PASS' \
-            'SMART_CORE_SELECTOR_INCLUDED=PASS'; do
+            'OPENCLASH_NATIVE_RUNTIME=PASS' \
+            'OPENCLASH_NATIVE_SMART_DEFAULT=PASS'; do
             grep -Fqx "$marker" "$markers" || { echo "ARTIFACT_VERIFY=FAIL missing $marker" >&2; exit 1; }
           done
           grep -Fqx 'SMART_CORE_ARCH_VALUE=aarch64/linux-arm64' "$markers"
