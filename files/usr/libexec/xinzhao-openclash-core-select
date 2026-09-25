@@ -16,10 +16,28 @@ smart_sha_file="$4"
   exit 1
 }
 
+oix_token="$(uci -q get openclash.config.oix_token 2>/dev/null || true)"
+smart_enable="$(uci -q get openclash.config.smart_enable 2>/dev/null || true)"
+core_type="$(uci -q get openclash.config.core_type 2>/dev/null || true)"
+
+if [ -n "$oix_token" ]; then
+  [ -x "$meta_core" ] || {
+    echo "OpenClash Oix priority path requires the bundled Meta Core" >&2
+    exit 1
+  }
+  printf '%s\n' "$meta_core"
+  exit 0
+fi
+
+smart_yaml=0
 if grep -Eq "^[[:space:]]*(-[[:space:]]*)?type:[[:space:]]*['\"]?smart['\"]?([[:space:]#]|$)" "$active_config" || \
    grep -Eq "[,{][[:space:]]*type:[[:space:]]*['\"]?smart['\"]?([[:space:]#},]|$)" "$active_config"; then
+  smart_yaml=1
+fi
+
+if [ "$smart_enable" = "1" ] || [ "$core_type" = "Smart" ] || [ "$smart_yaml" = "1" ]; then
   [ -x "$smart_core" ] || {
-    echo "OpenClash Smart Core required by active config is missing or not executable" >&2
+    echo "OpenClash Smart Core required by active runtime state is missing or not executable" >&2
     exit 1
   }
   [ -s "$smart_sha_file" ] || {
@@ -42,7 +60,7 @@ if grep -Eq "^[[:space:]]*(-[[:space:]]*)?type:[[:space:]]*['\"]?smart['\"]?([[:
     \\*) actual_sha="${actual_sha#\\}" ;;
   esac
   [ "$actual_sha" = "$expected_sha" ] || {
-    echo "OpenClash Smart Core SHA-256 mismatch (expected=$expected_sha actual=$actual_sha); refusing Meta fallback" >&2
+    echo "OpenClash Smart Core SHA-256 mismatch; refusing Meta fallback" >&2
     exit 1
   }
   printf '%s\n' "$smart_core"

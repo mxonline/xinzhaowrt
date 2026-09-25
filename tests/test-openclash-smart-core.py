@@ -54,7 +54,123 @@ def run_selector(config: Path, meta: Path, smart: Path, digest: Path) -> subproc
     )
 
 
+def run_selector_with_uci(
+    config: Path,
+    meta: Path,
+    smart: Path,
+    digest: Path,
+    *,
+    oix_token: str = "",
+    smart_enable: str = "",
+    core_type: str = "",
+) -> subprocess.CompletedProcess[str]:
+    shell = shutil.which("bash") or shutil.which("sh")
+    if not shell and sys.platform == "win32":
+        candidates = (
+            Path("C:/Program Files/Git/bin/bash.exe"),
+            Path("C:/Program Files/Git/usr/bin/bash.exe"),
+        )
+        shell = next((str(path) for path in candidates if path.is_file()), None)
+    if not shell:
+        raise AssertionError("POSIX shell is required to exercise the installed core selector")
+    env = os.environ.copy()
+    env.update({
+        "MOCK_OIX_TOKEN": oix_token,
+        "MOCK_SMART_ENABLE": smart_enable,
+        "MOCK_CORE_TYPE": core_type,
+    })
+    wrapper = r'''
+uci() {
+  if [ "$1" = "-q" ] && [ "$2" = "get" ]; then
+    case "$3" in
+      openclash.config.oix_token) printf '%s\n' "$MOCK_OIX_TOKEN" ;;
+      openclash.config.smart_enable) printf '%s\n' "$MOCK_SMART_ENABLE" ;;
+      openclash.config.core_type) printf '%s\n' "$MOCK_CORE_TYPE" ;;
+      *) return 1 ;;
+    esac
+    return 0
+  fi
+  return 1
+}
+. "$1" "$2" "$3" "$4" "$5"
+'''
+    return subprocess.run(
+        [shell, "-c", wrapper, "selector", str(SELECTOR), str(config), str(meta), str(smart), str(digest)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def verify_patched_openclash_shell_syntax() -> None:
+    source_root_text = os.environ.get("OPENCLASH_PRE_0014_SOURCE")
+    if not source_root_text:
+        return
+
+    source_root = Path(source_root_text)
+    relative_files = (
+        Path("luci-app-openclash/root/etc/init.d/openclash"),
+        Path("luci-app-openclash/root/usr/share/openclash/openclash_core.sh"),
+    )
+    with tempfile.TemporaryDirectory(prefix="openclash-smart-patch-syntax-") as tmp_text:
+        patched_root = Path(tmp_text)
+        for relative in relative_files:
+            source = source_root / relative
+            if not source.is_file():
+                raise AssertionError(f"pre-0014 OpenClash source is missing {relative}")
+            destination = patched_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+        init_git = subprocess.run(
+            ["git", "init", "--quiet"],
+            cwd=patched_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if init_git.returncode:
+            raise AssertionError(f"could not create disposable OpenClash patch tree:\n{init_git.stdout}")
+
+        apply = subprocess.run(
+            ["git", "apply", "--recount", str(SMART_PATCH)],
+            cwd=patched_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if apply.returncode:
+            raise AssertionError(f"Smart Core patch did not apply to the pinned source:\n{apply.stdout}")
+
+        shell = shutil.which("sh") or shutil.which("bash")
+        if not shell and sys.platform == "win32":
+            candidates = (
+                Path("C:/Program Files/Git/usr/bin/sh.exe"),
+                Path("C:/Program Files/Git/bin/bash.exe"),
+            )
+            shell = next((str(path) for path in candidates if path.is_file()), None)
+        if not shell:
+            raise AssertionError("POSIX shell is required to parse the patched OpenClash init script")
+
+        init_script = patched_root / relative_files[0]
+        parsed = subprocess.run(
+            [shell, "-n", str(init_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if parsed.returncode:
+            raise AssertionError(f"patched OpenClash init script has invalid shell syntax:\n{parsed.stdout}")
+    print("OPENCLASH_SMART_PATCH_SHELL_SYNTAX=PASS")
+
+
 def main() -> int:
+    verify_patched_openclash_shell_syntax()
     selector_source = SELECTOR.read_text(encoding="utf-8")
     if "tr -d '[:space:]'" in selector_source:
         raise AssertionError(
@@ -141,6 +257,18 @@ def main() -> int:
         selected = run_selector(config, meta, smart, digest)
         if selected.returncode or selected.stdout.strip().splitlines()[-1] != str(meta):
             raise AssertionError(f"non-Smart YAML did not select Meta Core:\n{selected.stdout}")
+
+        selected = run_selector_with_uci(config, meta, smart, digest, smart_enable="1")
+        if selected.returncode or selected.stdout.strip().splitlines()[-1] != str(smart):
+            raise AssertionError(f"smart_enable=1 did not select Smart Core:\n{selected.stdout}")
+        selected = run_selector_with_uci(config, meta, smart, digest, core_type="Smart")
+        if selected.returncode or selected.stdout.strip().splitlines()[-1] != str(smart):
+            raise AssertionError(f"core_type=Smart did not select Smart Core:\n{selected.stdout}")
+        selected = run_selector_with_uci(
+            config, meta, smart, digest, oix_token="opaque-oix-token", smart_enable="1", core_type="Smart"
+        )
+        if selected.returncode or selected.stdout.strip().splitlines()[-1] != str(meta):
+            raise AssertionError(f"Oix priority did not preserve Meta selection:\n{selected.stdout}")
 
         smart.write_bytes(binary + b"tampered")
         config.write_text("proxy-groups:\n  - type: smart\n", encoding="utf-8")
