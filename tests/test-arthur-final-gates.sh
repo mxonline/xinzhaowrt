@@ -153,4 +153,52 @@ if grep -Fq 'BUILD_SOURCE_SHA' "$ROOT/scripts/build.sh"; then
   fail 'build gate still couples candidate identity to BUILD_SOURCE_SHA'
 fi
 
+# This frozen candidate changes only a comment in config/arthur.config. Its
+# effective package and kernel selection is identical to the closure source.
+COMMENT_ONLY_CANDIDATE_SHA="17b27fe5f2a90418ee282aaf537ba5fcf5b85151"
+COMMENT_ONLY_PATHS_SHA="$(git -C "$ROOT" diff --name-only "$BASE_CANDIDATE_SHA" "$COMMENT_ONLY_CANDIDATE_SHA" | LC_ALL=C sort | sha256sum | awk '{print $1}')"
+cp "$SOURCE_BINDING" "$TMP/comment-only-binding.txt"
+sed -i \
+  -e "s/^ARTHUR_CANDIDATE_SHA=.*/ARTHUR_CANDIDATE_SHA=$COMMENT_ONLY_CANDIDATE_SHA/" \
+  -e "s/^ZRAM_DIFF_CANDIDATE_SHA=.*/ZRAM_DIFF_CANDIDATE_SHA=$COMMENT_ONLY_CANDIDATE_SHA/" \
+  -e "s/^CHANGED_PATHS_SHA256=.*/CHANGED_PATHS_SHA256=$COMMENT_ONLY_PATHS_SHA/" \
+  "$TMP/comment-only-binding.txt"
+sed "s/^FINAL_SOURCE_SHA=.*/FINAL_SOURCE_SHA=$COMMENT_ONLY_CANDIDATE_SHA/" "$LIVE" > "$TMP/comment-only-live.txt"
+if ! bash "$GATE" --candidate-sha "$COMMENT_ONLY_CANDIDATE_SHA" --closure "$CLOSURE" \
+    --source-binding "$TMP/comment-only-binding.txt" --live "$TMP/comment-only-live.txt" \
+    --output "$TMP/comment-only.out" > "$TMP/comment-only.log" 2>&1; then
+  cat "$TMP/comment-only.log" >&2
+  fail 'ZRAM closure reuse rejected a comment-only arthur.config change'
+fi
+grep -Fqx 'BUILD_ALLOWED=true' "$TMP/comment-only.out" || fail 'comment-only Arthur config change did not pass the final gate'
+
+CHANGED_REPO="$TMP/changed-repo"
+mkdir -p "$CHANGED_REPO/scripts" "$CHANGED_REPO/config"
+cp "$GATE" "$CHANGED_REPO/scripts/check-arthur-final-gates.sh"
+git -C "$CHANGED_REPO" init -q
+printf '%s\n' 'CONFIG_PACKAGE_zram-swap=y' > "$CHANGED_REPO/config/arthur.config"
+git -C "$CHANGED_REPO" add config/arthur.config
+git -C "$CHANGED_REPO" -c user.name=ArthurGate -c user.email=arthur-gate@example.invalid commit -qm baseline
+CHANGED_BASE_SHA="$(git -C "$CHANGED_REPO" rev-parse HEAD)"
+printf '%s\n' 'CONFIG_PACKAGE_zram-swap=n' > "$CHANGED_REPO/config/arthur.config"
+git -C "$CHANGED_REPO" add config/arthur.config
+git -C "$CHANGED_REPO" -c user.name=ArthurGate -c user.email=arthur-gate@example.invalid commit -qm changed
+CHANGED_CANDIDATE_SHA="$(git -C "$CHANGED_REPO" rev-parse HEAD)"
+CHANGED_PATHS_SHA="$(git -C "$CHANGED_REPO" diff --name-only "$CHANGED_BASE_SHA" "$CHANGED_CANDIDATE_SHA" | LC_ALL=C sort | sha256sum | awk '{print $1}')"
+sed "s/$BASE_CANDIDATE_SHA/$CHANGED_BASE_SHA/g" "$CLOSURE" > "$TMP/changed-closure.txt"
+CHANGED_CLOSURE_SHA="$(sha256sum "$TMP/changed-closure.txt" | awk '{print $1}')"
+sed \
+  -e "s/$BASE_CANDIDATE_SHA/$CHANGED_BASE_SHA/g" \
+  -e "s/$CANDIDATE_SHA/$CHANGED_CANDIDATE_SHA/g" \
+  -e "s/^ORIGINAL_BINDING_SHA256=.*/ORIGINAL_BINDING_SHA256=$CHANGED_CLOSURE_SHA/" \
+  -e "s/^CHANGED_PATHS_SHA256=.*/CHANGED_PATHS_SHA256=$CHANGED_PATHS_SHA/" \
+  "$SOURCE_BINDING" > "$TMP/changed-binding.txt"
+sed "s/$CANDIDATE_SHA/$CHANGED_CANDIDATE_SHA/g" "$LIVE" > "$TMP/changed-live.txt"
+if bash "$CHANGED_REPO/scripts/check-arthur-final-gates.sh" --candidate-sha "$CHANGED_CANDIDATE_SHA" \
+    --closure "$TMP/changed-closure.txt" --source-binding "$TMP/changed-binding.txt" \
+    --live "$TMP/changed-live.txt" --output "$TMP/changed.out" > "$TMP/changed.log" 2>&1; then
+  fail 'ZRAM closure reuse accepted a changed effective Arthur config'
+fi
+grep -Fq 'candidate changes effective Arthur config since ZRAM closure' "$TMP/changed.log" || fail 'effective Arthur config change failed for the wrong reason'
+
 echo 'ARTHUR_FINAL_GATES_TEST=PASS'

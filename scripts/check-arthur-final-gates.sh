@@ -147,8 +147,19 @@ if [[ -s "$SOURCE_BINDING_FILE" ]]; then
       changed_paths="$(git -C "$PROJECT_ROOT" diff --name-only "$BASE_CANDIDATE_SHA" "$CANDIDATE_SHA" | LC_ALL=C sort)"
       changed_paths_sha="$(printf '%s\n' "$changed_paths" | sha256sum | awk '{print $1}')"
       [[ "$changed_paths_sha" == "$CHANGED_PATHS_SHA_VALUE" ]] || fail 'candidate changed-file set does not match the derived applicability evidence'
-      if grep -Eiq '(^|/)(target/linux|package/kernel|kernel|zram)(/|$)|(^|/)config/[^[:space:]]*(arthur|kernel|zram)|zram' <<<"$changed_paths"; then
-        fail 'candidate diff contains a kernel, ZRAM config, package, dependency, or patch change'
+      zram_relevant_paths="$(grep -Ei '(^|/)(target/linux|package/kernel|kernel|zram)(/|$)|(^|/)config/[^[:space:]]*(arthur|kernel|zram)|zram' <<<"$changed_paths" || true)"
+      if [[ -n "$zram_relevant_paths" ]]; then
+        if [[ "$zram_relevant_paths" == 'config/arthur.config' ]] \
+            && git -C "$PROJECT_ROOT" cat-file -e "$BASE_CANDIDATE_SHA:config/arthur.config" 2>/dev/null \
+            && git -C "$PROJECT_ROOT" cat-file -e "$CANDIDATE_SHA:config/arthur.config" 2>/dev/null; then
+          # A comment-only change does not alter the defconfig input proved by
+          # the ZRAM closure. Any changed effective config line still fails.
+          base_effective_config="$(git -C "$PROJECT_ROOT" show "$BASE_CANDIDATE_SHA:config/arthur.config" | sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d')"
+          candidate_effective_config="$(git -C "$PROJECT_ROOT" show "$CANDIDATE_SHA:config/arthur.config" | sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d')"
+          [[ "$base_effective_config" == "$candidate_effective_config" ]] || fail 'candidate changes effective Arthur config since ZRAM closure'
+        else
+          fail 'candidate diff contains a kernel, ZRAM config, package, dependency, or patch change'
+        fi
       fi
     fi
   else
