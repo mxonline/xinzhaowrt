@@ -71,12 +71,17 @@ def main() -> int:
     machine = struct.unpack("<H", core[18:20])[0]
     require(machine == 183, f"OpenClash Core ELF machine is {machine}, expected AArch64 (183)")
 
+    digest = hashlib.sha256(core).hexdigest()
+    if core_type == "Smart":
+        expected_digest = str(lock.get("binary_sha256", ""))
+        require(re.fullmatch(r"[0-9a-f]{64}", expected_digest) is not None, "Smart Core binary SHA-256 pin is missing")
+        require(digest == expected_digest, "Smart Core binary differs from the Arthur-verified executable")
+
     args.destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.destination.with_name(args.destination.name + ".verified-tmp")
     temporary.write_bytes(core)
     temporary.chmod(0o755)
     temporary.replace(args.destination)
-    digest = hashlib.sha256(core).hexdigest()
     if core_type == "Smart":
         sidecar = args.destination.with_suffix(".sha256")
         sidecar_tmp = sidecar.with_name(sidecar.name + ".verified-tmp")

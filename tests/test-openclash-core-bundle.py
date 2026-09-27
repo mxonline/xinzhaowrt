@@ -56,6 +56,16 @@ def make_archive(path: Path, data: bytes) -> None:
 
 
 def main() -> int:
+    smart_pin = json.loads(SMART_LOCK.read_text(encoding="utf-8"))
+    verified_smart_sha = "36ca7f27eb06c4e6f4b6a7f7b5f3c67c921cd1d7e0a4819c1e16f0d327cf102d"
+    if smart_pin.get("core_version") != "alpha-smart-g2e80ed7":
+        raise AssertionError("Smart Core lock does not name the Arthur-verified version")
+    if smart_pin.get("binary_sha256") != verified_smart_sha:
+        raise AssertionError("Smart Core lock does not pin the Arthur-verified executable")
+    defaults_source = (ROOT / "files/etc/uci-defaults/95-xinzhao-openclash-defaults").read_text(encoding="utf-8")
+    for marker in ("clash_smart.sha256", "clash_smart", "clash_meta", "mv -f"):
+        if marker not in defaults_source:
+            raise AssertionError(f"first-boot canonical Smart install is missing {marker}")
     arthur_config = (ROOT / "config/arthur.config").read_text(encoding="utf-8")
     if "CONFIG_PACKAGE_openclash-core=y" not in arthur_config:
         raise AssertionError("Arthur config does not install the official Core bundle")
@@ -102,6 +112,7 @@ def main() -> int:
             "asset_path": "master/smart/clash-linux-arm64.tar.gz",
             "asset_size_bytes": smart_archive.stat().st_size,
             "asset_git_blob_sha1": blob_sha(smart_archive.read_bytes()),
+            "binary_sha256": hashlib.sha256(smart).hexdigest(),
             "install_path": "/etc/openclash/core/clash_smart",
         }), encoding="utf-8")
 
@@ -111,6 +122,19 @@ def main() -> int:
         staged_smart = source / "package/xinzhao/openclash-core/files/clash_smart"
         stage(meta_lock, meta_archive, staged_meta, tmp / "meta-report.txt")
         stage(smart_lock, smart_archive, staged_smart, tmp / "smart-report.txt")
+        wrong_smart_lock = tmp / "wrong-smart-lock.json"
+        wrong_smart_pin = json.loads(smart_lock.read_text(encoding="utf-8"))
+        wrong_smart_pin["binary_sha256"] = hashlib.sha256(meta).hexdigest()
+        wrong_smart_lock.write_text(json.dumps(wrong_smart_pin), encoding="utf-8")
+        rejected_destination = tmp / "rejected-clash-smart"
+        rejected = subprocess.run(
+            [sys.executable, str(STAGER), str(wrong_smart_lock), str(smart_archive), str(rejected_destination), str(tmp / "rejected-report.txt")],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if rejected.returncode == 0 or rejected_destination.exists():
+            raise AssertionError("Smart Core with the wrong executable SHA-256 was staged")
         (staged_smart.with_suffix(".sha256")).write_text(hashlib.sha256(smart).hexdigest() + "\n", encoding="ascii")
         final_meta = rootfs / "etc/openclash/core/clash_meta"
         final_smart = rootfs / "etc/openclash/core/clash_smart"
@@ -134,8 +158,13 @@ def main() -> int:
         defaults = rootfs / "etc/uci-defaults/95-xinzhao-openclash-defaults"
         defaults.parent.mkdir(parents=True, exist_ok=True)
         defaults.write_text(
+            "smart_core=/etc/openclash/core/clash_smart\n"
+            "canonical_core=/etc/openclash/core/clash_meta\n"
+            "smart_digest_file=/etc/openclash/core/clash_smart.sha256\n"
+            'mv -f "$tmp" "$canonical_core"\n'
             "uci -q set openclash.config.smart_enable='1'\n"
             "uci -q set openclash.config.core_type='Smart'\n"
+            "uci -q set openclash.config.auto_smart_switch='1'\n"
             "ua=clash-verge/v2.4.5\n",
             encoding="utf-8",
         )

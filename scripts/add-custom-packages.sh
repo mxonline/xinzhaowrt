@@ -223,9 +223,12 @@ clone_or_update \
   OpenClash \
   https://github.com/vernesong/OpenClash.git \
   "${OPENCLASH_REF:-master}"
-# Keep this source untouched. Arthur's validated runtime uses OpenClash's
-# native init, DNS, firewall and UCI/core selection path; the previous local
-# patch chain caused placeholder providers and invalid 127.0.0.1:65535 dials.
+# Preserve OpenClash's native init, DNS, firewall, Core selection and native
+# auto_smart_switch policy conversion. Only lift the LuCI worker's VMA limit
+# for the Smart Core version probe and start/restart actions.
+CORE_VM_PATCH="$PROJECT_ROOT/patches/openclash/0015-smart-core-luci-vm-limit.patch"
+git -C "$SOURCES/OpenClash" apply --check "$CORE_VM_PATCH"
+git -C "$SOURCES/OpenClash" apply "$CORE_VM_PATCH"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.

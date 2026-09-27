@@ -89,6 +89,7 @@ def main() -> int:
     final_smart = rootfs / "etc/openclash/core/clash_smart"
     meta_data, meta_digest = verify_core(lock, staged_meta, final_meta, "Meta")
     smart_data, smart_digest = verify_core(smart_lock, staged_smart, final_smart, "Smart")
+    require(smart_digest == smart_lock.get("binary_sha256"), "bundled Smart Core differs from the Arthur-verified executable")
 
     archives = list((source_root / "bin").rglob("openclash-core_*.ipk")) + list((source_root / "bin").rglob("openclash-core-*.apk"))
     require(archives, "compiled openclash-core package archive is missing")
@@ -111,6 +112,14 @@ def main() -> int:
     defaults = read(rootfs / "etc/uci-defaults/95-xinzhao-openclash-defaults", "OpenClash first-boot defaults")
     require("uci -q set openclash.config.smart_enable='1'" in defaults, "Smart Core is not enabled through native UCI defaults")
     require("uci -q set openclash.config.core_type='Smart'" in defaults, "native UCI Smart core type default is missing")
+    require("uci -q set openclash.config.auto_smart_switch='1'" in defaults, "native UCI Smart automatic-group conversion is not enabled by default")
+    for marker in (
+        "smart_core=/etc/openclash/core/clash_smart",
+        "canonical_core=/etc/openclash/core/clash_meta",
+        "smart_digest_file=/etc/openclash/core/clash_smart.sha256",
+        'mv -f "$tmp" "$canonical_core"',
+    ):
+        require(marker in defaults, f"first-boot canonical Smart Core install is missing: {marker}")
     require("clash-verge/v2.4.5" in defaults, "official subscription User-Agent default is missing")
     require(not (rootfs / "usr/libexec/xinzhao-openclash-core-select").exists(), "legacy selector is present in final rootfs")
 

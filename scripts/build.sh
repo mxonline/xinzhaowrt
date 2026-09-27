@@ -27,7 +27,9 @@ if [[ "${VALIDATION_BUILD:-false}" == true ]]; then
   PROJECT_ROOT="$PROJECT_ROOT" bash "$CONTROL_ROOT/scripts/check-arthur-validation-build.sh"
 else
   FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
-  FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/source-binding.txt}"
+  # Derived only after the final source commit; the historical source-binding
+  # artifact cannot prove applicability to this exact candidate SHA.
+  FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/derived-source-applicability-final.txt}"
   FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
   FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
   "$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
@@ -144,7 +146,8 @@ bash "$PROJECT_ROOT/scripts/fetch-openclash-core.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
-FEED_CHECK_ROOT="$SRC" "$PROJECT_ROOT/scripts/verify-project.sh"
+OPENCLASH_NATIVE_SOURCE_ROOT="$SRC/.xinzhao-sources/OpenClash" \
+  FEED_CHECK_ROOT="$SRC" "$PROJECT_ROOT/scripts/verify-project.sh"
 
 echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
