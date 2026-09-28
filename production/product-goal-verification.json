@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "status": "PRODUCT_GOAL_VERIFIED",
-  "scope": "Arthur OpenClash Smart runtime",
+  "status": "PARTIAL_VERIFIED",
+  "scope": "Arthur OpenClash Smart runtime only; full ARTHUR_PRODUCT_GOAL_V1 remains pending",
   "build_run_id": 36348777394,
   "actions_artifact_id": 10944450704,
   "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
@@ -66,5 +66,25 @@
     "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
     "candidate_and_stable_assets_identical": true,
     "updated_at": "2026-09-28T03:38:51+00:00"
-  }
+  },
+  "product_goal_verified": false,
+  "required_final_markers_status": {
+    "OPENCLASH_FULLY_USABLE": "PARTIAL_SMART_RUNTIME_VERIFIED",
+    "ADGUARDHOME_FULLY_USABLE": "PENDING_REVALIDATION",
+    "OPENCLASH_ADH_COEXISTENCE": "PENDING_REVALIDATION",
+    "POST_RELEASE_VALIDATED": "PENDING",
+    "PRODUCT_GOAL_VERIFIED": "NOT_YET_ALLOWED"
+  },
+  "clean_flash_acceptance": {
+    "exact_release_identity": "PASS",
+    "write_count": 1,
+    "root_password_auth": "PASS",
+    "strict_ssh_identity": "PASS",
+    "smart_core_and_9_groups": "PASS",
+    "real_proxy_traffic": "PENDING_FIRST_ROOT_CAUSE_ISOLATION",
+    "final_reboot_persistence": "PENDING",
+    "system_health_final": "PENDING"
+  },
+  "claim_policy": "This file must not be used to claim full PRODUCT_GOAL_VERIFIED until every required final marker in production/product-goal-contract.json is backed by exact-release real-device evidence.",
+  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
 }
