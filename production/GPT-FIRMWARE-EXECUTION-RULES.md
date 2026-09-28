@@ -2,6 +2,12 @@
 
 This file is the durable operator/GPT contract for deciding whether a firmware action may be proposed or executed. It governs intent, release mode, state recovery, historical evidence, and authorization before the RELEASE-FIRST workflow is allowed to move.
 
+## Highest authority
+
+Before applying any execution rule below, read `production/product-goal-contract.json`. `ARTHUR_PRODUCT_GOAL_V1` and its current `process_contract_version` are the highest machine contract for Arthur. A lower-level workflow, release policy, resume snapshot, handoff, test helper, historical document, or chat instruction may add detail but may not weaken or override the highest contract. Every action must first pass the question: **Does this step move Arthur closer to a genuinely long-term stable usable firmware?**
+
+The frozen vNext process is: real-device-first where safe, persist the same proven implementation, default to one Build per frozen candidate, verify an exact artifact identity chain, flash/test the exact candidate, promote identical bytes, invalidate evidence only for real runtime-affecting changes, and keep Stable release status separate from full product verification.
+
 ## Hard rules
 
 1. **A state statement is not execution authorization.** Messages such as “当前应该从 ADH 完整管理和中文开始”, “现在状态是…”, “记住这里”, “进度到这里” correct or describe state only. They must not trigger Codex, CI, Build, router writes, Release, repository mutation, or firmware repair.
