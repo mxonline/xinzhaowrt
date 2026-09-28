@@ -27,12 +27,35 @@
   "memory_source_fix_live_pass": true,
   "smart_update_transaction_validated": true,
   "production_released": true,
-  "post_release_device_test": "PENDING_INDEPENDENT_NOT_REPEATED_BY_REQUEST",
+  "post_release_device_test": "IN_PROGRESS_CLEAN_FLASH_REAL_PROXY_TRAFFIC_PENDING",
   "version": "v0.1.5",
   "known_good_source_lock_enforced": false,
-  "product_goal_status": "PRODUCT_GOAL_VERIFIED",
+  "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",
   "candidate_release_id": 397933427,
   "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36348777394",
   "adh_verification": "NOT_REVALIDATED",
-  "one_time_recovery_workflow_removed": true
+  "one_time_recovery_workflow_removed": true,
+  "product_goal_verified": false,
+  "product_goal_scope": "OPENCLASH_SMART_PARTIAL_VERIFICATION",
+  "clean_flash_validation": {
+    "stable_tag": "arthur-production-36348777394",
+    "build_run_id": 36348777394,
+    "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "clean_flash_write_count": 1,
+    "root_password_auth": "PASS",
+    "strict_ssh_identity": "PASS",
+    "smart_core": "PASS",
+    "smart_groups_9": "PASS",
+    "real_proxy_traffic": "PENDING_FIRST_ROOT_CAUSE_ISOLATION",
+    "final_reboot_persistence": "PENDING",
+    "system_health_final": "PENDING",
+    "second_blind_flash_forbidden": true
+  },
+  "governance": {
+    "highest_contract": "production/product-goal-contract.json",
+    "contract_id": "ARTHUR_PRODUCT_GOAL_V1",
+    "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
+    "release_status_is_not_product_status": true,
+    "governance_updated_at": "2026-09-29"
+  }
 }
