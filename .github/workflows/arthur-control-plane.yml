@@ -27,7 +27,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
-      ARTHUR_SOURCE_REF: release/v0.1.5-e037750
 
     steps:
       - name: Checkout canonical production state
@@ -45,65 +44,81 @@ jobs:
           import json, os, pathlib, re
 
           root = pathlib.Path('.')
+          product = json.loads((root / 'production/product-goal-contract.json').read_text(encoding='utf-8'))
           intent = json.loads((root / 'production/operator-intent.json').read_text(encoding='utf-8'))
           resume = json.loads((root / 'production/resume-state.json').read_text(encoding='utf-8'))
           mode = json.loads((root / 'production/release-mode.json').read_text(encoding='utf-8'))
-          highest = intent.get('highest_machine_evidence') or {}
 
-          required = {
-              'authority': 'OPERATOR',
-              'priority_class': 'HIGHEST',
-              'objective_id': 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY',
-              'required_terminal': 'PRODUCTION_RELEASED',
-              'execution_id': 'arthur-v0.1.5-release-e037750-20260918',
-              'accepted_source_sha': 'e0377509dcc57c415935e9f779fe27117ce591be',
-              'target_release': 'v0.1.5',
-              'release_mode': 'RELEASE_ONLY',
-              'action_rule': 'ONLY_ADVANCE_OR_MINIMALLY_UNBLOCK_CURRENT_CANONICAL_GATE',
-          }
-          for key, expected in required.items():
-              if highest.get(key) != expected:
-                  raise SystemExit(f'HIGHEST_MACHINE_EVIDENCE_VIOLATION {key}={highest.get(key)!r} expected={expected!r}')
-          if highest.get('fail_closed_on_violation') is not True:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION fail_closed_on_violation')
-          if intent.get('execution_id') != highest['execution_id'] or resume.get('execution_id') != highest['execution_id']:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION execution_id')
-          if intent.get('firmware_state', {}).get('active_source_sha') != highest['accepted_source_sha']:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION active_source_sha')
-          if resume.get('source', {}).get('accepted_source_sha') != highest['accepted_source_sha']:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION resume accepted_source_sha')
-          if intent.get('target_release') != highest['target_release']:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION target_release')
-          if intent.get('release_mode') != 'RELEASE_ONLY' or mode.get('mode') != 'RELEASE_ONLY':
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION release_mode')
+          if product.get('authority') != 'OPERATOR' or product.get('priority_class') != 'HIGHEST':
+              raise SystemExit('PRODUCT_GOAL_CONTRACT_AUTHORITY_INVALID')
+          if product.get('contract_id') != 'ARTHUR_PRODUCT_GOAL_V1':
+              raise SystemExit('PRODUCT_GOAL_CONTRACT_ID_INVALID')
+          process_version = str(product.get('process_contract_version') or '')
+          if not process_version:
+              raise SystemExit('PRODUCT_GOAL_PROCESS_CONTRACT_VERSION_MISSING')
+          if mode.get('mode') != 'RELEASE_ONLY':
+              raise SystemExit('RELEASE_MODE_NOT_RELEASE_ONLY')
           if bool(intent.get('device_write_authorized')) or bool(mode.get('automatic_flash')):
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION device_write')
-          if intent.get('firmware_execution_authorized') is not True:
-              raise SystemExit('FIRMWARE_EXECUTION_NOT_AUTHORIZED')
+              raise SystemExit('DEVICE_WRITE_AUTHORIZATION_CONFLICT')
 
-          canonical = highest.get('canonical_path') or []
-          expected_path = [
-              'CHANGE_IMPACT','BASELINE_INHERITANCE','EXPECTED_DIFF','BUILD',
-              'ARTIFACT','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'
-          ]
-          if canonical != expected_path:
-              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_VIOLATION canonical_path')
-
-          source = highest['accepted_source_sha']
-          release = highest['target_release']
-          execution = highest['execution_id']
-          current = str(resume.get('current_gate') or '')
-          skip = current in {'ARTIFACT','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'}
-          if current == 'PRODUCTION_RELEASED':
-              print(f'ALREADY_PRODUCTION_RELEASED=PASS release={resume.get("release","")}')
-          elif skip:
-              print(f'CANONICAL_RELEASE_ALREADY_OWNED_BY_DOWNSTREAM=PASS gate={current}')
-          else:
-              print(f'HIGHEST_MACHINE_EVIDENCE=PASS objective={highest["objective_id"]} gate={current}')
+          firmware_allowed = (
+              intent.get('intent_type') == 'EXECUTE_FIRMWARE'
+              and intent.get('authorization_scope') == 'FIRMWARE_RELEASE'
+              and intent.get('firmware_execution_authorized') is True
+          )
 
           out = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          if not firmware_allowed:
+              print(f'PRODUCT_GOAL_AUTHORITY=PASS contract={product["contract_id"]} process={process_version}')
+              print('CONTROL_PLANE_MUTATION_SKIPPED=PASS reason=firmware_execution_not_authorized')
+              with out.open('a', encoding='utf-8') as fh:
+                  fh.write('source_sha=\n')
+                  fh.write('source_ref=\n')
+                  fh.write('release_tag=\n')
+                  fh.write('execution_id=\n')
+                  fh.write('skip=true\n')
+              raise SystemExit(0)
+
+          highest = intent.get('highest_machine_evidence') or {}
+          if highest.get('authority') != 'OPERATOR' or highest.get('priority_class') != 'HIGHEST':
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_AUTHORITY_INVALID')
+          if highest.get('fail_closed_on_violation') is not True:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_FAIL_CLOSED_REQUIRED')
+
+          execution = str(intent.get('execution_id') or '')
+          source = str(highest.get('accepted_source_sha') or intent.get('firmware_state', {}).get('active_source_sha') or '').lower()
+          release = str(highest.get('target_release') or intent.get('target_release') or '')
+          source_ref = str(highest.get('accepted_source_ref') or intent.get('firmware_state', {}).get('source_ref') or '')
+
+          if not re.fullmatch(r'[0-9a-f]{40}', source):
+              raise SystemExit('ACCEPTED_SOURCE_SHA_INVALID')
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', release):
+              raise SystemExit('TARGET_RELEASE_INVALID')
+          if not execution:
+              raise SystemExit('EXECUTION_ID_MISSING')
+          if not source_ref:
+              raise SystemExit('ACCEPTED_SOURCE_REF_MISSING')
+          if highest.get('execution_id') and str(highest.get('execution_id')) != execution:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_EXECUTION_MISMATCH')
+          if highest.get('accepted_source_sha') and str(highest.get('accepted_source_sha')).lower() != source:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_SOURCE_MISMATCH')
+          if highest.get('target_release') and str(highest.get('target_release')) != release:
+              raise SystemExit('HIGHEST_MACHINE_EVIDENCE_RELEASE_MISMATCH')
+          if str(intent.get('release_mode')) != 'RELEASE_ONLY':
+              raise SystemExit('INTENT_RELEASE_MODE_INVALID')
+
+          same_execution = str(resume.get('execution_id') or '') == execution
+          current = str(resume.get('current_gate') or '')
+          skip = same_execution and current in {'ARTIFACT','RELEASE_GATE','RELEASE','PRODUCTION_RELEASED'}
+          if skip:
+              print(f'CANONICAL_RELEASE_ALREADY_OWNED_BY_DOWNSTREAM=PASS gate={current}')
+          else:
+              print(f'PRODUCT_GOAL_AUTHORITY=PASS contract={product["contract_id"]} process={process_version}')
+              print(f'FIRMWARE_EXECUTION_AUTHORIZED=PASS execution={execution} source={source} release={release}')
+
           with out.open('a', encoding='utf-8') as fh:
               fh.write(f'source_sha={source}\n')
+              fh.write(f'source_ref={source_ref}\n')
               fh.write(f'release_tag={release}\n')
               fh.write(f'execution_id={execution}\n')
               fh.write(f'skip={"true" if skip else "false"}\n')
@@ -114,15 +129,16 @@ jobs:
         shell: bash
         env:
           SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          SOURCE_REF: ${{ steps.contract.outputs.source_ref }}
         run: |
           set -Eeuo pipefail
-          git fetch --no-tags origin "refs/heads/$ARTHUR_SOURCE_REF:refs/remotes/origin/$ARTHUR_SOURCE_REF"
-          RESOLVED_SHA="$(git rev-parse "refs/remotes/origin/$ARTHUR_SOURCE_REF")"
+          git fetch --no-tags origin "refs/heads/$SOURCE_REF:refs/remotes/origin/$SOURCE_REF"
+          RESOLVED_SHA="$(git rev-parse "refs/remotes/origin/$SOURCE_REF")"
           test "$RESOLVED_SHA" = "$SOURCE_SHA" || {
             echo "BLOCKED: frozen source ref mismatch expected=$SOURCE_SHA actual=$RESOLVED_SHA" >&2
             exit 1
           }
-          echo "FROZEN_SOURCE_REF=PASS ref=$ARTHUR_SOURCE_REF sha=$RESOLVED_SHA"
+          echo "FROZEN_SOURCE_REF=PASS ref=$SOURCE_REF sha=$RESOLVED_SHA"
 
       - name: Run canonical prebuild gates on accepted source
         if: ${{ steps.contract.outputs.skip != 'true' }}
@@ -131,7 +147,7 @@ jobs:
           SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
         run: |
           set -Eeuo pipefail
-          ACCEPTED_ROOT="$RUNNER_TEMP/arthur-v015-accepted"
+          ACCEPTED_ROOT="$RUNNER_TEMP/arthur-accepted"
           rm -rf "$ACCEPTED_ROOT"
           git worktree add --detach "$ACCEPTED_ROOT" "$SOURCE_SHA"
           BASE_SHA="$(python3 - <<'PY'
@@ -150,10 +166,10 @@ jobs:
           (
             cd "$ACCEPTED_ROOT"
             chmod +x scripts/*.sh tests/*.sh
-            CHANGESET_BASE="$BASE_SHA" bash scripts/check-changeset-complete.sh | tee "$RUNNER_TEMP/arthur-v015-canonical-gates.log"
+            CHANGESET_BASE="$BASE_SHA" bash scripts/check-changeset-complete.sh | tee "$RUNNER_TEMP/arthur-canonical-gates.log"
           )
           for marker in             CHANGE_IMPACT_GATE=PASS             BASELINE_INHERITANCE_GATE=PASS             EXPECTED_DIFF_GATE=PASS             IMPLEMENTATION_COMPLETE_GATE=PASS             CHANGESET_FREEZE=PASS; do
-            grep -Fqx "$marker" "$RUNNER_TEMP/arthur-v015-canonical-gates.log" || {
+            grep -Fqx "$marker" "$RUNNER_TEMP/arthur-canonical-gates.log" || {
               echo "BLOCKED: canonical gate marker missing: $marker" >&2
               exit 1
             }
@@ -166,10 +182,11 @@ jobs:
         shell: bash
         env:
           SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          SOURCE_REF: ${{ steps.contract.outputs.source_ref }}
         run: |
           set -Eeuo pipefail
           RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headBranch,headSha,status,conclusion,createdAt)"
-          MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$ARTHUR_SOURCE_REF" python3 - <<'PY'
+          MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$SOURCE_REF" python3 - <<'PY'
           import json, os
           runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
           sha=os.environ['SOURCE_SHA']; ref=os.environ['SOURCE_REF']
@@ -192,10 +209,10 @@ jobs:
             fi
             echo "FORMAL_CANDIDATE_REUSED=PASS run=$RUN_ID status=$RUN_STATUS conclusion=$RUN_CONCLUSION"
           else
-            gh workflow run arthur-update-v3.yml --repo "$GITHUB_REPOSITORY" --ref "$ARTHUR_SOURCE_REF" -f mode=rebuild_known_good
+            gh workflow run arthur-update-v3.yml --repo "$GITHUB_REPOSITORY" --ref "$SOURCE_REF" -f mode=rebuild_known_good
             for _ in $(seq 1 30); do
               RUNS_JSON="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow arthur-update-v3.yml --event workflow_dispatch --limit 100 --json databaseId,headBranch,headSha,status,conclusion,createdAt)"
-              MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$ARTHUR_SOURCE_REF" python3 - <<'PY'
+              MATCH="$(RUNS_JSON="$RUNS_JSON" SOURCE_SHA="$SOURCE_SHA" SOURCE_REF="$SOURCE_REF" python3 - <<'PY'
           import json, os
           runs=json.loads(os.environ.get('RUNS_JSON') or '[]')
           sha=os.environ['SOURCE_SHA']; ref=os.environ['SOURCE_REF']
@@ -211,7 +228,7 @@ jobs:
             done
             [[ -n "$MATCH" ]] || { echo 'BLOCKED: Candidate dispatch was not acknowledged.' >&2; exit 1; }
             IFS='|' read -r RUN_ID RUN_STATUS RUN_CONCLUSION <<<"$MATCH"
-            echo "FORMAL_CANDIDATE_DISPATCHED=PASS run=$RUN_ID source=$SOURCE_SHA ref=$ARTHUR_SOURCE_REF"
+            echo "FORMAL_CANDIDATE_DISPATCHED=PASS run=$RUN_ID source=$SOURCE_SHA ref=$SOURCE_REF"
           fi
 
           [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: Candidate run id invalid.' >&2; exit 1; }
@@ -256,10 +273,12 @@ jobs:
           if resume.get('source',{}).get('accepted_source_sha','').lower() != source:
               raise SystemExit('BLOCKED: accepted source changed before BUILD bind')
           highest=intent.get('highest_machine_evidence') or {}
-          if highest.get('objective_id') != 'PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY':
-              raise SystemExit('BLOCKED: highest machine objective changed before BUILD bind')
+          if highest.get('authority') != 'OPERATOR' or highest.get('priority_class') != 'HIGHEST':
+              raise SystemExit('BLOCKED: highest machine authority changed before BUILD bind')
           if highest.get('accepted_source_sha','').lower() != source or highest.get('target_release') != release:
               raise SystemExit('BLOCKED: highest machine source/release changed before BUILD bind')
+          if highest.get('execution_id') and str(highest.get('execution_id')) != execution:
+              raise SystemExit('BLOCKED: highest machine execution changed before BUILD bind')
           if evidence.get('execution_id') != execution:
               raise SystemExit('BLOCKED: evidence execution identity mismatch')
 
@@ -372,7 +391,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'CANONICAL_STATE_BIND=ALREADY_PERSISTED'
           else
-            git commit -m "state: bind v0.1.5 canonical BUILD run $CANDIDATE_RUN_ID [skip ci]"
+            git commit -m "state: bind Arthur canonical BUILD run $CANDIDATE_RUN_ID [skip ci]"
             for attempt in 1 2 3; do
               if git push origin HEAD:main; then
                 echo "CANONICAL_STATE_PERSIST=PASS attempt=$attempt"
@@ -403,9 +422,9 @@ jobs:
           {
             echo '## Arthur canonical RELEASE_ONLY control plane'
             echo
-            echo '- Highest objective: `PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY`'
+            echo '- Highest contract: `ARTHUR_PRODUCT_GOAL_V1`'
             echo '- Accepted source: `${{ steps.contract.outputs.source_sha }}`'
-            echo '- Frozen source ref: `release/v0.1.5-e037750`'
+            echo '- Frozen source ref: `${{ steps.contract.outputs.source_ref }}`'
             echo '- Target: `${{ steps.contract.outputs.release_tag }}`'
             echo '- Device write/sysupgrade: forbidden'
             echo '- Pre-release device test: not a gate'
