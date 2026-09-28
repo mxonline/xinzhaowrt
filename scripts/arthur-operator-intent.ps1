@@ -86,7 +86,7 @@ function Read-ArthurOperatorIntent {
         throw 'OPERATOR_INTENT_PROJECT_MISMATCH'
     }
     $schema = [string](Get-ArthurIntentMember $intent 'schema_version')
-    if ($schema -notin @('1.0','1.1')) {
+    if ($schema -notin @('1.0','1.1','1.2')) {
         throw 'OPERATOR_INTENT_SCHEMA_UNSUPPORTED'
     }
     return $intent
