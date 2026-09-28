@@ -37,46 +37,31 @@ $current = Read-ArthurOperatorIntent -Path $IntentPath
 $resume = Get-Content -Raw $ResumeStatePath | ConvertFrom-Json
 
 Assert-Equal $current.project 'Arthur' 'operator intent must be scoped to Arthur'
-Assert-Equal $current.schema_version '1.1' 'operator intent must use the durable execution-aware schema'
-Assert-Equal $current.intent_type 'EXECUTE_FIRMWARE' 'operator intent must preserve firmware execution identity'
-Assert-Equal $current.authorization_scope 'FIRMWARE_RELEASE' 'operator intent must preserve firmware release scope'
+Assert-Equal $current.schema_version '1.2' 'operator intent must use the current scope-aware schema'
+Assert-Equal $current.intent_type 'PROCESS_GOVERNANCE' 'current operator intent must remain governance only'
+Assert-Equal $current.authorization_scope 'GOVERNANCE_RULES_ONLY' 'current authorization scope must remain governance only'
 Assert-Equal ([int]$resume.schema_version) 2 'canonical production resume state must be schema v2'
 
 $currentDecision = Get-ArthurFirmwareExecutionPermission -OperatorIntent $current
-if ($current.firmware_execution_authorized -eq $true) {
-    Assert-Equal $current.release_mode 'RELEASE_ONLY' 'fresh firmware authorization must remain RELEASE_ONLY'
-    Assert-Equal $current.device_write_authorized $false 'fresh firmware authorization must not authorize router writes'
-    Assert-Equal $current.guardrails.automatic_flash $false 'fresh firmware authorization must keep automatic flash disabled'
-    Assert-Equal $current.guardrails.sysupgrade_forbidden $true 'fresh firmware authorization must forbid sysupgrade'
-    Assert-True ([string]$current.execution_id -ne [string]$resume.execution_id -or [string]$resume.status -eq 'RESUME_SAFE') 'fresh authorization may precede bootstrap, but same-execution resume must be safe'
-    if ([string]$current.execution_id -eq [string]$resume.execution_id) {
-        Assert-Equal $resume.status 'RESUME_SAFE' 'bootstrapped fresh execution must be resume-safe'
-        Assert-Equal $resume.instruction_allowed $true 'bootstrapped fresh execution must allow continuation'
-        Assert-Equal $resume.current_gate 'CHANGE_IMPACT' 'fresh execution must begin at change impact'
-        Assert-Equal $resume.next_action 'CHANGE_IMPACT' 'fresh execution must schedule change impact first'
-    }
-    else {
-        Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'before bootstrap, only the previous terminal execution may remain durable'
-        Assert-Equal $resume.instruction_allowed $false 'previous terminal execution must remain closed before bootstrap'
-    }
-    Assert-Equal $currentDecision.allowed $true 'explicit fresh firmware-release authorization must allow bootstrap/continuation'
-}
-else {
-    Assert-Equal $current.firmware_state.current_stage 'PRODUCTION_RELEASED' 'closed firmware intent must project the terminal stage'
-    Assert-Equal $current.firmware_state.next_stage 'NONE' 'closed firmware intent must close future actions'
-    Assert-Equal $resume.execution_id $current.execution_id 'closed intent and resume state must share execution identity'
-    Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'closed resume state must be terminal'
-    Assert-Equal $resume.instruction_allowed $false 'terminal resume must forbid further firmware instructions'
-    Assert-Equal $resume.current_gate 'PRODUCTION_RELEASED' 'canonical current gate must be terminal'
-    Assert-Equal $resume.next_action 'NONE' 'terminal resume must not reopen a release'
-    Assert-True (@($resume.pending).Count -eq 0) 'terminal resume must have no pending work'
-    Assert-Equal $currentDecision.allowed $false 'completed production release must not authorize another firmware mutation'
-    Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'terminal closure must be fail-closed'
-}
+Assert-Equal $current.firmware_execution_authorized $false 'governance intent must close firmware execution'
+Assert-Equal $current.device_write_authorized $false 'governance intent must not authorize router writes'
+Assert-Equal $currentDecision.allowed $false 'governance-only intent must never authorize firmware mutation'
+Assert-Equal $currentDecision.reason 'FIRMWARE_EXECUTION_NOT_AUTHORIZED' 'governance-only intent must fail closed'
+Assert-Equal $current.firmware_state.current_stage 'PRODUCTION_RELEASED' 'governance projection must preserve released stage'
+Assert-Equal $current.firmware_state.next_stage 'NONE' 'governance projection must not create a firmware next stage'
+Assert-Equal $resume.status 'PRODUCTION_RELEASED' 'durable resume state must remain released'
+Assert-Equal $resume.instruction_allowed $false 'released state must keep firmware instruction closed'
+Assert-Equal $resume.current_gate 'PRODUCTION_RELEASED' 'canonical current gate must remain terminal'
+Assert-Equal $resume.next_action 'NONE' 'governance work must not reopen firmware execution'
+Assert-True (@($resume.pending).Count -ge 1) 'post-release product verification debt must remain explicit'
 
-Assert-Equal $current.guardrails.do_not_interrupt_active_run $true 'wakeups must preserve accepted execution ownership'
-Assert-Equal $current.guardrails.do_not_dispatch_duplicate_build $true 'wakeups must never dispatch a duplicate build'
+Assert-Equal $current.guardrails.resume_before_action $true 'future executable work must resume durable state before action'
+Assert-Equal $current.guardrails.do_not_dispatch_duplicate_build $true 'future execution must never dispatch duplicate build work'
 Assert-Equal $current.guardrails.reuse_uploaded_candidate_artifact_after_build $true 'post-build recovery must reuse accepted artifacts'
+Assert-Equal $current.guardrails.live_validate_before_build_when_safe_and_applicable $true 'safe applicable validation must precede Build'
+Assert-Equal $current.guardrails.exact_artifact_promotion_required $true 'promotion must retain exact artifact bytes'
+Assert-Equal ([string]$current.highest_machine_evidence.objective_id) 'FREEZE_ARTHUR_RELEASE_PROCESS_VNEXT' 'governance intent must persist the vNext process objective'
+Assert-Equal ([string]$current.highest_machine_evidence.process_contract_version) 'ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29' 'governance intent must bind the vNext process contract'
 Assert-True ($null -ne $resume.PSObject.Properties['semantic_sha256']) 'durable resume state must include semantic_sha256'
 Assert-True ([string]$resume.semantic_sha256 -match '^[0-9a-f]{64}$') 'durable resume semantic hash must be lowercase SHA-256'
 $resumeForHash = ($resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
