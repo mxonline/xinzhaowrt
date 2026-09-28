@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "authority": "OPERATOR",
   "priority_class": "HIGHEST",
   "contract_id": "ARTHUR_PRODUCT_GOAL_V1",
@@ -127,5 +127,140 @@
       "ADH_REENABLE_RESTORES_CHAIN=PASS",
       "FINAL_ADH_DEFAULT_OFF=PASS"
     ]
+  },
+  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
+  "release_engineering_contract": {
+    "principle": "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT",
+    "mandatory_question_before_every_step": "Does this step move Arthur closer to a genuinely long-term stable usable firmware?",
+    "canonical_path": [
+      "LOAD_HIGHEST_PRODUCT_CONTRACT",
+      "RECOVER_CURRENT_DURABLE_STATE",
+      "DECLARE_SINGLE_CHANGE_OBJECTIVE",
+      "REUSE_AND_CHANGE_IMPACT_GATE",
+      "LIVE_VALIDATE_RUNTIME_AFFECTING_CHANGE_WHEN_SAFE",
+      "FIX_ONLY_FIRST_REAL_FAILURE",
+      "SOURCE_BIND_EXACT_PROVEN_IMPLEMENTATION",
+      "STATIC_AND_SEMANTIC_GATES",
+      "SINGLE_VALIDATION_BUILD",
+      "VERIFY_EXACT_ARTIFACT_IDENTITY",
+      "FLASH_EXACT_CANDIDATE",
+      "POSTFLASH_MINIMUM_REAL_DEVICE_ACCEPTANCE",
+      "OPTIONAL_SINGLE_CLEAN_FLASH_FINAL_ACCEPTANCE",
+      "PROMOTE_IDENTICAL_ARTIFACT_CANDIDATE_TO_STABLE",
+      "SYNC_RUNTIME_STATE_AND_EVIDENCE",
+      "CLEAN_SUPERSEDED_CANDIDATES",
+      "PRODUCT_GOAL_VERIFIED"
+    ],
+    "live_first": {
+      "required_for_runtime_affecting_changes": true,
+      "build_must_not_be_used_as_a_debugger_when_live_validation_is_safe_and_applicable": true,
+      "only_proven_live_logic_may_be_persisted_for_the_build": true
+    },
+    "build_once": {
+      "default_maximum_builds_per_frozen_candidate": 1,
+      "duplicate_build_for_release_control_plane_or_evidence_failure_forbidden": true,
+      "rebuild_allowed_only_when_firmware_payload_or_provenance_is_invalidated_by_a_real_source_or_runtime_fix": true
+    },
+    "exact_identity_chain_required": [
+      "SOURCE_SHA",
+      "BUILD_RUN_ID",
+      "ACTIONS_ARTIFACT_ID",
+      "ACTIONS_ARTIFACT_SHA256",
+      "SYSUPGRADE_SHA256",
+      "DEVICE_BUILD_ID",
+      "RELEASE_TAG"
+    ],
+    "exact_artifact_rule": "The bytes tested on the real Arthur must be the bytes promoted to Stable. Same version or similar configuration is insufficient.",
+    "failure_scope_rule": "A failing provider node, external endpoint, Codex session, SSE stream, evidence collection helper, or release control-plane step must not be promoted to a firmware-wide failure without direct machine evidence.",
+    "no_scope_drift": true
+  },
+  "evidence_invalidation_policy": {
+    "invalidate_runtime_evidence_only_on": [
+      "FIRMWARE_PAYLOAD_CHANGED",
+      "RUNTIME_CONFIG_CHANGED",
+      "CORE_BINARY_CHANGED",
+      "RELEVANT_PROVIDER_OR_RULE_RUNTIME_CHANGED",
+      "DNS_OR_FIREWALL_RUNTIME_LOGIC_CHANGED",
+      "DEVICE_REBOOT_WHEN_THE_EVIDENCE_REQUIRES_A_CONTINUOUS_BOOT_WINDOW"
+    ],
+    "must_not_invalidate_runtime_evidence": [
+      "CODEX_OR_CHAT_RECONNECT",
+      "SSE_STREAM_DISCONNECT",
+      "LOCAL_EVIDENCE_SCRIPT_CHANGE",
+      "READ_ONLY_GITHUB_QUERY",
+      "EVIDENCE_FILE_REFORMAT",
+      "CONTROL_PLANE_ONLY_CHANGE",
+      "COMMENT_ONLY_SOURCE_CHANGE_WITH_IDENTICAL_EFFECTIVE_CONFIG"
+    ],
+    "repeat_stability_test_only_after_valid_invalidation": true
+  },
+  "clean_flash_policy": {
+    "purpose": "Prove first-boot behavior without inherited configuration.",
+    "final_candidate_only_unless_explicitly_needed_earlier": true,
+    "at_most_once_per_exact_candidate_by_default": true,
+    "backup_before_clean_flash_for_disaster_recovery_only": true,
+    "restoring_the_backup_during_clean_flash_acceptance_forbidden": true,
+    "force_flash_flag_forbidden": true,
+    "failure_must_stop_second_blind_flash": true,
+    "required_identity_before_write": [
+      "DEVICE_MODEL_TARGET_PROFILE",
+      "ETHERNET_MAC_OR_EQUIVALENT_DEVICE_IDENTITY",
+      "LOCAL_REMOTE_FIRMWARE_SHA256",
+      "SYSUPGRADE_T_PASS",
+      "ROLLBACK_AVAILABLE"
+    ]
+  },
+  "semantic_gate_requirements": {
+    "configuration_semantics_over_filename_diff": true,
+    "comment_only_change_must_not_invalidate_unrelated_runtime_evidence": true,
+    "default_root_password_plaintext_must_cryptographically_match_default_root_password_hash": true,
+    "version_release_source_and_artifact_identity_must_be_consistent": true,
+    "target_profile_and_required_product_capabilities_must_not_silently_change": true
+  },
+  "promotion_policy": {
+    "validation_build_may_be_promoted_without_rebuild": true,
+    "candidate_and_stable_must_reuse_identical_artifact_bytes": true,
+    "release_or_artifact_recovery_must_not_change_firmware_payload": true,
+    "control_plane_failure_after_valid_build_must_reuse_existing_artifact_first": true,
+    "stable_release_must_not_claim_product_goal_verified_without_all_highest_contract_real_device_markers": true
+  },
+  "state_sync_policy": {
+    "canonical_runtime_state": "production/resume-state.json",
+    "release_status": "production/status.json",
+    "known_good": "production/known-good.json",
+    "product_verification": "production/product-goal-verification.json",
+    "sync_after_stable_promotion_required": true,
+    "stale_state_must_not_override_newer_release_or_real_device_machine_evidence": true,
+    "release_success_and_product_success_must_remain_distinct": true
+  },
+  "cleanup_policy": {
+    "delete_superseded_temporary_candidate_releases_after_a_new_stable_is_confirmed": true,
+    "preserve_current_stable": true,
+    "preserve_current_candidate_for_provenance": true,
+    "preserve_last_real_device_confirmed_rollback": true,
+    "preserve_machine_evidence_and_exact_release_identity": true,
+    "cleanup_must_not_trigger_build_or_device_write": true
+  },
+  "runtime_failure_classification": {
+    "individual_proxy_node_timeout_is_not_firmware_failure_when_service_continues_via_other_nodes": true,
+    "external_dns_or_endpoint_failure_requires_isolation_before_firmware_repair": true,
+    "firmware_level_failure_examples": [
+      "CORE_UNEXPECTED_EXIT_OR_RESTART",
+      "GLOBAL_DNS_CHAIN_FAILURE",
+      "GLOBAL_PROXY_TRAFFIC_FAILURE",
+      "MANAGEMENT_PLANE_LOSS",
+      "OOM_OR_REBOOT",
+      "PERSISTENCE_FAILURE"
+    ]
+  },
+  "next_release_preparation": {
+    "start_from_current_verified_runtime_artifact": true,
+    "do_not_reopen_already_proven_smart_core_without_relevant_diff": true,
+    "unresolved_product_debt_must_remain_explicit": [
+      "ADGUARDHOME_FULLY_USABLE_EXACT_RELEASE_REVALIDATION",
+      "OPENCLASH_ADH_COEXISTENCE_EXACT_RELEASE_REVALIDATION",
+      "POST_RELEASE_DEVICE_TEST_COMPLETION"
+    ],
+    "no_new_firmware_execution_without_new_explicit_operator_authorization": true
   }
 }
