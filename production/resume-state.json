@@ -309,5 +309,6 @@
   },
   "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
   "legacy_gate_records_policy": "Canonical execution/evidence bundle is arthur-v0.1.5-release-e037750-20260918; current Stable runtime identity and post-release acceptance status are authoritative in runtime_release and product-goal state.",
-  "evidence_timestamp": "2026-09-29"
+  "evidence_timestamp": "2026-09-29",
+  "semantic_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
 }
