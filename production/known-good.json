@@ -109,5 +109,36 @@
     "verification": "real-device-confirmed",
     "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
     "updated_at": "2026-09-28T03:38:51+00:00"
-  }
+  },
+  "next_release_starting_point": {
+    "stable_tag": "arthur-production-36348777394",
+    "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
+    "build_run_id": 36348777394,
+    "actions_artifact_id": 10944450704,
+    "actions_artifact_sha256": "28784b993300f055685934473f32f740e889b30e60ad07b3e5a81e9caf358bd8",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
+    "firmware_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "release_status": "PRODUCTION_RELEASED",
+    "product_status": "POST_RELEASE_VALIDATION_PENDING",
+    "proven_reusable_capabilities": [
+      "SMART_CORE_IDENTITY_AND_PACKAGING",
+      "SMART_GROUPS_9_RUNTIME",
+      "OPENCLASH_START_AND_CONTROLLER",
+      "POSTFLASH_STABILITY_WITHOUT_OOM_SIGSEGV_OR_SWAP_THRASHING",
+      "STRICT_SSH_IDENTITY_RECOVERY",
+      "ROOT_PASSWORD_AUTH_ON_CLEAN_FLASH"
+    ],
+    "pending_before_full_product_known_good_promotion": [
+      "CLEAN_FLASH_REAL_PROXY_TRAFFIC",
+      "FINAL_REBOOT_PERSISTENCE",
+      "ADGUARDHOME_FULLY_USABLE",
+      "OPENCLASH_ADH_COEXISTENCE",
+      "POST_RELEASE_DEVICE_TEST"
+    ],
+    "inheritance_rule": "Do not reopen proven capabilities unless the next candidate has a relevant runtime-affecting diff or valid evidence invalidation event.",
+    "build_rule": "Live-validate first when safe, persist the same proven implementation, then build the frozen candidate once by default.",
+    "promotion_rule": "Promote the identical tested artifact bytes; release-control-plane recovery must not trigger a rebuild."
+  },
+  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
 }
