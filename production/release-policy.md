@@ -14,6 +14,22 @@
 
 相同失败 fingerprint 在 `last_progress` 不前进时必须触发 circuit breaker，停止重复同一种 resume/relaunch，改用最小、可验证的解阻路径。任何 UNKNOWN、证据不一致、source lock 漂移、target/profile 变化、非预期 Diff、hash 不一致或权限不明确均 fail closed。
 
+
+## VNext 最高发布工程契约（2026-09-29）
+
+以下规则是 production/product-goal-contract.json 中 ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29 的人类可读投影；如有冲突，以最高机器契约为准：
+
+- **实机优先**：运行时行为在安全且适用时先在真实 Arthur 上验证，Build 不得充当运行时调试器；只允许把同一套已实机证明的实现固化进源码。
+- **单次 Build 默认**：冻结 Candidate 默认最多 Build 一次。Release、证据、控制面、会话或上传问题不得触发重复 Build；只有固件 payload 或 provenance 被真实修复所改变时才允许重新 Build。
+- **Exact Artifact**：源码 SHA、Build Run、Actions Artifact、Artifact SHA256、sysupgrade SHA256、设备 Build ID、Release tag 必须形成同一身份链。实机验收的 bytes 必须就是最终 Stable 的 bytes。
+- **证据失效最小化**：只有 firmware/runtime/config/core/DNS/firewall/provider 相关变化，或需要连续 boot 窗口时的设备重启，才能使相应运行时证据失效。Codex 重连、SSE 断线、只读查询、证据脚本或注释变化不得触发重复稳定性测试。
+- **首错即停**：失败时只处理第一个真实根因；单节点超时、外部 DNS/端点失败、会话错误不得未经隔离就升级为整机固件失败。
+- **Clean Flash 一次性验收**：最终 Candidate 需要验证首次启动时，默认每个 exact candidate 只允许一次无保留 clean flash；失败后禁止盲目第二次刷写，必须先定位根因。禁止 -F。
+- **Promotion 不重建**：Validation Build 已经产生且实机通过的 Artifact，必须直接以同一 bytes 完成 Candidate → Stable promotion；Artifact/Release recovery 不得修改 payload，也不得要求重 Build。
+- **Release 与产品成功分离**：PRODUCTION_RELEASED 只表示正式发布成功；只有 exact Release 完成全部真实设备验收，才允许 PRODUCT_GOAL_VERIFIED 和新的 full Known-Good 晋升。
+- **状态必须同步**：Stable promotion 后必须同步 resume-state.json、status.json、known-good.json 和 product-goal-verification.json。旧状态不得覆盖新的 Release 或真实设备机器证据。
+- **禁止范围漂移**：不得为了当前单一问题顺带重构无关 Gate、CI、插件或服务；已经证明可复用的能力，在没有相关 runtime-affecting diff 或有效证据失效事件时禁止重新打开。
+
 ## Change Impact Gate
 
 `CHANGE_IMPACT_GATE` 在长构建前确定变更影响和最短可靠构建路径。同设备、同 target 且 source/toolchain 兼容时，应优先 ImageBuilder、SDK/package-only、有效缓存或 source reuse；只有变更性质或验证证据要求时才进入 Full Build。

@@ -70,10 +70,10 @@
   },
   "runtime_release": {
     "status": "PRODUCTION_RELEASED",
-    "known_good": true,
-    "verified": true,
-    "verification": "real-device-confirmed",
-    "verification_basis": "Previously accepted postflash evidence for the identical Artifact 10944450704; no post-release re-test was run.",
+    "known_good": false,
+    "verified": false,
+    "verification": "partial-real-device-confirmed",
+    "verification_basis": "Exact Stable identity and OpenClash Smart behavior are real-device confirmed, including clean-flash authentication and Smart group loading. Full ARTHUR_PRODUCT_GOAL_V1 validation is still pending, so this release is not yet promoted over the prior full Known-Good rollback baseline.",
     "device": "jdcloud_re-ss-01",
     "candidate_tag": "arthur-update-36348777394",
     "stable_tag": "arthur-production-36348777394",
@@ -89,26 +89,30 @@
     "source_lock_note": "The exact Build artifact reports Known-Good lock enabled: 0; the canonical source lock was not changed.",
     "smart_runtime_evidence": "production/product-goal-verification.json",
     "adh_verification": "NOT_REVALIDATED",
-    "post_release_device_test": "PENDING_INDEPENDENT_NOT_REPEATED_BY_REQUEST",
+    "post_release_device_test": "IN_PROGRESS_CLEAN_FLASH_REAL_PROXY_TRAFFIC_PENDING",
     "one_time_recovery_workflow_removed": true,
     "candidate_release_id": 397933427,
     "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36348777394",
     "stable_release_id": 397933614,
     "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
-    "updated_at": "2026-09-28T03:38:51+00:00"
+    "updated_at": "2026-09-28T03:38:51+00:00",
+    "product_goal_verified": false,
+    "promotion_eligible": false
   },
   "runtime_known_good": {
-    "known_good": true,
-    "verified": true,
+    "known_good": false,
+    "verified": false,
     "stable_tag": "arthur-production-36348777394",
     "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
     "sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
     "build_run_id": 36348777394,
     "actions_artifact_id": 10944450704,
     "source_lock_enforced_by_build": false,
-    "verification": "real-device-confirmed",
+    "verification": "NOT_PROMOTED_POST_RELEASE_VALIDATION_PENDING",
     "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
-    "updated_at": "2026-09-28T03:38:51+00:00"
+    "updated_at": "2026-09-28T03:38:51+00:00",
+    "product_goal_verified": false,
+    "promotion_eligible": false
   },
   "next_release_starting_point": {
     "stable_tag": "arthur-production-36348777394",
@@ -140,5 +144,11 @@
     "build_rule": "Live-validate first when safe, persist the same proven implementation, then build the frozen candidate once by default.",
     "promotion_rule": "Promote the identical tested artifact bytes; release-control-plane recovery must not trigger a rebuild."
   },
-  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
+  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
+  "known_good_promotion_policy": {
+    "current_full_known_good_remains": "arthur-production-34268801985",
+    "current_published_stable": "arthur-production-36348777394",
+    "rule": "A published Stable does not replace the full Known-Good baseline until exact-release POST_RELEASE_DEVICE_TEST and every ARTHUR_PRODUCT_GOAL_V1 required real-device marker PASS.",
+    "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
+  }
 }

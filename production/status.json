@@ -15,10 +15,10 @@
   "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
   "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
   "lock_sha256": null,
-  "known_good": true,
+  "known_good": false,
   "workflow_version": "3.0",
-  "message": "Release v0.1.4 published from the verified Run 34559894373 artifact after the OpenClash memory-source live pass. POST_RELEASE_DEVICE_TEST remains an independent post-release check.",
-  "updated_at": "2026-09-28T03:38:51+00:00",
+  "message": "Arthur Stable arthur-production-36348777394 is formally published from Build Run 36348777394 / Artifact 10944450704. OpenClash Smart evidence is accepted, but full product Known-Good promotion remains blocked until exact-release post-release validation completes, including AdGuardHome and OpenClash/AdGuardHome coexistence.",
+  "updated_at": "2026-09-29",
   "build_run_id": "36348777394",
   "build_run_url": "https://github.com/mxonline/xinzhaowrt/actions/runs/36348777394",
   "artifact_id": "10944450704",
@@ -66,5 +66,14 @@
     "control_plane_result": "PASS",
     "firmware_build_triggered": false,
     "device_write_triggered": false
-  }
+  },
+  "known_good_promotion_eligible": false,
+  "known_good_promotion_blockers": [
+    "CLEAN_FLASH_REAL_PROXY_TRAFFIC",
+    "FINAL_REBOOT_PERSISTENCE",
+    "SYSTEM_HEALTH_FINAL",
+    "ADGUARDHOME_FULLY_USABLE",
+    "OPENCLASH_ADH_COEXISTENCE",
+    "POST_RELEASE_DEVICE_TEST"
+  ]
 }
