@@ -23,11 +23,21 @@ function Assert-ArthurProductGoalContract {
 
     $contract = Get-ArthurProductGoalContract -Root $Root
 
-    if ([string]$contract.schema_version -ne '1.0') { throw 'PRODUCT_GOAL_CONTRACT_SCHEMA_UNSUPPORTED' }
+    if ([string]$contract.schema_version -ne '1.1') { throw 'PRODUCT_GOAL_CONTRACT_SCHEMA_UNSUPPORTED' }
     if ([string]$contract.authority -ne 'OPERATOR') { throw 'PRODUCT_GOAL_CONTRACT_AUTHORITY_INVALID' }
     if ([string]$contract.priority_class -ne 'HIGHEST') { throw 'PRODUCT_GOAL_CONTRACT_PRIORITY_INVALID' }
     if ([string]$contract.contract_id -ne 'ARTHUR_PRODUCT_GOAL_V1') { throw 'PRODUCT_GOAL_CONTRACT_ID_INVALID' }
     if ([string]$contract.scope -ne 'ALL_ARTHUR_LIFECYCLE_STAGES_AND_ALL_AUTOMATION') { throw 'PRODUCT_GOAL_CONTRACT_SCOPE_INVALID' }
+
+    if ([string]$contract.process_contract_version -ne 'ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29') { throw 'PRODUCT_GOAL_PROCESS_CONTRACT_VERSION_INVALID' }
+    if ([string]$contract.release_engineering_contract.principle -ne 'REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT') { throw 'PRODUCT_GOAL_RELEASE_ENGINEERING_PRINCIPLE_INVALID' }
+    if ($contract.release_engineering_contract.live_first.required_for_runtime_affecting_changes -ne $true) { throw 'PRODUCT_GOAL_LIVE_FIRST_DISABLED' }
+    if ($contract.release_engineering_contract.live_first.build_must_not_be_used_as_a_debugger_when_live_validation_is_safe_and_applicable -ne $true) { throw 'PRODUCT_GOAL_BUILD_AS_DEBUGGER_NOT_FORBIDDEN' }
+    if ([int]$contract.release_engineering_contract.build_once.default_maximum_builds_per_frozen_candidate -ne 1) { throw 'PRODUCT_GOAL_SINGLE_BUILD_DEFAULT_INVALID' }
+    if ($contract.promotion_policy.candidate_and_stable_must_reuse_identical_artifact_bytes -ne $true) { throw 'PRODUCT_GOAL_EXACT_ARTIFACT_PROMOTION_DISABLED' }
+    if ($contract.evidence_invalidation_policy.repeat_stability_test_only_after_valid_invalidation -ne $true) { throw 'PRODUCT_GOAL_EVIDENCE_RETEST_POLICY_INVALID' }
+    if ($contract.clean_flash_policy.at_most_once_per_exact_candidate_by_default -ne $true) { throw 'PRODUCT_GOAL_CLEAN_FLASH_REPEAT_GUARD_DISABLED' }
+    if ($contract.semantic_gate_requirements.default_root_password_plaintext_must_cryptographically_match_default_root_password_hash -ne $true) { throw 'PRODUCT_GOAL_CREDENTIAL_SEMANTIC_GATE_DISABLED' }
 
     if ([string]$contract.goal.product_terminal -ne 'PRODUCT_GOAL_VERIFIED') { throw 'PRODUCT_GOAL_TERMINAL_INVALID' }
     if ([string]$contract.goal.release_pipeline_terminal -ne 'PRODUCTION_RELEASED') { throw 'PRODUCT_GOAL_RELEASE_TERMINAL_INVALID' }
