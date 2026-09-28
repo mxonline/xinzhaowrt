@@ -1,0 +1,55 @@
+name: Recover Xinzhou Content Runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/recover-xinzhou-content-runner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 5
+    steps:
+      - name: Recover content production runner
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $serviceName = "actions.runner.mxonline-xinzhou-content-system.xinzhou-content-controller-CYCHAN"
+
+          $svc = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
+          if (-not $svc) {
+            throw "CONTENT_RUNNER_SERVICE_NOT_FOUND:$serviceName"
+          }
+
+          Write-Host "Before: State=$($svc.State) PID=$($svc.ProcessId)"
+
+          if ($svc.ProcessId -gt 0) {
+            Stop-Process -Id $svc.ProcessId -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+          }
+
+          Start-Service -Name $serviceName
+          Start-Sleep -Seconds 8
+
+          $after = Get-Service -Name $serviceName
+          Write-Host "After: Status=$($after.Status)"
+          if ($after.Status -ne "Running") {
+            throw "CONTENT_RUNNER_RECOVERY_FAILED:$($after.Status)"
+          }
+
+          $latest = Get-ChildItem "C:\actions-runner-xinzhou\_diag\Runner_*.log" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($latest) {
+            Write-Host "LatestLog=$($latest.FullName)"
+            Get-Content $latest.FullName -Tail 30
+          }
