@@ -56,6 +56,15 @@
     "contract_id": "ARTHUR_PRODUCT_GOAL_V1",
     "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
     "release_status_is_not_product_status": true,
-    "governance_updated_at": "2026-09-29"
+    "governance_updated_at": "2026-09-29",
+    "status": "GOVERNANCE_RULES_PERSISTED",
+    "durable_state_gate_run_id": 36461104039,
+    "durable_state_gate_result": "PASS",
+    "global_runtime_contract_run_id": 36461104118,
+    "global_runtime_contract_result": "PASS",
+    "control_plane_run_id": 36461104175,
+    "control_plane_result": "PASS",
+    "firmware_build_triggered": false,
+    "device_write_triggered": false
   }
 }
