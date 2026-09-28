@@ -128,3 +128,58 @@ MTD、U-Boot、bootloader、`dd`、raw eMMC/SPI/NAND、原始分区、ART/EEPROM
 版本号必须从当前正式 Release、仓库 VERSION 与执行目标三者一致地解析。若仓库 VERSION 落后于已发布 Release，属于版本元数据冲突，必须先修复，不得猜测下一版本号后直接发布。
 
 Candidate/临时标签若仍由现有 workflow 使用，可继续包含 run identity；正式 Stable/Release tag 必须在 Release Gate 中证明唯一、未占用并与本轮版本目标一致。
+
+
+## VNext 最高发布执行规则
+
+本节受 `production/product-goal-contract.json` 直接约束。若本文其它历史规则与最高机器契约冲突，以最高机器契约为准。
+
+Arthur 后续版本固定采用 **REAL-DEVICE-FIRST / SAME-IMPLEMENTATION / SINGLE-BUILD / EXACT-ARTIFACT** 路径：
+
+`读取最高契约 → 恢复 durable state → 声明唯一变更目标 → Reuse/Change Impact → 能安全实机验证的运行时变化先实机验证 → 只修第一个真实失败 → 将同一已证明实现固化源码 → 静态与语义 Gate → 冻结 candidate → 默认只 Build 一次 → exact artifact 身份校验 → 刷 exact candidate → 最小实机复验 → 最终候选必要时只做一次 clean flash → 同一 artifact Candidate→Stable → 同步状态与证据 → 清理被取代 Candidate`
+
+### Build 不是调试器
+
+能够在现有 Arthur 上安全证明的运行时行为，必须优先在实机证明。不得通过连续 Build 猜测运行时行为。只有当实机证明后的同一实现需要固化，或固件 payload / provenance 因真实修复发生变化时，才允许新的 Build。
+
+同一冻结 candidate 默认最多一次 Build。发布控制面、Candidate/Stable promotion、证据整理、GitHub 下载失败、Codex/SSE 重连均不得触发重复 Build。
+
+### 证据失效规则
+
+已有运行时 PASS 只有在以下变化发生时才失效：固件 payload、相关 runtime config、Core 二进制、相关 provider/rule、DNS/firewall runtime 逻辑改变；或者该证据明确要求连续同一 boot 而设备实际重启。
+
+以下事件不得使已有 PASS 失效：Codex/聊天重连、SSE 断流、本地证据脚本修改、只读 GitHub 查询、证据文件重排、纯控制面变更、有效配置完全一致的注释变化。
+
+### Exact Artifact
+
+必须形成并保存：`SOURCE_SHA → BUILD_RUN_ID → ACTIONS_ARTIFACT_ID → ACTIONS_ARTIFACT_SHA256 → SYSUPGRADE_SHA256 → DEVICE_BUILD_ID → RELEASE_TAG`。
+
+真实 Arthur 验证过的 bytes 必须就是 Stable 发布的 bytes。相同版本号、相近配置或重新 Build 出来的“等价固件”不能替代 exact artifact 证据。
+
+Validation Build 经 exact artifact 实机 PASS 后，必须优先直接 promotion 同一 artifact；Candidate/Stable recovery 不得修改 firmware payload，也不得因为旧发布控制面条件而重 Build。
+
+### Clean Flash
+
+Clean flash 用于排除历史配置继承，只针对最终 candidate 或明确需要证明 first-boot 的情形。默认每个 exact candidate 最多一次。
+
+刷前必须有设备身份、target/profile、MAC/独立身份、固件 hash、`sysupgrade -T`、rollback 可用等证据。clean flash 使用标准 `sysupgrade -n`，禁止 `-F`。若写入可能已经发生，恢复后禁止盲目第二次刷机。
+
+### 语义 Gate
+
+Gate 必须判断有效配置和行为语义，不能只按“文件是否变化”判定。注释变化不得使无关 ZRAM/运行时证据失效；真实 CONFIG、target/profile、包、网络、凭据策略变化必须 fail closed。
+
+默认 root 明文密码必须通过 SHA-512 crypt 计算后与 `DEFAULT_ROOT_PASSWORD_HASH` 完全一致；仅检查 hash 字符串是否存在不再构成 PASS。
+
+### 失败范围
+
+单个代理节点 timeout、节点 DNS 失败、外部 endpoint 故障、Codex/SSE 断线不得直接升级为固件级失败。先隔离为 provider/node/network/control-plane 问题。
+
+固件级失败包括：Core 异常退出/重启、全局 DNS 链失败、全局真实代理失败、管理面丢失、OOM/设备异常重启、重启持久化失败。
+
+### 状态同步与清理
+
+Stable promotion 后必须同步 `resume-state.json`、`status.json`、`known-good.json` 和 `product-goal-verification.json`，并保持“发布成功”和“产品目标成功”两个状态独立。
+
+只有 exact release 的最高契约全部真实设备能力通过后，才允许 `PRODUCT_GOAL_VERIFIED`。未验证的 ADH/共存能力必须明确保持 pending，不得用 Smart/OpenClash 局部 PASS 替代。
+
+新 Stable 确认后可清理被取代的临时 Candidate Release；必须保留当前 Stable、当前 provenance Candidate、最近真实设备确认 rollback 和机器证据。清理不得触发 Build 或设备写入。
