@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "execution_id": "arthur-final-release-5f41c4e-20260908",
+  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
   "status": "PRODUCTION_RELEASED",
   "instruction_allowed": false,
   "source": {
@@ -38,7 +38,9 @@
         "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
         "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "evidence:baseline-wifi-v1"
+      ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
       "verified_at": ""
@@ -52,7 +54,9 @@
         "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
         "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "evidence:baseline-luci-chinese-v1"
+      ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
       "verified_at": ""
@@ -66,7 +70,9 @@
         "source_sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3",
         "github_run_id": 34268801985
       },
-      "evidence_refs": [],
+      "evidence_refs": [
+        "evidence:baseline-quickstart-v1"
+      ],
       "inherited": true,
       "inherited_from": "arthur-final-release-5f41c4e-20260908",
       "verified_at": ""
@@ -302,7 +308,6 @@
     "product_goal_verified": false
   },
   "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
-  "legacy_gate_records_policy": "Historical canonical execution bundle remains arthur-final-release-5f41c4e-20260908 for Global Runtime Contract compatibility; current runtime Stable identity is authoritative in runtime_release.",
-  "semantic_sha256": "de4e0c1fd469977d7612e7b08f347ed39def27eaaadbf26ace2f5afa1f82e9c6",
+  "legacy_gate_records_policy": "Canonical execution/evidence bundle is arthur-v0.1.5-release-e037750-20260918; current Stable runtime identity and post-release acceptance status are authoritative in runtime_release and product-goal state.",
   "evidence_timestamp": "2026-09-29"
 }
