@@ -4,10 +4,10 @@
   "profile": "arthur-v2",
   "bundles": [
     {
-      "execution_id": "arthur-final-release-5f41c4e-20260908",
+      "execution_id": "arthur-v0.1.5-release-e037750-20260918",
       "state": "production/resume-state.json",
       "events": "production/firmware-events.jsonl",
-      "evidence": "production/evidence/arthur-final-release-5f41c4e-20260908/index.json"
+      "evidence": "production/evidence/arthur-v0.1.5-release-e037750-20260918/index.json"
     }
   ],
   "projection_paths": [
