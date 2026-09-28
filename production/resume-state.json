@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "execution_id": "arthur-smart-stable-b16ed00-20260928",
+  "execution_id": "arthur-final-release-5f41c4e-20260908",
   "status": "PRODUCTION_RELEASED",
   "instruction_allowed": false,
   "source": {
@@ -302,7 +302,7 @@
     "product_goal_verified": false
   },
   "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
-  "legacy_gate_records_policy": "Historical release evidence only; runtime_release and exact-release real-device evidence take precedence for current status.",
+  "legacy_gate_records_policy": "Historical canonical execution bundle remains arthur-final-release-5f41c4e-20260908 for Global Runtime Contract compatibility; current runtime Stable identity is authoritative in runtime_release.",
   "semantic_sha256": "b8eb651ec014f92998e52f1c0ed88639a0bc0d4764a04a1d7ba42e2f4c7aaac4",
   "evidence_timestamp": "2026-09-29"
 }
