@@ -288,10 +288,8 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-09-29",
   "release": "v0.1.5",
   "post_release_device_test": "IN_PROGRESS_CLEAN_FLASH_REAL_PROXY_TRAFFIC_PENDING",
-  "semantic_sha256": "3e2dcdbc539eee3681e9f6bc56415d4b458d01b8b66c5aab7a0873d490e3ea39",
   "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",
   "runtime_release": {
     "stable_tag": "arthur-production-36348777394",
@@ -304,5 +302,7 @@
     "product_goal_verified": false
   },
   "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
-  "legacy_gate_records_policy": "Historical release evidence only; runtime_release and exact-release real-device evidence take precedence for current status."
+  "legacy_gate_records_policy": "Historical release evidence only; runtime_release and exact-release real-device evidence take precedence for current status.",
+  "semantic_sha256": "b8eb651ec014f92998e52f1c0ed88639a0bc0d4764a04a1d7ba42e2f4c7aaac4",
+  "evidence_timestamp": "2026-09-29"
 }
