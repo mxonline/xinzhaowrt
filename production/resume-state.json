@@ -303,6 +303,6 @@
   },
   "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
   "legacy_gate_records_policy": "Historical canonical execution bundle remains arthur-final-release-5f41c4e-20260908 for Global Runtime Contract compatibility; current runtime Stable identity is authoritative in runtime_release.",
-  "semantic_sha256": "b8eb651ec014f92998e52f1c0ed88639a0bc0d4764a04a1d7ba42e2f4c7aaac4",
+  "semantic_sha256": "de4e0c1fd469977d7612e7b08f347ed39def27eaaadbf26ace2f5afa1f82e9c6",
   "evidence_timestamp": "2026-09-29"
 }
