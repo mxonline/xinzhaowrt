@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "status": "PRODUCT_GOAL_VERIFIED",
+  "scope": "Arthur OpenClash Smart runtime",
+  "build_run_id": 36348777394,
+  "actions_artifact_id": 10944450704,
+  "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+  "candidate_tag": "arthur-update-36348777394",
+  "stable_tag": "arthur-production-36348777394",
+  "device": {
+    "model": "JDCloud RE-SS-01",
+    "target": "jdcloud_re-ss-01"
+  },
+  "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
+  "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+  "factory_sha256": "9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0",
+  "smart_core": {
+    "identity": "alpha-smart-g2e80ed7",
+    "sha256": "36ca7f27eb06c4e6f4b6a7f7b5f3c67c921cd1d7e0a4819c1e16f0d327cf102d"
+  },
+  "smart_groups": [
+    "香港自动",
+    "日本自动",
+    "狮城自动",
+    "美国自动",
+    "台湾自动",
+    "韩国自动",
+    "英国自动",
+    "印度自动",
+    "自动选择"
+  ],
+  "smart_policy_config": "PASS",
+  "smart_policy_loaded": "PASS",
+  "smart_real_traffic": {
+    "status": "PASS",
+    "service": "YouTube",
+    "basis": "Previously accepted 192.168.6.217 YouTube-over-Smart evidence; continuous playback was explicitly waived."
+  },
+  "postflash_stability": {
+    "status": "PASS",
+    "duration_seconds": 635.4,
+    "sample_count": 21,
+    "oom_max": 0,
+    "dns_failures": 0,
+    "luci_http_failures": 0,
+    "swap_out_pages_delta": 0,
+    "zram_used_kb_delta": 0
+  },
+  "adh_verification": "NOT_REVALIDATED",
+  "evidence": {
+    "stability_archive": "production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip",
+    "stability_archive_sha256": "4bf98af20beaa9cf9e2d631bda3909f66f79274747c645a269d8782679582c99",
+    "stability_summary": "postflash-stability-summary.txt (inside stability_archive)",
+    "stability_summary_sha256": "c6a75e49e8932d1f09211c0e063acd7ec84947258b2cd7c2b9236a7168c87a4c",
+    "stability_csv": "production/release-evidence/arthur-smart-36348777394/postflash-stability.csv",
+    "stability_csv_sha256": "96c44ddb6028ee4090051ebea84aea079d247a92f1fd0dcd202ac4273d13aea8"
+  },
+  "source_lock_enforced_by_build": false,
+  "source_lock_note": "The exact Build artifact reports Known-Good lock enabled: 0. This record pins the verified runtime artifact by Actions run, artifact ID, source commit, and payload SHA256; it does not claim source-lock enforcement. The canonical source lock remains unchanged.",
+  "firmware_payload_modified_after_build": false
+}

@@ -1,0 +1,361 @@
+name: One-Time Arthur Stable Artifact Recovery 36348777394
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: one-time-arthur-stable-recovery-36348777394
+  cancel-in-progress: false
+
+jobs:
+  recover-and-promote:
+    if: github.repository == 'mxonline/xinzhaowrt' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout the authorized release control commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify exact Actions run, artifact, and payload provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+
+          RUN_ID=36348777394
+          ARTIFACT_ID=10944450704
+          ARTIFACT_SHA256=28784b993300f055685934473f32f740e889b30e60ad07b3e5a81e9caf358bd8
+          mkdir -p recovery/run recovery/artifact extracted release-assets
+          mkdir -p recovery/evidence
+
+          printf '%s  %s\n' \
+            4bf98af20beaa9cf9e2d631bda3909f66f79274747c645a269d8782679582c99 \
+            production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip \
+            | sha256sum --check --status
+          unzip -q production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip \
+            -d recovery/evidence
+
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,headSha,headBranch,workflowName,status,conclusion,url \
+            > recovery/run/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+            > recovery/run/artifacts.json
+
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "$GH_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output recovery/artifact/XinZhaoWrt-Arthur-run-36348777394.zip
+          printf '%s  %s\n' "$ARTIFACT_SHA256" \
+            recovery/artifact/XinZhaoWrt-Arthur-run-36348777394.zip | sha256sum --check --status
+
+          python3 scripts/one_time_arthur_release_36348777394.py \
+            --run-json recovery/run/run.json \
+            --artifact-index recovery/run/artifacts.json \
+            --artifact-dir extracted \
+            --evidence-dir recovery/evidence \
+            --evidence-archive production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip \
+            --goal-record production/product-goal-verification.json \
+            --verify-run-only
+
+          unzip -q recovery/artifact/XinZhaoWrt-Arthur-run-36348777394.zip -d extracted
+          python3 scripts/one_time_arthur_release_36348777394.py \
+            --run-json recovery/run/run.json \
+            --artifact-index recovery/run/artifacts.json \
+            --artifact-dir extracted \
+            --evidence-dir recovery/evidence \
+            --evidence-archive production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip \
+            --goal-record production/product-goal-verification.json
+
+          cp recovery/artifact/XinZhaoWrt-Arthur-run-36348777394.zip release-assets/
+          cp "extracted/firmware/XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin" release-assets/
+          cp "extracted/firmware/XinZhaoWrt-Arthur-v0.1.5-20260927-factory.bin" release-assets/
+          cp production/product-goal-verification.json release-assets/
+          cp recovery/evidence/postflash-stability-summary.txt \
+            release-assets/
+          cp recovery/evidence/postflash-stability.csv \
+            release-assets/
+
+          {
+            printf '%s  %s\n' "$ARTIFACT_SHA256" XinZhaoWrt-Arthur-run-36348777394.zip
+            printf '%s  %s\n' \
+              97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4 \
+              XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin
+            printf '%s  %s\n' \
+              9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0 \
+              XinZhaoWrt-Arthur-v0.1.5-20260927-factory.bin
+            printf '%s  %s\n' \
+              c6a75e49e8932d1f09211c0e063acd7ec84947258b2cd7c2b9236a7168c87a4c \
+              postflash-stability-summary.txt
+            printf '%s  %s\n' \
+              96c44ddb6028ee4090051ebea84aea079d247a92f1fd0dcd202ac4273d13aea8 \
+              postflash-stability.csv
+          } > release-assets/SHA256SUMS.release
+          cp recovery/evidence/postflash-stability-summary.txt \
+            release-assets/postflash-stability-summary.txt
+          cp recovery/evidence/postflash-stability.csv \
+            release-assets/postflash-stability.csv
+          (cd release-assets && sha256sum --check SHA256SUMS.release)
+
+      - name: Create or verify the exact Candidate release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          SOURCE_HEAD=b16ed00ffaed0df927fc5fe482a51153ad9e99d9
+          TAG=arthur-update-36348777394
+          git fetch origin "$SOURCE_HEAD"
+          git fetch --tags --force origin
+
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$SOURCE_HEAD" ]] || {
+              echo "BLOCKED: Candidate tag $TAG points to a different commit" >&2
+              exit 1
+            }
+          else
+            git tag -a "$TAG" "$SOURCE_HEAD" -m "Arthur Candidate recovered from Build Run 36348777394"
+            git push origin "refs/tags/$TAG"
+          fi
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title 'Arthur Candidate — Run 36348777394' \
+              --notes 'Recovered from the exact successful Build Run 36348777394 / Artifact 10944450704. Artifact archive SHA256: 28784b993300f055685934473f32f740e889b30e60ad07b3e5a81e9caf358bd8. This release does not run Build, flash, Smart re-test, or AdGuard Home verification.' \
+              --prerelease --verify-tag
+          fi
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft > candidate.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('candidate.json', encoding='utf-8'))
+          assert d['tagName'] == 'arthur-update-36348777394', d
+          assert d['isPrerelease'] is True and d['isDraft'] is False, d
+          PY
+
+          rm -rf candidate-download && mkdir candidate-download
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir candidate-download
+          diff -qr release-assets candidate-download
+          (cd candidate-download && sha256sum --check SHA256SUMS.release)
+          git fetch --tags --force origin
+          [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$SOURCE_HEAD" ]]
+
+      - name: Promote Candidate bytes to the exact Stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          SOURCE_HEAD=b16ed00ffaed0df927fc5fe482a51153ad9e99d9
+          TAG=arthur-production-36348777394
+          git fetch --tags --force origin
+
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$SOURCE_HEAD" ]] || {
+              echo "BLOCKED: Stable tag $TAG points to a different commit" >&2
+              exit 1
+            }
+          else
+            git tag -a "$TAG" "$SOURCE_HEAD" -m "Arthur Stable promoted from Candidate Run 36348777394"
+            git push origin "refs/tags/$TAG"
+          fi
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" candidate-download/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title 'Arthur Stable — Run 36348777394' \
+              --notes 'Stable promotion of the identical Candidate assets from Build Run 36348777394 / Artifact 10944450704. Firmware payload and Actions artifact archive are unchanged. This one-time recovery does not change future Stable gates.' \
+              --latest --verify-tag
+          fi
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,isDraft > stable.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('stable.json', encoding='utf-8'))
+          assert d['tagName'] == 'arthur-production-36348777394', d
+          assert d['isPrerelease'] is False and d['isDraft'] is False, d
+          PY
+
+          rm -rf stable-download && mkdir stable-download
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir stable-download
+          diff -qr candidate-download stable-download
+          (cd stable-download && sha256sum --check SHA256SUMS.release)
+          git fetch --tags --force origin
+          [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$SOURCE_HEAD" ]]
+
+      - name: Record production state and close the one-time recovery path
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          CANDIDATE_JSON="$(gh release view arthur-update-36348777394 --repo "$GITHUB_REPOSITORY" --json databaseId,url)"
+          STABLE_JSON="$(gh release view arthur-production-36348777394 --repo "$GITHUB_REPOSITORY" --json databaseId,url)"
+          export CANDIDATE_JSON STABLE_JSON
+          python3 - <<'PY'
+          import copy, datetime, json, os
+          from pathlib import Path
+
+          now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+          candidate = json.loads(os.environ['CANDIDATE_JSON'])
+          stable = json.loads(os.environ['STABLE_JSON'])
+          candidate_tag = 'arthur-update-36348777394'
+          stable_tag = 'arthur-production-36348777394'
+          source_commit = 'b16ed00ffaed0df927fc5fe482a51153ad9e99d9'
+          sysupgrade = 'XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin'
+          sha = '97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4'
+          runtime = {
+              'status': 'PRODUCTION_RELEASED',
+              'known_good': True,
+              'verified': True,
+              'verification': 'real-device-confirmed',
+              'verification_basis': 'Previously accepted postflash evidence for the identical Artifact 10944450704; no post-release re-test was run.',
+              'device': 'jdcloud_re-ss-01',
+              'candidate_tag': candidate_tag,
+              'stable_tag': stable_tag,
+              'source_commit': source_commit,
+              'upstream_commit': '27e26e324bee0b0c2a4eb58e2e9121fea5d43194',
+              'build_run_id': 36348777394,
+              'actions_artifact_id': 10944450704,
+              'actions_artifact_sha256': '28784b993300f055685934473f32f740e889b30e60ad07b3e5a81e9caf358bd8',
+              'firmware': sysupgrade,
+              'sha256': sha,
+              'source_lock_enforced_by_build': False,
+              'source_lock_sha256': None,
+              'source_lock_note': 'The exact Build artifact reports Known-Good lock enabled: 0; the canonical source lock was not changed.',
+              'smart_runtime_evidence': 'production/product-goal-verification.json',
+              'adh_verification': 'NOT_REVALIDATED',
+              'post_release_device_test': 'PENDING_INDEPENDENT_NOT_REPEATED_BY_REQUEST',
+              'one_time_recovery_workflow_removed': True,
+              'candidate_release_id': candidate['databaseId'],
+              'candidate_release_url': candidate['url'],
+              'stable_release_id': stable['databaseId'],
+              'stable_release_url': stable['url'],
+              'updated_at': now,
+          }
+
+          goal_path = Path('production/product-goal-verification.json')
+          goal = json.loads(goal_path.read_text(encoding='utf-8'))
+          if goal.get('build_run_id') != 36348777394 or goal.get('sysupgrade_sha256') != sha:
+              raise SystemExit('BLOCKED: product goal record changed identity before publication readback')
+          goal['release_status'] = 'PRODUCTION_RELEASED'
+          goal['publication'] = {
+              'candidate_release_id': candidate['databaseId'],
+              'candidate_release_url': candidate['url'],
+              'stable_release_id': stable['databaseId'],
+              'stable_release_url': stable['url'],
+              'candidate_and_stable_assets_identical': True,
+              'updated_at': now,
+          }
+          goal_path.write_text(json.dumps(goal, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          status_path = Path('production/status.json')
+          status = json.loads(status_path.read_text(encoding='utf-8'))
+          if status.get('status') != 'PRODUCTION_RELEASED':
+              status['previous_production_release'] = copy.deepcopy(status)
+          status.update({
+              'request_id': 'arthur-smart-stable-recovery-36348777394',
+              'status': 'PRODUCTION_RELEASED',
+              'stage': 'production',
+              'conclusion': 'success',
+              'device': 'jdcloud_re-ss-01',
+              'version': 'v0.1.5',
+              'run_id': 36348777394,
+              'build_run_id': '36348777394',
+              'build_run_url': 'https://github.com/mxonline/xinzhaowrt/actions/runs/36348777394',
+              'artifact_id': '10944450704',
+              'project_commit': source_commit,
+              'source_commit': source_commit,
+              'upstream_commit': '27e26e324bee0b0c2a4eb58e2e9121fea5d43194',
+              'candidate_tag': candidate_tag,
+              'stable_tag': stable_tag,
+              'firmware': sysupgrade,
+              'sha256': sha,
+              'known_good': True,
+              'known_good_source_lock_enforced': False,
+              'lock_sha256': None,
+              'product_goal_status': 'PRODUCT_GOAL_VERIFIED',
+              'candidate_release_id': candidate['databaseId'],
+              'candidate_release_url': candidate['url'],
+              'release_id': stable['databaseId'],
+              'release_url': stable['url'],
+              'updated_at': now,
+              'adh_verification': 'NOT_REVALIDATED',
+              'post_release_device_test': 'PENDING_INDEPENDENT_NOT_REPEATED_BY_REQUEST',
+              'one_time_recovery_workflow_removed': True,
+          })
+          status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          known_path = Path('production/known-good.json')
+          known = json.loads(known_path.read_text(encoding='utf-8'))
+          known['runtime_release'] = runtime
+          known['runtime_known_good'] = {
+              'known_good': True,
+              'verified': True,
+              'stable_tag': stable_tag,
+              'firmware': sysupgrade,
+              'sha256': sha,
+              'build_run_id': 36348777394,
+              'actions_artifact_id': 10944450704,
+              'source_lock_enforced_by_build': False,
+              'verification': runtime['verification'],
+              'stable_release_url': stable['url'],
+              'updated_at': now,
+          }
+          known_path.write_text(json.dumps(known, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          publication_path = Path('production/release-evidence/arthur-smart-36348777394/publication.json')
+          publication_path.write_text(json.dumps(runtime, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          rm -f .github/workflows/one-time-arthur-stable-recovery-36348777394.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add production/status.json production/known-good.json \
+            production/product-goal-verification.json \
+            production/release-evidence/arthur-smart-36348777394/publication.json \
+            .github/workflows/one-time-arthur-stable-recovery-36348777394.yml
+          git commit -m 'release: record Arthur Smart artifact 36348777394'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
+
+      - name: Verify committed runtime and known-good readback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          test ! -e .github/workflows/one-time-arthur-stable-recovery-36348777394.yml
+          python3 - <<'PY'
+          import json
+          status = json.load(open('production/status.json', encoding='utf-8'))
+          known = json.load(open('production/known-good.json', encoding='utf-8'))
+          goal = json.load(open('production/product-goal-verification.json', encoding='utf-8'))
+          assert status['status'] == 'PRODUCTION_RELEASED'
+          assert status['product_goal_status'] == 'PRODUCT_GOAL_VERIFIED'
+          assert status['run_id'] == 36348777394
+          assert status['artifact_id'] == '10944450704'
+          assert status['stable_tag'] == 'arthur-production-36348777394'
+          assert known['runtime_known_good']['sha256'] == '97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4'
+          assert known['runtime_known_good']['source_lock_enforced_by_build'] is False
+          assert goal['release_status'] == 'PRODUCTION_RELEASED'
+          assert goal['publication']['candidate_and_stable_assets_identical'] is True
+          print('PRODUCT_GOAL_VERIFIED=PASS')
+          print('PRODUCTION_RELEASED=PASS')
+          print('RUNTIME_KNOWN_GOOD_READBACK=PASS')
+          PY
+          gh release view arthur-update-36348777394 --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease
+          gh release view arthur-production-36348777394 --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease
