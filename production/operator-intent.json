@@ -1,33 +1,23 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "project": "Arthur",
-  "intent_type": "EXECUTE_FIRMWARE",
-  "authorization_scope": "FIRMWARE_RELEASE",
+  "intent_type": "PROCESS_GOVERNANCE",
+  "authorization_scope": "GOVERNANCE_RULES_ONLY",
   "firmware_execution_authorized": false,
-  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "execution_id": "arthur-governance-vnext-20260929",
   "release_mode": "RELEASE_ONLY",
-  "target_release": "v0.1.5",
+  "target_release": "",
   "device_write_authorized": false,
   "firmware_state": {
     "current_stage": "PRODUCTION_RELEASED",
     "next_stage": "NONE",
-    "active_run_id": 35356523348,
-    "active_source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
-    "verified_frozen": [
-      "WIFI",
-      "LUCI_CHINESE",
-      "QUICKSTART"
-    ],
-    "preserve": [
-      "WIFI",
-      "LuCI Simplified Chinese",
-      "official iStoreOS QuickStart",
-      "22 mandatory LuCI plugins",
-      "target qualcommax/ipq60xx/jdcloud_re-ss-01"
-    ],
-    "source": "OPERATOR_AUTHORIZED_V0.1.5_MAIN_e0377509dcc57c415935e9f779fe27117ce591be",
-    "active_artifact_id": 10557765463,
-    "candidate_release_conclusion": "success"
+    "active_run_id": 36348777394,
+    "active_source_sha": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "active_artifact_id": 10944450704,
+    "current_stable_tag": "arthur-production-36348777394",
+    "current_sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",
+    "source": "CURRENT_STABLE_RUNTIME_IDENTITY_36348777394"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
@@ -35,50 +25,39 @@
     "ambiguity_fails_closed": true,
     "resume_before_action": true,
     "no_codex_instruction_without_firmware_authorization": true,
-    "do_not_interrupt_active_run": true,
     "do_not_dispatch_duplicate_build": true,
     "reuse_uploaded_candidate_artifact_after_build": true,
+    "live_validate_before_build_when_safe_and_applicable": true,
+    "exact_artifact_promotion_required": true,
     "release_only": true,
     "automatic_flash": false,
-    "sysupgrade_forbidden": true
+    "sysupgrade_forbidden_without_new_explicit_device_write_authorization": true
   },
   "governance_task": {
-    "authorized": false,
+    "authorized": true,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Fresh v0.1.5 production execution is explicitly authorized for RELEASE_ONLY publication. Router writes, sysupgrade, reboot-for-flash, and Known-Good promotion are not authorized by this execution."
+    "goal": "Freeze the successful Arthur release method as the highest machine contract, correct stale/misleading product-state claims, add semantic credential validation, and prepare the next release without authorizing any firmware build, flash, reboot, or payload mutation."
   },
   "highest_machine_evidence": {
     "authority": "OPERATOR",
     "priority_class": "HIGHEST",
-    "objective_id": "PUBLISH_V0_1_5_VIA_CANONICAL_RELEASE_ONLY",
-    "objective": "Return to the existing canonical RELEASE_ONLY firmware path and reach PRODUCTION_RELEASED for v0.1.5 as quickly as safely possible.",
-    "required_terminal": "PRODUCTION_RELEASED",
-    "canonical_path": [
-      "CHANGE_IMPACT",
-      "BASELINE_INHERITANCE",
-      "EXPECTED_DIFF",
-      "BUILD",
-      "ARTIFACT",
-      "RELEASE_GATE",
-      "RELEASE",
-      "PRODUCTION_RELEASED"
-    ],
-    "execution_id": "arthur-v0.1.5-release-e037750-20260918",
-    "accepted_source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
-    "target_release": "v0.1.5",
-    "release_mode": "RELEASE_ONLY",
+    "objective_id": "FREEZE_ARTHUR_RELEASE_PROCESS_VNEXT",
+    "objective": "Preserve the proven real-device-first, same-implementation, single-build, exact-artifact release method as the governing process for future Arthur firmware versions.",
+    "required_terminal": "GOVERNANCE_RULES_PERSISTED",
+    "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
+    "current_stable_tag": "arthur-production-36348777394",
+    "current_build_run_id": 36348777394,
+    "current_artifact_id": 10944450704,
     "forbidden": [
-      "NEW_AUTOMATION_WORKFLOW",
-      "NEW_SUPERVISOR_OR_ORCHESTRATOR",
-      "SIDE_PATH_NOT_REQUIRED_TO_ADVANCE_OR_UNBLOCK_CURRENT_CANONICAL_GATE",
-      "NEW_EXECUTION",
-      "FIRMWARE_SCOPE_EXPANSION",
+      "NEW_FIRMWARE_BUILD",
       "DEVICE_WRITE",
       "SYSUPGRADE",
-      "PRE_RELEASE_DEVICE_TEST_AS_GATE",
-      "KNOWN_GOOD_PROMOTION_BEFORE_POST_RELEASE_DEVICE_TEST_PASS"
+      "REBOOT_FOR_VALIDATION",
+      "FIRMWARE_PAYLOAD_MUTATION",
+      "DUPLICATE_STABILITY_TEST_WITHOUT_VALID_INVALIDATION",
+      "CLAIM_FULL_PRODUCT_GOAL_VERIFIED_WHILE_ADH_OR_COEXISTENCE_IS_PENDING"
     ],
-    "action_rule": "ONLY_ADVANCE_OR_MINIMALLY_UNBLOCK_CURRENT_CANONICAL_GATE",
+    "action_rule": "GOVERNANCE_AND_STATE_CORRECTION_ONLY",
     "fail_closed_on_violation": true
   }
 }
