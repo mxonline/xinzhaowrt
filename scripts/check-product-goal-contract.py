@@ -17,7 +17,7 @@ except Exception as exc:
     fail(f"invalid json: {exc}")
 
 checks = [
-    (contract.get("schema_version") == "1.0", "schema_version"),
+    (contract.get("schema_version") == "1.1", "schema_version"),
     (contract.get("authority") == "OPERATOR", "authority"),
     (contract.get("priority_class") == "HIGHEST", "priority_class"),
     (contract.get("contract_id") == "ARTHUR_PRODUCT_GOAL_V1", "contract_id"),
@@ -36,6 +36,14 @@ checks = [
     (contract.get("prebuild_live_validation", {}).get("fail_closed_without_valid_evidence") is True, "prebuild-live-fail-closed"),
     (contract.get("prebuild_live_validation", {}).get("source_binding_required") is True, "prebuild-live-source-binding"),
     (contract.get("prebuild_live_validation", {}).get("evidence_path") == "production/evidence/prebuild-openclash-adh-live.json", "prebuild-live-evidence-path"),
+    (contract.get("process_contract_version") == "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29", "process-contract-version"),
+    (contract.get("release_engineering_contract", {}).get("principle") == "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT", "release-engineering-principle"),
+    (contract.get("release_engineering_contract", {}).get("live_first", {}).get("build_must_not_be_used_as_a_debugger_when_live_validation_is_safe_and_applicable") is True, "build-not-debugger"),
+    (contract.get("release_engineering_contract", {}).get("build_once", {}).get("default_maximum_builds_per_frozen_candidate") == 1, "single-build-default"),
+    (contract.get("promotion_policy", {}).get("candidate_and_stable_must_reuse_identical_artifact_bytes") is True, "identical-artifact-promotion"),
+    (contract.get("evidence_invalidation_policy", {}).get("repeat_stability_test_only_after_valid_invalidation") is True, "evidence-retest-policy"),
+    (contract.get("clean_flash_policy", {}).get("at_most_once_per_exact_candidate_by_default") is True, "single-clean-flash-default"),
+    (contract.get("semantic_gate_requirements", {}).get("default_root_password_plaintext_must_cryptographically_match_default_root_password_hash") is True, "root-credential-semantic-gate"),
 ]
 for ok, label in checks:
     if not ok:
