@@ -57,5 +57,14 @@
   },
   "source_lock_enforced_by_build": false,
   "source_lock_note": "The exact Build artifact reports Known-Good lock enabled: 0. This record pins the verified runtime artifact by Actions run, artifact ID, source commit, and payload SHA256; it does not claim source-lock enforcement. The canonical source lock remains unchanged.",
-  "firmware_payload_modified_after_build": false
+  "firmware_payload_modified_after_build": false,
+  "release_status": "PRODUCTION_RELEASED",
+  "publication": {
+    "candidate_release_id": 397933427,
+    "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36348777394",
+    "stable_release_id": 397933614,
+    "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
+    "candidate_and_stable_assets_identical": true,
+    "updated_at": "2026-09-28T03:38:51+00:00"
+  }
 }
