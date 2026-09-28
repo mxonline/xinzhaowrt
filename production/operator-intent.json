@@ -36,7 +36,16 @@
   "governance_task": {
     "authorized": true,
     "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Freeze the successful Arthur release method as the highest machine contract, correct stale/misleading product-state claims, add semantic credential validation, and prepare the next release without authorizing any firmware build, flash, reboot, or payload mutation."
+    "goal": "Freeze the successful Arthur release method as the highest machine contract, correct stale/misleading product-state claims, add semantic credential validation, and prepare the next release without authorizing any firmware build, flash, reboot, or payload mutation.",
+    "status": "GOVERNANCE_RULES_PERSISTED",
+    "completed_at": "2026-09-29",
+    "evidence": {
+      "durable_state_gate_run_id": 36461002245,
+      "durable_state_gate_result": "PASS",
+      "global_runtime_contract_run_id": 36461002388,
+      "global_runtime_contract_result": "PASS",
+      "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
+    }
   },
   "highest_machine_evidence": {
     "authority": "OPERATOR",
@@ -58,6 +67,7 @@
       "CLAIM_FULL_PRODUCT_GOAL_VERIFIED_WHILE_ADH_OR_COEXISTENCE_IS_PENDING"
     ],
     "action_rule": "GOVERNANCE_AND_STATE_CORRECTION_ONLY",
-    "fail_closed_on_violation": true
+    "fail_closed_on_violation": true,
+    "terminal_status": "GOVERNANCE_RULES_PERSISTED"
   }
 }
