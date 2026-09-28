@@ -11,10 +11,10 @@ if ($Manifest.profile -ne 'arthur-v2') { throw 'Arthur must use arthur-v2 compat
 if ($Manifest.bundles.Count -ne 1) { throw 'Arthur manifest must bind one active execution bundle' }
 if ($Manifest.shared_validator_sha -ne $Pin) { throw 'manifest shared_validator_sha mismatch' }
 $Bundle = $Manifest.bundles[0]
-if ($Bundle.execution_id -ne 'arthur-final-release-5f41c4e-20260908') { throw 'Arthur execution_id mismatch' }
+if ($Bundle.execution_id -ne 'arthur-v0.1.5-release-e037750-20260918') { throw 'Arthur execution_id mismatch' }
 if ($Bundle.state -ne 'production/resume-state.json') { throw 'Arthur state path mismatch' }
 if ($Bundle.events -ne 'production/firmware-events.jsonl') { throw 'Arthur event ledger path mismatch' }
-if ($Bundle.evidence -ne 'production/evidence/arthur-final-release-5f41c4e-20260908/index.json') { throw 'Arthur evidence path mismatch' }
+if ($Bundle.evidence -ne 'production/evidence/arthur-v0.1.5-release-e037750-20260918/index.json') { throw 'Arthur evidence path mismatch' }
 
 $Workflow = Get-Content $WorkflowPath -Raw
 if ($Workflow -notmatch 'mxonline/xinzhou-code-standard') { throw 'shared validator checkout missing' }
