@@ -114,6 +114,8 @@ jobs:
           set -Eeuo pipefail
           SOURCE_HEAD=b16ed00ffaed0df927fc5fe482a51153ad9e99d9
           TAG=arthur-update-36348777394
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git fetch origin "$SOURCE_HEAD"
           git fetch --tags --force origin
 
