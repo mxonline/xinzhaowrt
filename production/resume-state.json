@@ -1,31 +1,32 @@
 {
   "schema_version": 2,
-  "execution_id": "arthur-v0.1.5-release-e037750-20260918",
+  "execution_id": "arthur-smart-stable-b16ed00-20260928",
   "status": "PRODUCTION_RELEASED",
   "instruction_allowed": false,
   "source": {
-    "repository_head": "e0377509dcc57c415935e9f779fe27117ce591be",
-    "accepted_source_sha": "e0377509dcc57c415935e9f779fe27117ce591be",
+    "repository_head": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "accepted_source_sha": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
     "accepted_release": "v0.1.5",
-    "accepted_firmware": "XinZhaoWrt-Arthur-v0.1.5-20260918-sysupgrade.bin",
-    "accepted_firmware_sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
-    "accepted_factory_sha256": "74b9927fcdbcb1feb2889da9612c9d6e363cda5fa5ddcf82047e869c78a2455c"
+    "accepted_firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
+    "accepted_firmware_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "accepted_factory_sha256": "9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0"
   },
   "production": {
-    "github_run_id": 35356523348,
-    "artifact_id": 10557765463,
-    "candidate_sha256": "6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d",
-    "release_id": 391636426,
+    "github_run_id": 36348777394,
+    "artifact_id": 10944450704,
+    "candidate_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "release_id": 397933614,
     "release": "v0.1.5",
-    "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.5",
-    "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260918-sysupgrade.bin",
-    "factory_sha256": "74b9927fcdbcb1feb2889da9612c9d6e363cda5fa5ddcf82047e869c78a2455c"
+    "release_tag": "arthur-production-36348777394",
+    "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
+    "factory_sha256": "9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0"
   },
   "device": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "git_commit": "e27bafa",
-    "evidence": "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+    "version": "0.1.5",
+    "build_id": "36348777394",
+    "git_commit": "b16ed00",
+    "evidence": "EXACT_STABLE_CLEAN_FLASH_ACCEPTANCE_IN_PROGRESS"
   },
   "gates": {
     "WIFI": {
@@ -237,12 +238,12 @@
   },
   "current_gate": "PRODUCTION_RELEASED",
   "next_action": "NONE",
-  "repository_head": "e0377509dcc57c415935e9f779fe27117ce591be",
+  "repository_head": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
   "real_device": {
-    "version": "0.1.3",
-    "build_id": "33462873812",
-    "git_commit": "e27bafa",
-    "evidence": "BASELINE_FALLBACK_DEVICE_IDENTITY_CONFIRMED"
+    "version": "0.1.5",
+    "build_id": "36348777394",
+    "git_commit": "b16ed00",
+    "evidence": "EXACT_STABLE_CLEAN_FLASH_ACCEPTANCE_IN_PROGRESS"
   },
   "accepted_baseline": {
     "version": "0.1.3",
@@ -255,13 +256,24 @@
     "turn_count": 18
   },
   "verified": {
-    "real_device_baseline": "MATCHED",
+    "real_device_baseline": "MATCHED_EXACT_RELEASE",
     "wifi": "VERIFIED_FROZEN",
     "luci_chinese": "VERIFIED_FROZEN",
     "adguard_full_manager": "REVERIFY_REQUIRED",
-    "quickstart": "AUTHENTICATED_RENDER_VERIFIED"
+    "quickstart": "AUTHENTICATED_RENDER_VERIFIED",
+    "openclash_smart": "VERIFIED",
+    "smart_groups_9": "VERIFIED",
+    "strict_ssh_after_clean_flash": "VERIFIED",
+    "root_password_after_clean_flash": "VERIFIED",
+    "openclash_adh_coexistence": "REVERIFY_REQUIRED"
   },
-  "pending": [],
+  "pending": [
+    "CLEAN_FLASH_REAL_PROXY_TRAFFIC",
+    "FINAL_REBOOT_PERSISTENCE",
+    "ADGUARDHOME_FULLY_USABLE",
+    "OPENCLASH_ADH_COEXISTENCE",
+    "POST_RELEASE_DEVICE_TEST"
+  ],
   "conflicts": [],
   "source_precedence": [
     "LIVE_DEVICE",
@@ -276,8 +288,21 @@
     "production/v4-state.json historical controller snapshot",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-09-18T16:52:39.860067+00:00",
+  "evidence_timestamp": "2026-09-29",
   "release": "v0.1.5",
-  "post_release_device_test": "PENDING_INDEPENDENT",
-  "semantic_sha256": "3e2dcdbc539eee3681e9f6bc56415d4b458d01b8b66c5aab7a0873d490e3ea39"
+  "post_release_device_test": "IN_PROGRESS_CLEAN_FLASH_REAL_PROXY_TRAFFIC_PENDING",
+  "semantic_sha256": "3e2dcdbc539eee3681e9f6bc56415d4b458d01b8b66c5aab7a0873d490e3ea39",
+  "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",
+  "runtime_release": {
+    "stable_tag": "arthur-production-36348777394",
+    "candidate_tag": "arthur-update-36348777394",
+    "build_run_id": 36348777394,
+    "artifact_id": 10944450704,
+    "source_sha": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "status": "PRODUCTION_RELEASED",
+    "product_goal_verified": false
+  },
+  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
+  "legacy_gate_records_policy": "Historical release evidence only; runtime_release and exact-release real-device evidence take precedence for current status."
 }
