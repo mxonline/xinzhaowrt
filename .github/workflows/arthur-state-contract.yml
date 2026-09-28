@@ -13,6 +13,11 @@ name: Arthur Durable State Gate
       - 'scripts/arthur-control-plane.ps1'
       - 'production/resume-state.json'
       - 'production/operator-intent.json'
+      - 'tests/arthur-product-goal-contract.tests.ps1'
+      - 'scripts/check-product-goal-contract.py'
+      - 'scripts/arthur-product-goal-contract.ps1'
+      - 'production/release-policy.md'
+      - 'production/product-goal-contract.json'
       - 'production/evidence/**'
       - 'tests/arthur-state-contract.tests.ps1'
       - 'tests/arthur-resume-state-v2.tests.ps1'
@@ -34,6 +39,11 @@ name: Arthur Durable State Gate
       - 'scripts/arthur-control-plane.ps1'
       - 'production/resume-state.json'
       - 'production/operator-intent.json'
+      - 'tests/arthur-product-goal-contract.tests.ps1'
+      - 'scripts/check-product-goal-contract.py'
+      - 'scripts/arthur-product-goal-contract.ps1'
+      - 'production/release-policy.md'
+      - 'production/product-goal-contract.json'
       - 'production/evidence/**'
       - 'tests/arthur-state-contract.tests.ps1'
       - 'tests/arthur-resume-state-v2.tests.ps1'
@@ -59,6 +69,13 @@ jobs:
     steps:
       - name: Checkout project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Test highest Arthur product-goal contract
+        shell: pwsh
+        run: ./tests/arthur-product-goal-contract.tests.ps1
+
+      - name: Test cross-platform product-goal contract
+        run: python3 ./scripts/check-product-goal-contract.py
 
       - name: Test Arthur state contract
         shell: pwsh
