@@ -83,6 +83,12 @@ The user has explicitly changed the production standard to separate unattended G
 - If the same failure is retried with the same fingerprint and `last_progress` does not advance, trigger a circuit breaker. Stop repeating the same resume/relaunch method and switch to another minimal release-unblocking repair.
 - Every proposed action must pass one fixed test: does it move the current Arthur firmware more quickly and safely toward `PRODUCTION_RELEASED`? If not, do not perform it during the active release.
 
+## Package-manager concurrency machine gate
+
+When software-source behavior is intermittent or randomly alternates between PASS and FAIL, concurrency is the first diagnostic class. Before repeating `apk update`, changing DNS/TLS/routing, or replacing mirrors, run `scripts/check-package-manager-concurrency-gate.sh` against the live Arthur and require `PACKAGE_MANAGER_CONCURRENCY_GATE=PASS`, `PACKAGE_MANAGER_SINGLE_FLIGHT=PASS`, and `REPEATED_UPDATE_AUTHORIZED=YES`.
+
+CLI `apk update`, LuCI package-manager refresh, and QuickStart package-source health checks must be serialized. If any package-manager update is already running or concurrency state is unknown, fail closed and do not start another refresh. Do not perform repeated update stress tests while concurrency is unresolved. For package-source/runtime-repository changes, Build authorization requires live concurrency-gate evidence plus the normal real-device-first source binding; Build must never be used to discover a concurrency bug.
+
 ## Approved LIVE_PREVIEW development lane
 
 The user has explicitly approved `LIVE_PREVIEW` as a permanent pre-Candidate development aid for Arthur and future OpenWrt devices that define their own device policy.

@@ -76,7 +76,8 @@
     "do_not_build_known_broken_behavior": true,
     "do_not_promote_known_good_until_exact_release_real_device_acceptance_passes": true,
     "post_release_failure_requires_separate_repair_execution": true,
-    "do_not_rewrite_or_revoke_an_already_valid_release_only_because_post_release_validation_failed": true
+    "do_not_rewrite_or_revoke_an_already_valid_release_only_because_post_release_validation_failed": true,
+    "package_source_intermittent_failure_requires_concurrency_gate_before_repeat_or_mirror_change": true
   },
   "evidence_rules": {
     "machine_evidence_required": true,
@@ -262,5 +263,34 @@
       "POST_RELEASE_DEVICE_TEST_COMPLETION"
     ],
     "no_new_firmware_execution_without_new_explicit_operator_authorization": true
+  },
+  "package_manager_concurrency_gate": {
+    "required": true,
+    "trigger_on": [
+      "RANDOM_PASS_FAIL",
+      "INTERMITTENT_EOF",
+      "INTERMITTENT_TIMEOUT",
+      "REPEATED_UPDATE_VALIDATION"
+    ],
+    "diagnostic_order": [
+      "PACKAGE_MANAGER_CONCURRENCY",
+      "DNS_TLS_ROUTING",
+      "MIRROR_REPLACEMENT"
+    ],
+    "single_flight_required": true,
+    "unknown_concurrency_fails_closed": true,
+    "repeated_update_forbidden_until_gate_passes": true,
+    "clients_must_serialize": [
+      "CLI_APK_UPDATE",
+      "LUCI_PACKAGE_MANAGER_REFRESH",
+      "QUICKSTART_PACKAGE_SOURCE_HEALTH_CHECK"
+    ],
+    "machine_gate_script": "scripts/check-package-manager-concurrency-gate.sh",
+    "package_source_change_build_requires_live_concurrency_gate_pass": true,
+    "required_markers": [
+      "PACKAGE_MANAGER_CONCURRENCY_GATE=PASS",
+      "PACKAGE_MANAGER_SINGLE_FLIGHT=PASS",
+      "REPEATED_UPDATE_AUTHORIZED=YES"
+    ]
   }
 }

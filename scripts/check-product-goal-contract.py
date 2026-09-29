@@ -36,6 +36,13 @@ checks = [
     (contract.get("prebuild_live_validation", {}).get("fail_closed_without_valid_evidence") is True, "prebuild-live-fail-closed"),
     (contract.get("prebuild_live_validation", {}).get("source_binding_required") is True, "prebuild-live-source-binding"),
     (contract.get("prebuild_live_validation", {}).get("evidence_path") == "production/evidence/prebuild-openclash-adh-live.json", "prebuild-live-evidence-path"),
+    (contract.get("execution_rules", {}).get("package_source_intermittent_failure_requires_concurrency_gate_before_repeat_or_mirror_change") is True, "package-manager-concurrency-order"),
+    (contract.get("package_manager_concurrency_gate", {}).get("required") is True, "package-manager-concurrency-required"),
+    (contract.get("package_manager_concurrency_gate", {}).get("single_flight_required") is True, "package-manager-single-flight"),
+    (contract.get("package_manager_concurrency_gate", {}).get("unknown_concurrency_fails_closed") is True, "package-manager-concurrency-fail-closed"),
+    (contract.get("package_manager_concurrency_gate", {}).get("repeated_update_forbidden_until_gate_passes") is True, "package-manager-no-repeat-before-gate"),
+    (contract.get("package_manager_concurrency_gate", {}).get("machine_gate_script") == "scripts/check-package-manager-concurrency-gate.sh", "package-manager-machine-gate-script"),
+    (contract.get("package_manager_concurrency_gate", {}).get("package_source_change_build_requires_live_concurrency_gate_pass") is True, "package-manager-live-pass-before-build"),
     (contract.get("process_contract_version") == "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29", "process-contract-version"),
     (contract.get("release_engineering_contract", {}).get("principle") == "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT", "release-engineering-principle"),
     (contract.get("release_engineering_contract", {}).get("live_first", {}).get("build_must_not_be_used_as_a_debugger_when_live_validation_is_safe_and_applicable") is True, "build-not-debugger"),
@@ -91,6 +98,17 @@ prebuild_required_markers = {
     "ADH_REENABLE_RESTORES_CHAIN=PASS",
     "FINAL_ADH_DEFAULT_OFF=PASS",
 }
+package_manager_gate = contract.get("package_manager_concurrency_gate", {})
+expected_diagnostic_order = ["PACKAGE_MANAGER_CONCURRENCY", "DNS_TLS_ROUTING", "MIRROR_REPLACEMENT"]
+if package_manager_gate.get("diagnostic_order") != expected_diagnostic_order:
+    fail("package-manager diagnostic order")
+expected_clients = {"CLI_APK_UPDATE","LUCI_PACKAGE_MANAGER_REFRESH","QUICKSTART_PACKAGE_SOURCE_HEALTH_CHECK"}
+if set(package_manager_gate.get("clients_must_serialize", [])) != expected_clients:
+    fail("package-manager serialized clients")
+expected_pm_markers = {"PACKAGE_MANAGER_CONCURRENCY_GATE=PASS","PACKAGE_MANAGER_SINGLE_FLIGHT=PASS","REPEATED_UPDATE_AUTHORIZED=YES"}
+if set(package_manager_gate.get("required_markers", [])) != expected_pm_markers:
+    fail("package-manager required markers")
+
 actual_prebuild_markers = set(contract.get("prebuild_live_validation", {}).get("required_markers", []))
 missing = sorted(prebuild_required_markers - actual_prebuild_markers)
 if missing:

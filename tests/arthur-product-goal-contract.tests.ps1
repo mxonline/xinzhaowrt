@@ -56,6 +56,13 @@ Assert-True ($contract.openclash_adguardhome_coexistence.process_presence_is_ins
 Assert-True ($contract.prebuild_live_validation.required_for_runtime_affecting_changes -eq $true) 'runtime-affecting changes must require prebuild live validation'
 Assert-True ($contract.prebuild_live_validation.fail_closed_without_valid_evidence -eq $true) 'prebuild live gate must fail closed without valid evidence'
 Assert-True ([string]$contract.prebuild_live_validation.evidence_path -eq 'production/evidence/prebuild-openclash-adh-live.json') 'prebuild live evidence path must remain canonical'
+Assert-True ($contract.execution_rules.package_source_intermittent_failure_requires_concurrency_gate_before_repeat_or_mirror_change -eq $true) 'intermittent package-source failure must check concurrency before repeat or mirror changes'
+Assert-True ($contract.package_manager_concurrency_gate.required -eq $true) 'package-manager concurrency gate must remain mandatory'
+Assert-True ($contract.package_manager_concurrency_gate.single_flight_required -eq $true) 'package-manager updates must remain single-flight'
+Assert-True ($contract.package_manager_concurrency_gate.unknown_concurrency_fails_closed -eq $true) 'unknown package-manager concurrency must fail closed'
+Assert-True ($contract.package_manager_concurrency_gate.repeated_update_forbidden_until_gate_passes -eq $true) 'repeated apk update validation must be forbidden until concurrency gate passes'
+Assert-True ([string]$contract.package_manager_concurrency_gate.machine_gate_script -eq 'scripts/check-package-manager-concurrency-gate.sh') 'package-manager concurrency gate must bind the machine script'
+Assert-True ($contract.package_manager_concurrency_gate.package_source_change_build_requires_live_concurrency_gate_pass -eq $true) 'package-source changes must have live concurrency gate evidence before Build'
 
 $productTargets = Get-Content -Raw -LiteralPath $ProductTargetsPath
 Assert-Contains $productTargets 'production/product-goal-contract.json' 'product target Source of Truth must bind the highest product-goal contract'
@@ -83,6 +90,7 @@ Assert-Contains $fastPreflight 'arthur-product-goal-contract.tests.ps1' 'fast pr
 
 $verifyProject = Get-Content -Raw -LiteralPath $VerifyProjectPath
 Assert-Contains $verifyProject 'check-product-goal-contract.py' 'every firmware build must pass the product-goal contract through verify-project'
+Assert-Contains $verifyProject 'test-package-manager-concurrency-gate.sh' 'verify-project must regression-test the package-manager concurrency machine gate'
 
 $buildCheck = Get-Content -Raw -LiteralPath $BuildCheckPath
 Assert-Contains $buildCheck 'ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS' 'cross-platform build gate must emit machine evidence'
