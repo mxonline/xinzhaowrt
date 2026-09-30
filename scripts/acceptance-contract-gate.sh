@@ -29,7 +29,7 @@ export SOURCE_REF
 
 [[ "$DEFAULT_LAN_IP" == '192.168.6.1' ]] || fail 'authoritative LAN IP is not 192.168.6.1'
 [[ "$DEFAULT_ROOT_USER" == 'root' ]] || fail 'authoritative administrator is not root'
-[[ "$DEFAULT_ROOT_PASSWORD" == 'passwort' ]] || fail 'authoritative root password is not passwort'
+[[ "$DEFAULT_ROOT_PASSWORD" == 'password' ]] || fail 'authoritative root password is not password'
 [[ "$DEFAULT_WIFI_SSID" == 'xinzhaowrt' ]] || fail 'authoritative Wi-Fi SSID is not xinzhaowrt'
 [[ "$DEFAULT_WIFI_PASSWORD" == '12345678' ]] || fail 'authoritative Wi-Fi password is not 12345678'
 [[ "$DEVICE_TARGET/$DEVICE_SUBTARGET/$DEVICE_PROFILE" == 'qualcommax/ipq60xx/jdcloud_re-ss-01' ]] || fail 'Arthur target/profile identity changed'
@@ -54,10 +54,10 @@ grep -Fq "luci.main.lang='zh_cn'" "$luci_defaults" || fail 'language default is 
 grep -Fq "luci.main.mediaurlbase='/luci-static/argon'" "$luci_defaults" || fail 'Argon default is inconsistent'
 grep -Fq "luci.themes.KuCat='/luci-static/kucat'" "$luci_defaults" || fail 'KuCat selectable theme registration is missing'
 grep -Fq "luci.main.homepage='admin/quickstart'" "$luci_defaults" || fail 'QuickStart is not the configured homepage'
-grep -Fq '初始密码：`passwort`' README.md || fail 'user-visible password documentation is inconsistent'
+grep -Fq '初始密码：`password`' README.md || fail 'user-visible password documentation is inconsistent'
 pass CROSS_LAYER_AUTHORITY
 
-if rg -n 'DEFAULT_ROOT_PASSWORD="password"|初始密码[^\r\n]*password|12356789|XinZhaoWrt-(2\.4G|5G)' README.md build.env config files .github/workflows >/dev/null 2>&1; then
+if rg -n 'DEFAULT_ROOT_PASSWORD="passwort"|初始密码[^\r\n]*passwort|12356789|XinZhaoWrt-(2\.4G|5G)' README.md build.env config files .github/workflows >/dev/null 2>&1; then
   fail 'obsolete password or Wi-Fi values remain in active source/test/workflow files'
 fi
 if rg -n "uci(\s+-q)?\s+set\s+network\.lan\.ipaddr=.*192\.168\.1\.1|uci(\s+-q)?\s+set\s+wireless\.[^=]+=.*XinZhaoWrt" files/etc/uci-defaults files/etc/init.d files/etc/config >/dev/null 2>&1; then
@@ -118,7 +118,7 @@ report = {
     'static_acceptance_pass': True,
     'unknown': 0,
     'authoritative_values': {
-        'lan': '192.168.6.1', 'root_user': 'root', 'root_password': 'passwort',
+        'lan': '192.168.6.1', 'root_user': 'root', 'root_password': 'password',
         'http_port': 80, 'language': 'zh_cn', 'default_theme': 'Argon',
         'selectable_theme': 'Kucat', 'wifi_ssid': 'xinzhaowrt',
         'wifi_password': '12345678', 'required_plugins': 22,
