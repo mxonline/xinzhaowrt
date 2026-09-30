@@ -196,6 +196,10 @@ while IFS= read -r release_file; do
   fi
 done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
 [[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
+python3 "$PROJECT_ROOT/scripts/verify-live-source-binding.py" \
+  --project-root "$PROJECT_ROOT" \
+  --manifest "$PROJECT_ROOT/production/source-bindings/arthur-v015-software-source-repair.json" \
+  --rootfs "$FINAL_ROOTFS_DIR"
 FEED_CHECK_ROOT="$SRC" bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
 bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR" "$SOURCE_SHA" "$BUILD_ID"
 
