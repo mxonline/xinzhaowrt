@@ -51,19 +51,23 @@
     "source_files": [
       {
         "path": "build.env",
-        "SHA256": "f16b4bb80d846656fe4d15c50b8be5c1fca7753e72756e3505fb87d66aff0e3c"
+        "SHA256": "6aa32cdd9acfa60f90d160177000f7e14fb7d579efed87a3abae58965b750e8f"
       },
       {
         "path": "scripts/acceptance-contract-gate.sh",
-        "SHA256": "20c8b92f56dcbe7cc1639cadceb5f5e84e73ee1202557923f055e053455dbc4a"
+        "SHA256": "0b0dc9e39e90f01e84970d2240877c1aa3f6949ee4e8b1e16cf10d85368e8281"
+      },
+      {
+        "path": "tests/test-functional-acceptance.sh",
+        "SHA256": "fb0704626bb9787207d8dd1f4a7fad4e8f7210499186a0e3514406bb30713cb9"
       },
       {
         "path": "README.md",
-        "SHA256": "b7cec100ac67dec5b3c14373ec56a142001d21ad1bef2a95ddf302e917208398"
+        "SHA256": "507ba0b122c77bf1cd444f78787f975b3b6e9bfd617b2a6f6ea240cd742668ab"
       },
       {
         "path": "files/etc/uci-defaults/99-xinzhao-defaults",
-        "SHA256": "e9adcb1c7e091a3de190e8b9e8dadbd3f753bfc45245dda326c33218dcf8e46e"
+        "SHA256": "a639e4e152f8ef4f9d582b4d94f058360dde5e7d7d2285939e879e6f2390feaa"
       }
     ],
     "verification": "The configured SHA-512 crypt hash was recomputed for DEFAULT_ROOT_PASSWORD=password and matches the rootfs password_hash."
@@ -71,6 +75,6 @@
   "notes": [
     "Evidence was collected from the supplied fresh v0.1.5 device baseline; no prior v0.1.6 PASS, root-cause, temporary-patch, or candidate result is carried forward.",
     "The post-reboot unauthenticated loopback QuickStart status API probe returned success=-1001 and is excluded from health evidence; the authenticated QuickStart homepage displayed 网络连接正常 with no software-source error or detecting state.",
-    "The specified baseline build.env plaintext default was passwort while the existing SHA-512 crypt hash encoded password; build.env, the acceptance contract, and user-facing documentation now agree on password, independently verified against the unchanged hash."
+    "The specified baseline build.env plaintext default was passwort while the existing SHA-512 crypt hash encoded password; build.env, acceptance contracts, functional-acceptance test, and user-facing documentation now agree on password, independently verified against the unchanged hash."
   ]
 }

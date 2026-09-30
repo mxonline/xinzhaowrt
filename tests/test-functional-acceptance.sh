@@ -11,7 +11,7 @@ verify="$root/scripts/real-device-verify.ps1"
 
 grep -Fxq 'DEFAULT_WIFI_SSID="xinzhaowrt"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi SSID'
 grep -Fxq 'DEFAULT_WIFI_PASSWORD="12345678"' "$build_env" || fail 'build.env must define the authoritative Wi-Fi password'
-grep -Fxq 'DEFAULT_ROOT_PASSWORD="passwort"' "$build_env" || fail 'build.env must define the authoritative initial root password'
+grep -Fxq 'DEFAULT_ROOT_PASSWORD="password"' "$build_env" || fail 'build.env must define the authoritative initial root password'
 grep -Fq "wifi_default_ssid='xinzhaowrt'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative SSID'
 grep -Fq "wifi_default_password='12345678'" "$wifi_defaults" || fail 'independent Wi-Fi defaults must use the authoritative password'
 grep -Fq "wifi_default_ssid='xinzhaowrt'" "$firstboot_defaults" || fail 'first-boot defaults must use the authoritative SSID'
