@@ -1,0 +1,80 @@
+name: Arthur Legacy Branch Prune Once
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/repository-branch-prune-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout main with history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete only archived superseded branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          archive_ref='archive/legacy-branches-20261002'
+          git fetch origin "$archive_ref" '+refs/heads/*:refs/remotes/origin/*'
+          git show "origin/$archive_ref:archive/legacy-branches-20261002.json" > /tmp/archive.json
+
+          for keep in main codex/arthur-v015-software-source-repair codex/arthur-smart-build-20260928 "$archive_ref"; do
+            git ls-remote --exit-code --heads origin "refs/heads/$keep" >/dev/null || {
+              echo "BLOCKED: required preserved branch missing: $keep"
+              exit 1
+            }
+          done
+
+          deleted=0
+          skipped=0
+          jq -c '.archived_branches[]' /tmp/archive.json | while read -r item; do
+            branch="$(jq -r '.name' <<<"$item")"
+            expected="$(jq -r '.sha' <<<"$item")"
+            current="$(git ls-remote --heads origin "refs/heads/$branch" | awk '{print $1}')"
+            if [[ -z "$current" ]]; then
+              echo "ALREADY_ABSENT $branch"
+              continue
+            fi
+            if [[ "$current" != "$expected" ]]; then
+              echo "SKIP_CHANGED_BRANCH $branch expected=$expected current=$current"
+              continue
+            fi
+            git cat-file -e "$expected^{commit}"
+            git merge-base --is-ancestor "$expected" "origin/$archive_ref" || {
+              echo "BLOCKED: archived history does not contain $branch $expected"
+              exit 1
+            }
+            echo "DELETE_BRANCH $branch $expected"
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$branch"
+          done
+
+          mapfile -t remaining < <(gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name' | sort)
+          printf '%s\n' \
+            'archive/legacy-branches-20261002' \
+            'codex/arthur-smart-build-20260928' \
+            'codex/arthur-v015-software-source-repair' \
+            'main' | sort > /tmp/expected-branches.txt
+          printf '%s\n' "${remaining[@]}" > /tmp/actual-branches.txt
+          diff -u /tmp/expected-branches.txt /tmp/actual-branches.txt
+
+          gh release view 'arthur-production-36764137044' --repo "$REPO" >/dev/null
+          gh release view 'arthur-update-36764137044' --repo "$REPO" >/dev/null
+          gh release view 'arthur-production-36348777394' --repo "$REPO" >/dev/null
+
+          echo 'LEGACY_BRANCH_ARCHIVE=PASS'
+          echo 'SUPERSEDED_BRANCH_PRUNE=PASS'
+          echo 'CURRENT_STABLE_PRESERVED=PASS'
+          echo 'CURRENT_CANDIDATE_SOURCE_PRESERVED=PASS'
+          echo 'ROLLBACK_SOURCE_PRESERVED=PASS'
