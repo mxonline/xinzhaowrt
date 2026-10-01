@@ -1,90 +1,164 @@
 {
-  "schema_version": "1.0",
-  "status": "PARTIAL_VERIFIED",
-  "scope": "Arthur OpenClash Smart runtime only; full ARTHUR_PRODUCT_GOAL_V1 remains pending",
-  "build_run_id": 36348777394,
-  "actions_artifact_id": 10944450704,
-  "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
-  "candidate_tag": "arthur-update-36348777394",
-  "stable_tag": "arthur-production-36348777394",
+  "schema_version": 2,
+  "status": "PRODUCT_GOAL_VERIFIED",
+  "scope": "Arthur v0.1.5 software-source repair",
+  "build_run_id": 36764137044,
+  "actions_artifact_id": "11126027620",
+  "source_commit": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+  "candidate_tag": "arthur-update-36764137044",
+  "stable_tag": "arthur-production-36764137044",
   "device": {
     "model": "JDCloud RE-SS-01",
-    "target": "jdcloud_re-ss-01"
+    "target": "jdcloud_re-ss-01",
+    "build_id": "36764137044",
+    "version": "0.1.5",
+    "lan_mac": "dc:d8:7c:45:91:99"
   },
-  "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
-  "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
-  "factory_sha256": "9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0",
-  "smart_core": {
-    "identity": "alpha-smart-g2e80ed7",
-    "sha256": "36ca7f27eb06c4e6f4b6a7f7b5f3c67c921cd1d7e0a4819c1e16f0d327cf102d"
+  "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
+  "sysupgrade_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664",
+  "factory_firmware": "XinZhaoWrt-Arthur-v0.1.5-20260930-factory.bin",
+  "factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9",
+  "gates": {
+    "POSTFLASH_LUCI_PACKAGE_MANAGER": "PASS",
+    "DEVICE_EXACT_ARTIFACT_MATCH": "PASS",
+    "LIVE_LUCI_PACKAGE_MANAGER": "PASS",
+    "FINAL_ROOTFS_SOURCE_BINDING": {
+      "files": [
+        {
+          "sha256": "8bafc96d2f3e8a94754bc4e338aeb0d9ffad9f57f675fe95b165afe3e9304779",
+          "path": "/etc/apk/repositories.d/distfeeds.list"
+        },
+        {
+          "sha256": "c19fb395c5a26ffbfffcf8e872e4e993aa121530bfd8d31f2b1ff875b15fc388",
+          "path": "/usr/sbin/quickstart"
+        }
+      ],
+      "status": "PASS"
+    },
+    "SOURCE_BINDING": "PASS",
+    "POSTFLASH_QUICKSTART_SOURCE_STATUS": "PASS",
+    "IDENTICAL_ARTIFACT_PROMOTION": "PASS",
+    "LIVE_QUICKSTART_SOFTWARE_SOURCE_STATUS": "PASS",
+    "LIVE_APK_UPDATE": "PASS",
+    "PRODUCTION_RELEASED": "PASS",
+    "LIVE_REBOOT_PERSISTENCE": "PASS",
+    "REBOOT_PERSISTENCE": "PASS",
+    "SYSTEM_HEALTH": "PASS",
+    "ROOT_PASSWORD_SEMANTIC_GATE": "PASS",
+    "POSTFLASH_APK_UPDATE": "PASS"
   },
-  "smart_groups": [
-    "香港自动",
-    "日本自动",
-    "狮城自动",
-    "美国自动",
-    "台湾自动",
-    "韩国自动",
-    "英国自动",
-    "印度自动",
-    "自动选择"
-  ],
-  "smart_policy_config": "PASS",
-  "smart_policy_loaded": "PASS",
-  "smart_real_traffic": {
+  "source_binding": {
     "status": "PASS",
-    "service": "YouTube",
-    "basis": "Previously accepted 192.168.6.217 YouTube-over-Smart evidence; continuous playback was explicitly waived."
+    "files": [
+      {
+        "runtime_path": "/etc/apk/repositories.d/distfeeds.list",
+        "source_path": "files/etc/apk/repositories.d/distfeeds.list",
+        "sha256": "8bafc96d2f3e8a94754bc4e338aeb0d9ffad9f57f675fe95b165afe3e9304779"
+      },
+      {
+        "runtime_path": "/usr/sbin/quickstart",
+        "source_path": "files/usr/sbin/quickstart",
+        "sha256": "c19fb395c5a26ffbfffcf8e872e4e993aa121530bfd8d31f2b1ff875b15fc388"
+      }
+    ],
+    "live_changed_files": 2,
+    "source_bound_files": 2
   },
-  "postflash_stability": {
+  "root_password_semantic_gate": {
     "status": "PASS",
-    "duration_seconds": 635.4,
-    "sample_count": 21,
-    "oom_max": 0,
-    "dns_failures": 0,
-    "luci_http_failures": 0,
-    "swap_out_pages_delta": 0,
-    "zram_used_kb_delta": 0
+    "verification": "Configured SHA-512 crypt hash was recomputed for password and matches rootfs password_hash.",
+    "default_root_password": "password"
   },
-  "adh_verification": "NOT_REVALIDATED",
-  "evidence": {
-    "stability_archive": "production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip",
-    "stability_archive_sha256": "4bf98af20beaa9cf9e2d631bda3909f66f79274747c645a269d8782679582c99",
-    "stability_summary": "postflash-stability-summary.txt (inside stability_archive)",
-    "stability_summary_sha256": "c6a75e49e8932d1f09211c0e063acd7ec84947258b2cd7c2b9236a7168c87a4c",
-    "stability_csv": "production/release-evidence/arthur-smart-36348777394/postflash-stability.csv",
-    "stability_csv_sha256": "96c44ddb6028ee4090051ebea84aea079d247a92f1fd0dcd202ac4273d13aea8"
-  },
-  "source_lock_enforced_by_build": false,
-  "source_lock_note": "The exact Build artifact reports Known-Good lock enabled: 0. This record pins the verified runtime artifact by Actions run, artifact ID, source commit, and payload SHA256; it does not claim source-lock enforcement. The canonical source lock remains unchanged.",
+  "source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+  "build_run_url": "https://github.com/mxonline/xinzhaowrt/actions/runs/36764137044",
+  "candidate_release_id": 400883581,
+  "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36764137044",
+  "stable_release_id": 400927118,
+  "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36764137044",
+  "candidate_and_stable_sysupgrade_assets_identical": true,
   "firmware_payload_modified_after_build": false,
   "release_status": "PRODUCTION_RELEASED",
-  "publication": {
-    "candidate_release_id": 397933427,
-    "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36348777394",
-    "stable_release_id": 397933614,
-    "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
-    "candidate_and_stable_assets_identical": true,
-    "updated_at": "2026-09-28T03:38:51+00:00"
+  "evidence": {
+    "candidate_release_assets": [
+      "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
+      "XinZhaoWrt-Arthur-v0.1.5-20260930-factory.bin"
+    ],
+    "source_binding": "https://github.com/mxonline/xinzhaowrt/blob/0eeae67f74db77a6401b0205d74e6518b899a3e4/production/source-bindings/arthur-v015-software-source-repair.json",
+    "postflash_before_reboot": "https://github.com/mxonline/xinzhaowrt/releases/download/arthur-production-36764137044/postflash-before-reboot.json",
+    "postflash_after_reboot": "https://github.com/mxonline/xinzhaowrt/releases/download/arthur-production-36764137044/postflash-after-reboot.json"
   },
-  "product_goal_verified": false,
-  "required_final_markers_status": {
-    "OPENCLASH_FULLY_USABLE": "PARTIAL_SMART_RUNTIME_VERIFIED",
-    "ADGUARDHOME_FULLY_USABLE": "PENDING_REVALIDATION",
-    "OPENCLASH_ADH_COEXISTENCE": "PENDING_REVALIDATION",
-    "POST_RELEASE_VALIDATED": "PENDING",
-    "PRODUCT_GOAL_VERIFIED": "NOT_YET_ALLOWED"
-  },
-  "clean_flash_acceptance": {
-    "exact_release_identity": "PASS",
-    "write_count": 1,
-    "root_password_auth": "PASS",
-    "strict_ssh_identity": "PASS",
-    "smart_core_and_9_groups": "PASS",
-    "real_proxy_traffic": "PENDING_FIRST_ROOT_CAUSE_ISOLATION",
-    "final_reboot_persistence": "PENDING",
-    "system_health_final": "PENDING"
-  },
-  "claim_policy": "This file must not be used to claim full PRODUCT_GOAL_VERIFIED until every required final marker in production/product-goal-contract.json is backed by exact-release real-device evidence.",
-  "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
+  "updated_at": "2026-10-01T14:21:20Z",
+  "NEXT_ACTION": "NONE",
+  "historical_previous_product_goal": {
+    "schema_version": "1.0",
+    "status": "PRODUCT_GOAL_VERIFIED",
+    "scope": "Arthur OpenClash Smart runtime",
+    "build_run_id": 36348777394,
+    "actions_artifact_id": 10944450704,
+    "source_commit": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "candidate_tag": "arthur-update-36348777394",
+    "stable_tag": "arthur-production-36348777394",
+    "device": {
+      "model": "JDCloud RE-SS-01",
+      "target": "jdcloud_re-ss-01"
+    },
+    "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
+    "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "factory_sha256": "9e060c898b3606119e042d6a0abab36b609a618f2ed07d873c350fd24efdc4c0",
+    "smart_core": {
+      "identity": "alpha-smart-g2e80ed7",
+      "sha256": "36ca7f27eb06c4e6f4b6a7f7b5f3c67c921cd1d7e0a4819c1e16f0d327cf102d"
+    },
+    "smart_groups": [
+      "香港自动",
+      "日本自动",
+      "狮城自动",
+      "美国自动",
+      "台湾自动",
+      "韩国自动",
+      "英国自动",
+      "印度自动",
+      "自动选择"
+    ],
+    "smart_policy_config": "PASS",
+    "smart_policy_loaded": "PASS",
+    "smart_real_traffic": {
+      "status": "PASS",
+      "service": "YouTube",
+      "basis": "Previously accepted 192.168.6.217 YouTube-over-Smart evidence; continuous playback was explicitly waived."
+    },
+    "postflash_stability": {
+      "status": "PASS",
+      "duration_seconds": 635.4,
+      "sample_count": 21,
+      "oom_max": 0,
+      "dns_failures": 0,
+      "luci_http_failures": 0,
+      "swap_out_pages_delta": 0,
+      "zram_used_kb_delta": 0
+    },
+    "adh_verification": "NOT_REVALIDATED",
+    "evidence": {
+      "stability_archive": "production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip",
+      "stability_archive_sha256": "4bf98af20beaa9cf9e2d631bda3909f66f79274747c645a269d8782679582c99",
+      "stability_summary": "postflash-stability-summary.txt (inside stability_archive)",
+      "stability_summary_sha256": "c6a75e49e8932d1f09211c0e063acd7ec84947258b2cd7c2b9236a7168c87a4c",
+      "stability_csv": "production/release-evidence/arthur-smart-36348777394/postflash-stability.csv",
+      "stability_csv_sha256": "96c44ddb6028ee4090051ebea84aea079d247a92f1fd0dcd202ac4273d13aea8"
+    },
+    "source_lock_enforced_by_build": false,
+    "source_lock_note": "The exact Build artifact reports Known-Good lock enabled: 0. This record pins the verified runtime artifact by Actions run, artifact ID, source commit, and payload SHA256; it does not claim source-lock enforcement. The canonical source lock remains unchanged.",
+    "firmware_payload_modified_after_build": false,
+    "release_status": "PRODUCTION_RELEASED",
+    "publication": {
+      "candidate_release_id": 397933427,
+      "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36348777394",
+      "stable_release_id": 397933614,
+      "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36348777394",
+      "candidate_and_stable_assets_identical": true,
+      "updated_at": "2026-09-28T11:38:51+08:00"
+    },
+    "historical_only": true,
+    "evidence_scope": "Historical OpenClash Smart runtime record; not used as software-source repair evidence."
+  }
 }
