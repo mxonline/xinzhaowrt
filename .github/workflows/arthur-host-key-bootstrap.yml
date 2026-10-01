@@ -1,16 +1,6 @@
 name: Arthur SSH Host Key Bootstrap
 
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'production/real-device-baseline.json'
-      - 'scripts/real-device-baseline-lib.ps1'
-      - 'scripts/bootstrap-arthur-host-key.ps1'
-      - '.github/workflows/arthur-host-key-bootstrap.yml'
-  schedule:
-    - cron: '*/15 * * * *'
+'on':
   workflow_dispatch:
 
 permissions:

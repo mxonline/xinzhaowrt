@@ -9,7 +9,6 @@ class ArthurPipeline:
     production_candidate_workflow = ".github/workflows/arthur-update-v3.yml"
     non_production_candidate_workflows = frozenset(
         {
-            ".github/workflows/arthur-theme-candidate.yml",
             ".github/workflows/arthur-fast-candidate.yml",
         }
     )
