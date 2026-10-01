@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-02",
+  "purpose": "Preserve full Git history of superseded development branches before branch cleanup.",
+  "main_at_archive": "3a2bea0acd63b817e10357ead6cf0381006904fe",
+  "preserved_live_branches": [
+    "main",
+    "codex/arthur-v015-software-source-repair",
+    "codex/arthur-smart-build-20260928"
+  ],
+  "archived_branches": [
+    {
+      "name": "ci/arthur-early-preflight-v1",
+      "sha": "77f6a594380a8c3d45c201e3306d4f420b339c67"
+    },
+    {
+      "name": "ci/arthur-fast-preflight-v1",
+      "sha": "dbfec5143bc116b2123b21a87537f9c722a77dbb"
+    },
+    {
+      "name": "ci/arthur-openclash-package-closure-20260922",
+      "sha": "4477dd12b85386b8bb5ed271699a0c1a9d5898ff"
+    },
+    {
+      "name": "cleanup/arthur-stale-unfinished-state-20260905",
+      "sha": "4de84edef2b34ba8b77017479e1d3295cd903881"
+    },
+    {
+      "name": "codex/agent-skill-framework-v0.1-plan",
+      "sha": "be14bbc90d8ee169ed91efa96f15311e008fa97b"
+    },
+    {
+      "name": "codex/agent-skill-framework-v0.1",
+      "sha": "ee38c8f68bbaf31d042273dd54e78bc21e8a2592"
+    },
+    {
+      "name": "codex/arthur-build-20260901-0816-132409c",
+      "sha": "f9f2af474944c7895cdbdb7db6aa337f8f3d0cfb"
+    },
+    {
+      "name": "codex/arthur-build-dedup-source-impact",
+      "sha": "eb7afd8decc0ffc1c19cbc7edce3a52952424e3c"
+    },
+    {
+      "name": "codex/arthur-codex-auto-recovery",
+      "sha": "04ec60ceb8bf5affed5fa2be628980acc38bda1e"
+    },
+    {
+      "name": "codex/arthur-control-plane-main",
+      "sha": "a4b417d3807bf22fd347bc1e331614935cb1b2f2"
+    },
+    {
+      "name": "codex/arthur-detached-runtime-20260906",
+      "sha": "ff9e73e9124817c70a0f40a939864c412bba9b6b"
+    },
+    {
+      "name": "codex/arthur-fast-candidate",
+      "sha": "e8c86205debfc8f4ae7273ccf18e06d0a8191bb2"
+    },
+    {
+      "name": "codex/arthur-openclash-memory-v014",
+      "sha": "a195dc406e6ed38ad9be8621d4051426737829b6"
+    },
+    {
+      "name": "codex/arthur-pipeline-v4.3",
+      "sha": "92a43ccaa22d6ae6f81e5eb13e3757109c9a6295"
+    },
+    {
+      "name": "codex/arthur-production-agent-clean",
+      "sha": "d467b2559533e583367c5d58978ae8cd92ae2651"
+    },
+    {
+      "name": "codex/arthur-runner-control-plane-20260904",
+      "sha": "c0747c666954f238d1df92a218600615fc0e9ab9"
+    },
+    {
+      "name": "codex/arthur-self-contained-postflash-repair",
+      "sha": "3bd337513c04954ae055cf21405be0ae8eaa5297"
+    },
+    {
+      "name": "codex/arthur-theme-candidate",
+      "sha": "0ea8958a296886dc263d328f75180b84ab657a8e"
+    },
+    {
+      "name": "codex/arthur-unified-state-evidence",
+      "sha": "494fb4ae18fca4935494554824a3365b99fec6d2"
+    },
+    {
+      "name": "codex/arthur-v014-postrelease-regression-fix-v2",
+      "sha": "f06f9e5d26825d4c6921692816e26079621572c4"
+    },
+    {
+      "name": "codex/canonical-main-state-v014",
+      "sha": "327b32cbd0a7168d2b592cf207dfb8269e379deb"
+    },
+    {
+      "name": "codex/openwrt-pipeline-v4.3",
+      "sha": "55ccf893c6ed2432d2361d1e326f955aaaada439"
+    },
+    {
+      "name": "codex/production-agent-local-sync",
+      "sha": "ce05a42bf491d7b490699fe58b9e8aafda4c4a64"
+    },
+    {
+      "name": "codex/production-agent-ps51-test",
+      "sha": "cad134e1655e2bc40844f4b311db25042b1bda3c"
+    },
+    {
+      "name": "codex/production-agent-winps",
+      "sha": "a894675ac82cb10b58f2a02a4cd8c39bb997d7b8"
+    },
+    {
+      "name": "codex/production-agent-workspace-copy",
+      "sha": "42ca854bd20082ed0ef558ef95009e768393b496"
+    },
+    {
+      "name": "codex/v3-bounded-retry-exit",
+      "sha": "307417dba966818ce0fbc24bee2ce3a6cea1f1ab"
+    },
+    {
+      "name": "codex/v4-production-controller",
+      "sha": "f0233d1ab05d4e80bbb860703d87cb039db79db6"
+    },
+    {
+      "name": "codex/v013-source-fetch-recovery",
+      "sha": "65bb7b4c04fdcbad1bb77327157936fddff85e2d"
+    },
+    {
+      "name": "design/fast-safe-unattended-release-contract",
+      "sha": "de2f176a7988d1eada709a72bf92103883b1306c"
+    },
+    {
+      "name": "design/real-device-baseline",
+      "sha": "4077b2c332d04f72b44a3ffc4c21f90e4faba04a"
+    },
+    {
+      "name": "diag/arthur-hostkey-forensics",
+      "sha": "e611ccbcbb2e2c14c94be79fc741e9758d235765"
+    },
+    {
+      "name": "diag/arthur-live-windows-state-20260905",
+      "sha": "08b0fa49d2b30988b57ee7ba370715b2ed64df9f"
+    },
+    {
+      "name": "diag/arthur-windows-task-visibility-20260906",
+      "sha": "8723abf5b555b085b4168eea3e18bf31cdcf40a8"
+    },
+    {
+      "name": "docs/source-of-truth-20260902",
+      "sha": "977c6edf37f121e3f6785ea9b1bd0db5033dc025"
+    },
+    {
+      "name": "feat/arthur-state-consistency-20260909",
+      "sha": "f5de650ff35037e31cdf243c0b670d8d261778f6"
+    },
+    {
+      "name": "feat/firmware-event-ledger-resume-gate-20260905",
+      "sha": "c29bcaaa8817af646171fb0d25ccd8eb4095fe56"
+    },
+    {
+      "name": "feature/arthur-v013-next",
+      "sha": "924f892f183821170db094584ffc7572531a729a"
+    },
+    {
+      "name": "feature/fast-safe-unattended-release-contract",
+      "sha": "d0cbd1cfaab7ec086443c724d95aad9cfc9dcbc7"
+    },
+    {
+      "name": "fix/arthur-admin-bootstrap-20260906",
+      "sha": "b08d3c7c3ae0caeeceae4de60c8a90e16951e461"
+    },
+    {
+      "name": "fix/arthur-artifact-preflash-resume-20260907",
+      "sha": "59f8a605fe909a13de4ed12931a2233500544a1b"
+    },
+    {
+      "name": "fix/arthur-canonical-resume-state",
+      "sha": "71521c07461bd95051518d6f521c901a90e5808b"
+    },
+    {
+      "name": "fix/arthur-control-plane-gh-release-json-20260904",
+      "sha": "ca20a216c61bcabe7ce5a3df06941eef760e94c4"
+    },
+    {
+      "name": "fix/arthur-control-plane-null-count-20260904",
+      "sha": "31b54ea01e89c64c0a650f50d25fb21163617d82"
+    },
+    {
+      "name": "fix/arthur-control-state-root-20260906",
+      "sha": "ef0be632f7e9acc8f9502d35e8a486363c8035e0"
+    },
+    {
+      "name": "fix/arthur-current-source-provenance-20260905",
+      "sha": "7f1754260b51019dbcca90494992e20cc724b904"
+    },
+    {
+      "name": "fix/arthur-http80-only-final",
+      "sha": "2f4d9a70e5675955bddaf51eb134131fac61bfc3"
+    },
+    {
+      "name": "fix/arthur-persistent-supervisor-daemon-20260905",
+      "sha": "374ff4814a5042e3d8d03ced7e7c7ddcf01f8a34"
+    },
+    {
+      "name": "fix/arthur-runner-owned-runtime-20260906",
+      "sha": "b9dfdb400ae6d4e55be6052250aec1c4560d38bf"
+    },
+    {
+      "name": "fix/arthur-single-runner-wakeup-20260904",
+      "sha": "a2b0c65efe4324d4648070f0ed6f699386342d9f"
+    },
+    {
+      "name": "fix/arthur-single-runner-wakeup-v2-20260904",
+      "sha": "caf07e4cd968923f00b8098420fb384e5a99fe28"
+    },
+    {
+      "name": "fix/arthur-supervisor-error-evidence-20260905",
+      "sha": "a58bd754361e491a72e3a551b59e0fca49ce05ee"
+    },
+    {
+      "name": "fix/bridge-bootstrap-reuse",
+      "sha": "6aa052fca54b6e965902b9a75d338c99791ddbfe"
+    },
+    {
+      "name": "fix/control-plane-boundary-evidence-20260904",
+      "sha": "069b4fbdcf8c8627dc10bf580f213294f3045aa2"
+    },
+    {
+      "name": "fix/control-plane-device-probe-regression-20260904",
+      "sha": "5dc771091bddf94f448fce49d2baa3b92dec8ad8"
+    },
+    {
+      "name": "fix/control-plane-release-list-json-20260904",
+      "sha": "95e8754d86b167f8e603080a7cabd9507b819378"
+    },
+    {
+      "name": "fix/control-plane-scalar-count-20260904",
+      "sha": "647d4cfc303ce2a1deb862936fbf62077768ae74"
+    },
+    {
+      "name": "fix/control-plane-stale-checkpoint-20260904",
+      "sha": "1db358278f1fe133cc86c178b9b263a73c3f527f"
+    },
+    {
+      "name": "fix/freeze-unattended-release-contract",
+      "sha": "676d1aae97aec3b2555abd75cbe6b1cf4f923392"
+    },
+    {
+      "name": "fix/fresh-execution-runtime-supersession-20260918",
+      "sha": "00710998db4192295eadef3a4cd6deca754191bd"
+    },
+    {
+      "name": "fix/fresh-runtime-supersession-clean-20260918",
+      "sha": "000119e5ae79df0e7c29b2be09ffbe1d0466fbb7"
+    },
+    {
+      "name": "fix/headless-auto-production-resume",
+      "sha": "8e0583a9c7a4ebbbf05a833586acc73806cd1b17"
+    },
+    {
+      "name": "fix/headless-full-history-sync",
+      "sha": "f2fad7f4559d6c33aac80c19fcd54a73e5eea972"
+    },
+    {
+      "name": "fix/headless-python-bootstrap",
+      "sha": "a94270c417c932d84e819ae56933ce28caeffb02"
+    },
+    {
+      "name": "fix/headless-uv-python-bootstrap",
+      "sha": "df17657359e35893efa922014ec6c42b6f3330e1"
+    },
+    {
+      "name": "fix/rollback-direct-release-download",
+      "sha": "1c9263af2be2fd69435d54f89d0f8aaa51f1e256"
+    },
+    {
+      "name": "fix/use-explicit-rollback-target",
+      "sha": "cf7a9ede9a2ce414b66fde4902d27c171d0ffa45"
+    },
+    {
+      "name": "governance/product-goal-contract-v1",
+      "sha": "ec8e4229a05ca3dc9ca42edb81f32d921f2093dd"
+    },
+    {
+      "name": "recovery/arthur-final-source-20260905",
+      "sha": "940e3ac3e0f257dd9d8d4f5cc372b87e041e1167"
+    },
+    {
+      "name": "stabilize-human",
+      "sha": "ae02e0965df8c87aa8cf2161ff569829d6695227"
+    },
+    {
+      "name": "v3-controller",
+      "sha": "b4f850f845f770dfa2beccaf483b498446f05763"
+    }
+  ]
+}
