@@ -1,0 +1,166 @@
+name: Arthur Release History Labeling Once
+
+'on':
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release-history-labeling-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  label-history:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify exact release identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          verify_release() {
+            local id="$1"
+            local expected="$2"
+            local actual
+            actual="$(gh api "repos/$REPO/releases/$id" --jq '.tag_name')"
+            [[ "$actual" == "$expected" ]] || {
+              echo "BLOCKED: release id=$id expected=$expected actual=$actual"
+              exit 1
+            }
+          }
+          verify_release 400927118 arthur-production-36764137044
+          verify_release 400883581 arthur-update-36764137044
+          verify_release 397933614 arthur-production-36348777394
+          verify_release 397933427 arthur-update-36348777394
+          verify_release 391636426 v0.1.5
+          verify_release 386825198 v0.1.4
+          verify_release 385182885 arthur-production-34268801985
+          verify_release 376583312 v0.1.0
+          echo 'RELEASE_IDENTITY_GATE=PASS'
+
+      - name: Apply release-history classification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+
+          cat > /tmp/current-stable.md <<'EOF'
+          # 当前正式版
+
+          这是目前 Arthur / JDCloud RE-SS-01 的 **当前正式 Stable**。
+
+          - Stable：`arthur-production-36764137044`
+          - Candidate：`arthur-update-36764137044`
+          - Build Run：`36764137044`
+          - Source SHA：`0eeae67f74db77a6401b0205d74e6518b899a3e4`
+          - Sysupgrade SHA256：`ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664`
+          - Factory SHA256：`156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9`
+
+          已完成 exact-artifact 实机验收、软件源 CLI/LuCI/QuickStart 验证及重启持久化验证。日常使用以此 Release 为准。
+          EOF
+
+          cat > /tmp/current-candidate.md <<'EOF'
+          # 当前构建留档
+
+          这是当前正式版 `arthur-production-36764137044` 对应的 **同字节 Candidate 构建留档**，用于追溯 Build、Source、校验值和实机验收来源。
+
+          - Build Run：`36764137044`
+          - Source SHA：`0eeae67f74db77a6401b0205d74e6518b899a3e4`
+          - Sysupgrade SHA256：`ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664`
+
+          普通使用请下载当前正式 Stable，不需要优先选择 Candidate。
+          EOF
+
+          cat > /tmp/current-rollback.md <<'EOF'
+          # 当前回滚版
+
+          这是当前正式版 `arthur-production-36764137044` 的 **保留回滚 Stable**。
+
+          - Stable：`arthur-production-36348777394`
+          - Build Run：`36348777394`
+          - Sysupgrade SHA256：`97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4`
+
+          正常情况下不要使用此版本；只有当前正式版出现明确兼容问题并决定回退时才使用。刷写前仍需核对设备型号、SHA256，并执行 `sysupgrade -T`。
+          EOF
+
+          cat > /tmp/rollback-candidate.md <<'EOF'
+          # 历史构建留档
+
+          这是当前回滚 Stable `arthur-production-36348777394` 对应的 Candidate 构建留档，用于追溯 Build Run 36348777394 / Artifact 10944450704。
+
+          该 Release 不是当前推荐安装版本。正常使用请下载 `arthur-production-36764137044`。
+          EOF
+
+          cat > /tmp/v015-history.md <<'EOF'
+          # 历史版本留档｜v0.1.5（2026-09-18）
+
+          此 Release 保留用于版本演进、构建来源和故障追溯，不是当前推荐安装版本。
+
+          - 当时 Source：`e0377509dcc57c415935e9f779fe27117ce591be`
+          - 当时 Sysupgrade SHA256：`6df88356d718ac3150b061c5bdb4710cef12f60717689383897eed4827f99a2d`
+          - 当时发布记录中的独立 POST_RELEASE_DEVICE_TEST 尚未作为该 Release 的 Known-Good 依据。
+
+          当前正式版：`arthur-production-36764137044`
+          当前回滚版：`arthur-production-36348777394`
+          EOF
+
+          cat > /tmp/v014-history.md <<'EOF'
+          # 历史版本留档｜v0.1.4
+
+          此 Release 仅保留用于版本演进和故障追溯，不是当前推荐安装版本。
+
+          - Sysupgrade SHA256：`eef11752126a37f044024d8b476e0d51df8b608a816c9d8e3065751ebde05f1c`
+
+          当前正式版：`arthur-production-36764137044`
+          当前回滚版：`arthur-production-36348777394`
+          EOF
+
+          cat > /tmp/v013-history.md <<'EOF'
+          # 历史版本留档｜v0.1.3
+
+          这是 Run `34268801985` 的历史正式版本，保留其固件、实机验证资料和发布证据用于追溯。
+
+          - Sysupgrade：`XinZhaoWrt-Arthur-v0.1.3-20260908-sysupgrade.bin`
+          - SHA256：`f048a7063c7fa89774f628d252f9709d5cee2801f36066ebefb61cc65ea1b557`
+
+          该版本已被后续 Stable 取代，不再作为当前推荐安装或当前回滚版本。
+          当前正式版：`arthur-production-36764137044`
+          当前回滚版：`arthur-production-36348777394`
+          EOF
+
+          cat > /tmp/v010-history.md <<'EOF'
+          # 历史版本留档｜v0.1.0
+
+          这是早期 Arthur Known-Good / 回滚历史版本，现仅作为发布历史和灾难追溯资料保留。
+
+          - Sysupgrade：`XinZhaoWrt-Arthur-v0.1.0-20260825-sysupgrade.bin`
+          - SHA256：`9557593696c7bb07a1f0b259859140b4096ba71c675847aaf5ba5015118a7c2d`
+
+          它已经不是当前回滚目标。
+          当前正式版：`arthur-production-36764137044`
+          当前回滚版：`arthur-production-36348777394`
+          EOF
+
+          gh release edit arthur-production-36764137044 --repo "$REPO" --title '当前正式版｜XinZhaoWrt Arthur v0.1.5（Run 36764137044）' --notes-file /tmp/current-stable.md --latest
+          gh release edit arthur-update-36764137044 --repo "$REPO" --title '当前构建留档｜Arthur Run 36764137044' --notes-file /tmp/current-candidate.md --prerelease
+          gh release edit arthur-production-36348777394 --repo "$REPO" --title '当前回滚版｜Arthur Stable Run 36348777394' --notes-file /tmp/current-rollback.md
+          gh release edit arthur-update-36348777394 --repo "$REPO" --title '历史构建留档｜Arthur Run 36348777394' --notes-file /tmp/rollback-candidate.md --prerelease
+          gh release edit v0.1.5 --repo "$REPO" --title '历史版本留档｜XinZhaoWrt Arthur v0.1.5（2026-09-18）' --notes-file /tmp/v015-history.md
+          gh release edit v0.1.4 --repo "$REPO" --title '历史版本留档｜XinZhaoWrt Arthur v0.1.4' --notes-file /tmp/v014-history.md
+          gh release edit arthur-production-34268801985 --repo "$REPO" --title '历史版本留档｜XinZhaoWrt Arthur v0.1.3（Run 34268801985）' --notes-file /tmp/v013-history.md
+          gh release edit v0.1.0 --repo "$REPO" --title '历史版本留档｜XinZhaoWrt Arthur v0.1.0' --notes-file /tmp/v010-history.md
+
+          latest="$(gh api "repos/$REPO/releases/latest" --jq '.tag_name')"
+          [[ "$latest" == 'arthur-production-36764137044' ]] || { echo "BLOCKED: latest=$latest"; exit 1; }
+
+          count="$(gh api --paginate "repos/$REPO/releases?per_page=100" --jq 'length' | awk '{s+=$1} END{print s}')"
+          [[ "$count" -eq 8 ]] || { echo "BLOCKED: unexpected release count=$count"; exit 1; }
+
+          echo 'RELEASE_HISTORY_CLASSIFICATION=PASS'
+          echo 'CURRENT_STABLE_LATEST=PASS'
+          echo 'HISTORICAL_RELEASE_ASSETS_PRESERVED=PASS'
+          echo 'RELEASE_COUNT=8'
