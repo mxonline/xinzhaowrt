@@ -7,7 +7,7 @@
   "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
   "release_mode": "RELEASE_ONLY",
   "target_release": "v0.1.6",
-  "device_write_authorized": false,
+  "device_write_authorized": true,
   "firmware_state": {
     "current_stage": "CHANGE_IMPACT",
     "next_stage": "BASELINE_INHERITANCE",
@@ -43,7 +43,10 @@
     "sysupgrade_forbidden": true,
     "sysupgrade_forbidden_without_new_explicit_device_write_authorization": true,
     "quickstart_not_frozen_due_file_management_failure": true,
-    "build_forbidden_until_quickfile_live_pass": true
+    "build_forbidden_until_quickfile_live_pass": true,
+    "device_write_scope_limited_to_live_file_management_repair": true,
+    "device_reboot_forbidden": true,
+    "release_requires_device_write_authorized_reset_false": true
   },
   "highest_machine_evidence": {
     "authority": "OPERATOR",
@@ -70,9 +73,39 @@
       "RAW_STORAGE_WRITE",
       "FORMAT_SYSTEM_PARTITIONS",
       "SYSUPGRADE",
+      "FIRMWARE_FLASH",
+      "DEVICE_REBOOT",
       "AUTOMATIC_FLASH"
     ],
     "action_rule": "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT",
     "fail_closed_on_violation": true
+  },
+  "live_repair_scope": {
+    "authorized": true,
+    "purpose": "Validate and repair Arthur file-management behavior on the current real device before the v0.1.6 build.",
+    "allowed": [
+      "READ_ONLY_DIAGNOSTICS",
+      "QUICKFILE_SERVICE_START_STOP_RESTART",
+      "QUICKFILE_SERVICE_ENABLE",
+      "QUICKFILE_RUNTIME_FILE_REPAIR_WITH_BACKUP",
+      "LINKEASE_SERVICE_START_STOP_RESTART",
+      "LINKEASE_RUNTIME_FILE_REPAIR_WITH_BACKUP",
+      "LUCI_CACHE_REFRESH",
+      "NGINX_RELOAD_IF_REQUIRED_BY_FILE_MANAGEMENT_REPAIR"
+    ],
+    "forbidden": [
+      "SYSUPGRADE",
+      "FIRMWARE_FLASH",
+      "DEVICE_REBOOT",
+      "LAN_CHANGE",
+      "WIFI_CHANGE",
+      "DHCP_CHANGE",
+      "FIREWALL_CORE_CHANGE",
+      "PARTITION_FORMAT",
+      "MOUNT_LAYOUT_CHANGE",
+      "RAW_STORAGE_WRITE"
+    ],
+    "rollback_required": true,
+    "expires_when": "ALL_REQUIRED_LIVE_FILE_MANAGEMENT_MARKERS_PASS"
   }
 }
