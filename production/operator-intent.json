@@ -1,73 +1,78 @@
 {
   "schema_version": "1.2",
   "project": "Arthur",
-  "intent_type": "PROCESS_GOVERNANCE",
-  "authorization_scope": "GOVERNANCE_RULES_ONLY",
-  "firmware_execution_authorized": false,
-  "execution_id": "arthur-governance-vnext-20260929",
+  "intent_type": "EXECUTE_FIRMWARE",
+  "authorization_scope": "FIRMWARE_RELEASE",
+  "firmware_execution_authorized": true,
+  "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
   "release_mode": "RELEASE_ONLY",
-  "target_release": "",
+  "target_release": "v0.1.6",
   "device_write_authorized": false,
   "firmware_state": {
-    "current_stage": "PRODUCTION_RELEASED",
-    "next_stage": "NONE",
-    "active_run_id": 36348777394,
-    "active_source_sha": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
-    "active_artifact_id": 10944450704,
-    "current_stable_tag": "arthur-production-36348777394",
-    "current_sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
-    "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",
-    "source": "CURRENT_STABLE_RUNTIME_IDENTITY_36348777394"
+    "current_stage": "CHANGE_IMPACT",
+    "next_stage": "BASELINE_INHERITANCE",
+    "active_run_id": 0,
+    "active_source_sha": "ceac7b1307c4484c466f2b5f4f96e0915ec2e9f7",
+    "active_artifact_id": null,
+    "candidate_release_conclusion": null,
+    "verified_frozen": [
+      "WIFI",
+      "LUCI_CHINESE"
+    ],
+    "preserve": [
+      "LAN_192.168.6.1",
+      "ROOT_PASSWORD_PASSWORD",
+      "ARGON_KUCAT",
+      "OPENCLASH_ADH_CURRENT_VERIFIED_RUNTIME",
+      "CURRENT_KNOWN_GOOD_ROLLBACK"
+    ],
+    "source": "OPERATOR_AUTHORIZED_NEXT_RELEASE_FILE_MANAGEMENT_REPAIR"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
     "authorization_is_scope_bound": true,
     "ambiguity_fails_closed": true,
     "resume_before_action": true,
-    "no_codex_instruction_without_firmware_authorization": true,
     "do_not_dispatch_duplicate_build": true,
+    "do_not_interrupt_active_run": true,
     "reuse_uploaded_candidate_artifact_after_build": true,
     "live_validate_before_build_when_safe_and_applicable": true,
     "exact_artifact_promotion_required": true,
     "release_only": true,
     "automatic_flash": false,
-    "sysupgrade_forbidden_without_new_explicit_device_write_authorization": true
-  },
-  "governance_task": {
-    "authorized": true,
-    "scope": "GOVERNANCE_RULES_ONLY",
-    "goal": "Freeze the successful Arthur release method as the highest machine contract, correct stale/misleading product-state claims, add semantic credential validation, and prepare the next release without authorizing any firmware build, flash, reboot, or payload mutation.",
-    "status": "GOVERNANCE_RULES_PERSISTED",
-    "completed_at": "2026-09-29",
-    "evidence": {
-      "durable_state_gate_run_id": 36461002245,
-      "durable_state_gate_result": "PASS",
-      "global_runtime_contract_run_id": 36461002388,
-      "global_runtime_contract_result": "PASS",
-      "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29"
-    }
+    "sysupgrade_forbidden": true,
+    "sysupgrade_forbidden_without_new_explicit_device_write_authorization": true,
+    "quickstart_not_frozen_due_file_management_failure": true,
+    "build_forbidden_until_quickfile_live_pass": true
   },
   "highest_machine_evidence": {
     "authority": "OPERATOR",
     "priority_class": "HIGHEST",
-    "objective_id": "FREEZE_ARTHUR_RELEASE_PROCESS_VNEXT",
-    "objective": "Preserve the proven real-device-first, same-implementation, single-build, exact-artifact release method as the governing process for future Arthur firmware versions.",
-    "required_terminal": "GOVERNANCE_RULES_PERSISTED",
-    "process_contract_version": "ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29",
-    "current_stable_tag": "arthur-production-36348777394",
-    "current_build_run_id": 36348777394,
-    "current_artifact_id": 10944450704,
-    "forbidden": [
-      "NEW_FIRMWARE_BUILD",
-      "DEVICE_WRITE",
-      "SYSUPGRADE",
-      "REBOOT_FOR_VALIDATION",
-      "FIRMWARE_PAYLOAD_MUTATION",
-      "DUPLICATE_STABILITY_TEST_WITHOUT_VALID_INVALIDATION",
-      "CLAIM_FULL_PRODUCT_GOAL_VERIFIED_WHILE_ADH_OR_COEXISTENCE_IS_PENDING"
+    "objective_id": "ARTHUR_V016_FILE_MANAGEMENT_REPAIR",
+    "objective": "Ship Arthur v0.1.6 with the live-proven QuickStart to LinkEase file-management path persisted in the firmware and with QuickFile 502 repaired. Prove the exact intended LinkEase and QuickFile behavior on the real Arthur before authorizing the build source, then follow the existing single-build exact-artifact release process.",
+    "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
+    "target_release": "v0.1.6",
+    "accepted_source_sha": "ceac7b1307c4484c466f2b5f4f96e0915ec2e9f7",
+    "required_terminal": "PRODUCTION_RELEASED",
+    "required_live_markers_before_build": [
+      "QUICKSTART_LINKEASE_FILE_MANAGER=PASS",
+      "LINKEASE_MMCBLK0P27_BROWSE=PASS",
+      "QUICKFILE_BACKEND=PASS",
+      "QUICKFILE_UI=PASS",
+      "NO_FILE_MANAGEMENT_404_502=PASS"
     ],
-    "action_rule": "GOVERNANCE_AND_STATE_CORRECTION_ONLY",
-    "fail_closed_on_violation": true,
-    "terminal_status": "GOVERNANCE_RULES_PERSISTED"
+    "forbidden": [
+      "BUILD_BEFORE_QUICKFILE_LIVE_PASS",
+      "BUILD_KNOWN_BROKEN_FILE_MANAGEMENT",
+      "NEW_UNRELATED_FEATURES",
+      "WIFI_MUTATION",
+      "LAN_MUTATION",
+      "RAW_STORAGE_WRITE",
+      "FORMAT_SYSTEM_PARTITIONS",
+      "SYSUPGRADE",
+      "AUTOMATIC_FLASH"
+    ],
+    "action_rule": "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT",
+    "fail_closed_on_violation": true
   }
 }
