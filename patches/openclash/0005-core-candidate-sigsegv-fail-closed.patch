@@ -1,0 +1,26 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
+--- a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
++++ b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
+@@ -186,3 +186,13 @@
+                   [ "$extract_success" = "true" ] && { extract_err=$(chmod 4755 "$TMP_FILE" 2>&1) || extract_success=false; }
+-                  [ "$extract_success" = "true" ] && { extract_err=$("$TMP_FILE" -v 2>&1) || extract_success=false; }
++                  if [ "$extract_success" = "true" ]; then
++                     extract_err=$("$TMP_FILE" -v 2>&1)
++                     validate_result=$?
++                     if [ "$validate_result" -ne 0 ]; then
++                        extract_success=false
++                        if [ "$validate_result" -ge 128 ]; then
++                           fatal_candidate=true
++                           extract_err="candidate core terminated by signal $((validate_result - 128)): $(echo "$extract_err" | tr '\n' ' ' | head -c 240)"
++                        fi
++                     fi
++                  fi
+                }
+@@ -190,2 +200,7 @@
+                if [ "$extract_success" != "true" ]; then
++                  if [ "$fatal_candidate" = "true" ]; then
++                     LOG_ERROR "【"$CORE_TYPE"】Core Candidate Rejected:【$(echo "$extract_err" | tr '\n' ' ' | head -c 300)】"
++                     rm -rf "$TMP_FILE" >/dev/null 2>&1
++                     break
++                  fi
+                   if [ "$retry_count" -lt "$max_retries" ]; then

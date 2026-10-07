@@ -1,0 +1,21 @@
+diff --git a/luci-app-openclash/root/etc/init.d/openclash b/luci-app-openclash/root/etc/init.d/openclash
+--- a/luci-app-openclash/root/etc/init.d/openclash
++++ b/luci-app-openclash/root/etc/init.d/openclash
+@@ -426,8 +426,17 @@
+ config_check()
+ {
+ #创建启动配置
+ #rm -rf "/etc/openclash/*.y*" 2>/dev/null
++sanitize_legacy_fingerprint()
++{
++if grep -Eq '^[[:space:]]*global-client-fingerprint[[:space:]]*:' "$RAW_CONFIG_FILE"; then
++   sed -i -E '/^[[:space:]]*global-client-fingerprint[[:space:]]*:/d' "$RAW_CONFIG_FILE"
++   LOG_TIP "Removed legacy global-client-fingerprint from the active config"
++fi
++}
++
++sanitize_legacy_fingerprint
+ cp "$RAW_CONFIG_FILE" "$TMP_CONFIG_FILE"
+ 
+ ruby -ryaml -rYAML -I "/usr/share/openclash" -E UTF-8 -e "
+ begin

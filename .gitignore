@@ -5,3 +5,4 @@ sources/live-preview-mature/
 *.log
 .DS_Store
 .env
+.env.local

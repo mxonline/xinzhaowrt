@@ -4,6 +4,7 @@ set -u -o pipefail
 # 中文说明：统一控制 GitHub Actions 云端编译。该脚本只驱动远端 workflow，绝不在本机执行 OpenWrt 编译。
 # 用法：./scripts/ci-control.sh [run|watch <RUN_ID>]
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$PROJECT_ROOT/scripts/github-auth-preflight.sh"
 REPOSITORY="${GITHUB_REPOSITORY:-mxonline/xinzhaowrt}"
 BRANCH="${CI_BRANCH:-main}"
 WORKFLOW="${CI_WORKFLOW:-build.yml}"
@@ -17,10 +18,7 @@ require_gh() {
     echo 'ERROR: 未安装 GitHub CLI（gh）。' >&2
     return 2
   }
-  gh auth status --hostname github.com >/dev/null 2>&1 || {
-    echo 'ERROR: GitHub CLI 未认证或缺少 workflow 权限。' >&2
-    return 2
-  }
+  github_auth_preflight workflow "$REPOSITORY" "$RUN_ID" "$PROJECT_ROOT" || return $?
 }
 
 resolve_workflow() {

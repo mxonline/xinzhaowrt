@@ -1,0 +1,3058 @@
+{
+  "schema_version": 1,
+  "purpose": "Auditable Stable/main source reconciliation before Arthur v0.1.6 file-management changes.",
+  "stable_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+  "current_main_sha": "5c9994a85f135ccead992896ae8486d215ee88b0",
+  "merge_base_sha": "256b18667e5b2423cf235303dec5877957d6fd4a",
+  "rename_detection": false,
+  "stable_main_changed_path_count": 499,
+  "classification_counts": {
+    "CONTROL_PLANE_ONLY": 196,
+    "DOC_ONLY": 54,
+    "PROTECTED_PRODUCT_PAYLOAD": 94,
+    "OBSOLETE": 2,
+    "TEST_ONLY": 153
+  },
+  "classification_policy": {
+    "PROTECTED_PRODUCT_PAYLOAD": "Configuration, overlays, package recipes, patches, source locks, build defaults, and source/package selection scripts use the exact real-device-confirmed Stable tree.",
+    "CONTROL_PLANE_ONLY": "Current main orchestration, release state, policy, and gate implementation are retained where they do not select product payload.",
+    "TEST_ONLY": "Current main tests are retained as verification inputs except tests tied only to unproven product additions, which are reviewed against the Stable implementation.",
+    "DOC_ONLY": "Current main documentation and contracts are retained.",
+    "OBSOLETE": "Generated build output tracked by Stable but removed by current main remains deleted.",
+    "FILE_MANAGEMENT_V016": "Applied after the reconciliation baseline only, using the exact already live-validated package implementation."
+  },
+  "protected_domain_comparison": {
+    "config/arthur.config": "Use Stable file, then add only the four live-validated LinkEase packages and set version metadata to 0.1.6.",
+    "files/": "Use Stable overlay; add only the verified file-management startup defaults. Stable LAN, Wi-Fi, OpenClash, AdGuardHome, DNS coexistence, QuickStart, themes, and password defaults remain byte-identical.",
+    "scripts/add-custom-packages.sh": "Use Stable package/source logic; add only the two locked iStoreOS source refs and four LinkEase package links plus safe-payload patch.",
+    "source_locks": "Use Stable locks; add only LinkEase versions/refs/runtime hashes from the frozen APK provenance.",
+    "required_plugins": "Stable and current main are byte-identical; all 22 remain enabled.",
+    "LAN_Wi-Fi_root_defaults": "Use Stable build.env and first-boot overlay; no value changes.",
+    "OpenClash_AdGuardHome_DNS": "Use Stable config, package inputs, runtime overlays and patches. Stable-to-live-evidence differences are reviewed separately by the formal PREBUILD binder.",
+    "QuickStart_QuickFile": "Use Stable QuickStart source/payload and add the four exact LinkEase packages plus QuickFile persistence.",
+    "themes": "Use Stable theme configuration and locks.",
+    "package_source_behavior": "Use Stable add-custom/build source integration plus only the frozen LinkEase additions."
+  },
+  "current_main_only_product_additions": [
+    "config/openclash-core.lock",
+    "files/etc/hotplug.d/iface/95-xinzhao-luci-converge",
+    "files/usr/libexec/xinzhao/luci-upgrade-converge.sh",
+    "scripts/patch-adguardhome-coexistence.py",
+    "scripts/patch-openclash-core-lifecycle.py",
+    "scripts/stage-openclash-core.sh"
+  ],
+  "machine_evidence_review": [
+    {
+      "path": "files/etc/hotplug.d/iface/95-xinzhao-luci-converge",
+      "introduced_by": "d1d6206688f82fb98abce305a7f8bcf228db071a",
+      "result": "not retained; exact accepted production evidence binds source 0eeae67f74db77a6401b0205d74e6518b899a3e4 which does not contain this file, and the committed postflash markers do not claim this fix."
+    },
+    {
+      "path": "config/openclash-core.lock and main-only OpenClash/AdGuardHome source transformation scripts",
+      "result": "not retained as product inputs; Stable uses its JSON core locks and package recipe. No exact-source released firmware evidence was found for the current-main source transformation set."
+    }
+  ],
+  "merge_resolution": {
+    "control_plane": "Resolve conflicting control-plane, contract, and documentation files to current main; preserve clean non-conflicting merges.",
+    "tests": "Retain current main test suite and update only expectations that specifically encoded product behavior absent from Stable, keeping equivalent Stable behavior checks.",
+    "product_payload": "Restore exact Stable tree for config/, files/, package/, patches/, build.env, VERSION, and the package/build selection scripts.",
+    "known_good": "production/known-good.json remains byte-for-byte from Stable.",
+    "history": "A real two-parent Git merge commit; no replace/graft/fake ancestry or force push."
+  },
+  "files": [
+    {
+      "path": ".github/workflows/arthur-candidate-artifact-recovery.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-control-plane-gates.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-control-plane.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-evidence-index.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-fast-candidate.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-fast-preflight.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-host-key-bootstrap.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-openclash-adh-direct-inspect.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-openclash-adh-live-repair.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-prebuild-live-guard.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-production-state-sync.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-recoverable-credential-gate.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-release-mode.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-resume-hash.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-resume-state-v2.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-state-contract.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-theme-candidate.yml",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-toolchain-bootstrap-v4.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-unified-state-integration.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-update-v3-auto.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-update-v3.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/arthur-zram-closure.yml",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/build-dedup-ci.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/build.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/codex-auto-recovery-ci.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/controller-v3-preflight.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/known-good-fastlane.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/produce.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/production-agent-ci.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/production-agent-deploy.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/promote-stable-v3.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/promote-stable.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/recover-xinzhou-content-runner.yml",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".github/workflows/runner-preflight.yml",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": ".gitignore",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "AGENTS.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "HANDOFF.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "README.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "ai_orchestrator/__init__.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/adapters.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/arthur.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/cli.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/codex_compat.py",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/codex_hidden_launcher.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/models.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/observability.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/recovery.py",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/recovery_runtime.py",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/runtime.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/state_store.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/supervisor.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "ai_orchestrator/windows_process.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "assets/branding/xz-icon.png",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "build.env",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/arthur-known-good.lock",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/arthur-theme.lock",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/arthur.config",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/istore-quickstart.lock",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/openclash-core.lock",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/openclash-core.lock.json",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/openclash-smart-core.lock.json",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "config/replacement-build-gate.env",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "docs/CODEX_CLOUD.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/CODEX_FIRST_BUILD_TASK.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/FLASH.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/HEADLESS_PRODUCTION_RUNTIME.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/OPENWRT_CI_V3.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/PERSISTENT_CI_CONTROLLER_V3.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/PREFLIGHT_REPORT.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/PROJECT_SPEC.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-29-arthur-control-plane.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-29-arthur-first-boot-recovery.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-29-arthur-firstboot-webstack-runtime-fix.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-31-adguard-full-manager.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-08-31-arthur-real-device-theme-language-fix.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-03-arthur-safe-live-preview.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-03-live-preview-production-handoff.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-04-arthur-adh-resume-provenance.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-04-feature-handoff-terminal-continuation.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-05-arthur-unattended-candidate-failure-recovery.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-06-arthur-windows-repair-controller.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-08-arthur-unified-state-evidence-ci-note.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-08-arthur-unified-state-evidence.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-09-terminal-release-reconciliation.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-11-post-release-security-hardening.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-15-arthur-unattended-release-only.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-18-arthur-github-native-fresh-execution-bootstrap.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-18-arthur-release-only-device-isolation.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-20-arthur-repair-candidate-source-release.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-23-arthur-zram-finalization.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-29-arthur-first-boot-recovery-design.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-headless-production-runtime-v2-design.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-arthur-live-preview-release-flow-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-live-preview-production-handoff-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-06-arthur-windows-repair-controller-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-08-arthur-unified-state-evidence-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-09-terminal-release-reconciliation-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-15-arthur-unattended-release-only-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-18-arthur-github-native-fresh-execution-bootstrap-design.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-23-arthur-zram-finalization-design.md",
+      "diff_status_stable_to_main": "D",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "files/etc/AdGuardHome.yaml",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/apk/repositories.d/distfeeds.list",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/config/AdGuardHome",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/config/adguardhome",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/config/nginx",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/config/xinzhao-dns",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/hotplug.d/iface/95-xinzhao-luci-converge",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/init.d/AdGuardHome",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/init.d/uhttpd",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/init.d/xinzhao-dns-coexist",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/95-xinzhao-openclash-defaults",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/96-xinzhao-adguardhome-defaults",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/97-xinzhao-luci-defaults",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/98-xinzhao-dns-coexist",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/98-xinzhao-native-swap",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/98-xinzhao-web-stack",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/98-xinzhao-wifi-defaults",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/98-xinzhao-zram-defaults",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/uci-defaults/99-xinzhao-defaults",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/etc/xinzhao-build-info",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/controller/AdGuardHome.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/base.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/log.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/manual.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/overview.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/model/cbi/AdGuardHome/tools.lua",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_check.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_chpass.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/AdGuardHome_status.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/enable_switch.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/head.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/log.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/log_empty.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/overview.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/lib/lua/luci/view/AdGuardHome/yamleditor.htm",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/libexec/xinzhao-dns-coexist",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/libexec/xinzhao-openclash-lowmem-config",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/libexec/xinzhao/luci-upgrade-converge.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/sbin/quickstart",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/AdGuardHome_template.yaml",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/addhost.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/firewall.start",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/getsyslog.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/links.txt",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/tailto.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/update_core.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/waitnet.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/AdGuardHome/watchconfig.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/luci/menu.d/luci-app-adguardhome.json",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/usr/share/rpcd/acl.d/luci-app-adguardhome.json",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/www/luci-static/resources/view/luci-app-adguardhome/index.js",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "files/www/luci-static/xinzhao/branding.js",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "handoff/arthur-luci-chinese-candidate-note.md",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "knowledge/BUILD-ROUTING.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/DEVICE-PROFILE.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/INDEX.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/KNOWN-FAILURES.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/KNOWN-GOOD.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/LIVE-PREVIEW.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/OPENWRT-PRODUCTION-V4.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/PROJECT-STATE.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/REUSE-GATE.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/SOURCE-LOCK.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "knowledge/V013-DEVELOPMENT-LOOP.md",
+      "diff_status_stable_to_main": "A",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "output/real-device/real-device-verification.json",
+      "diff_status_stable_to_main": "M",
+      "category": "OBSOLETE",
+      "resolution": "CURRENT_MAIN_GENERATED_OUTPUT_DELETION"
+    },
+    {
+      "path": "output/real-device/real-device-verification.md",
+      "diff_status_stable_to_main": "M",
+      "category": "OBSOLETE",
+      "resolution": "CURRENT_MAIN_GENERATED_OUTPUT_DELETION"
+    },
+    {
+      "path": "package/xinzhao/luci-app-adguardhome-manager/Makefile",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "package/xinzhao/openclash-core/Makefile",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/luci/0001-template-parser-escape-crlf.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0001-core-updater-single-flight-and-private-tmp.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0002-config-rewrite-no-shell-fork.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0003-yaml-age-lookup-no-shell-fork.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0004-watchdog-dns-probe-single-flight.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0005-core-candidate-sigsegv-fail-closed.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0006-legacy-fingerprint-compat.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0007-debug-dns-lightweight-resolve.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0008-smart-candidate-no-exec.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0009-debug-dns-memory-guard.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0010-arthur-coexistence-memory-and-dns.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0012-active-config-pointer-after-save.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0013-core-version-probe-memory-guard.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0014-smart-core-bundle-and-runtime-selection.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "patches/openclash/0015-smart-core-luci-vm-limit.patch",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "production/ARTHUR_PRODUCT_TARGETS.md",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/GPT-FIRMWARE-EXECUTION-RULES.md",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/README.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "production/RUNNER_GATE.md",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/accepted-preview/arthur-adh-quickstart.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/accepted-preview/arthur-quickstart.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/arthur-control-plane.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/arthur-flash-profile.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/arthur-known-good-v1.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/candidate-rejection-33462873812.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/candidate-rejection-33569029385.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/arthur-final-release-5f41c4e-20260908/github-release-evidence.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/arthur-final-release-5f41c4e-20260908/index.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/arthur-final-release-5f41c4e-20260908/real-device-evidence.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/arthur-v0.1.5-release-e037750-20260918/github-release-evidence.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/arthur-v0.1.5-release-e037750-20260918/index.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/prebuild-openclash-adh-live.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/evidence/prebuild-package-closure.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/expected-diff.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/firmware-events.jsonl",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/known-good.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/live-preview-policy.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/mature-ui-sources.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/operator-intent.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/pipeline-policy.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/product-goal-contract.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/product-goal-verification.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/production-agent.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/promotion-request.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/real-device-baseline.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/release-evidence/arthur-smart-36348777394/postflash-stability-evidence.zip",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/release-evidence/arthur-smart-36348777394/publication.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/release-mode.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/release-policy.md",
+      "diff_status_stable_to_main": "M",
+      "category": "DOC_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_DOCUMENTATION"
+    },
+    {
+      "path": "production/resume-state.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/source-bindings/arthur-v015-software-source-repair.json",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/status.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/v3-request.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/v4-state.json",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "production/wifi-frozen-baseline.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/acceptance-contract-gate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/add-custom-packages.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/analyze-error.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/apply-luci-template-fix.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/apply-upload-oom-fix.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/apply-version-identity.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-candidate-failure-recovery.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-codex-runtime-probe.py",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-control-plane-device-routing.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-control-plane-gate.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-control-plane.ps1",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-evidence-index.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-firmware-event-ledger.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-firmware-resume.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-fresh-execution-bootstrap.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-git-remote.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-git-sha.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-operator-intent.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-product-goal-contract.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-release-only-state.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-resume-state.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-state-consistency.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-state-contract.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-terminal-release-reconciler.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/arthur-windows-repair-controller.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/auto-flash-safety-gate.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/baseline-integrity-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/bootstrap-arthur-host-key.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/bridge-runtime-status.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/build-fingerprint.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/build.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/check-arthur-final-gates.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-arthur-validation-build.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-changeset-complete.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-config.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-defaults.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-firmware-event-ledger-history.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-firstboot-observability.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-openclash-adh-prebuild-live.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-openclash-core-authority.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-package-existence.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/check-package-manager-concurrency-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-package-sources.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/check-prebuild-real-device-gate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-product-goal-contract.py",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-replacement-build-hard-gate.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-upload-oom-fix.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-web-stack-imagebuilder.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/check-web-stack.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ci-control.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ci-controller-v3-core.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ci-controller-v3.ps1",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/classify-build-scope.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/codex-setup.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ensure-arthur-persistent-supervisor.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ensure-arthur-unattended-access.ps1",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/ensure-arthur-windows-repair-controller.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/failure-fingerprint.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/feature-handoff-lib.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/feature-handoff-status.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/feature-handoff.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/fetch-immortalwrt-source.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/fetch-openclash-core.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/fetch-production-artifact.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/generate-plugin-i18n-baseline.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/github-app-auth.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/github-auth-preflight.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/github-auth-preflight.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/install-feature-handoff.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/install-production-agent.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/invoke-arthur-windows-repair-controller.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/live-preview-mature-safe.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/live-preview.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/luci-legacy-template-smoke.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/materialize-accepted-overlay.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/openclash-runtime-forensics.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/patch-adguardhome-coexistence.py",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/patch-openclash-core-lifecycle.py",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/prebuild-closure.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/prebuild-openclash-core-forensics.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/prepare-live-preview-sources.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/production-agent-flash-legacy.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/production-agent-release-mode.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/production-agent-release-only.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/production-agent-status.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/production-agent.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/publish-github.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/quickstart-template-forensics.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-baseline-gate.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-baseline-lib.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-snapshot.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-upload-oom.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-verify-v3.ps1",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/real-device-verify.ps1",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/recover-existing-bridge-context.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/release-candidate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/repair-github-runner.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/resolve-build-identity.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/resolve-candidate-dedup.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/restore-pinned-adguard-manager.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/run-supervisor.py",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/source-impact-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/stage-openclash-core.py",
+      "diff_status_stable_to_main": "D",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/stage-openclash-core.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "PROTECTED_PRODUCT_PAYLOAD",
+      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+    },
+    {
+      "path": "scripts/start-headless-production.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/start-production-agent.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/uninstall-production-agent.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/v4-pipeline-dry-run.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/v4-toolchain-bootstrap.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/v4-verify-toolchain.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-built-plugins.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-final-rootfs-adh-manager.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-final-rootfs-identity.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-final-rootfs-openclash-core.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-firmware-build-info.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-firmware-openclash-adh.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-live-source-binding.py",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-project.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/verify-upload-oom-build.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "scripts/zram-closure.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "tests/arthur-access-askpass.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-candidate-failure-recovery.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-control-plane-executor.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-control-plane-gates.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-control-plane-release-only-device-isolation.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-detached-supervisor.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-evidence-index.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-execution-id-version-slug.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-final-release-preflash.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-firmware-resume.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-fresh-execution-bootstrap.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-git-remote-fallback.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-host-key-bootstrap.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-inherited-evidence.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-operator-intent.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-product-goal-contract.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-production-state-sync.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-recovery-supervisor-wiring.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-release-mode.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-release-only-finalizer.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-release-only-state-sync.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-resume-state-v2.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-resume-state.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-resume-windows-runtime.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-route-print.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-state-contract.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-terminal-release-integration.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-terminal-release-reconciler.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-windows-repair-controller.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/arthur-windows-repair-task.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/cgi-io-same-filesystem.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/feature-handoff-auto-trigger.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/feature-handoff-execution.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/feature-handoff-task-privilege.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/feature-handoff.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/fixtures/failure-classifier/run-35597970023/error-summary.txt",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/fixtures/failure-classify/run-35597970023/build.log",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/github-app-bridge.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/live_e2e.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/live_sdk_e2e.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/production-agent-evidence.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/production-agent-release-only.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/production-agent.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/real-device-baseline.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/real-device-upload-oom.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/real-device-verify-native.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/rebuild-dispatch-ack.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/rebuild-dispatch-at-most-once.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/required-plugins-crlf.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/runner-self-heal.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/source-fetch-strategy.tests.ps1",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-acceptance-contract-gate.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguard-defaults.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguard-manager.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguard-mature-overlay.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguard-overlay-precedence.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguard-source-of-truth.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-adguardhome-legacy-seed-compat.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-argon-default-theme.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-final-gates.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-luci-language-config.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-openclash-adh-static.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-production-workflow.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-source-parity.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-theme-candidate-workflow.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-web-http-contract.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-arthur-zram-source.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-auth-preflight-gate.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-baseline-integrity-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-branding-cache-policy.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-build-closure-preflight.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-build-dedup-contract.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-build-workflow-preflight.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-classify-build-scope.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-evidence-index-build-scope.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-failure-classifier.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-fast-candidate-workflow.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-final-rootfs-adh-manager.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-final-rootfs-identity-regression.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-final-rootfs-identity.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-final-rootfs-quickstart-render.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-first-boot-defaults.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-first-boot-runtime.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-full-openclash-adh-contract.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-functional-acceptance.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-live-preview-contract.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-luci-chinese-config.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-memory-source-defaults.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-memory-source-runtime.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-active-config-pointer.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-adguardhome-coexistence.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-build-patch-references.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-config-rewrite.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-core-authority.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-core-bundle.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-core-concurrency.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-core-lifecycle.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-core-version-memory-guard.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-debug-dns-memory.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-fingerprint-compat.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-native-runtime.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-runtime-forensics.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-sigsegv-fail-closed.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-smart-core.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-smart-no-exec.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-openclash-watchdog-memory.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-package-manager-concurrency-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-package-source-provenance.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-prebuild-closure.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-prebuild-feature-gate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-prebuild-openclash-adh-live-gate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-prebuild-openclash-core-forensics.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-preflight-feed-root.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-preflight-path-contract.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-preserved-upgrade-luci-convergence.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-quickstart-final-rootfs-contract.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-quickstart-template-forensics.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-quickstart-template-parser-fix.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-quickstart-web-stack-source.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-release-candidate-artifact-reconciliation.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-replacement-build-hard-gate.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-self-contained-production-candidate.sh",
+      "diff_status_stable_to_main": "M",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-v4-pipeline-dry-run.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-v4-toolchain-acceptance.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-v4-toolchain-bootstrap.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-validation-build-interface.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-version-identity-defconfig.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-version-identity-gate.sh",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-version-identity.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-wifi-defaults.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-xinzhao-dns-coexist-executable.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-xinzhao-dns-coexist-lifecycle.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test-zram-closure-script.sh",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_arthur_codex_runtime_probe.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_arthur_pipeline.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_arthur_release_mode.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_auto_sysupgrade_policy.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_cli_exit_code.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_codex_auto_recovery.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_controller_stream_recovery.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_adapters.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_cli.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_observability.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_policy.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_runtime.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_headless_state.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_live_e2e_contract.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_preflight.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_runtime_checkpoint_sync.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_supervisor.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_supervisor_child_exit_observation.py",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/test_windows_hidden_process.py",
+      "diff_status_stable_to_main": "D",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "tests/verified-baseline-inheritance.tests.ps1",
+      "diff_status_stable_to_main": "A",
+      "category": "TEST_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+    },
+    {
+      "path": "verification/arthur-real-device-verification.md",
+      "diff_status_stable_to_main": "D",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    },
+    {
+      "path": "verification/status.json",
+      "diff_status_stable_to_main": "M",
+      "category": "CONTROL_PLANE_ONLY",
+      "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
+    }
+  ]
+}

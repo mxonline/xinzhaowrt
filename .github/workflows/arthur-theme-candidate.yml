@@ -1,0 +1,476 @@
+name: Arthur Theme Candidate SDK and ImageBuilder
+on:
+  push:
+    branches: [codex/arthur-theme-candidate]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm frozen-theme SDK and ImageBuilder lane
+        required: true
+        default: 'NO'
+        type: choice
+        options: ['NO', 'BUILD_THEME_CANDIDATE']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  theme-candidate:
+    if: ${{ github.event_name == 'push' || inputs.confirm == 'BUILD_THEME_CANDIDATE' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get update && sudo apt-get install -y squashfs-tools zstd
+      - name: Theme static gate
+        run: |
+          chmod +x tests/*.sh scripts/*.sh
+          test -s assets/branding/xz-icon.png
+          for asset in favicon.ico favicon-32x32.png favicon-192x192.png favicon-512x512.png apple-touch-icon.png logo.png; do
+            test -s "files/www/luci-static/xinzhao/$asset"
+          done
+          echo 'XZ_ICON_SOURCE=PASS'
+          echo 'XZ_FAVICON_PRESENT=PASS'
+          echo 'XZ_LOGO_PRESENT=PASS'
+          ./tests/test-arthur-theme-candidate-workflow.sh
+          ./tests/test-adguard-defaults.sh
+          ./tests/test-argon-default-theme.sh
+          ./scripts/check-defaults.sh
+          ./scripts/check-web-stack.sh
+      - name: Download accepted SDK and ImageBuilder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir toolchain sdk imagebuilder sources
+          gh release download arthur-toolchain-v0.1.0-33196164359 --repo "$GITHUB_REPOSITORY" --dir toolchain --clobber --pattern SHA256SUMS --pattern arthur-known-good.lock --pattern package-repositories.tar.gz --pattern 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' --pattern 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst'
+          (
+            cd toolchain
+            step5_assets=(
+              arthur-known-good.lock
+              package-repositories.tar.gz
+              immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst
+              immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst
+            )
+            : > SHA256SUMS.step5
+            for asset in "${step5_assets[@]}"; do
+              test -s "$asset"
+              count="$(awk -v asset="$asset" '$2 == asset { count++ } END { print count + 0 }' SHA256SUMS)"
+              test "$count" -eq 1
+              awk -v asset="$asset" '$2 == asset { print }' SHA256SUMS >> SHA256SUMS.step5
+            done
+            test "$(wc -l < SHA256SUMS.step5)" -eq "${#step5_assets[@]}"
+            sha256sum -c SHA256SUMS.step5
+          )
+          cmp -s config/arthur-known-good.lock toolchain/arthur-known-good.lock
+      - name: SDK_BUILD frozen themes only
+        run: |
+          set -Eeuo pipefail
+          source config/arthur-theme.lock
+          source config/arthur-known-good.lock
+          source config/istore-quickstart.lock
+          tar --zstd -xf toolchain/immortalwrt-sdk-*.tar.zst -C sdk
+          SDK_DIR="$(find sdk -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$SDK_DIR/feeds.conf.default"
+          test -x "$SDK_DIR/scripts/feeds"
+          base_feed_config="$(awk '$3 == "base" { print; exit }' "$SDK_DIR/feeds.conf.default")"
+          test -n "$base_feed_config"
+          sed -i "s#^src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git\$#src-git --root=package base https://github.com/VIKINGYFY/immortalwrt.git^${IMMORTALWRT_REF}#" "$SDK_DIR/feeds.conf.default"
+          luci_feed_config="$(awk '$2 == "luci" { print; exit }' "$SDK_DIR/feeds.conf.default")"
+          test -n "$luci_feed_config"
+          (cd "$SDK_DIR" && ./scripts/feeds update base)
+          (cd "$SDK_DIR" && ./scripts/feeds install -p base ucode)
+          test -f "$SDK_DIR/package/feeds/base/ucode/Makefile" || { echo 'SDK_UCODE_FEED_PACKAGE_MISSING'; exit 1; }
+          mkdir -p output/theme-provenance
+          ucode_source="$(awk '$3 == "base" { print $4; exit }' "$SDK_DIR/feeds.conf.default")"
+          ucode_commit="$(git -C "$SDK_DIR/feeds/base" rev-parse HEAD)"
+          ucode_version="$(awk -F':=' '$1 == "PKG_SOURCE_DATE" { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$SDK_DIR/package/feeds/base/ucode/Makefile")"
+          test -n "$ucode_source"
+          test -n "$ucode_commit"
+          test -n "$ucode_version"
+          (cd "$SDK_DIR" && ./scripts/feeds update luci)
+          test -f "$SDK_DIR/feeds/luci/luci.mk" || { echo 'SDK_LUCI_FEED_MISSING'; exit 1; }
+          (cd "$SDK_DIR" && ./scripts/feeds install luci-base)
+          test -f "$SDK_DIR/package/feeds/luci/luci-base/Makefile" || { echo 'SDK_LUCI_BASE_FEED_PACKAGE_MISSING'; exit 1; }
+          (cd "$SDK_DIR" && ./scripts/feeds install luci-app-adguardhome)
+          test -f "$SDK_DIR/package/feeds/luci/luci-app-adguardhome/Makefile" || { echo 'SDK_ADGUARD_MANAGER_FEED_PACKAGE_MISSING'; exit 1; }
+          luci_feed_source="$(awk '$2 == "luci" { print $3; exit }' "$SDK_DIR/feeds.conf.default")"
+          luci_feed_commit="$(git -C "$SDK_DIR/feeds/luci" rev-parse HEAD)"
+          mkdir -p output/theme-provenance
+          printf 'SDK_UPSTREAM_COMMIT=27e26e324bee0b0c2a4eb58e2e9121fea5d43194\nLUCI_FEED_CONFIG=%s\nLUCI_FEED_SOURCE=%s\nLUCI_FEED_COMMIT=%s\n' "$luci_feed_config" "$luci_feed_source" "$luci_feed_commit" > output/theme-provenance/luci-feed.lock
+          echo "SDK_FEEDS_PREPARE=PASS LUCI_FEED_COMMIT=$luci_feed_commit"
+          git clone https://github.com/jerrykuku/luci-theme-argon.git sources/argon
+          git -C sources/argon checkout "$ARGON_REF"
+          git clone https://github.com/sirpdboy/luci-theme-kucat.git sources/kucat
+          git -C sources/kucat checkout "$KUCAT_REF"
+          rm -f sources/kucat/root/etc/uci-defaults/30_luci-kuacat sources/kucat/root/etc/uci-defaults/30_luci-kucat sources/kucat/root/usr/libexec/rpcd/luci.kucatget
+          rm -f sources/kucat/root/usr/share/rpcd/acl.d/luci-app-kucat-config.json
+          sed -i '/^LUCI_DEPENDS:=+wget +curl +jsonfilter$/d' sources/kucat/Makefile
+          for theme_dir in sources/argon sources/kucat; do
+            while IFS= read -r -d '' template; do
+              sed -i \
+                -e 's#/luci-static/argon/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+                -e 's#/luci-static/argon/icon/favicon-32x32.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+                -e 's#/luci-static/argon/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+                -e 's#/luci-static/argon/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+                -e 's#/luci-static/argon/img/argon.svg#/luci-static/xinzhao/logo.png#g' \
+                -e 's#/luci-static/kucat/logo.svg#/luci-static/xinzhao/logo.png#g' \
+                -e 's#{{ media }}/favicon.ico#/luci-static/xinzhao/favicon.ico#g' \
+                -e 's#{{ media }}/icon/favicon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/favicon-32x32.png#g' \
+                -e 's#{{ media }}/icon/android-icon-192x192.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+                -e 's#{{ media }}/icon/apple-icon-[0-9]*x[0-9]*.png#/luci-static/xinzhao/apple-touch-icon.png#g' \
+                -e 's#{{ media }}/icon/ms-icon-144x144.png#/luci-static/xinzhao/favicon-192x192.png#g' \
+                -e 's#{{ media }}/logo.png#/luci-static/xinzhao/logo.png#g' \
+                -e 's#{{ media }}/img/logo[0-9]*.png#/luci-static/xinzhao/logo.png#g' \
+                -e "s#const hostname = striptags(boardinfo?.hostname ?? '?');#const hostname = 'XinZhaoWrt';#g" \
+                -e 's#{{ media }}/img/logo180.png#/luci-static/xinzhao/logo.png#g' \
+                -e 's#{{ media }}/img/logo150.png#/luci-static/xinzhao/logo.png#g' \
+                -e 's|<a class="brand" href="#">{{ hostname }}</a>|<a class="brand" href="#"><img class="xz-brand-logo" src="/luci-static/xinzhao/logo.png" alt="XinZhaoWrt"><span class="xz-brand-label">XinZhaoWrt</span></a>|g' \
+                -e 's#ImmortalWRT - LuCI#XinZhaoWrt#g' \
+                -e 's#ImmortalWRT#XinZhaoWrt#g' \
+                -e 's#</head>#<script src="/luci-static/xinzhao/branding.js"></script></head>#g' "$template"
+            done < <(find "$theme_dir" -type f \( -name '*.htm' -o -name '*.html' -o -name '*.ut' \) -print0)
+          done
+          # The frozen plugin baseline uses the same pinned external sources
+          # as the normal build lane.  Only these repositories are needed to
+          # build their real zh_Hans translation subpackages.
+          mkdir -p i18n-sources
+          git clone --filter=blob:none --no-checkout https://github.com/kenzok8/openwrt-packages.git i18n-sources/kenzok8-openwrt-packages
+          git -C i18n-sources/kenzok8-openwrt-packages fetch --depth=1 origin "$KENZOK8_REF"
+          git -C i18n-sources/kenzok8-openwrt-packages -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/sbwml/luci-app-diskman.git i18n-sources/luci-app-diskman
+          git -C i18n-sources/luci-app-diskman fetch --depth=1 origin "$DISKMAN_REF"
+          git -C i18n-sources/luci-app-diskman -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/vernesong/OpenClash.git i18n-sources/OpenClash
+          git -C i18n-sources/OpenClash fetch --depth=1 origin "$OPENCLASH_REF"
+          git -C i18n-sources/OpenClash -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/sbwml/luci-app-mosdns.git i18n-sources/luci-app-mosdns
+          git -C i18n-sources/luci-app-mosdns fetch --depth=1 origin "$MOSDNS_REF"
+          git -C i18n-sources/luci-app-mosdns -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/EasyTier/luci-app-easytier.git i18n-sources/luci-app-easytier
+          git -C i18n-sources/luci-app-easytier fetch --depth=1 origin "$EASYTIER_REF"
+          git -C i18n-sources/luci-app-easytier -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/destan19/OpenAppFilter.git i18n-sources/OpenAppFilter
+          git -C i18n-sources/OpenAppFilter fetch --depth=1 origin "$OPENAPPFILTER_REF"
+          git -C i18n-sources/OpenAppFilter -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/istore.git i18n-sources/istore
+          git -C i18n-sources/istore fetch --depth=1 origin "$ISTORE_REF"
+          git -C i18n-sources/istore -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/nas-packages-luci.git i18n-sources/istoreos-luci
+          git -C i18n-sources/istoreos-luci fetch --depth=1 origin "$ISTORE_QUICKSTART_LUCI_REF"
+          git -C i18n-sources/istoreos-luci -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          git clone --filter=blob:none --no-checkout https://github.com/linkease/nas-packages.git i18n-sources/istoreos-packages
+          git -C i18n-sources/istoreos-packages fetch --depth=1 origin "$ISTORE_QUICKSTART_REF"
+          git -C i18n-sources/istoreos-packages -c advice.detachedHead=false checkout --detach FETCH_HEAD
+          test -f i18n-sources/istoreos-luci/luci/luci-app-quickstart/Makefile
+          test -f i18n-sources/istoreos-packages/network/services/quickstart/Makefile
+          grep -Fq 'PKG_ARCH_quickstart:=$(ARCH)' i18n-sources/istoreos-packages/network/services/quickstart/Makefile
+          mkdir -p "$SDK_DIR/package/feeds/xinzhao"
+          ln -s "$GITHUB_WORKSPACE/sources/argon" "$SDK_DIR/package/feeds/xinzhao/luci-theme-argon"
+          ln -s "$GITHUB_WORKSPACE/sources/kucat" "$SDK_DIR/package/feeds/xinzhao/luci-theme-kucat"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-lucky/luci-app-lucky" "$SDK_DIR/package/feeds/xinzhao/luci-app-lucky"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-quickfile/luci-app-quickfile" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickfile"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci/luci/luci-app-quickstart" "$SDK_DIR/package/feeds/xinzhao/luci-app-quickstart"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/istoreos-packages/network/services/quickstart" "$SDK_DIR/package/feeds/xinzhao/quickstart"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman/luci-app-diskman" "$SDK_DIR/package/feeds/xinzhao/luci-app-diskman"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenClash/luci-app-openclash" "$SDK_DIR/package/feeds/xinzhao/luci-app-openclash"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns/luci-app-mosdns" "$SDK_DIR/package/feeds/xinzhao/luci-app-mosdns"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier/luci-app-easytier" "$SDK_DIR/package/feeds/xinzhao/luci-app-easytier"
+          ln -s "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter/luci-app-oaf" "$SDK_DIR/package/feeds/xinzhao/luci-app-oaf"
+          ADGUARD_MANAGER_PACKAGE_ROOT="$SDK_DIR/package/feeds/luci/luci-app-adguardhome" ./tests/test-adguard-manager.sh
+          ADGUARD_MANAGER_PACKAGE_ROOT="$SDK_DIR/package/feeds/luci/luci-app-adguardhome" ./scripts/check-changeset-complete.sh
+          # kenzok8's pinned AdGuard Home source contains a real compiled
+          # zh-cn LMO but does not expose a separate translation subpackage.
+          # Wrap that exact upstream artifact in the canonical package name;
+          # do not invent translations or silently treat it as unavailable.
+          adguard_lmo="$(find "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages/luci-app-adguardhome" -path '*/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo' -type f -print -quit)"
+          test -n "$adguard_lmo" || { echo 'ADGUARDHOME_ZH_CN_SOURCE_MISSING'; exit 1; }
+          adguard_i18n_dir="$SDK_DIR/package/feeds/xinzhao/luci-i18n-adguardhome-zh-cn"
+          mkdir -p "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n"
+          cp "$adguard_lmo" "$adguard_i18n_dir/root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"
+          cat > "$adguard_i18n_dir/Makefile" <<'EOF'
+          include $(TOPDIR)/rules.mk
+          PKG_NAME:=luci-i18n-adguardhome-zh-cn
+          PKG_RELEASE:=1
+          include $(INCLUDE_DIR)/package.mk
+          define Package/$(PKG_NAME)
+            SECTION:=luci
+            CATEGORY:=LuCI
+            SUBMENU:=3. Applications
+            TITLE:=Simplified Chinese translation for LuCI AdGuard Home
+            DEPENDS:=+luci-app-adguardhome
+            PKGARCH:=all
+          endef
+          define Build/Prepare
+          EOF
+          printf '\tmkdir -p $(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n\n' >> "$adguard_i18n_dir/Makefile"
+          printf '\t$(CP) ./root/. $(PKG_BUILD_DIR)/root/\n' >> "$adguard_i18n_dir/Makefile"
+          cat >> "$adguard_i18n_dir/Makefile" <<'EOF'
+          endef
+          define Build/Compile
+          endef
+          define Package/$(PKG_NAME)/install
+          EOF
+          printf '\t$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n\n' >> "$adguard_i18n_dir/Makefile"
+          printf '\t$(INSTALL_DATA) ./root/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/\n' >> "$adguard_i18n_dir/Makefile"
+          cat >> "$adguard_i18n_dir/Makefile" <<'EOF'
+          endef
+          $(eval $(call BuildPackage,$(PKG_NAME)))
+          EOF
+          printf '\nCONFIG_LUCI_LANG_zh_Hans=y\nCONFIG_PACKAGE_liblucihttp-lua=n\nCONFIG_PACKAGE_luci-theme-argon=m\nCONFIG_PACKAGE_luci-theme-kucat=m\n' >> "$SDK_DIR/.config"
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
+            --feed-commit "$luci_feed_commit" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          mapfile -t i18n_apps < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["luci_package"] for x in d["plugins"] if x["available"]))')
+          mapfile -t i18n_packages < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["zh_cn_package"] for x in d["plugins"] if x["available"]))')
+          official_i18n_apps=()
+          for app in "${i18n_apps[@]}"; do
+            case "$app" in
+              luci-app-diskman|luci-app-lucky|luci-app-quickfile|luci-app-quickstart|luci-app-openclash|luci-app-mosdns|luci-app-easytier|luci-app-oaf) continue ;;
+            esac
+            if [[ -d "$SDK_DIR/feeds/luci/applications/$app" ]]; then
+              official_i18n_apps+=("$app")
+            fi
+          done
+          if ((${#official_i18n_apps[@]})); then
+            (cd "$SDK_DIR" && ./scripts/feeds install -p luci "${official_i18n_apps[@]}")
+          fi
+          for package in "${i18n_packages[@]}"; do
+            printf 'CONFIG_PACKAGE_%s=m\n' "$package" >> "$SDK_DIR/.config"
+          done
+          make -C "$SDK_DIR" defconfig
+          make -C "$SDK_DIR" package/feeds/base/ucode/compile V=s
+          ucode_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/ucode/module.h' -type f -print -quit)"
+          test -n "$ucode_header" || { echo 'UCODE_HEADER_MISSING'; exit 1; }
+          ucode_library="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/lib/libucode.so*' -type f -print -quit)"
+          test -n "$ucode_library" || { echo 'UCODE_LIBRARY_MISSING'; exit 1; }
+          printf 'UCODE_SOURCE=%s\nUCODE_COMMIT=%s\nUCODE_VERSION=%s\nHEADER_PATH=%s\nLIBRARY_PATH=%s\n' "$ucode_source" "$ucode_commit" "$ucode_version" "$ucode_header" "$ucode_library" > output/theme-provenance/ucode.lock
+          echo "UCODE_HEADER=PASS PATH=$ucode_header"
+          echo "UCODE_STAGING=PASS LIBRARY=$ucode_library"
+          make -C "$SDK_DIR" package/feeds/luci/lucihttp/compile V=s
+          echo 'LIBLUCIHTTP_UCODE_COMPILE=PASS'
+          test -f "$SDK_DIR/feeds/luci/luci.mk"
+          if grep -Eq '^CONFIG_PACKAGE_liblucihttp-lua=y$' "$SDK_DIR/.config"; then
+            lua_header="$(find "$SDK_DIR/staging_dir" -path '*/target-*/usr/include/lua.h' -type f -print -quit)"
+            test -n "$lua_header" || { echo 'LUA_HEADER_MISSING'; exit 1; }
+          fi
+          echo 'SDK_DEPENDENCY_CLOSURE=PASS'
+          make -C "$SDK_DIR" package/feeds/luci/luci-base/compile package/feeds/xinzhao/luci-theme-argon/compile package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          ucode_package_dir="$(find -L "$SDK_DIR/package/feeds" -type d -name ucode -print -quit)"
+          test -n "$ucode_package_dir" || { echo 'UCODE_PACKAGE_SOURCE_MISSING'; exit 1; }
+          ucode_package_target="${ucode_package_dir#"$SDK_DIR/"}"
+          make -C "$SDK_DIR" "$ucode_package_target/compile" V=s
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-argon/compile V=s
+          make -C "$SDK_DIR" package/feeds/xinzhao/luci-theme-kucat/compile V=s
+          for app in "${i18n_apps[@]}"; do
+            if [[ -d "$SDK_DIR/package/feeds/luci/$app" ]]; then
+              make -C "$SDK_DIR" "package/feeds/luci/$app/compile" V=s
+            else
+              make -C "$SDK_DIR" "package/feeds/xinzhao/$app/compile" V=s
+            fi
+          done
+          if printf '%s\n' "${i18n_packages[@]}" | grep -Fxq 'luci-i18n-adguardhome-zh-cn'; then
+            make -C "$SDK_DIR" package/feeds/xinzhao/luci-i18n-adguardhome-zh-cn/compile V=s
+          fi
+          package_dir_args=()
+          while IFS= read -r package_dir; do
+            package_dir_args+=(--package-dir "$package_dir")
+          done < <(find "$SDK_DIR/bin/packages" -type d -print)
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
+            "${package_dir_args[@]}" \
+            --feed-commit "$luci_feed_commit" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          i18n_available_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["plugins_with_upstream_zh_cn"])')"
+          i18n_included_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["zh_cn_packages_included"])')"
+          echo "BASE_LANGUAGE_ZH_CN=PASS"
+          echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+          echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+          python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("PLUGIN_I18N_MISSING=" + ",".join(x["zh_cn_package"] for x in d["plugins"] if x["available"] and not x["included"]))'
+          test "$i18n_included_count" -eq "$i18n_available_count"
+          chinese_apk="$(find "$SDK_DIR/bin/packages" -type f -name 'luci-i18n-base-zh-cn-*.apk' -print -quit)"
+          test -n "$chinese_apk" || { echo 'CHINESE_LUCI_PACKAGE_MISSING'; exit 1; }
+          chinese_version="$(basename "$chinese_apk")"
+          chinese_sha256="$(sha256sum "$chinese_apk" | awk '{ print $1 }')"
+          printf 'PACKAGE_NAME=luci-i18n-base-zh-cn\nPACKAGE_VERSION=%s\nSOURCE_COMMIT=%s\nAPK_SHA256=%s\n' "$chinese_version" "$luci_feed_commit" "$chinese_sha256" > output/theme-provenance/chinese-luci-package.lock
+          echo "CHINESE_LUCI_PACKAGE_GATE=PASS PACKAGE=$chinese_version SHA256=$chinese_sha256"
+          echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+      - name: ImageBuilder candidate and rootfs Theme Gate
+        run: |
+          set -Eeuo pipefail
+          tar --zstd -xf toolchain/immortalwrt-imagebuilder-*.tar.zst -C imagebuilder
+          IB_DIR="$(find imagebuilder -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          mkdir -p repository-staging
+          tar -xzf toolchain/package-repositories.tar.gz -C repository-staging
+          find repository-staging/packages/aarch64_cortex-a53 -type f -name '*.apk' -exec cp {} "$IB_DIR/packages/" \;
+          find "$SDK_DIR/bin/packages" -type f \( -name 'argon-*.apk' -o -name 'luci-theme-kucat-*.apk' -o -name 'luci-i18n-*-zh-cn-*.apk' -o -name 'ucode-mod-math-*.apk' \) -exec cp {} "$IB_DIR/packages/" \;
+          required_ib_packages=(argon luci-theme-kucat luci-i18n-base-zh-cn ucode-mod-math)
+          for package in "${required_ib_packages[@]}"; do
+            find "$IB_DIR/packages" -maxdepth 1 -type f -name "${package}-*.apk" -print -quit | grep -q . || { echo "IMAGEBUILDER_PACKAGE_MISSING=$package"; exit 1; }
+          done
+          apk_bin="$(realpath "$IB_DIR/staging_dir/host/bin/apk")"
+          test -x "$apk_bin" || { echo 'IMAGEBUILDER_APK_MISSING'; exit 1; }
+          make -C "$IB_DIR" _check_keys
+          "$apk_bin" mkndx --keys-dir "$IB_DIR/keys" --sign "$IB_DIR/keys/local-private-key.pem" --allow-untrusted --output "$IB_DIR/packages/packages.adb" "$IB_DIR/packages/"*.apk
+          test -s "$IB_DIR/packages/packages.adb" || { echo 'IMAGEBUILDER_PACKAGE_INDEX_MISSING'; exit 1; }
+          mapfile -t packages < <(sed -n 's/^CONFIG_PACKAGE_\([^=]*\)=y$/\1/p' config/arthur.config)
+          packages+=(argon luci-theme-kucat -uhttpd -uhttpd-mod-ubus -uhttpd-mod-lua -uhttpd-mod-tls)
+          mapfile -t i18n_packages < <(python3 -c 'import json; d=json.load(open("output/theme-provenance/plugin-i18n-baseline.json")); print("\n".join(x["zh_cn_package"] for x in d["plugins"] if x["available"]))')
+          packages+=("${i18n_packages[@]}")
+          mkdir -p image-files/etc
+          cp -a files/. image-files/
+          version="$(tr -d '[:space:]' < VERSION)"
+          build_date="$(TZ=Asia/Hong_Kong date +%F)"
+          short_commit="${GITHUB_SHA:0:7}"
+          build_id="$GITHUB_RUN_ID"
+          sed -i \
+            -e "s/@VERSION@/$version/g" \
+            -e "s/@BUILD_DATE@/$build_date/g" \
+            -e "s/@GIT_COMMIT@/$short_commit/g" \
+            -e "s/@BUILD_ID@/$build_id/g" \
+            image-files/etc/xinzhao-build-info image-files/www/luci-static/xinzhao/build-info.json
+          test -s image-files/etc/xinzhao-build-info
+          grep -Fq "Firmware: XinZhaoWrt" image-files/etc/xinzhao-build-info
+          grep -Fq "Version: $version" image-files/etc/xinzhao-build-info
+          grep -Fq "Git Commit: $short_commit" image-files/etc/xinzhao-build-info
+          grep -Fq "Build ID: $build_id" image-files/etc/xinzhao-build-info
+          echo 'BUILD_INFO_PRESENT=PASS'
+          echo 'BUILD_INFO_VERSION=PASS'
+          echo 'BUILD_INFO_COMMIT=PASS'
+          echo 'BUILD_INFO_RUN_ID=PASS'
+          cat > image-files/etc/openwrt_release <<EOF
+          DISTRIB_ID='XinZhaoWrt'
+          DISTRIB_RELEASE='$version'
+          DISTRIB_REVISION='r0+1-27e26e324'
+          DISTRIB_TARGET='qualcommax/ipq60xx'
+          DISTRIB_ARCH='aarch64_cortex-a53'
+          DISTRIB_DESCRIPTION='XinZhaoWrt $version r0+1-27e26e324'
+          DISTRIB_TAINTS='no-all'
+          EOF
+          make -C "$IB_DIR" image PROFILE=jdcloud_re-ss-01 PACKAGES="${packages[*]}" FILES="$GITHUB_WORKSPACE/image-files"
+          firmware="$(find "$IB_DIR/bin/targets/qualcommax/ipq60xx" -name '*sysupgrade.bin' -size +0c -print -quit)"
+          test -n "$firmware"; mkdir -p output/firmware; cp "$firmware" output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin
+          sha256sum output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin > output/firmware/SHA256SUMS.local
+          echo "CANDIDATE_FIRMWARE=output/firmware/XinZhaoWrt-Arthur-theme-${GITHUB_RUN_ID}-sysupgrade.bin" >> "$GITHUB_ENV"
+          echo 'THEME_COMPATIBILITY_GATE=PASS'
+      - name: Candidate Verification
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "CANDIDATE_VERIFICATION_FAILED_LINE=$LINENO"; echo "CANDIDATE_VERIFICATION_FAILED_COMMAND=$BASH_COMMAND"; exit "$rc"' ERR
+          firmware="$CANDIDATE_FIRMWARE"
+          test -s "$firmware"
+          sha256sum -c output/firmware/SHA256SUMS.local
+          test -s output/theme-provenance/chinese-luci-package.lock
+          rootfs_archive="$GITHUB_WORKSPACE/theme-candidate-rootfs.squashfs"
+          rootfs="$GITHUB_WORKSPACE/theme-candidate-root"
+          rm -rf "$rootfs"
+          tar -xf "$firmware" --wildcards -O 'sysupgrade-*/root' > "$rootfs_archive"
+          sudo unsquashfs -d "$rootfs" "$rootfs_archive" >/dev/null
+          test -f "$rootfs/etc/config/luci"
+          grep -Fq "DISTRIB_ID='XinZhaoWrt'" "$rootfs/etc/openwrt_release"
+          grep -Fq "DISTRIB_RELEASE='0.1.3'" "$rootfs/etc/openwrt_release"
+          test -s "$rootfs/etc/xinzhao-build-info"
+          grep -Fq 'Firmware: XinZhaoWrt' "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Version: 0.1.3" "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Git Commit: ${GITHUB_SHA:0:7}" "$rootfs/etc/xinzhao-build-info"
+          grep -Fq "Build ID: $GITHUB_RUN_ID" "$rootfs/etc/xinzhao-build-info"
+          echo 'BUILD_INFO_ROOTFS=PASS'
+          grep -Eq "^[[:space:]]*option lang 'zh_cn'[[:space:]]*$" "$rootfs/etc/config/luci"
+          grep -Eq "^[[:space:]]*option mediaurlbase '/luci-static/argon'[[:space:]]*$" "$rootfs/etc/config/luci"
+          grep -Fq "uci -q set luci.main.mediaurlbase='/luci-static/argon'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
+          grep -Fq "uci -q set luci.themes.KuCat='/luci-static/kucat'" "$rootfs/etc/uci-defaults/97-xinzhao-luci-defaults"
+          test -d "$rootfs/www/luci-static/argon"
+          test -d "$rootfs/www/luci-static/kucat"
+          for asset in favicon.ico favicon-32x32.png favicon-192x192.png favicon-512x512.png apple-touch-icon.png logo.png branding.js build-info.json; do
+            test -s "$rootfs/www/luci-static/xinzhao/$asset" || { echo "BRANDING_ASSET_MISSING=$asset"; exit 1; }
+          done
+          grep -R -Fq '/luci-static/xinzhao/favicon.ico' "$rootfs" 2>/dev/null || { echo 'BRANDING_FAVICON_REFERENCE_MISSING'; exit 1; }
+          grep -R -Fq '/luci-static/xinzhao/logo.png' "$rootfs" 2>/dev/null || { echo 'BRANDING_LOGO_REFERENCE_MISSING'; exit 1; }
+          test -d "$rootfs/www/luci-static/bootstrap"
+          ! grep -R -Eq "mediaurlbase.*bootstrap|mediaurlbase.*kucat" "$rootfs/etc/config" "$rootfs/etc/uci-defaults" 2>/dev/null
+          apk_db="$rootfs/lib/apk/db/installed"
+          test -s "$apk_db"
+          python3 scripts/generate-plugin-i18n-baseline.py \
+            --baseline config/required-plugins.txt \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/kenzok8-openwrt-packages" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-diskman" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenClash" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-mosdns" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/luci-app-easytier" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/OpenAppFilter" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istore" \
+            --source-root "$GITHUB_WORKSPACE/i18n-sources/istoreos-luci" \
+            --source-root "$SDK_DIR/feeds/luci" \
+            --source-root "$SDK_DIR/package/feeds/xinzhao" \
+            --rootfs "$rootfs" \
+            --feed-commit "$(awk -F= '$1 == "LUCI_FEED_COMMIT" { print $2 }' output/theme-provenance/luci-feed.lock)" \
+            --output output/theme-provenance/plugin-i18n-baseline.json
+          i18n_available_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["plugins_with_upstream_zh_cn"])')"
+          i18n_included_count="$(python3 -c 'import json; print(json.load(open("output/theme-provenance/plugin-i18n-baseline.json"))["zh_cn_packages_included"])')"
+          test "$i18n_included_count" -eq "$i18n_available_count"
+          echo "BASE_LANGUAGE_ZH_CN=PASS"
+          echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+          echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+          for package in luci-i18n-base-zh-cn argon luci-theme-kucat luci-app-openclash ucode-mod-math; do
+            grep -Fq "P:$package" "$apk_db" || { echo "CANDIDATE_PACKAGE_MISSING=$package"; exit 1; }
+          done
+          while IFS= read -r package; do
+            test -z "$package" && continue
+            grep -Fq "P:$package" "$apk_db" || { echo "PLUGIN_MISSING=$package"; exit 1; }
+          done < <(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; p' config/required-plugins.txt)
+          test -f "$rootfs/etc/init.d/network"
+          test -f "$rootfs/etc/init.d/firewall"
+          test -f "$rootfs/etc/config/nginx"
+          grep -Fq 'XINZHAO_NGINX_PRIMARY=1' "$rootfs/etc/init.d/uhttpd"
+          if find "$rootfs/etc/uci-defaults" "$rootfs/etc/init.d" -type f -print0 2>/dev/null | xargs -0 grep -nHE "mediaurlbase.*(bootstrap|kucat)" 2>/dev/null; then
+            echo 'BOOT_THEME_OVERRIDE_PRESENT'; exit 1
+          fi
+          {
+            echo "FIRMWARE=$firmware"
+            sha256sum "$firmware"
+            echo 'ARGON_DEFAULT_THEME=PASS'
+            echo 'KUCAT_THEME=PASS'
+            echo 'ORIGINAL_THEME=PASS'
+            echo 'CHINESE_LUCI=PASS'
+            echo "PLUGIN_I18N_AVAILABLE=$i18n_available_count"
+            echo "PLUGIN_I18N_INCLUDED=$i18n_included_count/$i18n_available_count"
+            echo 'PLUGIN_CHINESE_GATE=PASS'
+            echo 'OPENCLASH=PASS'
+            echo 'NETWORK_FIREWALL=PASS'
+            echo 'NO_BOOT_THEME_OVERRIDE=PASS'
+          } > output/theme-provenance/candidate-verification.txt
+          echo 'CANDIDATE_VERIFICATION=PASS'
+          echo 'THEME_CANDIDATE_READY'
+      - name: Upload Arthur Theme Candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: arthur-theme-candidate-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            output/firmware/XinZhaoWrt-Arthur-theme-${{ github.run_id }}-sysupgrade.bin
+            output/firmware/SHA256SUMS.local
+            output/theme-provenance/*.lock
+            output/theme-provenance/plugin-i18n-baseline.json
+            output/theme-provenance/candidate-verification.txt

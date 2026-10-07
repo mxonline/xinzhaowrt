@@ -1,9 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$SCRIPT_ROOT}"
+CONTROL_ROOT="${CONTROL_ROOT:-$SCRIPT_ROOT}"
 # shellcheck disable=SC1091
 source "$PROJECT_ROOT/build.env"
+
+# Every repair/replacement build must consume the same repository-controlled
+# gate before touching the build output or source tree.
+"$PROJECT_ROOT/scripts/check-replacement-build-hard-gate.sh" "$PROJECT_ROOT/config/replacement-build-gate.env"
+
+# A firmware build is forbidden until a clean-state, exact-source live product
+# validation has passed.  Keep this gate before source acquisition and before
+# any build output is removed or recreated so every build entrypoint fails
+# closed, including local/CI callers that invoke build.sh directly.
+# CONTROL_ONLY=true
+# RUNTIME_BEHAVIOR_CHANGED=false
+# FIRMWARE_CANDIDATE_CHANGED=false
+ARTHUR_CANDIDATE_SHA="${ARTHUR_CANDIDATE_SHA:?ERROR: ARTHUR_CANDIDATE_SHA must be supplied explicitly}"
+[[ "$ARTHUR_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+  echo 'ERROR: ARTHUR_CANDIDATE_SHA must be a 40-character lowercase Git SHA' >&2
+  exit 1
+}
+if [[ "${VALIDATION_BUILD:-false}" == true ]]; then
+  PROJECT_ROOT="$PROJECT_ROOT" bash "$CONTROL_ROOT/scripts/check-arthur-validation-build.sh"
+else
+  FINAL_GATE_CLOSURE="${FINAL_GATE_CLOSURE:-$PROJECT_ROOT/output/zram-closure/markers.txt}"
+  # Derived only after the final source commit; the historical source-binding
+  # artifact cannot prove applicability to this exact candidate SHA.
+  FINAL_GATE_SOURCE_BINDING="${FINAL_GATE_SOURCE_BINDING:-$PROJECT_ROOT/output/zram-closure/derived-source-applicability-final.txt}"
+  FINAL_GATE_LIVE="${FINAL_GATE_LIVE:-$PROJECT_ROOT/output/real-device/final-validation.txt}"
+  FINAL_GATE_OUTPUT="${FINAL_GATE_OUTPUT:-$PROJECT_ROOT/output/arthur-final-gates/markers.txt}"
+  "$PROJECT_ROOT/scripts/check-arthur-final-gates.sh" \
+    --candidate-sha "$ARTHUR_CANDIDATE_SHA" \
+    --closure "$FINAL_GATE_CLOSURE" \
+    --source-binding "$FINAL_GATE_SOURCE_BINDING" \
+    --live "$FINAL_GATE_LIVE" \
+    --output "$FINAL_GATE_OUTPUT"
+  grep -Fqx 'BUILD_ALLOWED=true' "$FINAL_GATE_OUTPUT" || {
+    echo 'ERROR: final source gate did not emit BUILD_ALLOWED=true' >&2
+    exit 1
+  }
+  grep -Fqx "FINAL_SOURCE_SHA=$ARTHUR_CANDIDATE_SHA" "$FINAL_GATE_OUTPUT" || {
+    echo 'ERROR: final source gate SHA does not match ARTHUR_CANDIDATE_SHA' >&2
+    exit 1
+  }
+  PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
+  PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
+  export PREBUILD_LIVE_EVIDENCE
+  "$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
+    --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
+    --evidence "$PREBUILD_LIVE_EVIDENCE" \
+    --source-sha "$ARTHUR_CANDIDATE_SHA"
+fi
 
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 [[ -n "$FIRMWARE_VERSION" ]] || { echo "ERROR: VERSION is empty"; exit 1; }
@@ -27,9 +77,9 @@ JOBS="${JOBS:-$(nproc)}"
 QUIET_BUILD="${QUIET_BUILD:-0}"
 REUSE_SOURCE="${REUSE_SOURCE:-1}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y%m%d)}"
-BUILD_ID="${BUILD_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%d%H%M%S)}}"
-BUILD_TOOLCHAIN_BUNDLES="${BUILD_TOOLCHAIN_BUNDLES:-0}"
-BUILD_CLOSURE_ONLY="${BUILD_CLOSURE_ONLY:-0}"
+BUILD_TIMESTAMP="${BUILD_TIMESTAMP:-$(date -u +%FT%TZ)}"
+BUILD_ID="${BUILD_ID:-${GITHUB_RUN_ID:-local-${BUILD_DATE}-$$}}"
+export BUILD_TIMESTAMP
 
 mkdir -p "$WORKDIR" "$OUT/logs"
 rm -rf "$OUT/firmware"
@@ -45,23 +95,13 @@ else
   exec > >(tee -a "$BUILD_LOG") 2>&1
 fi
 
-"$PROJECT_ROOT/scripts/verify-project.sh"
-
-if [[ "$REUSE_SOURCE" == "1" && -d "$SRC/.git" ]]; then
-  echo "[1/10] Reuse ImmortalWrt checkout and reset to $REQUESTED_REF"
-  git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
-  git -C "$SRC" reset --hard FETCH_HEAD
-  git -C "$SRC" clean -fdx -e dl/ -e .ccache/ -e .xinzhao-sources/
-else
-  echo "[1/10] Clone ImmortalWrt source at exact ref: $REQUESTED_REF"
-  rm -rf "$SRC"
-  git clone --filter=blob:none --no-checkout "$SOURCE_REPO" "$SRC"
-  git -C "$SRC" fetch --depth=1 origin "$REQUESTED_REF"
-  git -C "$SRC" -c advice.detachedHead=false checkout --detach FETCH_HEAD
-fi
+echo "[1/10] Acquire verified ImmortalWrt source at exact ref: $REQUESTED_REF"
+bash "$PROJECT_ROOT/scripts/fetch-immortalwrt-source.sh" "$SRC" "$SOURCE_REPO" "$REQUESTED_REF" "$OUT"
+# shellcheck disable=SC1090
+source "$OUT/source-fetch.env"
 
 cd "$SRC"
-SOURCE_SHA="$(git rev-parse HEAD)"
+SOURCE_SHA="$SOURCE_COMMIT"
 export CCACHE_DIR="$SRC/.ccache"
 mkdir -p "$CCACHE_DIR"
 
@@ -83,54 +123,46 @@ echo "[2/10] Update/install standard feeds"
 echo "[3/10] Add mandatory external package sources"
 USE_KNOWN_GOOD_LOCK="$USE_KNOWN_GOOD_LOCK" KNOWN_GOOD_LOCK="$LOCK_FILE" \
   "$PROJECT_ROOT/scripts/add-custom-packages.sh" "$SRC"
+echo "[3/10] Register firmware-owned packages in the xinzhao feed"
+mkdir -p "$SRC/package/xinzhao"
+rsync -a "$PROJECT_ROOT/package/xinzhao/luci-app-adguardhome-manager/" \
+  "$SRC/package/xinzhao/luci-app-adguardhome-manager/"
+rsync -a "$PROJECT_ROOT/package/xinzhao/openclash-core/" \
+  "$SRC/package/xinzhao/openclash-core/"
+ln -sfn "$SRC/package/xinzhao/luci-app-adguardhome-manager" \
+  "$SRC/.xinzhao-feed/luci-app-adguardhome-manager"
+ln -sfn "$SRC/package/xinzhao/openclash-core" \
+  "$SRC/.xinzhao-feed/openclash-core"
+./scripts/feeds update xinzhao
+./scripts/feeds install -f -p xinzhao luci-app-adguardhome-manager openclash-core
+OPENCLASH_SELECTED_MAKEFILE="$SRC/package/feeds/xinzhao/openclash-core/Makefile" \
+  bash "$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" \
+  "$SRC" "$PROJECT_ROOT/package/xinzhao/openclash-core"
 echo "[3/10] Refresh feeds and package indexes before existence check"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
+bash "$PROJECT_ROOT/scripts/fetch-openclash-core.sh" "$SRC"
 "$PROJECT_ROOT/scripts/apply-upload-oom-fix.sh" "$SRC"
+"$PROJECT_ROOT/scripts/apply-luci-template-fix.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-sources.sh" "$SRC"
 "$PROJECT_ROOT/scripts/check-package-existence.sh" "$SRC"
+OPENCLASH_NATIVE_SOURCE_ROOT="$SRC/.xinzhao-sources/OpenClash" \
+  FEED_CHECK_ROOT="$SRC" "$PROJECT_ROOT/scripts/verify-project.sh"
 
-echo "[4/10] Install project first-boot defaults overlay and pinned OpenClash core"
+echo "[4/10] Install project first-boot defaults overlay"
 mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
-bash "$PROJECT_ROOT/scripts/stage-openclash-core.sh" "$SRC"
-BUILD_INFO_JSON="$SRC/files/www/luci-static/xinzhao/build-info.json"
-[[ -f "$BUILD_INFO_JSON" ]] || { echo "ERROR: build-info template missing: $BUILD_INFO_JSON"; exit 1; }
-sed -i -e "s|@VERSION@|$FIRMWARE_VERSION|g" -e "s|@BUILD_DATE@|$BUILD_DATE|g" -e "s|@GIT_COMMIT@|$SOURCE_SHA|g" -e "s|@BUILD_ID@|$BUILD_ID|g" "$BUILD_INFO_JSON"
-if grep -Eq '@VERSION@|@BUILD_DATE@|@GIT_COMMIT@|@BUILD_ID@' "$BUILD_INFO_JSON"; then echo 'ERROR: build-info substitution left unresolved placeholders'; exit 1; fi
+"$PROJECT_ROOT/scripts/resolve-build-identity.sh" \
+  "$PROJECT_ROOT/VERSION" "$SOURCE_SHA" "$BUILD_ID" "$SRC/files"
+python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
+  --root "$PROJECT_ROOT" \
+  --manifest production/accepted-preview/arthur-adh-quickstart.json \
+  --dest "$SRC/files"
+bash "$PROJECT_ROOT/scripts/restore-pinned-adguard-manager.sh" "$SRC"
 
 echo "[5/10] Apply Arthur target and 22-plugin seed config"
-cp "$PROJECT_ROOT/config/arthur.config" .config
-if ! grep -qx 'CONFIG_PACKAGE_xz-utils=y' .config; then
-  printf '\nCONFIG_PACKAGE_xz-utils=y\n' >> .config
-fi
-if [[ "$BUILD_TOOLCHAIN_BUNDLES" == "1" ]]; then
-  echo "[5/10] Enable SDK and standalone ImageBuilder bundle outputs"
-  sed -i \
-    -e '/^CONFIG_SDK=/d' -e '/^# CONFIG_SDK is not set$/d' \
-    -e '/^CONFIG_IB=/d' -e '/^# CONFIG_IB is not set$/d' \
-    -e '/^CONFIG_IB_STANDALONE=/d' -e '/^# CONFIG_IB_STANDALONE is not set$/d' \
-    .config
-  cat >> .config <<'EOF'
-CONFIG_SDK=y
-CONFIG_IB=y
-CONFIG_IB_STANDALONE=y
-EOF
-fi
-make defconfig
-"$PROJECT_ROOT/scripts/check-config.sh" .config
-if [[ "$BUILD_TOOLCHAIN_BUNDLES" == "1" ]]; then
-  grep -qx 'CONFIG_SDK=y' .config || { echo 'ERROR: CONFIG_SDK did not survive defconfig'; exit 1; }
-  grep -qx 'CONFIG_IB=y' .config || { echo 'ERROR: CONFIG_IB did not survive defconfig'; exit 1; }
-  grep -qx 'CONFIG_IB_STANDALONE=y' .config || { echo 'ERROR: CONFIG_IB_STANDALONE did not survive defconfig'; exit 1; }
-fi
+bash "$PROJECT_ROOT/tests/test-version-identity-defconfig.sh" "$SRC"
 cp .config "$OUT/full.config"
-
-if [[ "$BUILD_CLOSURE_ONLY" == "1" ]]; then
-  echo 'BUILD_CLOSURE_PREFLIGHT=PASS'
-  echo 'Build closure verified exact locked sources, feeds, external packages, provenance, package existence, overlay, bundled OpenClash core, make defconfig and required config; source download and firmware compile were not run.'
-  exit 0
-fi
 
 echo "[6/10] Download source archives"
 if ! make download -j"$JOBS"; then
@@ -154,6 +186,37 @@ if ! make -j"$JOBS"; then
 fi
 
 "$PROJECT_ROOT/scripts/verify-upload-oom-build.sh" "$SRC"
+
+FINAL_ROOTFS_DIR=""
+while IFS= read -r release_file; do
+  candidate_root="${release_file%/etc/openwrt_release}"
+  if [[ -f "$candidate_root/etc/os-release" && -f "$candidate_root/etc/uci-defaults/99-xinzhao-defaults" ]]; then
+    FINAL_ROOTFS_DIR="$candidate_root"
+    break
+  fi
+done < <(find "$SRC/build_dir" -type f -path '*/etc/openwrt_release' -print)
+[[ -n "$FINAL_ROOTFS_DIR" ]] || { echo "ERROR: final ${DEVICE_TARGET} rootfs staging directory was not found"; exit 1; }
+python3 "$PROJECT_ROOT/scripts/verify-live-source-binding.py" \
+  --project-root "$PROJECT_ROOT" \
+  --manifest "$PROJECT_ROOT/production/source-bindings/arthur-v015-software-source-repair.json" \
+  --rootfs "$FINAL_ROOTFS_DIR"
+FEED_CHECK_ROOT="$SRC" bash "$PROJECT_ROOT/tests/test-final-rootfs-quickstart-render.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR"
+bash "$PROJECT_ROOT/scripts/verify-final-rootfs-identity.sh" "$OUT/full.config" "$FINAL_ROOTFS_DIR" "$SOURCE_SHA" "$BUILD_ID"
+
+TARGET_DIR="bin/targets/$DEVICE_TARGET/$DEVICE_SUBTARGET"
+FINAL_PACKAGE_MANIFEST="$(find "$TARGET_DIR" -maxdepth 1 -type f -name "*${DEVICE_PROFILE}*.manifest" -print | sort | sed -n '1p')"
+if [[ -z "$FINAL_PACKAGE_MANIFEST" ]]; then
+  FINAL_PACKAGE_MANIFEST="$(find "$TARGET_DIR" -maxdepth 1 -type f -name '*.manifest' -print | sort | sed -n '1p')"
+fi
+[[ -n "$FINAL_PACKAGE_MANIFEST" ]] || { echo 'ERROR: final firmware package manifest was not found'; exit 1; }
+python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-adh-manager.py" \
+  "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" \
+  "$SRC/package/feeds/xinzhao/luci-app-adguardhome/Makefile" \
+  "$SRC/package/feeds/xinzhao/luci-app-adguardhome-manager/Makefile" "$SRC" \
+  | tee "$OUT/adh-manager-verification.txt"
+python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-openclash-core.py" \
+  "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" "$SRC" \
+  | tee "$OUT/openclash-core-verification.txt"
 
 echo "[8/10] Verify all mandatory LuCI plugins were compiled and embedded"
 "$PROJECT_ROOT/scripts/verify-built-plugins.sh" "$SRC"
@@ -184,11 +247,6 @@ done < <(find "$TARGET_DIR" -maxdepth 1 -type f -name "*${DEVICE_PROFILE}*" -pri
 for meta in sha256sums profiles.json; do
   [[ -f "$TARGET_DIR/$meta" ]] && cp -v "$TARGET_DIR/$meta" "$OUT/firmware/"
 done
-for image in "$OUT"/firmware/*sysupgrade.bin; do
-  [[ -e "$image" ]] || continue
-  bash "$PROJECT_ROOT/scripts/verify-firmware-build-info.sh" "$image" "$SRC/staging_dir/host/bin/unsquashfs"
-  bash "$PROJECT_ROOT/scripts/verify-firmware-openclash-adh.sh" "$image" "$SRC/staging_dir/host/bin/unsquashfs"
-done
 
 {
   echo "Firmware: $FIRMWARE_DISPLAY_NAME"
@@ -200,14 +258,19 @@ done
   echo "Target: $DEVICE_TARGET/$DEVICE_SUBTARGET"
   echo "Profile: $DEVICE_PROFILE"
   echo "Default LAN IP: $DEFAULT_LAN_IP"
+  echo "Default Wi-Fi SSID: $DEFAULT_WIFI_SSID"
+  echo "Default Wi-Fi password: $DEFAULT_WIFI_PASSWORD"
   echo "Default admin user: $DEFAULT_ROOT_USER"
   echo "Upstream: $SOURCE_REPO"
   echo "Ref: $REQUESTED_REF"
   echo "Commit: $SOURCE_SHA"
   echo "Build ID: $BUILD_ID"
+  echo "Source method: $SOURCE_METHOD"
+  echo "Source remote: $SOURCE_REMOTE"
+  echo "Source integrity: $SOURCE_INTEGRITY"
+  [[ -z "$SOURCE_ARCHIVE_SHA256" ]] || echo "Source archive SHA256: $SOURCE_ARCHIVE_SHA256"
   echo "Known-Good lock enabled: $USE_KNOWN_GOOD_LOCK"
-  echo "Toolchain bundles enabled: $BUILD_TOOLCHAIN_BUNDLES"
-  echo "Large-upload OOM guard: disk-backed Nginx/cgi-io transient buffering; final sysupgrade handoff /tmp/firmware.bin"
+  echo "Large-upload guard: disk-backed Nginx request buffering; official cgi-io /tmp O_TMPFILE and /tmp/firmware.bin same-filesystem handoff"
   if [[ "$USE_KNOWN_GOOD_LOCK" == "1" ]]; then
     echo "Lock file: config/arthur-known-good.lock"
   fi

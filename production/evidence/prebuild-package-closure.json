@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "gate": "PREBUILD_PACKAGE_CLOSURE",
+  "status": "PASS",
+  "tested_source_sha": "4befe60e77bcaa8dd8270d466be26f4f739f4ed3",
+  "tested_source_branch": "codex/arthur-repair-candidate-20260920",
+  "generated_at": "2026-09-21T22:12:57Z",
+  "linux_sdk": {
+    "source_run_id": 33196164359,
+    "artifact_id": 9700872727,
+    "artifact_name": "Arthur-v4-toolchain-33196164359",
+    "verification": "SHA256SUMS_PASS"
+  },
+  "github_actions": {
+    "run_id": 35661418550,
+    "job_id": 106537312436,
+    "job_name": "openclash-package-closure",
+    "job_conclusion": "success",
+    "artifact_id": 10666937499,
+    "artifact_name": "Arthur-openclash-package-closure-35661418550",
+    "artifact_digest": "sha256:30a85565e8652ff612c5136b3f33f0cee8ff43c0d13cdf0c5239ad72c4f44c1c"
+  },
+  "openclash_core": {
+    "package": "openclash-core-0.1.0_alpha-r1.apk",
+    "arch": "aarch64_cortex-a53",
+    "elf": "ELF64/AArch64",
+    "official_locked_sha256": "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a",
+    "staged_sha256": "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a",
+    "package_build_sha256": "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a",
+    "package_payload_sha256": "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a",
+    "synthetic_rootfs_sha256": "453066ac9e5045d95d035a96b5c02fb593fdc0427c3c9153ff4d6a4403feab6a"
+  },
+  "markers": {
+    "OPENCLASH_CORE_APK": "PASS",
+    "OPENCLASH_CORE_ARCH": "PASS",
+    "OPENCLASH_CORE_PAYLOAD_IDENTITY": "PASS",
+    "PACKAGE_ONLY_TESTS": "PASS",
+    "ALL_KNOWN_FAILURE_CLASSES": "PASS",
+    "SYNTHETIC_ROOTFS_TESTS": "PASS",
+    "ALL_FINAL_VERIFIERS": "PASS",
+    "NO_AMBIGUOUS_PACKAGE_SOURCE": "PASS",
+    "NO_UNRESOLVED_CORE_WRITER": "PASS",
+    "FAILURE_CLASSIFIER": "PASS",
+    "PREBUILD_CLOSURE": "PASS",
+    "FULL_BUILD_ALLOWED": true
+  },
+  "scope": {
+    "firmware_full_build_executed": false,
+    "release_executed": false,
+    "sysupgrade_executed": false
+  }
+}

@@ -46,6 +46,7 @@ is_xinzhao_package() {
 }
 
 while IFS= read -r pkg; do
+  pkg="${pkg%$'\r'}"
   [[ -z "$pkg" || "$pkg" == \#* ]] && continue
   if [[ "$pkg" == "luci-app-store" ]]; then
     path="$SRC/package/feeds/istore/$pkg"

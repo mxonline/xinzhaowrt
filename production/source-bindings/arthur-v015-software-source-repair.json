@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-10-01T00:48:08+08:00",
+  "device_baseline": {
+    "device": "Arthur",
+    "version": "0.1.5",
+    "build_id": "36348777394",
+    "project_source_sha": "b16ed00ffaed0df927fc5fe482a51153ad9e99d9",
+    "upstream_commit": "27e26e324bee0b0c2a4eb58e2e9121fea5d43194",
+    "firmware_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4"
+  },
+  "LIVE_CHANGED_FILES": [
+    {
+      "path": "/etc/apk/repositories.d/distfeeds.list",
+      "SHA256": "8bafc96d2f3e8a94754bc4e338aeb0d9ffad9f57f675fe95b165afe3e9304779",
+      "purpose": "Removed only the three runtime feed entries independently confirmed HTTP 404 (istore, video, xinzhao); retained reachable official feeds and compat.list."
+    },
+    {
+      "path": "/usr/sbin/quickstart",
+      "SHA256": "c19fb395c5a26ffbfffcf8e872e4e993aa121530bfd8d31f2b1ff875b15fc388",
+      "purpose": "Changed the single APK health-check suffix from .asc to ?x=1 so QuickStart probes the configured packages.adb index; retained the live-tested binary bytes exactly."
+    }
+  ],
+  "SOURCE_BOUND_FILES": [
+    {
+      "path": "/etc/apk/repositories.d/distfeeds.list",
+      "source_path": "files/etc/apk/repositories.d/distfeeds.list",
+      "SOURCE_EFFECTIVE_SHA256": "8bafc96d2f3e8a94754bc4e338aeb0d9ffad9f57f675fe95b165afe3e9304779",
+      "method": "Exact rootfs overlay content copied from the post-reboot runtime file."
+    },
+    {
+      "path": "/usr/sbin/quickstart",
+      "source_path": "files/usr/sbin/quickstart",
+      "SOURCE_EFFECTIVE_SHA256": "c19fb395c5a26ffbfffcf8e872e4e993aa121530bfd8d31f2b1ff875b15fc388",
+      "method": "Exact rootfs overlay binary retrieved from the post-reboot runtime device."
+    }
+  ],
+  "live_acceptance": {
+    "POST_REBOOT_APK_UPDATE": "PASS",
+    "POST_REBOOT_LUCI_UPDATE": "PASS",
+    "POST_REBOOT_QUICKSTART_SOFTWARE_SOURCE_STATUS": "PASS",
+    "LIVE_REBOOT_PERSISTENCE": "PASS",
+    "PACKAGE_MANAGER_SINGLE_FLIGHT": "NOT_APPLICABLE",
+    "RPC_ACL": "NOT_APPLICABLE"
+  },
+  "SOURCE_BINDING": "PASS",
+  "ROOT_PASSWORD_SEMANTIC_GATE": "PASS",
+  "BUILD_AUTHORIZED": "YES",
+  "ROOT_PASSWORD_SEMANTIC_GATE_DETAILS": {
+    "DEFAULT_ROOT_PASSWORD": "password",
+    "source_files": [
+      {
+        "path": "build.env",
+        "SHA256": "6aa32cdd9acfa60f90d160177000f7e14fb7d579efed87a3abae58965b750e8f"
+      },
+      {
+        "path": "scripts/acceptance-contract-gate.sh",
+        "SHA256": "0b0dc9e39e90f01e84970d2240877c1aa3f6949ee4e8b1e16cf10d85368e8281"
+      },
+      {
+        "path": "tests/test-functional-acceptance.sh",
+        "SHA256": "fb0704626bb9787207d8dd1f4a7fad4e8f7210499186a0e3514406bb30713cb9"
+      },
+      {
+        "path": "README.md",
+        "SHA256": "507ba0b122c77bf1cd444f78787f975b3b6e9bfd617b2a6f6ea240cd742668ab"
+      },
+      {
+        "path": "files/etc/uci-defaults/99-xinzhao-defaults",
+        "SHA256": "a639e4e152f8ef4f9d582b4d94f058360dde5e7d7d2285939e879e6f2390feaa"
+      }
+    ],
+    "verification": "The configured SHA-512 crypt hash was recomputed for DEFAULT_ROOT_PASSWORD=password and matches the rootfs password_hash."
+  },
+  "notes": [
+    "Evidence was collected from the supplied fresh v0.1.5 device baseline; no prior v0.1.6 PASS, root-cause, temporary-patch, or candidate result is carried forward.",
+    "The post-reboot unauthenticated loopback QuickStart status API probe returned success=-1001 and is excluded from health evidence; the authenticated QuickStart homepage displayed 网络连接正常 with no software-source error or detecting state.",
+    "The specified baseline build.env plaintext default was passwort while the existing SHA-512 crypt hash encoded password; build.env, acceptance contracts, functional-acceptance test, and user-facing documentation now agree on password, independently verified against the unchanged hash."
+  ]
+}

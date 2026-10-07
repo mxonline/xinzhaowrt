@@ -1,0 +1,7 @@
+[5/10] Apply Arthur target and 22-plugin seed config
+make defconfig
+configuration written to .config
+[7/10] Compile firmware
+ADH_PACKAGE_MANIFEST=PASS
+ADH_LUCI_FULL_MANAGER=PASS
+FINAL_ROOTFS_OPENCLASH_CORE=FAIL -- final rootfs Core differs from the verified staged package payload

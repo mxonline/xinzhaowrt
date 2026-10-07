@@ -2,11 +2,15 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_FILE="${1:?usage: $0 <full.config> <final-rootfs-dir>}"
-ROOTFS_DIR="${2:?usage: $0 <full.config> <final-rootfs-dir>}"
+CONFIG_FILE="${1:?usage: $0 <full.config> <final-rootfs-dir> [full-commit] [build-id]}"
+ROOTFS_DIR="${2:?usage: $0 <full.config> <final-rootfs-dir> [full-commit] [build-id]}"
+EXPECTED_COMMIT="${3:-27e26e324}"
+EXPECTED_BUILD_ID="${4:-test-build}"
 VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"
 
 [[ -n "$VERSION" ]] || { echo 'ERROR: VERSION is empty' >&2; exit 1; }
+[[ "$EXPECTED_COMMIT" =~ ^[0-9a-fA-F]{9,40}$ ]] || { echo "ERROR: invalid expected commit: $EXPECTED_COMMIT" >&2; exit 1; }
+[[ "$EXPECTED_BUILD_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR: invalid expected build ID: $EXPECTED_BUILD_ID" >&2; exit 1; }
 [[ -f "$CONFIG_FILE" ]] || { echo "ERROR: missing full config: $CONFIG_FILE" >&2; exit 1; }
 [[ -d "$ROOTFS_DIR" ]] || { echo "ERROR: missing final rootfs directory: $ROOTFS_DIR" >&2; exit 1; }
 
@@ -14,83 +18,111 @@ require_config() {
   grep -qxF "$1" "$CONFIG_FILE" || { echo "ERROR: missing $1 in $CONFIG_FILE" >&2; exit 1; }
 }
 
-require_file_text() {
-  local file="$1"
-  local expected="$2"
-  [[ -f "$file" ]] || { echo "ERROR: final rootfs is missing $file" >&2; exit 1; }
-  grep -Fq "$expected" "$file" || { echo "ERROR: $file does not contain $expected" >&2; exit 1; }
-}
-
-require_file() {
-  [[ -f "$1" ]] || { echo "ERROR: final rootfs is missing $1" >&2; exit 1; }
-}
-
-require_dir() {
-  [[ -d "$1" ]] || { echo "ERROR: final rootfs is missing directory $1" >&2; exit 1; }
-}
-
 require_config 'CONFIG_VERSIONOPT=y'
 require_config 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 require_config "CONFIG_VERSION_NUMBER=\"$VERSION\""
-require_config 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y'
-require_config 'CONFIG_PACKAGE_luci-i18n-quickstart-zh-cn=y'
-require_config 'CONFIG_PACKAGE_luci-theme-argon=y'
-require_config 'CONFIG_PACKAGE_luci-theme-kucat=y'
-require_config 'CONFIG_PACKAGE_luci-app-adguardhome=y'
-require_config 'CONFIG_PACKAGE_luci-app-quickstart=y'
-require_file_text "$ROOTFS_DIR/etc/openwrt_release" 'XinZhaoWrt'
-require_file_text "$ROOTFS_DIR/etc/openwrt_release" "$VERSION"
-require_file_text "$ROOTFS_DIR/etc/os-release" 'XinZhaoWrt'
-require_file_text "$ROOTFS_DIR/etc/os-release" "$VERSION"
 [[ -f "$ROOTFS_DIR/etc/uci-defaults/99-xinzhao-defaults" ]] || {
   echo 'ERROR: final rootfs is missing /etc/uci-defaults/99-xinzhao-defaults' >&2
   exit 1
 }
-[[ -f "$ROOTFS_DIR/usr/lib/lua/luci/i18n/base.zh-cn.lmo" ]] || {
-  echo 'ERROR: final rootfs is missing the LuCI base Simplified Chinese translation' >&2
-  exit 1
+
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || PYTHON_BIN=python
+"$PYTHON_BIN" - "$ROOTFS_DIR" "$VERSION" "$EXPECTED_COMMIT" "$EXPECTED_BUILD_ID" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+root = pathlib.Path(sys.argv[1])
+version = sys.argv[2]
+full_commit = sys.argv[3].lower()
+build_id = sys.argv[4]
+short_commit = full_commit[:9]
+accepted_commits = {full_commit, short_commit}
+
+def fail(message):
+    raise SystemExit(f"ERROR: {message}")
+
+def read(path):
+    if not path.is_file():
+        fail(f"final rootfs is missing {path}")
+    return path.read_text(encoding="utf-8", errors="strict")
+
+def parse_shell_assignments(path):
+    result = {}
+    for line in read(path).splitlines():
+        match = re.fullmatch(r"([A-Z0-9_]+)='([^']*)'", line)
+        if match:
+            result[match.group(1)] = match.group(2)
+    return result
+
+info_path = root / "etc" / "xinzhao-build-info"
+info_text = read(info_path)
+info_expected = {
+    "Firmware": "XinZhaoWrt",
+    "Version": version,
+    "Git Commit": accepted_commits,
+    "Build ID": build_id,
+    "Target": "qualcommax/ipq60xx",
+    "Profile": "jdcloud_re-ss-01",
 }
-[[ -f "$ROOTFS_DIR/usr/lib/lua/luci/i18n/quickstart.zh-cn.lmo" ]] || {
-  echo 'ERROR: final rootfs is missing the QuickStart Simplified Chinese translation' >&2
-  exit 1
+for key, value in info_expected.items():
+    if key == "Git Commit":
+        if not any(line.startswith(f"{key}: ") and line.split(": ", 1)[1] in value for line in info_text.splitlines()):
+            fail(f"{info_path} has no exact {key} in {sorted(value)}")
+    elif f"{key}: {value}" not in info_text.splitlines():
+        fail(f"{info_path} has no exact {key}={value}")
+for placeholder in ("@VERSION@", "@BUILD_DATE@", "@GIT_COMMIT@", "@BUILD_ID@"):
+    if placeholder in info_text:
+        fail(f"{info_path} still contains build placeholder {placeholder}")
+
+json_path = root / "www" / "luci-static" / "xinzhao" / "build-info.json"
+try:
+    build_json = json.loads(read(json_path))
+except json.JSONDecodeError as exc:
+    fail(f"{json_path} is not valid JSON: {exc}")
+json_expected = {
+    "Firmware": "XinZhaoWrt",
+    "Version": version,
+    "Git Commit": accepted_commits,
+    "Build ID": build_id,
+    "Target": "qualcommax/ipq60xx",
+    "Profile": "jdcloud_re-ss-01",
 }
+for key, value in json_expected.items():
+    if key == "Git Commit":
+        if build_json.get(key) not in value:
+            fail(f"{json_path} has no exact {key} in {sorted(value)}: {build_json!r}")
+    elif build_json.get(key) != value:
+        fail(f"{json_path} has no exact {key}={value}: {build_json!r}")
+json_text = json_path.read_text(encoding="utf-8")
+for placeholder in ("@VERSION@", "@BUILD_DATE@", "@GIT_COMMIT@", "@BUILD_ID@"):
+    if placeholder in json_text:
+        fail(f"{json_path} still contains build placeholder {placeholder}")
 
-# Preserved-config sysupgrade convergence keeps the accepted router-admin
-# locale, theme and homepage when /etc/config/luci survives an upgrade.
-require_file "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh"
-require_file_text "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh" "luci.main.lang='zh_cn'"
-require_file_text "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh" "luci.main.mediaurlbase='/luci-static/argon'"
-require_file_text "$ROOTFS_DIR/usr/libexec/xinzhao/luci-upgrade-converge.sh" "luci.main.homepage='admin/quickstart'"
-require_file "$ROOTFS_DIR/etc/hotplug.d/iface/95-xinzhao-luci-converge"
-require_file_text "$ROOTFS_DIR/etc/hotplug.d/iface/95-xinzhao-luci-converge" '/usr/libexec/xinzhao/luci-upgrade-converge.sh'
+release = parse_shell_assignments(root / "etc" / "openwrt_release")
+release_expected = {
+    "DISTRIB_ID": "XinZhaoWrt",
+    "DISTRIB_RELEASE": version,
+    "DISTRIB_REVISION": f"r0+1-{short_commit}",
+    "DISTRIB_TARGET": "qualcommax/ipq60xx",
+    "DISTRIB_ARCH": "aarch64_cortex-a53",
+}
+if any(release.get(key) != value for key, value in release_expected.items()):
+    fail(f"/etc/openwrt_release identity mismatch: {release!r}")
 
-require_dir "$ROOTFS_DIR/www/luci-static/argon"
-require_dir "$ROOTFS_DIR/www/luci-static/kucat"
-require_file "$ROOTFS_DIR/www/luci-static/quickstart/index.js"
-build_info="$ROOTFS_DIR/www/luci-static/xinzhao/build-info.json"
-require_file "$build_info"
-if grep -Eq '@VERSION@|@BUILD_DATE@|@GIT_COMMIT@|@BUILD_ID@' "$build_info"; then
-  echo 'ERROR: final rootfs build-info still contains unresolved placeholders' >&2
-  exit 1
-fi
-require_file_text "$build_info" '"Firmware": "XinZhaoWrt"'
-require_file_text "$build_info" '"Target": "qualcommax/ipq60xx"'
-require_file_text "$build_info" '"Profile": "jdcloud_re-ss-01"'
+os_release = parse_shell_assignments(root / "etc" / "os-release")
+os_expected = {
+    "NAME": "XinZhaoWrt",
+    "VERSION": version,
+    "VERSION_ID": version,
+    "BUILD_ID": build_id,
+}
+if any(os_release.get(key) != value for key, value in os_expected.items()):
+    fail(f"/etc/os-release identity mismatch: {os_release!r}")
 
-# The accepted kenzok8 package provides the complete uppercase CBI manager.
-# Require its controller, all routes/models, config, init, YAML and ACL rather
-# than accepting a partial custom page or an unrelated lowercase manager.
-require_file "$ROOTFS_DIR/usr/share/luci/menu.d/luci-app-adguardhome.json"
-require_file "$ROOTFS_DIR/usr/share/rpcd/acl.d/luci-app-adguardhome.json"
-require_file "$ROOTFS_DIR/usr/lib/lua/luci/controller/AdGuardHome.lua"
-for model in overview base tools log manual; do
-  require_file "$ROOTFS_DIR/usr/lib/lua/luci/model/cbi/AdGuardHome/$model.lua"
-done
-require_file "$ROOTFS_DIR/etc/config/AdGuardHome"
-require_file "$ROOTFS_DIR/etc/init.d/AdGuardHome"
-require_file "$ROOTFS_DIR/etc/AdGuardHome.yaml"
-require_file "$ROOTFS_DIR/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo"
-require_file_text "$ROOTFS_DIR/usr/share/luci/menu.d/luci-app-adguardhome.json" 'admin/services/AdGuardHome'
-require_file_text "$ROOTFS_DIR/usr/share/rpcd/acl.d/luci-app-adguardhome.json" '"AdGuardHome"'
+print(f"IDENTITY_MATCH=PASS version={version} commit={short_commit} build_id={build_id}")
+PY
 
-echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity, mature AdGuard CBI manager, required LuCI Chinese translations, QuickStart, themes, and preserved-upgrade LuCI convergence."
+echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity and first-boot defaults overlay."

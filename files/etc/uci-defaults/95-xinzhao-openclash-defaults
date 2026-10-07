@@ -1,0 +1,48 @@
+#!/bin/sh
+# Use OpenClash's native Smart Core and subscription User-Agent defaults.
+# This only seeds missing/legacy values during first boot; later user changes
+# remain untouched.
+
+set -u
+
+# OpenClash probes clash_meta even when Smart is selected. Install the verified
+# bundled Smart executable at that canonical path before OpenClash first starts.
+smart_core=/etc/openclash/core/clash_smart
+canonical_core=/etc/openclash/core/clash_meta
+smart_digest_file=/etc/openclash/core/clash_smart.sha256
+if [ ! -x "$smart_core" ] || [ ! -s "$smart_digest_file" ]; then
+    logger -t xinzhao 'OPENCLASH_SMART_CANONICAL_INSTALL_FAIL missing bundled Core' 2>/dev/null || true
+    exit 1
+fi
+expected_smart_digest="$(cat "$smart_digest_file")"
+actual_smart_digest="$(sha256sum "$smart_core" | cut -d ' ' -f1)"
+if [ "$actual_smart_digest" != "$expected_smart_digest" ]; then
+    logger -t xinzhao 'OPENCLASH_SMART_CANONICAL_INSTALL_FAIL SHA256 mismatch' 2>/dev/null || true
+    exit 1
+fi
+canonical_digest="$(sha256sum "$canonical_core" 2>/dev/null | cut -d ' ' -f1 || true)"
+if [ "$canonical_digest" != "$expected_smart_digest" ]; then
+    tmp="${canonical_core}.smart.$$"
+    trap 'rm -f "$tmp"' 0 1 2 3 15
+    cp "$smart_core" "$tmp" || exit 1
+    chmod 0755 "$tmp" || exit 1
+    mv -f "$tmp" "$canonical_core" || exit 1
+fi
+
+uci -q set openclash.config.smart_enable='1'
+uci -q set openclash.config.core_type='Smart'
+uci -q set openclash.config.auto_smart_switch='1'
+
+sections="$(uci -q show openclash 2>/dev/null | sed -n 's/^openclash\.\([^.=]*\)=config_subscribe$/\1/p' || true)"
+for section in $sections; do
+    ua="$(uci -q get "openclash.$section.sub_ua" 2>/dev/null || true)"
+    case "$ua" in
+        ''|clash)
+            uci -q set "openclash.$section.sub_ua=clash-verge/v2.4.5"
+            ;;
+    esac
+done
+
+uci -q commit openclash
+logger -t xinzhao 'OPENCLASH_NATIVE_DEFAULTS_PASS smart=1 ua=clash-verge/v2.4.5' 2>/dev/null || true
+exit 0

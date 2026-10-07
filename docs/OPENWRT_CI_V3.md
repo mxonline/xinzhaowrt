@@ -48,7 +48,7 @@ Candidate lock 晋升为 config/arthur-known-good.lock
 production/known-good.json 更新
 ```
 
-刷机本身保持人工确认，不允许自动执行 `sysupgrade`、`mtd`、`dd`、U-Boot 或 eMMC 分区写入。
+标准 `sysupgrade` 在 `AUTO_FLASH_SAFETY_GATE` 全部 PASS 后自动执行，并自动继续 WAIT_DEVICE 与实机验证。`mtd`、`dd` 原始分区、U-Boot/bootloader、raw eMMC/SPI/NAND 及 ART/EEPROM/calibration 写入仍禁止自动执行。
 
 ## 更新模式
 

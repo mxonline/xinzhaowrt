@@ -211,4 +211,4 @@ eMMC 分区写入
 自动 Stable 晋升
 ```
 
-Candidate 的真实刷机继续保持人工确认。实机验收通过后，才进入 `promote-stable-v3.yml`。
+Candidate 的标准 sysupgrade 在完整 `AUTO_FLASH_SAFETY_GATE` 通过后自动执行；实机验收通过后自动进入 `promote-stable-v3.yml`。原始分区、U-Boot、bootloader 和校准数据写入仍然安全阻断。

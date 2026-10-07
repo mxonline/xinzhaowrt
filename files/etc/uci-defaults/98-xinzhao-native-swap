@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -u
+
+SWAP_DEVICE=/dev/mmcblk0p28
+
+# Arthur's native swap partition is part of the fixed device layout. Only
+# touch fstab when the block is present and positively identified as swap.
+if command -v block >/dev/null 2>&1 \
+    && [ -b "$SWAP_DEVICE" ] \
+    && block info "$SWAP_DEVICE" 2>/dev/null | grep -q 'TYPE="swap"'; then
+    section="$(uci -q show fstab 2>/dev/null \
+        | sed -n "s#^fstab\.\(@swap\[[0-9][0-9]*\]\)\.device='$SWAP_DEVICE'$#\1#p" \
+        | head -n 1)"
+    if [ -z "$section" ]; then
+        section="$(uci -q add fstab swap 2>/dev/null || true)"
+        [ -n "$section" ] || exit 0
+        uci -q set "$section.device=$SWAP_DEVICE" || exit 0
+    fi
+    uci -q set "$section.enabled=1" || exit 0
+    uci -q commit fstab || exit 0
+    grep -q "^$SWAP_DEVICE " /proc/swaps 2>/dev/null || swapon "$SWAP_DEVICE" 2>/dev/null || true
+fi
+
+exit 0

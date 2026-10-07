@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+workflow="$root/.github/workflows/arthur-fast-candidate.yml"
+
+fail() {
+  echo "ARTHUR_FAST_CANDIDATE_WORKFLOW: FAIL -- $*" >&2
+  exit 1
+}
+
+[[ -f "$workflow" ]] || fail 'SDK/ImageBuilder candidate workflow is missing'
+grep -Fq 'immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst' "$workflow" || fail 'matching SDK bundle is not required'
+grep -Fq 'immortalwrt-imagebuilder-qualcommax-ipq60xx.Linux-x86_64.tar.zst' "$workflow" || fail 'matching ImageBuilder bundle is not required'
+grep -Fq 'package-repositories.tar.gz' "$workflow" || fail 'verified package repository is not required'
+grep -Fq -- '--pattern build-info.txt' "$workflow" || fail 'build-info must be downloaded before validating every toolchain checksum'
+grep -Fq 'package/feeds/xinzhao/quickstart/compile V=s' "$workflow" || fail 'QuickStart-only SDK build is missing'
+grep -Fq 'image PROFILE=jdcloud_re-ss-01' "$workflow" || fail 'Arthur ImageBuilder assembly is missing'
+grep -Fq './scripts/check-defaults.sh' "$workflow" || fail 'first-boot static gate is missing'
+grep -Fq './scripts/check-web-stack.sh' "$workflow" || fail 'web-stack static gate is missing'
+grep -Fq 'WEB_STACK_GATE' "$workflow" || fail 'runtime web-stack gate output is missing'
+grep -Fq 'serve --unix /tmp/quickstart.sock' "$workflow" || fail 'QuickStart service execution probe is missing'
+grep -Fq 'test "$quickstart_exit" -ne 127' "$workflow" || fail 'QuickStart service probe does not reject procd-style exit 127'
+grep -Fq '"$SDK_APK" --allow-untrusted extract --destination quickstart-root "$QUICKSTART_APK"' "$workflow" || fail 'QuickStart package extraction must use the matching SDK apk implementation with the SDK-build signature scope'
+grep -Fq 'SDK_APK="$(realpath "$(find "$SDK_DIR/staging_dir"' "$workflow" || fail 'SDK apk tool path must remain valid after repository directory changes'
+grep -Fq 'find "$IB_DIR/repositories/packages/aarch64_cortex-a53" -type f -name' "$workflow" || fail 'matching aarch64 package repository must be injected into ImageBuilder'
+grep -Fq 'cp "$QUICKSTART_APK" "$IB_DIR/packages/"' "$workflow" || fail 'SDK-built QuickStart must replace the ImageBuilder package'
+! grep -Fq 'repositories.conf' "$workflow" || fail 'ImageBuilder must use its native local package index instead of a nonexistent repository config'
+grep -Fq '"$package" == luci-i18n-base-zh-cn' "$workflow" || fail 'the unavailable non-required language pack must be explicitly handled'
+grep -Fq 'REQUIRED_PLUGIN_GATE=PASS' "$workflow" || fail 'ImageBuilder lane must assert all 22 required plugins remain selected'
+grep -Fq '[[ -z "$plugin" || "$plugin" == \#* ]] && continue' "$workflow" || fail 'required-plugin gate must ignore comments and blank lines'
+grep -Fq 'chroot "$SYSUPGRADE_ROOT" /bin/ash /sbin/sysupgrade -T /tmp/firmware.bin' "$workflow" || fail 'candidate must execute sysupgrade -T in an isolated target rootfs'
+grep -Fq 'unsquashfs -d "$SYSUPGRADE_ROOT"' "$workflow" || fail 'sysupgrade gate must use the actual candidate rootfs'
+grep -Fq 'echo "IB_DIR=$IB_DIR" >> "$GITHUB_ENV"' "$workflow" || fail 'ImageBuilder directory must persist for the artifact validation gate'
+! grep -Fq 'tar -xf "$QUICKSTART_APK" -C quickstart-root' "$workflow" || fail 'QuickStart package extraction incorrectly treats apk as a tar archive'
+grep -Fq 'image-files/etc/uci-defaults/98-xinzhao-web-stack' "$workflow" || fail 'runtime web-stack gate does not inspect the nginx/uhttpd overlay'
+grep -Fq "grep -Fq '/etc/init.d/nginx restart' image-files/etc/uci-defaults/98-xinzhao-web-stack" "$workflow" || fail 'runtime web-stack gate does not validate the nginx restart action'
+! grep -Eq '(^|[[:space:]])\./scripts/build\.sh|make world|FULL_BUILD' "$workflow" || fail 'workflow contains a prohibited full build'
+
+echo 'ARTHUR_FAST_CANDIDATE_WORKFLOW: PASS'

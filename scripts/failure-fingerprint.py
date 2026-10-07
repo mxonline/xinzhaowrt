@@ -40,6 +40,9 @@ STRONG_ERROR_RE = re.compile(
 
 STAGE_RE = re.compile(r'(?im)^(?:Failure stage|失败阶段)\s*[:：]\s*(.+?)\s*$')
 FIRST_ERROR_RE = re.compile(r'(?im)^First real error\s*:\s*(.+?)\s*$')
+EXPLICIT_GATE_RE = re.compile(
+    r'(?i)\b(?:FINAL_ROOTFS_[A-Z0-9_]+|[A-Z0-9_]+_VERIFICATION)\s*=\s*FAIL\b|\bGateError\b'
+)
 
 
 def clean(text: str) -> str:
@@ -97,12 +100,15 @@ def main():
 
     buckets = {kind: [] for kind in PATTERNS}
     error_lines = []
+    gate_lines = []
 
     for _, text in texts:
         for raw in text.splitlines():
             line = normalize(raw)
             if not line:
                 continue
+            if EXPLICIT_GATE_RE.search(line) and line not in gate_lines:
+                gate_lines.append(line)
             for kind, regex in PATTERNS.items():
                 match = regex.search(line)
                 if not match:
@@ -121,7 +127,11 @@ def main():
                 if line not in error_lines:
                     error_lines.append(line)
 
-    if buckets['missing-config']:
+    if gate_lines:
+        kind = 'final-verifier-gate'
+        signals = gate_lines[:12]
+        stage = 'Final rootfs/package verifier gate'
+    elif buckets['missing-config']:
         kind = 'missing-config'
         signals = sorted(buckets['missing-config'])
     elif buckets['missing-package']:

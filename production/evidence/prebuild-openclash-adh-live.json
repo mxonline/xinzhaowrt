@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "gate": "PREBUILD_OPENCLASH_ADH_LIVE_GATE",
+  "status": "PASS",
+  "mode": "LIVE_NON_DISRUPTIVE",
+  "validated_source_sha": "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56",
+  "generated_at": "2026-09-21T03:02:44+08:00",
+  "device": {
+    "model": "JDCloud RE-SS-01 / Arthur",
+    "firmware": "v0.1.5",
+    "target": "qualcommax/ipq60xx/jdcloud_re-ss-01",
+    "address": "192.168.6.1"
+  },
+  "restrictions": {
+    "build_forbidden": true,
+    "release_forbidden": true,
+    "sysupgrade_forbidden": true,
+    "build_executed": false,
+    "release_executed": false,
+    "sysupgrade_executed": false
+  },
+  "live_runtime_prebuild": {
+    "status": "PASS",
+    "validated_on_worktree_before_source_commit": true,
+    "source_content_matches_validated_source_commit": true,
+    "validation_reused_without_rerun_after_commit": true,
+    "final_live_assert": "PASS"
+  },
+  "source_fix": {
+    "source_commit": "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56",
+    "status": "HOT_DEPLOYED_AND_VERIFIED",
+    "source_files": [
+      "files/usr/libexec/xinzhao-openclash-lowmem-config",
+      "patches/openclash/0010-arthur-coexistence-memory-and-dns.patch"
+    ],
+    "runtime_fixes": [
+      "Zashboard native external-ui and external-ui-name survive runtime generation",
+      "fake-ip enhanced-mode and DNS fields remain source/runtime-parity consistent",
+      "OpenClash and AdGuardHome use the coordinated 53/1745/7874 chain",
+      "OpenClash full preparation path runs before low-memory staging and lifecycle hooks remain active"
+    ],
+    "device_syntax_checks": "PASS",
+    "patch_series_static_apply": "PASS"
+  },
+  "openclash_fully_usable": "PASS",
+  "adguardhome_fully_usable": "PASS",
+  "openclash_adh_coexistence": "PASS",
+  "fake_ip_runtime": {
+    "consistent": true,
+    "source_path": "/etc/openclash/config/config_single_subscription_streaming_gemini_actual_regions_v2.yaml",
+    "runtime_path": "/etc/openclash/config_single_subscription_streaming_gemini_actual_regions_v2.yaml",
+    "source_sha256": "69e22557db534db16c3545122366e7642c5ee4996476e2a7039c915b89b86813",
+    "runtime_sha256": "893691c5ac72a77b81b3f026fe5d0bcf1aead779b57e3ccd9e877abe09e7b920",
+    "runtime_mode": "fake-ip",
+    "fake_ip_range": "28.0.0.1/8",
+    "fake_ip_filter_mode": "blacklist",
+    "fake_ip_filter_count": 1,
+    "external_ui": "/usr/share/openclash/ui",
+    "external_ui_name": "zashboard",
+    "zashboard_http": 200
+  },
+  "openclash": {
+    "status": "PASS",
+    "final_pid": 7871,
+    "controller_api": {
+      "version": 200,
+      "configs": 200,
+      "providers_proxies": 200,
+      "providers_rules": 200,
+      "proxies": 200,
+      "rules": 200
+    },
+    "rule_provider_count": 27,
+    "proxy_provider_nodes": 57,
+    "real_dns": [
+      "example.com",
+      "openwrt.org",
+      "www.google.com"
+    ],
+    "real_proxy_http": {
+      "google_generate_204": 204,
+      "gstatic_generate_204": 204,
+      "example_com": 200
+    }
+  },
+  "adguardhome": {
+    "status": "PASS",
+    "standalone_login_http": 200,
+    "standalone_web_http": 302,
+    "dns_port": 1745,
+    "api_http": {
+      "status": 200,
+      "profile": 200,
+      "dns_info": 200,
+      "querylog": 200,
+      "stats": 200,
+      "filtering": 200
+    },
+    "real_dns": true,
+    "filter_blocked_ipv4": "0.0.0.0",
+    "filter_blocked_ipv6": "::",
+    "query_log_recorded": true,
+    "original_auth_config_restored": true
+  },
+  "dns_chain": {
+    "off": "dnsmasq:53 -> OpenClash:7874",
+    "on": "dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874",
+    "coexistence_packet_capture": {
+      "packets_to_1745": 18,
+      "packets_to_7874": 24,
+      "runtime_upstream_7874": true
+    }
+  },
+  "lifecycle": {
+    "sequence": "OFF -> ON -> OFF -> ON -> OFF",
+    "status": "PASS",
+    "off_states": 3,
+    "on_states": 2,
+    "proxy_http_results": [204, 204, 204, 204, 204],
+    "zashboard_http_results": [200, 200, 200, 200, 200],
+    "luci_root_http_results": [200, 200, 200, 200, 200],
+    "ssh_ubus_results": [0, 0, 0, 0, 0],
+    "openclash_pid_remained_stable": true
+  },
+  "safety": {
+    "no_dns_loop": true,
+    "no_port_conflict": true,
+    "no_oom": true,
+    "oom_count": 0,
+    "dns_hijack_rule_count": 0,
+    "ssh_luci_stable": true
+  },
+  "final_state": {
+    "adguardhome": "OFF",
+    "adguardhome_uci_enabled": 0,
+    "adguardhome_init_enabled": false,
+    "openclash": "RUNNING",
+    "dnsmasq_server": "127.0.0.1#7874",
+    "openclash_redirect_dns": 0,
+    "openclash_enable_redirect_dns": 0,
+    "zashboard_http": 200,
+    "controller_authenticated_http": 200,
+    "ssh_ubus": "PASS",
+    "luci_root_http": 200
+  },
+  "evidence_scripts": [
+    "post-release-tests/arthur-v0.1.5-20260919/live-repair/verify-openclash-runtime-contract.sh",
+    "post-release-tests/arthur-v0.1.5-20260919/live-repair/validate-coexistence-dns-adh-restart.sh",
+    "post-release-tests/arthur-v0.1.5-20260919/live-repair/run-lifecycle-contract.sh",
+    "tests/test-arthur-openclash-adh-static.sh"
+  ]
+}

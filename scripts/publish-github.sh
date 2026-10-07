@@ -5,12 +5,13 @@ REPO="${1:-mxonline/xinzhaowrt}"
 VISIBILITY="${VISIBILITY:-public}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+. "$ROOT/scripts/github-auth-preflight.sh"
 
 command -v gh >/dev/null 2>&1 || {
   echo "ERROR: GitHub CLI (gh) is required."
   exit 1
 }
-gh auth status >/dev/null
+github_auth_preflight workflow "$REPO" "UNKNOWN" "$ROOT"
 
 if [[ ! -d .git ]]; then
   git init

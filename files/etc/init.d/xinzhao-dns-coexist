@@ -1,18 +1,20 @@
 #!/bin/sh /etc/rc.common
-START=98
-STOP=12
 
-USE_PROCD=1
+START=100
+STOP=05
 
 start_service() {
-	/usr/libexec/xinzhao-dns-coexist start
+	[ -x /usr/libexec/xinzhao-dns-coexist ] || return 0
+	/usr/libexec/xinzhao-dns-coexist boot-reconcile >/dev/null 2>&1 &
 }
 
 stop_service() {
-	/usr/libexec/xinzhao-dns-coexist stop
+	[ -x /usr/libexec/xinzhao-dns-coexist ] || return 0
+	/usr/libexec/xinzhao-dns-coexist reconcile >/dev/null 2>&1 || true
 }
 
 reload_service() {
+	[ -x /usr/libexec/xinzhao-dns-coexist ] || return 0
 	/usr/libexec/xinzhao-dns-coexist reconcile
 }
 

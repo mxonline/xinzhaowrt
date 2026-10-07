@@ -1,0 +1,18 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
+--- a/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
++++ b/luci-app-openclash/root/usr/share/openclash/openclash_core.sh
+@@ -146,3 +146,14 @@
+ TARGET_CORE_PATH="$meta_core_path"
++local_mem_available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
++case "$local_mem_available" in
++   ''|*[!0-9]*) ;;
++   *)
++      if [ "$local_mem_available" -lt 65536 ]; then
++         LOG_WARN "Core version probe skipped below 65536KB available memory"
++         del_lock
++         exit 0
++      fi
++      ;;
++esac
+ CORE_CV=$($TARGET_CORE_PATH -v 2>/dev/null |awk -F ' ' '{print $3}' |head -1)
+ TMP_FILE="$RUN_DIR/clash_meta.new"

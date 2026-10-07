@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source_repository": "vernesong/OpenClash",
+  "source_ref": "dc71e38205fd2d83cc934592d3da8cf6da3e0b51",
+  "core_version": "alpha-ge183c58",
+  "core_type": "Meta",
+  "asset_path": "master/meta/clash-linux-arm64.tar.gz",
+  "asset_size_bytes": 10755729,
+  "asset_git_blob_sha1": "5c90d325491032c316849c0ed39711a16dfdda4c",
+  "binary_name": "clash",
+  "install_path": "/etc/openclash/core/clash_meta",
+  "elf_class": 64,
+  "elf_machine": 183
+}

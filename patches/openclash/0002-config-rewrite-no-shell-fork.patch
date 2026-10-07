@@ -1,0 +1,17 @@
+diff --git a/luci-app-openclash/root/usr/share/openclash/yml_change.sh b/luci-app-openclash/root/usr/share/openclash/yml_change.sh
+--- a/luci-app-openclash/root/usr/share/openclash/yml_change.sh
++++ b/luci-app-openclash/root/usr/share/openclash/yml_change.sh
+@@ -784,7 +784,12 @@ begin
+       end
+ 
+       # proxy-server-nameserver
+-      local_exclude = (%x{ls -l /sys/class/net/ |awk '{print \$9}'  2>&1}.each_line.map(&:strip) + ['h3=', 'skip-cert-verify=', 'ecs=', 'ecs-override=', 'disable-ipv6=', 'disable-ipv4=', 'disable-qtype-', 'disable-reuse='] + ['utun', 'tailscale0', 'docker0', 'tun163', 'br-lan', 'mihomo']).uniq.join('|')
++      netdevs = begin
++         Dir.children('/sys/class/net')
++      rescue Exception
++         []
++      end
++      local_exclude = (netdevs + ['h3=', 'skip-cert-verify=', 'ecs=', 'ecs-override=', 'disable-ipv6=', 'disable-ipv4=', 'disable-qtype-', 'disable-reuse='] + ['utun', 'tailscale0', 'docker0', 'tun163', 'br-lan', 'mihomo']).uniq.join('|')
+       non_domain_reg = /^dhcp:\/\/|^system($|:\/\/)|([0-9a-zA-Z-]{1,}\.)+([a-zA-Z]{2,})/
+       proxied_server_reg = /^[^#&]+#(?:(?:#{local_exclude})[^&]*&)*(?:(?!(?:#{local_exclude}))[^&]+)/
+       servers_to_check = Value.dig('dns', 'nameserver').to_a | Value.dig('dns', 'fallback').to_a | Value.dig('dns', 'default-nameserver').to_a

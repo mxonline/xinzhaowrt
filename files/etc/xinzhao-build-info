@@ -1,0 +1,8 @@
+Firmware: XinZhaoWrt
+Version: @VERSION@
+Builder: 新肇数码
+Build Date: @BUILD_DATE@
+Git Commit: @GIT_COMMIT@
+Build ID: @BUILD_ID@
+Target: qualcommax/ipq60xx
+Profile: jdcloud_re-ss-01

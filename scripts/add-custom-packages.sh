@@ -113,26 +113,11 @@ clone_or_update \
   "${KENZOK8_REF:-master}"
 KENZO="$SOURCES/kenzok8-openwrt-packages"
 
-# AdGuard Home is intentionally isolated from the broader kenzok8 source
-# family. Its complete mature CBI manager is fixed at the accepted revision.
-: "${ADGUARD_MATURE_REF:?ADGUARD_MATURE_REF is required}"
-clone_or_update \
-  kenzok8-adguardhome \
-  https://github.com/kenzok8/openwrt-packages.git \
-  "$ADGUARD_MATURE_REF"
-ADGUARD_MATURE="$SOURCES/kenzok8-adguardhome"
-
-# Apply the Arthur coexistence upstream only inside the pinned mature package
-# source; keep the repository free of copied ADH credentials/templates.
-ADH_TEMPLATE="$ADGUARD_MATURE/luci-app-adguardhome/root/usr/share/AdGuardHome/AdGuardHome_template.yaml"
-python3 "$PROJECT_ROOT/scripts/patch-adguardhome-coexistence.py" "$ADH_TEMPLATE"
-
 link_pkg luci-app-istorex "$KENZO/luci-app-istorex"
 link_pkg luci-app-lucky "$KENZO/luci-app-lucky/luci-app-lucky"
 link_pkg lucky "$KENZO/luci-app-lucky/lucky"
 link_pkg luci-app-quickfile "$KENZO/luci-app-quickfile/luci-app-quickfile"
 link_pkg quickfile "$KENZO/luci-app-quickfile/quickfile"
-link_pkg luci-app-adguardhome "$ADGUARD_MATURE/luci-app-adguardhome"
 # iStoreOS Original QuickStart: keep frontend/RPC/backend/service sources
 # paired at fixed, auditable upstream revisions.
 clone_or_update \
@@ -172,7 +157,7 @@ clone_or_update \
   "${LUCI_REF:-master}"
 IMMORTAL_LUCI="$SOURCES/immortalwrt-luci"
 for pkg in \
-  luci-app-autoreboot luci-app-firewall \
+  luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp \
   luci-app-vlmcsd luci-app-wol; do
@@ -238,6 +223,12 @@ clone_or_update \
   OpenClash \
   https://github.com/vernesong/OpenClash.git \
   "${OPENCLASH_REF:-master}"
+# Preserve OpenClash's native init, DNS, firewall, Core selection and native
+# auto_smart_switch policy conversion. Only lift the LuCI worker's VMA limit
+# for the Smart Core version probe and start/restart actions.
+CORE_VM_PATCH="$PROJECT_ROOT/patches/openclash/0015-smart-core-luci-vm-limit.patch"
+git -C "$SOURCES/OpenClash" apply --check "$CORE_VM_PATCH"
+git -C "$SOURCES/OpenClash" apply "$CORE_VM_PATCH"
 link_pkg luci-app-openclash "$SOURCES/OpenClash/luci-app-openclash"
 
 # OpenAppFilter: LuCI + userspace + kernel-facing package.

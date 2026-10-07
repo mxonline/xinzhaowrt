@@ -1,0 +1,69 @@
+diff --git a/luci-app-openclash/luasrc/controller/openclash.lua b/luci-app-openclash/luasrc/controller/openclash.lua
+--- a/luci-app-openclash/luasrc/controller/openclash.lua
++++ b/luci-app-openclash/luasrc/controller/openclash.lua
+@@ -265,7 +265,7 @@
+ 	if not fs.access(meta_core_path) then
+ 		return v
+ 	else
+-		v = SYS.exec(string.format("%s -v 2>/dev/null |awk -F ' ' '{print $3}' |head -1 |tr -d '\n'", meta_core_path))
++		v = SYS.exec(string.format("ulimit -v unlimited && %s -v 2>/dev/null |awk -F ' ' '{print $3}' |head -1 |tr -d '\n'", meta_core_path))
+ 		if not v or v == "" then
+ 			return "0"
+ 		end
+@@ -544,7 +544,7 @@
+ 	uci:set("openclash", "config", "enable", "1")
+ 	uci:commit("openclash")
+ 
+-	SYS.call("/etc/init.d/openclash restart >/dev/null 2>&1 &")
++	SYS.call("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1 &")
+ 
+ 	HTTP.prepare_content("application/json")
+ 	HTTP.write_json({
+@@ -1092,7 +1092,7 @@
+ 	end
+ 	uci:commit("openclash")
+ 	if is_running() then
+-		SYS.exec("/etc/init.d/openclash restart >/dev/null 2>&1 &")
++		SYS.exec("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1 &")
+ 	end
+ end
+ 
+@@ -3834,7 +3834,7 @@
+ 			end
+ 			uci:set("openclash", "@overwrite[0]", "china_ip_route", value)
+ 			uci:commit("openclash")
+-			SYS.exec("/etc/init.d/openclash restart >/dev/null 2>&1 &")
++			SYS.exec("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1 &")
+ 		end
+ 	elseif setting == "stream_unlock" then
+ 		uci:set("openclash", "config", "stream_auto_select", value)
+@@ -4312,9 +4312,9 @@
+ 		end
+ 		if not is_running() then
+ 			kill_process()
+-			SYS.call("/etc/init.d/openclash start >/dev/null 2>&1")
++			SYS.call("ulimit -v unlimited && /etc/init.d/openclash start >/dev/null 2>&1")
+ 		else
+-			SYS.call("/etc/init.d/openclash restart >/dev/null 2>&1")
++			SYS.call("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1")
+ 		end
+ 	elseif action == "stop" then
+ 		if uci:get("openclash", "config", "enable") ~= "0" then
+@@ -4329,7 +4329,7 @@
+ 			uci:commit("openclash")
+ 		end
+ 		kill_process()
+-		SYS.call("/etc/init.d/openclash restart >/dev/null 2>&1")
++		SYS.call("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1")
+ 	else
+ 		HTTP.status(500, "Invalid action parameter")
+ 		return
+@@ -5745,7 +5745,7 @@
+ 					SYS.exec("/usr/share/openclash/openclash_core.sh Oix")
+ 				else
+ 					write_padded('{"stage":"restarting","text":"' .. luci.i18n.translate("Restarting...") .. '"}')
+-					SYS.call("/etc/init.d/openclash restart >/dev/null 2>&1 &")
++					SYS.call("ulimit -v unlimited && /etc/init.d/openclash restart >/dev/null 2>&1 &")
+ 				end
+ 			end
+ 		end

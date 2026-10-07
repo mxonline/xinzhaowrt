@@ -6,6 +6,10 @@ FEED_DIR="$SRC/package/feeds/xinzhao"
 ISTORE_FEED_DIR="$SRC/package/feeds/istore"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+OPENCLASH_SELECTED_MAKEFILE="$SRC/package/feeds/xinzhao/openclash-core/Makefile" \
+  bash "$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" \
+  "$SRC" "$PROJECT_ROOT/package/xinzhao/openclash-core"
+
 required=(
   luci-app-istorex
   luci-app-lucky
@@ -68,14 +72,15 @@ assert_source() {
   fi
 }
 
-# Verify each package against the same pinned source exposed by add-custom-packages.sh.
+# Verify iStoreX uses Kenzok8, QuickStart uses the official iStoreOS LinkEase
+# repositories, and store uses official linkease/istore.
 KENZO_SOURCE="$SRC/.xinzhao-sources/kenzok8-openwrt-packages"
 ISTORE_SOURCE="$SRC/.xinzhao-sources/istore"
 ISTOREOS_LUCI_SOURCE="$SRC/.xinzhao-sources/istoreos-luci"
-ADGUARD_MATURE_SOURCE="$SRC/.xinzhao-sources/kenzok8-adguardhome"
+ISTOREOS_PACKAGES_SOURCE="$SRC/.xinzhao-sources/istoreos-packages"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
 assert_source luci-app-quickstart "$ISTOREOS_LUCI_SOURCE/luci/luci-app-quickstart"
-assert_source luci-app-adguardhome "$ADGUARD_MATURE_SOURCE/luci-app-adguardhome"
+assert_source quickstart "$ISTOREOS_PACKAGES_SOURCE/network/services/quickstart"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
 assert_istore_source() {
   local pkg="$1" expected="$2" actual
@@ -99,7 +104,7 @@ fi
 for pkg in luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
-for pkg in luci-app-autoreboot luci-app-firewall luci-app-package-manager luci-app-pbr luci-app-samba4; do
+for pkg in luci-app-adguardhome luci-app-autoreboot luci-app-firewall luci-app-package-manager luci-app-pbr luci-app-samba4; do
   assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"
 done
 
