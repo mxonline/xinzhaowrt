@@ -24,6 +24,8 @@ function Assert-Throws {
 Assert-True (Test-Path -LiteralPath $ContractPath -PathType Leaf) 'Arthur state-contract helper must exist'
 . $ContractPath
 
+Assert-Equal @((Get-ArthurStatePropertyNames ([pscustomobject]@{}))).Count 0 'empty schema-v2 gate map must be readable under StrictMode'
+
 $id = New-ArthurExecutionId -TaskSlug 'adh-cn' -AcceptedSourceSha ('a' * 40) -Date ([datetime]'2026-09-08')
 Assert-Equal $id 'arthur-adh-cn-aaaaaaa-20260908' 'execution id must be deterministic'
 

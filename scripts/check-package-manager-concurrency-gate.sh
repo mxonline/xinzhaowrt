@@ -17,7 +17,7 @@ fi
 
 matches="$(
   printf '%s\n' "$ps_snapshot" |
-    grep -E '([[:space:]/]|^)apk[[:space:]].*[[:space:]]update([[:space:]]|$)|/usr/libexec/package-manager-call[[:space:]]+update([[:space:]]|$)|quickstart.*apk[[:space:]].*[[:space:]]update([[:space:]]|$)' |
+    grep -E '([[:space:]/]|^)apk([[:space:]]+[^[:space:]]+)*[[:space:]]+update([[:space:]]|$)|/usr/libexec/package-manager-call[[:space:]]+update([[:space:]]|$)|quickstart.*apk[[:space:]]+update([[:space:]]|$)' |
     grep -v 'check-package-manager-concurrency-gate' || true
 )"
 

@@ -26,7 +26,7 @@ function Get-ArthurStatePropertyNames {
     param([object]$Value)
     if ($null -eq $Value) { return @() }
     if ($Value -is [System.Collections.IDictionary]) { return @($Value.Keys | ForEach-Object { [string]$_ }) }
-    return @($Value.PSObject.Properties.Name)
+    return @($Value.PSObject.Properties | ForEach-Object { [string]$_.Name })
 }
 
 function Get-ArthurStateSha256 {

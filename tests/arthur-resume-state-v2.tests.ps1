@@ -119,4 +119,41 @@ $staleRequirement = Resolve-ArthurResumeState `
     -RequirementDigests $changedWifiDigests
 Assert-Equal $staleRequirement.gates.WIFI.status 'STALE' 'requirement digest change must stale inherited historical PASS'
 
+$legacy = Get-Content -Raw (Join-Path $Root 'tests\fixtures\arthur-v015-terminal-schema1.json') | ConvertFrom-Json
+Assert-Equal $legacy.schema_version 1 'v0.1.5 fixture must preserve the original terminal schema'
+if ([int]$legacy.schema_version -eq 1) {
+    $status = Get-Content -Raw (Join-Path $Root 'production\status.json') | ConvertFrom-Json
+    $knownGood = Get-Content -Raw (Join-Path $Root 'production\known-good.json') | ConvertFrom-Json
+    $productGoalVerification = Get-Content -Raw (Join-Path $Root 'production\product-goal-verification.json') | ConvertFrom-Json
+    $wifiBaseline = Get-Content -Raw (Join-Path $Root 'production\wifi-frozen-baseline.json') | ConvertFrom-Json
+    $migrated = Convert-ArthurLegacyTerminalResumeState -Legacy $legacy -Status $status -ProductGoalVerification $productGoalVerification -KnownGood $knownGood -WifiBaseline $wifiBaseline -RepositoryRoot $Root -RepositoryHead ('a' * 40)
+    Assert-Equal $migrated.schema_version 2 'legacy terminal snapshot must migrate to schema v2'
+    Assert-Equal $migrated.status 'PRODUCTION_RELEASED' 'legacy terminal must remain terminal'
+    Assert-Equal $migrated.instruction_allowed $false 'legacy terminal must not authorize execution'
+    Assert-Equal $migrated.source.accepted_source_sha $status.source_commit 'migration must preserve exact latest Stable source'
+    Assert-Equal $migrated.production.github_run_id $status.run_id 'migration must preserve exact latest Stable build'
+    Assert-Equal $migrated.production.candidate_sha256 $status.sysupgrade_sha256 'migration must preserve exact latest Stable image hash'
+    Assert-Equal $knownGood.source_commit '236abeaaea06442aa0f8f34efd0b4464b35c5061' 'migration must leave the historical rollback Known-Good source intact'
+    Assert-Equal $migrated.verified.wifi 'VERIFIED_FROZEN' 'migration must preserve separately hash-verified frozen Wi-Fi baseline status'
+    Assert-Equal @($migrated.gates.PSObject.Properties).Count 0 'legacy string gate summaries must not become fabricated Gate PASS records'
+    $badWifiBaseline = $wifiBaseline | ConvertTo-Json -Depth 40 | ConvertFrom-Json
+    $badWifiBaseline.source_git_blob_sha = ('f' * 40)
+    $wifiConflict = $false
+    try { $null = Convert-ArthurLegacyTerminalResumeState -Legacy $legacy -Status $status -ProductGoalVerification $productGoalVerification -KnownGood $knownGood -WifiBaseline $badWifiBaseline -RepositoryRoot $Root -RepositoryHead ('a' * 40) }
+    catch { $wifiConflict = $true }
+    Assert-True $wifiConflict 'mismatched frozen Wi-Fi source hash must block migration'
+    $knownGoodConflict = $false
+    $badKnownGood = $knownGood | ConvertTo-Json -Depth 40 | ConvertFrom-Json
+    $badKnownGood.target = 'ipq40xx'
+    try { $null = Convert-ArthurLegacyTerminalResumeState -Legacy $legacy -Status $status -ProductGoalVerification $productGoalVerification -KnownGood $badKnownGood -WifiBaseline $wifiBaseline -RepositoryRoot $Root -RepositoryHead ('a' * 40) }
+    catch { $knownGoodConflict = $true }
+    Assert-True $knownGoodConflict 'Known-Good must independently identify the Arthur qualcommax/ipq60xx device'
+    $conflict = $false
+    $badProductGoalVerification = $productGoalVerification | ConvertTo-Json -Depth 40 | ConvertFrom-Json
+    $badProductGoalVerification.sysupgrade_sha256 = ('f' * 64)
+    try { $null = Convert-ArthurLegacyTerminalResumeState -Legacy $legacy -Status $status -ProductGoalVerification $badProductGoalVerification -KnownGood $knownGood -WifiBaseline $wifiBaseline -RepositoryRoot $Root -RepositoryHead ('a' * 40) }
+    catch { $conflict = $true }
+    Assert-True $conflict 'mismatched latest production image hash must block migration'
+}
+
 Write-Host 'ARTHUR_RESUME_STATE_V2=PASS'

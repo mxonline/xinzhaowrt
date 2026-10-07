@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "execution_id": "arthur-v015-software-source-repair-36764137044",
+  "status": "PRODUCTION_RELEASED",
+  "updated_at": "2026-10-01T14:21:20Z",
+  "source": {
+    "repository": "mxonline/xinzhaowrt",
+    "source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+    "stable_tag": "arthur-production-36764137044",
+    "candidate_tag": "arthur-update-36764137044",
+    "artifact_id": "11126027620",
+    "build_run_id": "36764137044"
+  },
+  "device": {
+    "version": "0.1.5",
+    "build_id": "36764137044",
+    "identity": "PASS",
+    "exact_artifact_match": "PASS",
+    "target": "jdcloud_re-ss-01",
+    "model": "JDCloud RE-SS-01",
+    "lan_mac": "dc:d8:7c:45:91:99"
+  },
+  "gates": {
+    "POSTFLASH_LUCI_PACKAGE_MANAGER": "PASS",
+    "DEVICE_EXACT_ARTIFACT_MATCH": "PASS",
+    "LIVE_LUCI_PACKAGE_MANAGER": "PASS",
+    "FINAL_ROOTFS_SOURCE_BINDING": "PASS",
+    "SOURCE_BINDING": "PASS",
+    "POSTFLASH_QUICKSTART_SOURCE_STATUS": "PASS",
+    "IDENTICAL_ARTIFACT_PROMOTION": "PASS",
+    "LIVE_QUICKSTART_SOFTWARE_SOURCE_STATUS": "PASS",
+    "LIVE_APK_UPDATE": "PASS",
+    "PRODUCTION_RELEASED": "PASS",
+    "LIVE_REBOOT_PERSISTENCE": "PASS",
+    "REBOOT_PERSISTENCE": "PASS",
+    "SYSTEM_HEALTH": "PASS",
+    "ROOT_PASSWORD_SEMANTIC_GATE": "PASS",
+    "POSTFLASH_APK_UPDATE": "PASS"
+  },
+  "artifact": {
+    "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36764137044",
+    "factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9",
+    "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36764137044",
+    "sysupgrade": "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
+    "factory": "XinZhaoWrt-Arthur-v0.1.5-20260930-factory.bin",
+    "sysupgrade_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664"
+  },
+  "rollback": {
+    "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
+    "stable_tag": "arthur-production-36348777394",
+    "local_copy": "output/real-device/rollback-36348777394/XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin"
+  },
+  "NEXT_ACTION": "NONE"
+}

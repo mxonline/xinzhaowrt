@@ -49,7 +49,7 @@
     },
     {
       "path": "config/openclash-core.lock and main-only OpenClash/AdGuardHome source transformation scripts",
-      "result": "not retained as product inputs; Stable uses its JSON core locks and package recipe. No exact-source released firmware evidence was found for the current-main source transformation set."
+      "result": "The current PREBUILD evidence is bound to source 197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56 and describes its hot-deployed runtime. It does not bind these main-only build transformation helpers to the exact released Stable v0.1.5 artifact or to the Stable-based v0.1.6 source. The Stable build uses config/openclash-core.lock.json, config/openclash-smart-core.lock.json, scripts/fetch-openclash-core.sh and scripts/stage-openclash-core.py; the three excluded helpers are not on that build path."
     }
   ],
   "merge_resolution": {
@@ -1864,13 +1864,13 @@
       "path": "scripts/patch-adguardhome-coexistence.py",
       "diff_status_stable_to_main": "A",
       "category": "PROTECTED_PRODUCT_PAYLOAD",
-      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+      "resolution": "EXCLUDED_UNPROVEN_MAIN_ONLY_SOURCE_TRANSFORM"
     },
     {
       "path": "scripts/patch-openclash-core-lifecycle.py",
       "diff_status_stable_to_main": "A",
       "category": "PROTECTED_PRODUCT_PAYLOAD",
-      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+      "resolution": "EXCLUDED_UNPROVEN_MAIN_ONLY_SOURCE_TRANSFORM"
     },
     {
       "path": "scripts/prebuild-closure.sh",
@@ -2026,7 +2026,7 @@
       "path": "scripts/stage-openclash-core.sh",
       "diff_status_stable_to_main": "A",
       "category": "PROTECTED_PRODUCT_PAYLOAD",
-      "resolution": "STABLE_0EEAE_PRODUCT_TREE"
+      "resolution": "EXCLUDED_UNUSED_MAIN_ONLY_STAGE_HELPER"
     },
     {
       "path": "scripts/start-headless-production.ps1",
@@ -2626,7 +2626,7 @@
       "path": "tests/test-full-openclash-adh-contract.sh",
       "diff_status_stable_to_main": "A",
       "category": "TEST_ONLY",
-      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+      "resolution": "REWRITTEN_TO_ASSERT_STABLE_PACKAGE_AND_ROOTFS_CONTRACT"
     },
     {
       "path": "tests/test-functional-acceptance.sh",
@@ -2704,7 +2704,7 @@
       "path": "tests/test-openclash-core-lifecycle.py",
       "diff_status_stable_to_main": "A",
       "category": "TEST_ONLY",
-      "resolution": "CURRENT_MAIN_5C999_TESTS_RETAINED"
+      "resolution": "REMOVED_TEST_FOR_EXCLUDED_MAIN_ONLY_STAGE_HELPER"
     },
     {
       "path": "tests/test-openclash-core-version-memory-guard.sh",
@@ -3055,4 +3055,4 @@
       "resolution": "CURRENT_MAIN_5C999_CONTROL_PLANE"
     }
   ]
-}
+}\n

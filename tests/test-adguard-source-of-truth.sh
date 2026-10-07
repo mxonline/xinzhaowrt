@@ -3,91 +3,81 @@ set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mature_sources="$root/production/mature-ui-sources.json"
-build_sources="$root/config/istore-quickstart.lock"
+known_good="$root/config/arthur-known-good.lock"
+source_check="$root/scripts/check-package-sources.sh"
 packages="$root/scripts/add-custom-packages.sh"
-build="$root/scripts/build.sh"
-manifest="$root/production/accepted-preview/arthur-quickstart.json"
-adh_overlay="$root/files/usr/share/AdGuardHome"
+manifest="$root/production/accepted-preview/arthur-adh-quickstart.json"
 python_bin="${PYTHON_BIN:-python3}"
 
-expected_ref="743bb3ad87a7b97fd440d8e334832e25d4f678e0"
-
-"$python_bin" - "$mature_sources" "$expected_ref" <<'PY'
+# Keep the independently pinned preview source intact, while the firmware
+# continues to inherit Stable's official ImmortalWrt LuCI package source.
+expected_preview_ref="743bb3ad87a7b97fd440d8e334832e25d4f678e0"
+"$python_bin" - "$mature_sources" "$expected_preview_ref" <<'PY'
 import json
 import sys
 
 path, expected = sys.argv[1:]
-data = json.load(open(path, encoding='utf-8'))
-matches = [s for s in data.get('sources', []) if s.get('name') == 'adguardhome']
+sources = json.load(open(path, encoding='utf-8')).get('sources', [])
+matches = [source for source in sources if source.get('name') == 'adguardhome']
 if len(matches) != 1:
-    raise SystemExit('FAIL: mature-ui-sources.json must contain exactly one adguardhome source')
+    raise SystemExit('FAIL: preview source manifest must contain exactly one AdGuardHome entry')
 source = matches[0]
 if source.get('repository') != 'https://github.com/kenzok8/openwrt-packages.git':
-    raise SystemExit('FAIL: mature AdGuard repository is not the accepted kenzok8 source')
-if source.get('ref') != expected:
-    raise SystemExit('FAIL: mature AdGuard ref differs from the accepted revision')
-if source.get('subdir') != 'luci-app-adguardhome':
-    raise SystemExit('FAIL: mature AdGuard source subdir is incorrect')
+    raise SystemExit('FAIL: preview AdGuardHome repository changed')
+if source.get('ref') != expected or source.get('subdir') != 'luci-app-adguardhome':
+    raise SystemExit('FAIL: preview AdGuardHome source pin changed')
 PY
 
-grep -Fxq "ADGUARD_MATURE_REF=\"$expected_ref\"" "$build_sources" || {
-  echo 'FAIL: mature AdGuard production build pin must match mature-ui-sources.json.' >&2
+grep -Eq '^LUCI_REF="[0-9a-f]{40}"$' "$known_good" || {
+  echo 'FAIL: Stable firmware LuCI source must remain pinned in the Known-Good lock.' >&2
   exit 1
 }
-! grep -Fq 'ADGUARD_MATURE_REF=' "$root/config/arthur-known-good.lock" || {
-  echo 'FAIL: mature AdGuard feature pin must not mutate the immutable Known-Good lock.' >&2
+grep -Fq 'https://github.com/immortalwrt/luci.git' "$packages" || {
+  echo 'FAIL: Stable firmware source preparation must use official ImmortalWrt LuCI.' >&2
   exit 1
 }
-grep -Fq 'kenzok8-adguardhome' "$packages" || {
-  echo 'FAIL: source preparation must fetch the dedicated pinned mature AdGuard source.' >&2
+grep -Fq '"${LUCI_REF:-master}"' "$packages" || {
+  echo 'FAIL: firmware LuCI source must use the Known-Good locked ref.' >&2
   exit 1
 }
-grep -Fq 'link_pkg luci-app-adguardhome "$ADGUARD_MATURE/luci-app-adguardhome"' "$packages" || {
-  echo 'FAIL: luci-app-adguardhome must be linked from the accepted mature source.' >&2
+grep -Fq 'luci-app-adguardhome luci-app-autoreboot luci-app-firewall' "$packages" || {
+  echo 'FAIL: Stable AdGuardHome LuCI package must remain in the ImmortalWrt application source set.' >&2
   exit 1
 }
-if [[ -d "$adh_overlay" ]] && find "$adh_overlay" -type f -print -quit | grep -q .; then
-  echo 'FAIL: duplicate files/usr/share/AdGuardHome overlay remains; pinned mature package must own these files.' >&2
-  exit 1
-fi
-! grep -Fq 'restore-pinned-adguard-manager.sh' "$build" || {
-  echo 'FAIL: build must not restore a duplicate AdGuard manager overlay.' >&2
+grep -Fq 'for pkg in luci-app-adguardhome luci-app-autoreboot luci-app-firewall' "$source_check" || {
+  echo 'FAIL: package source gate must bind AdGuardHome to the selected official LuCI checkout.' >&2
   exit 1
 }
-
-for legacy in \
-  files/etc/AdGuardHome.yaml \
-  files/etc/config/AdGuardHome \
-  files/etc/init.d/AdGuardHome \
-  files/usr/lib/lua/luci/i18n/adguardhome.zh-cn.lmo \
-  files/usr/lib/lua/luci/controller/AdGuardHome.lua \
-  files/usr/lib/lua/luci/model/cbi/AdGuardHome \
-  files/usr/lib/lua/luci/view/AdGuardHome \
-  files/usr/share/luci/menu.d/luci-app-adguardhome.json \
-  files/usr/share/rpcd/acl.d/luci-app-adguardhome.json \
-  files/www/luci-static/resources/view/luci-app-adguardhome; do
-  if [[ -d "$root/$legacy" ]]; then
-    [[ -z "$(find "$root/$legacy" -type f -print -quit)" ]] || {
-      echo "FAIL: obsolete AdGuard overlay remains: $legacy" >&2
-      exit 1
-    }
-  else
-    [[ ! -e "$root/$legacy" ]] || {
-      echo "FAIL: obsolete AdGuard overlay remains: $legacy" >&2
-      exit 1
-    }
-  fi
+grep -Fq 'assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"' "$source_check" || {
+  echo 'FAIL: package source gate must verify the package symlink against the official LuCI checkout.' >&2
+  exit 1
+}
+! grep -Fq 'ADGUARD_MATURE_REF=' "$root/config/istore-quickstart.lock" || {
+  echo 'FAIL: LinkEase lock must not absorb a separate AdGuard product source pin.' >&2
+  exit 1
+}
+! grep -Fq 'kenzok8-adguardhome' "$packages" || {
+  echo 'FAIL: Stable firmware must not silently switch to a separate AdGuard source.' >&2
+  exit 1
+}
+# Stable owns the existing AdGuard configuration/runtime overlay. Keep it and
+# keep AdGuard out of the accepted QuickStart preview overlay.
+for path in files/etc/AdGuardHome.yaml files/etc/config/AdGuardHome files/etc/init.d/AdGuardHome; do
+  [[ -s "$root/$path" ]] || { echo "FAIL: Stable AdGuard overlay is missing: $path" >&2; exit 1; }
 done
-
 "$python_bin" - "$manifest" <<'PY'
 import json
 import sys
 
 entries = json.load(open(sys.argv[1], encoding='utf-8'))['frozen_files']
-for entry in entries:
-    joined = ' '.join(str(entry.get(key, '')) for key in ('source', 'remote', 'overlay')).lower()
-    if 'adguardhome' in joined:
-        raise SystemExit('FAIL: accepted overlay still materializes an AdGuard manager file')
+adguard_entries = [entry for entry in entries if 'adguardhome' in str(entry.get('source', '')).lower()]
+if not adguard_entries:
+    raise SystemExit('FAIL: Stable accepted preview lost its frozen AdGuard UI payload')
+for entry in adguard_entries:
+    if not str(entry.get('source', '')).startswith('sources/live-preview-mature/adguardhome/'):
+        raise SystemExit('FAIL: accepted AdGuard preview payload does not use the recorded source tree')
+    if not str(entry.get('overlay', '')).startswith('files/'):
+        raise SystemExit('FAIL: accepted AdGuard preview payload is not bound to the firmware overlay')
 PY
 
 echo 'ADGUARD_SOURCE_OF_TRUTH=PASS'

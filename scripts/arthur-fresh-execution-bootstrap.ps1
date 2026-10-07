@@ -155,8 +155,13 @@ function Invoke-ArthurFreshExecutionBootstrap {
 
     $frozen = @($intent.firmware_state.verified_frozen | ForEach-Object { ([string]$_).Trim().ToUpperInvariant() })
     $gateMap = [ordered]@{}
+    $reconciledLegacyTerminal = [string](Get-ArthurStateMember $previous 'migration_basis') -eq 'SCHEMA1_TERMINAL_IDENTITY_MATCHED_TO_STATUS_AND_PRODUCT_GOAL_VERIFICATION'
     foreach ($gateId in @('WIFI','LUCI_CHINESE','QUICKSTART')) {
         if ($frozen -contains $gateId) {
+            if ($reconciledLegacyTerminal -and $null -eq (Get-ArthurBootstrapGate -Resume $previous -GateId $gateId)) {
+                # Historical text cannot be promoted to a canonical PASS gate.
+                continue
+            }
             $gateMap[$gateId] = New-ArthurBootstrapInheritedGate -PreviousResume $previous -GateId $gateId -PreviousExecutionId $previousExecutionId
         }
     }
@@ -214,10 +219,10 @@ function Invoke-ArthurFreshExecutionBootstrap {
         }
         verified = [pscustomobject][ordered]@{
             real_device_baseline = 'ROLLBACK_AUTHORITY_PRESERVED'
-            wifi = $(if ($frozen -contains 'WIFI') { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
-            luci_chinese = $(if ($frozen -contains 'LUCI_CHINESE') { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
+            wifi = $(if ($gateMap.Contains('WIFI') -or ($reconciledLegacyTerminal -and [string](Get-ArthurStateMember (Get-ArthurStateMember $previous 'verified') 'wifi') -eq 'VERIFIED_FROZEN')) { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
+            luci_chinese = $(if ($gateMap.Contains('LUCI_CHINESE')) { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
             adguard_full_manager = 'REVERIFY_REQUIRED'
-            quickstart = $(if ($frozen -contains 'QUICKSTART') { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
+            quickstart = $(if ($gateMap.Contains('QUICKSTART')) { 'VERIFIED_FROZEN' } else { 'REVERIFY_REQUIRED' })
         }
         pending = @('CHANGE_IMPACT')
         conflicts = @()

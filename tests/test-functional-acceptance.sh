@@ -27,16 +27,21 @@ resume_path, baseline_path, source_path = sys.argv[1:]
 state = json.load(open(resume_path, encoding='utf-8'))
 if state.get('verified', {}).get('wifi') != 'VERIFIED_FROZEN':
     raise SystemExit('current production resume state does not preserve VERIFIED_FROZEN Wi-Fi evidence')
+if 'WIFI' in state.get('gates', {}):
+    raise SystemExit('schema-1 historical state must not fabricate a canonical WIFI gate')
 baseline = json.load(open(baseline_path, encoding='utf-8'))
 if baseline.get('status') != 'VERIFIED_FROZEN':
     raise SystemExit('Wi-Fi frozen baseline status is not VERIFIED_FROZEN')
-if baseline.get('source_path') != 'files/etc/uci-defaults/99-xinzhao-defaults':
-    raise SystemExit('Wi-Fi frozen baseline is not bound to the current authoritative first-boot source')
+if baseline.get('source_path') != 'files/etc/uci-defaults/98-xinzhao-wifi-defaults':
+    raise SystemExit('Wi-Fi frozen baseline is not bound to the Stable Wi-Fi first-boot source')
 actual = subprocess.check_output(['git', 'hash-object', baseline['source_path']], text=True).strip()
 if actual != baseline.get('source_git_blob_sha'):
     raise SystemExit('Wi-Fi frozen baseline source hash does not match current authoritative source')
-if baseline.get('evidence_source') != 'production/resume-state.json#verified.wifi':
-    raise SystemExit('Wi-Fi frozen baseline does not identify its inherited production evidence')
+policy = baseline.get('policy', {})
+if policy.get('runtime_revalidation_required_for_prebuild') is not False or policy.get('runtime_mutation_forbidden') is not True or policy.get('wifi_reload_forbidden') is not True:
+    raise SystemExit('Wi-Fi frozen baseline must remain read-only and non-mutating')
+if 'Previously accepted Arthur real-device Wi-Fi verification' not in baseline.get('evidence', ''):
+    raise SystemExit('Wi-Fi frozen baseline does not identify the accepted device evidence it inherits')
 PY
 
 grep -Fq 'ensure-arthur-unattended-access.ps1' "$verify" || fail 'real-device verification must recover unattended SSH access'

@@ -157,6 +157,33 @@ try {
 }
 finally { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
 
+$temp = New-TestRoot -Name 'reconciled-legacy-terminal'
+try {
+    $legacyTerminal = Copy-JsonObject $terminalResume
+    $legacyTerminal.gates = [pscustomobject]@{}
+    $legacyTerminal | Add-Member -NotePropertyName verified -NotePropertyValue ([pscustomobject]@{ wifi='VERIFIED_FROZEN'; luci_chinese='REVERIFY_REQUIRED'; adguard_full_manager='REVERIFY_REQUIRED'; quickstart='REVERIFY_REQUIRED' }) -Force
+    $legacyTerminal | Add-Member -NotePropertyName migration_basis -NotePropertyValue 'SCHEMA1_TERMINAL_IDENTITY_MATCHED_TO_STATUS_AND_PRODUCT_GOAL_VERIFICATION'
+    Write-JsonFile (Join-Path $temp 'production\operator-intent.json') $intent
+    Write-JsonFile (Join-Path $temp 'production\release-mode.json') $policy
+    Write-JsonFile (Join-Path $temp 'production\resume-state.json') $legacyTerminal
+    [IO.File]::WriteAllText((Join-Path $temp 'production\firmware-events.jsonl'),'',[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $temp 'production\known-good.json'),'{}' + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $temp 'VERSION'),'0.1.5' + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+    $legacyResult = Invoke-ArthurFreshExecutionBootstrap -Root $temp -RepositoryHead $repoHead -RemoteMainHead $repoHead -SourceAncestorConfirmed $true -Apply:$false
+    Assert-Equal $legacyResult.action 'BOOTSTRAP_REQUIRED' 'reconciled historical terminal may start a fresh release execution'
+    Assert-True ($null -eq $legacyResult.resume_state.gates.PSObject.Properties['WIFI']) 'legacy text must not fabricate WIFI gate PASS'
+    Assert-True ($null -eq $legacyResult.resume_state.gates.PSObject.Properties['LUCI_CHINESE']) 'legacy text must not fabricate LuCI gate PASS'
+    Assert-True ($null -eq $legacyResult.resume_state.gates.PSObject.Properties['QUICKSTART']) 'legacy text must not fabricate QuickStart gate PASS'
+    Assert-Equal $legacyResult.resume_state.verified.wifi 'VERIFIED_FROZEN' 'reconciled frozen Wi-Fi marker must survive bootstrap'
+    Assert-Equal $legacyResult.resume_state.verified.luci_chinese 'REVERIFY_REQUIRED' 'legacy LuCI needs baseline re-verification'
+    Assert-Equal $legacyResult.resume_state.verified.quickstart 'REVERIFY_REQUIRED' 'legacy QuickStart needs live re-verification'
+
+    $legacyTerminal.gates = [pscustomobject]@{ WIFI = [pscustomobject]@{ status = 'FAIL' } }
+    Write-JsonFile (Join-Path $temp 'production\resume-state.json') $legacyTerminal
+    Assert-ThrowsLike { Invoke-ArthurFreshExecutionBootstrap -Root $temp -RepositoryHead $repoHead -RemoteMainHead $repoHead -SourceAncestorConfirmed $true -Apply:$false } 'FROZEN_GATE_NOT_PASS=WIFI' 'recorded failed gate cannot be treated as missing legacy evidence'
+}
+finally { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
+
 $temp = New-TestRoot -Name 'unauthorized'
 try {
     $unauthorized = Copy-JsonObject $intent

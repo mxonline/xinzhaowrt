@@ -10,8 +10,10 @@ grep -Fq 'link_pkg luci-app-quickstart "$ISTOREOS_LUCI/luci/luci-app-quickstart"
   echo 'FAIL: QuickStart linker no longer uses the accepted iStoreOS LuCI source.' >&2
   exit 1
 }
-grep -Fq 'link_pkg luci-app-adguardhome "$ADGUARD_MATURE/luci-app-adguardhome"' "$LINKER" || {
-  echo 'FAIL: AdGuard linker no longer uses the accepted mature Kenzok8 source.' >&2
+grep -Fq 'for pkg in \' "$LINKER" && \
+grep -Fq 'luci-app-adguardhome luci-app-autoreboot luci-app-firewall' "$LINKER" && \
+grep -Fq 'link_pkg "$pkg" "$IMMORTAL_LUCI/applications/$pkg"' "$LINKER" || {
+  echo 'FAIL: Stable AdGuard linker no longer uses the locked official ImmortalWrt LuCI source.' >&2
   exit 1
 }
 
@@ -19,16 +21,16 @@ grep -Fq 'ISTOREOS_LUCI_SOURCE="$SRC/.xinzhao-sources/istoreos-luci"' "$CHECKER"
   echo 'FAIL: provenance checker does not declare the accepted iStoreOS LuCI source.' >&2
   exit 1
 }
-grep -Fq 'ADGUARD_MATURE_SOURCE="$SRC/.xinzhao-sources/kenzok8-adguardhome"' "$CHECKER" || {
-  echo 'FAIL: provenance checker does not declare the accepted mature AdGuard source.' >&2
+grep -Fq 'IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"' "$CHECKER" || {
+  echo 'FAIL: provenance checker does not declare Stable official ImmortalWrt LuCI source.' >&2
   exit 1
 }
 grep -Fq 'assert_source luci-app-quickstart "$ISTOREOS_LUCI_SOURCE/luci/luci-app-quickstart"' "$CHECKER" || {
   echo 'FAIL: QuickStart provenance assertion is not aligned with the linker.' >&2
   exit 1
 }
-grep -Fq 'assert_source luci-app-adguardhome "$ADGUARD_MATURE_SOURCE/luci-app-adguardhome"' "$CHECKER" || {
-  echo 'FAIL: AdGuard provenance assertion is not aligned with the linker.' >&2
+grep -Fq 'assert_source "$pkg" "$IMMORTAL_LUCI_SOURCE/applications/$pkg"' "$CHECKER" || {
+  echo 'FAIL: AdGuard provenance assertion is not aligned with Stable package linker.' >&2
   exit 1
 }
 
@@ -36,9 +38,4 @@ if grep -Fq 'assert_source luci-app-quickstart "$KENZO_SOURCE/luci-app-quickstar
   echo 'FAIL: obsolete QuickStart Kenzok8 provenance assertion remains.' >&2
   exit 1
 fi
-if grep -Fq 'assert_source luci-app-adguardhome "$IMMORTAL_LUCI_SOURCE/applications/luci-app-adguardhome"' "$CHECKER"; then
-  echo 'FAIL: obsolete AdGuard ImmortalWrt provenance assertion remains.' >&2
-  exit 1
-fi
-
 echo 'PACKAGE_SOURCE_PROVENANCE_CONTRACT=PASS'

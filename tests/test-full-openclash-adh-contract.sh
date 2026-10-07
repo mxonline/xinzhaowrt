@@ -5,68 +5,64 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="$ROOT/config/arthur.config"
 BUILD="$ROOT/scripts/build.sh"
 TARGETS="$ROOT/production/ARTHUR_PRODUCT_TARGETS.md"
-CORE_LOCK="$ROOT/config/openclash-core.lock"
-CORE_STAGE="$ROOT/scripts/stage-openclash-core.sh"
-CORE_LIFECYCLE="$ROOT/tests/test-openclash-core-lifecycle.py"
-ROOTFS_VERIFY="$ROOT/scripts/verify-firmware-openclash-adh.sh"
-PREFLIGHT="$ROOT/.github/workflows/arthur-fast-preflight.yml"
-BUILD_WORKFLOW="$ROOT/.github/workflows/build.yml"
+META_LOCK="$ROOT/config/openclash-core.lock.json"
+SMART_LOCK="$ROOT/config/openclash-smart-core.lock.json"
+CORE_BUNDLE_TEST="$ROOT/tests/test-openclash-core-bundle.py"
+ROOTFS_VERIFY_CORE="$ROOT/scripts/verify-final-rootfs-openclash-core.py"
+ROOTFS_VERIFY_ADH="$ROOT/scripts/verify-final-rootfs-adh-manager.py"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-# AdGuardHome must be a complete offline-capable product, not a LuCI shell that
-# downloads its daemon on first use.
-grep -Fxq 'CONFIG_PACKAGE_luci-app-adguardhome=y' "$CONFIG" || fail 'AdGuardHome LuCI manager must remain selected'
-grep -Fxq 'CONFIG_PACKAGE_luci-app-adguardhome_INCLUDE_binary=y' "$CONFIG" || fail 'AdGuardHome binary must be bundled with the mature LuCI manager'
+# Retain Stable's shipped AdGuard manager and its firmware-owned OpenClash Core.
+for package in luci-app-adguardhome luci-app-adguardhome-manager openclash-core; do
+  grep -Fxq "CONFIG_PACKAGE_${package}=y" "$CONFIG" || fail "$package must remain enabled in the Stable Arthur configuration"
+done
 
-# OpenClash must ship a pinned Meta/Mihomo core for Arthur arm64 so first start
-# cannot depend on a live GitHub/core download.
-[[ -f "$CORE_LOCK" ]] || fail 'OpenClash core lock is missing'
-# shellcheck disable=SC1090
-source "$CORE_LOCK"
-[[ "${OPENCLASH_CORE_REPO:-}" == 'https://github.com/vernesong/OpenClash.git' ]] || fail 'OpenClash core must come from the official OpenClash repository'
-[[ "${OPENCLASH_CORE_REF:-}" =~ ^[0-9a-f]{40}$ ]] || fail 'OpenClash core ref must be an immutable commit SHA'
-[[ "${OPENCLASH_CORE_BRANCH:-}" == 'master' ]] || fail 'OpenClash core must use the stable master branch assets'
-[[ "${OPENCLASH_CORE_FLAVOR:-}" == 'meta' ]] || fail 'Arthur must bundle the Meta/Mihomo core'
-[[ "${OPENCLASH_CORE_ARCH:-}" == 'linux-arm64' ]] || fail 'Arthur OpenClash core architecture must be linux-arm64'
-[[ "${OPENCLASH_CORE_GIT_BLOB_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || fail 'OpenClash core blob identity must be pinned'
-[[ "${OPENCLASH_CORE_INSTALL_PATH:-}" == '/etc/openclash/core/clash_meta' ]] || fail 'OpenClash core install path must match the official OpenClash runtime path'
+# The exact Stable core implementation is pinned in two official AArch64 locks.
+[[ -f "$META_LOCK" && -f "$SMART_LOCK" ]] || fail 'Stable OpenClash Meta/Smart Core locks are missing'
+"$PYTHON_BIN" - "$META_LOCK" "$SMART_LOCK" <<'PY'
+import json
+import re
+import sys
 
-[[ -f "$CORE_STAGE" ]] || fail 'OpenClash core staging helper is missing'
-[[ -f "$CORE_LIFECYCLE" ]] || fail 'OpenClash core lifecycle contract is missing'
-[[ -f "$ROOTFS_VERIFY" ]] || fail 'final firmware OpenClash/AdGuardHome rootfs verifier is missing'
-[[ -f "$BUILD_WORKFLOW" ]] || fail 'FULL_BUILD workflow is missing'
-grep -Fq 'run: bash ./scripts/codex-setup.sh' "$BUILD_WORKFLOW" || fail 'FULL_BUILD workflow must invoke dependency setup through bash'
-grep -Fq 'stage-openclash-core.sh' "$BUILD" || fail 'build must stage the pinned OpenClash core before firmware compilation'
-grep -Fq 'verify-firmware-openclash-adh.sh' "$BUILD" || fail 'build must verify complete OpenClash and AdGuardHome in the final firmware rootfs'
-CORE_PYTHON="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
-[[ -n "$CORE_PYTHON" ]] || fail 'OpenClash core lifecycle contract requires Python'
-"$CORE_PYTHON" "$CORE_LIFECYCLE" || fail 'OpenClash core lifecycle contract failed'
+meta, smart = (json.load(open(path, encoding="utf-8")) for path in sys.argv[1:])
+for kind, lock in (("Meta", meta), ("Smart", smart)):
+    if lock.get("source_repository") != "vernesong/OpenClash":
+        raise SystemExit(f"FAIL: {kind} core must use the official OpenClash source")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(lock.get("source_ref", ""))):
+        raise SystemExit(f"FAIL: {kind} core source ref must be immutable")
+    if lock.get("core_type") != kind or lock.get("asset_path") != f"master/{kind.lower()}/clash-linux-arm64.tar.gz":
+        raise SystemExit(f"FAIL: {kind} core lock does not select its official AArch64 asset")
+    if lock.get("install_path") != f"/etc/openclash/core/clash_{kind.lower()}":
+        raise SystemExit(f"FAIL: {kind} core install path changed")
+    if lock.get("elf_class") != 64 or lock.get("elf_machine") != 183:
+        raise SystemExit(f"FAIL: {kind} core lock is not AArch64")
+if meta.get("source_ref") != smart.get("source_ref"):
+    raise SystemExit("FAIL: Meta and Smart cores must use one locked OpenClash commit")
+PY
 
-# The final-rootfs verifier runs as an unprivileged GitHub Actions user. It must
-# never unpack the whole SquashFS tree because /dev/console and other device
-# nodes require root privileges. Inspect only the required regular files and
-# their metadata with unsquashfs -cat/-ll.
-if grep -Eq '"?\$UNSQUASHFS"?[[:space:]]+-d[[:space:]]' "$ROOTFS_VERIFY"; then
-  fail 'final rootfs verifier must not fully extract SquashFS as an unprivileged runner'
-fi
-grep -Fq '"$UNSQUASHFS" -cat "$tmp/root.squashfs"' "$ROOTFS_VERIFY" || fail 'rootfs verifier must inspect required files with unsquashfs -cat'
-grep -Fq '"$UNSQUASHFS" -ll "$tmp/root.squashfs"' "$ROOTFS_VERIFY" || fail 'rootfs verifier must inspect executable metadata with unsquashfs -ll'
+[[ -f "$CORE_BUNDLE_TEST" ]] || fail 'Stable OpenClash Core bundle regression test is missing'
+"$PYTHON_BIN" "$CORE_BUNDLE_TEST" || fail 'Stable OpenClash Core bundle regression test failed'
+[[ -f "$ROOTFS_VERIFY_CORE" && -f "$ROOTFS_VERIFY_ADH" ]] || fail 'final firmware OpenClash/AdGuardHome rootfs verifiers are missing'
+grep -Fq 'fetch-openclash-core.sh' "$BUILD" || fail 'build must stage Stable locked OpenClash Cores before firmware compilation'
+grep -Fq 'verify-final-rootfs-openclash-core.py' "$BUILD" || fail 'build must verify OpenClash cores in the final firmware rootfs'
+grep -Fq 'verify-final-rootfs-adh-manager.py' "$BUILD" || fail 'build must verify the AdGuardHome manager in the final firmware rootfs'
 
-# A repair that changes firmware composition is classified FULL_BUILD. Its PR
-# must execute the exact source/feed/package/defconfig closure automatically;
-# static tests alone are not sufficient evidence for a firmware repair.
-grep -Fq 'outputs:' "$PREFLIGHT" || fail 'preflight job must publish its resolved build scope'
-grep -Fq 'scope: ${{ steps.changes.outputs.scope }}' "$PREFLIGHT" || fail 'preflight job must expose the resolved build scope to build-closure'
-grep -Fq "needs.preflight.outputs.scope == 'FULL_BUILD'" "$PREFLIGHT" || fail 'FULL_BUILD pull requests must automatically run build closure'
-grep -Fq "needs.preflight.outputs.scope == 'SDK_BUILD'" "$PREFLIGHT" || fail 'SDK_BUILD pull requests must automatically run build closure'
-grep -Fq "CLOSURE_MODE=\"rebuild_known_good\"" "$PREFLIGHT" || fail 'PR build closure must use a deterministic rebuild_known_good lock mode'
+grep -Fq 'OPENCLASH_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete OpenClash usability'
+grep -Fq 'ADGUARDHOME_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete AdGuardHome usability'
+grep -Fq 'OPENCLASH_ADH_COEXISTENCE=PASS' "$TARGETS" || fail 'product target must require OpenClash + AdGuardHome coexistence'
 
-grep -Fq 'OPENCLASH_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete OpenClash usability as the acceptance endpoint'
-grep -Fq 'ADGUARDHOME_FULLY_USABLE=PASS' "$TARGETS" || fail 'product target must define complete AdGuardHome usability as the acceptance endpoint'
-grep -Fq 'OPENCLASH_ADH_COEXISTENCE=PASS' "$TARGETS" || fail 'product target must require OpenClash + AdGuardHome coexistence after release'
+# These current-main helpers were not part of the real-device-confirmed Stable
+# product source and are not called by the Stable build. Keep them out of v0.1.6.
+for unproven in \
+  scripts/patch-adguardhome-coexistence.py \
+  scripts/patch-openclash-core-lifecycle.py \
+  scripts/stage-openclash-core.sh; do
+  [[ ! -e "$ROOT/$unproven" ]] || fail "unproven current-main product helper remains: $unproven"
+done
 
 echo 'FULL_OPENCLASH_ADH_CONTRACT=PASS'

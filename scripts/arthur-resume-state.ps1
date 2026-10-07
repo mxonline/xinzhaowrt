@@ -155,6 +155,134 @@ function Get-ArthurResumeSemanticHash {
     finally { $sha.Dispose() }
 }
 
+function Convert-ArthurLegacyTerminalResumeState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][object]$Legacy,
+        [Parameter(Mandatory=$true)][object]$Status,
+        [Parameter(Mandatory=$true)][object]$ProductGoalVerification,
+        [Parameter(Mandatory=$true)][object]$KnownGood,
+        [Parameter(Mandatory=$true)][object]$WifiBaseline,
+        [Parameter(Mandatory=$true)][string]$RepositoryRoot,
+        [Parameter(Mandatory=$true)][string]$RepositoryHead
+    )
+
+    if ([int](Get-ArthurResumeMember $Legacy 'schema_version') -ne 1 -or
+        [string](Get-ArthurResumeMember $Legacy 'status') -ne 'PRODUCTION_RELEASED' -or
+        [string](Get-ArthurResumeMember $Legacy 'NEXT_ACTION') -ne 'NONE') {
+        throw 'ARTHUR_LEGACY_TERMINAL_SNAPSHOT_INVALID'
+    }
+    if ($RepositoryHead -notmatch '^[0-9a-fA-F]{40}$') { throw 'ARTHUR_LEGACY_TERMINAL_REPOSITORY_HEAD_INVALID' }
+    $wifiPolicy = Get-ArthurResumeMember $WifiBaseline 'policy'
+    $wifiSourceRelative = [string](Get-ArthurResumeMember $WifiBaseline 'source_path')
+    $wifiSourceBlob = [string](Get-ArthurResumeMember $WifiBaseline 'source_git_blob_sha')
+    if ([string](Get-ArthurResumeMember $WifiBaseline 'status') -ne 'VERIFIED_FROZEN' -or
+        $wifiSourceRelative -ne 'files/etc/uci-defaults/98-xinzhao-wifi-defaults' -or
+        $wifiSourceBlob -notmatch '^[0-9a-fA-F]{40}$' -or
+        (Get-ArthurResumeMember $wifiPolicy 'runtime_revalidation_required_for_prebuild') -ne $false -or
+        (Get-ArthurResumeMember $wifiPolicy 'runtime_mutation_forbidden') -ne $true -or
+        (Get-ArthurResumeMember $wifiPolicy 'wifi_reload_forbidden') -ne $true) {
+        throw 'ARTHUR_LEGACY_TERMINAL_WIFI_BASELINE_INVALID'
+    }
+    $wifiSourcePath = Join-Path $RepositoryRoot ($wifiSourceRelative -replace '/', [IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $wifiSourcePath -PathType Leaf)) { throw 'ARTHUR_LEGACY_TERMINAL_WIFI_SOURCE_MISSING' }
+    $actualWifiSourceBlob = (& git -C $RepositoryRoot hash-object -- $wifiSourceRelative 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $actualWifiSourceBlob -ne $wifiSourceBlob) { throw 'ARTHUR_LEGACY_TERMINAL_WIFI_SOURCE_HASH_MISMATCH' }
+    $legacySource = Get-ArthurResumeMember $Legacy 'source'
+    $legacyArtifact = Get-ArthurResumeMember $Legacy 'artifact'
+    $legacyDevice = Get-ArthurResumeMember $Legacy 'device'
+    $sourceSha = [string](Get-ArthurResumeMember $legacySource 'source_sha')
+    $runId = [string](Get-ArthurResumeMember $legacySource 'build_run_id')
+    $artifactId = [string](Get-ArthurResumeMember $legacySource 'artifact_id')
+    $stableTag = [string](Get-ArthurResumeMember $legacySource 'stable_tag')
+    $firmwareSha = [string](Get-ArthurResumeMember $legacyArtifact 'sysupgrade_sha256')
+    $firmware = [string](Get-ArthurResumeMember $legacyArtifact 'sysupgrade')
+    $goalDevice = Get-ArthurResumeMember $ProductGoalVerification 'device'
+    $goalFactorySha = [string](Get-ArthurResumeMember $ProductGoalVerification 'factory_sha256')
+    $legacyFactorySha = [string](Get-ArthurResumeMember $legacyArtifact 'factory_sha256')
+    $knownGoodSource = [string](Get-ArthurResumeMember $KnownGood 'source_commit')
+    $knownGoodSha = [string](Get-ArthurResumeMember $KnownGood 'sha256')
+    if ([string](Get-ArthurResumeMember $Status 'status') -ne 'PRODUCTION_RELEASED' -or
+        (Get-ArthurResumeMember $Status 'known_good') -ne $true -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'status') -ne 'PRODUCT_GOAL_VERIFIED' -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'release_status') -ne 'PRODUCTION_RELEASED' -or
+        (Get-ArthurResumeMember $KnownGood 'verified') -ne $true -or
+        [string](Get-ArthurResumeMember $KnownGood 'status') -ne 'verified' -or
+        $sourceSha -notmatch '^[0-9a-fA-F]{40}$' -or
+        $firmwareSha -notmatch '^[0-9a-fA-F]{64}$' -or
+        $legacyFactorySha -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string](Get-ArthurResumeMember $Status 'device') -ne 'jdcloud_re-ss-01' -or
+        [string](Get-ArthurResumeMember $KnownGood 'device') -ne 'jdcloud_re-ss-01' -or
+        [string](Get-ArthurResumeMember $KnownGood 'target') -ne 'qualcommax' -or
+        [string](Get-ArthurResumeMember $KnownGood 'subtarget') -ne 'ipq60xx' -or
+        $knownGoodSource -notmatch '^[0-9a-fA-F]{40}$' -or
+        $knownGoodSha -notmatch '^[0-9a-fA-F]{64}$' -or
+        [string](Get-ArthurResumeMember $goalDevice 'target') -ne 'jdcloud_re-ss-01' -or
+        [string](Get-ArthurResumeMember $goalDevice 'model') -ne [string](Get-ArthurResumeMember $legacyDevice 'model') -or
+        [string](Get-ArthurResumeMember $goalDevice 'lan_mac') -ne [string](Get-ArthurResumeMember $legacyDevice 'lan_mac') -or
+        [string](Get-ArthurResumeMember $Status 'source_commit') -ne $sourceSha -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'source_commit') -ne $sourceSha -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'stable_tag') -ne $stableTag -or
+        [string](Get-ArthurResumeMember $Status 'stable_tag') -ne $stableTag -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'sysupgrade_sha256') -ne $firmwareSha -or
+        [string](Get-ArthurResumeMember $Status 'sysupgrade_sha256') -ne $firmwareSha -or
+        [string](Get-ArthurResumeMember $ProductGoalVerification 'firmware') -ne $firmware -or
+        [string](Get-ArthurResumeMember $Status 'firmware') -ne $firmware -or
+        $runId -ne [string](Get-ArthurResumeMember $ProductGoalVerification 'build_run_id') -or
+        $runId -ne [string](Get-ArthurResumeMember $Status 'run_id') -or
+        $artifactId -ne [string](Get-ArthurResumeMember $ProductGoalVerification 'actions_artifact_id') -or
+        $artifactId -ne [string](Get-ArthurResumeMember $Status 'artifact_id') -or
+        $goalFactorySha -ne $legacyFactorySha -or
+        [string](Get-ArthurResumeMember $Status 'factory_sha256') -ne $legacyFactorySha -or
+        [string](Get-ArthurResumeMember $legacyDevice 'version') -ne '0.1.5' -or
+        [string](Get-ArthurResumeMember $legacyDevice 'build_id') -ne $runId -or
+        [string](Get-ArthurResumeMember $Status 'version') -ne 'v0.1.5' -or
+        [string](Get-ArthurResumeMember $legacyDevice 'target') -ne 'jdcloud_re-ss-01') {
+        throw 'ARTHUR_LEGACY_TERMINAL_STABLE_IDENTITY_CONFLICT'
+    }
+
+    $device = $legacyDevice | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+    $state = [ordered]@{
+        schema_version = 2
+        execution_id = [string](Get-ArthurResumeMember $Legacy 'execution_id')
+        status = 'PRODUCTION_RELEASED'
+        instruction_allowed = $false
+        release = 'v0.1.5'
+        source = [ordered]@{
+            repository_head = $RepositoryHead.ToLowerInvariant()
+            accepted_source_sha = $sourceSha
+            accepted_release = 'v0.1.5'
+            accepted_firmware = $firmware
+            accepted_firmware_sha256 = $firmwareSha
+            accepted_factory_sha256 = [string](Get-ArthurResumeMember $legacyArtifact 'factory_sha256')
+        }
+        production = [ordered]@{
+            github_run_id = [long]$runId
+            artifact_id = [long]$artifactId
+            release_id = [long](Get-ArthurResumeMember $Status 'release_id')
+            release = $stableTag
+            release_url = [string](Get-ArthurResumeMember $Status 'release_url')
+            firmware = $firmware
+            candidate_sha256 = $firmwareSha
+            factory_sha256 = [string](Get-ArthurResumeMember $legacyArtifact 'factory_sha256')
+        }
+        device = $device
+        gates = [pscustomobject]@{}
+        current_gate = 'PRODUCTION_RELEASED'
+        next_action = 'NONE'
+        repository_head = $RepositoryHead.ToLowerInvariant()
+        real_device = $device
+        checkpoint = [ordered]@{ current='PRODUCTION_RELEASED'; next_action='NONE'; turn_count=0 }
+        verified = [ordered]@{ real_device_baseline='HISTORICAL_STABLE_IDENTITY_MATCHED'; wifi='VERIFIED_FROZEN'; luci_chinese='REVERIFY_REQUIRED'; adguard_full_manager='REVERIFY_REQUIRED'; quickstart='REVERIFY_REQUIRED' }
+        pending = @()
+        conflicts = @()
+        legacy_gate_summary = Get-ArthurResumeMember $Legacy 'gates'
+        migration_basis = 'SCHEMA1_TERMINAL_IDENTITY_MATCHED_TO_STATUS_AND_PRODUCT_GOAL_VERIFICATION'
+    }
+    $state['semantic_sha256'] = Get-ArthurResumeSemanticHash -State $state
+    return [pscustomobject]$state
+}
+
 function Resolve-ArthurMigrationExecutionId {
     param(
         [string]$ExplicitExecutionId,

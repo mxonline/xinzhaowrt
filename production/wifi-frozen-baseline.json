@@ -2,15 +2,13 @@
   "schema_version": 1,
   "device": "jdcloud_re-ss-01",
   "status": "VERIFIED_FROZEN",
-  "source_path": "files/etc/uci-defaults/99-xinzhao-defaults",
-  "source_git_blob_sha": "a6bea12bdc56a44c92c46f0ce0c3fd602cf3b845",
-  "evidence_source": "production/resume-state.json#verified.wifi",
-  "evidence": "Inherited from the current production resume state where Arthur Wi-Fi is VERIFIED_FROZEN. The authoritative first-boot source file changed only in the separately authorized and live-verified LAN CIDR block (192.168.6.1 -> 192.168.6.1/24); the Wi-Fi defaults block itself is unchanged. Static verification now pins the updated whole-file blob while runtime Wi-Fi remains frozen and is rechecked read-only after flash.",
+  "source_path": "files/etc/uci-defaults/98-xinzhao-wifi-defaults",
+  "source_git_blob_sha": "4358685989bf9f0207fb6717dc63dd89a295f27e",
+  "evidence": "Previously accepted Arthur real-device Wi-Fi verification; current feature work inherits this result.",
   "policy": {
     "runtime_revalidation_required_for_prebuild": false,
     "runtime_mutation_forbidden": true,
     "wifi_reload_forbidden": true,
-    "postflash_readonly_verification_required": true,
     "source_change_requires_explicit_user_authorization": true
   }
 }

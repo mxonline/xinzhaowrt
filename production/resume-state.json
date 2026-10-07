@@ -1,15 +1,26 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "execution_id": "arthur-v015-software-source-repair-36764137044",
   "status": "PRODUCTION_RELEASED",
-  "updated_at": "2026-10-01T14:21:20Z",
+  "instruction_allowed": false,
+  "release": "v0.1.5",
   "source": {
-    "repository": "mxonline/xinzhaowrt",
-    "source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
-    "stable_tag": "arthur-production-36764137044",
-    "candidate_tag": "arthur-update-36764137044",
-    "artifact_id": "11126027620",
-    "build_run_id": "36764137044"
+    "repository_head": "5c9994a85f135ccead992896ae8486d215ee88b0",
+    "accepted_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+    "accepted_release": "v0.1.5",
+    "accepted_firmware": "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
+    "accepted_firmware_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664",
+    "accepted_factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9"
+  },
+  "production": {
+    "github_run_id": 36764137044,
+    "artifact_id": 11126027620,
+    "release_id": 400927118,
+    "release": "arthur-production-36764137044",
+    "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36764137044",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
+    "candidate_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664",
+    "factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9"
   },
   "device": {
     "version": "0.1.5",
@@ -20,7 +31,34 @@
     "model": "JDCloud RE-SS-01",
     "lan_mac": "dc:d8:7c:45:91:99"
   },
-  "gates": {
+  "gates": {},
+  "current_gate": "PRODUCTION_RELEASED",
+  "next_action": "NONE",
+  "repository_head": "5c9994a85f135ccead992896ae8486d215ee88b0",
+  "real_device": {
+    "version": "0.1.5",
+    "build_id": "36764137044",
+    "identity": "PASS",
+    "exact_artifact_match": "PASS",
+    "target": "jdcloud_re-ss-01",
+    "model": "JDCloud RE-SS-01",
+    "lan_mac": "dc:d8:7c:45:91:99"
+  },
+  "checkpoint": {
+    "current": "PRODUCTION_RELEASED",
+    "next_action": "NONE",
+    "turn_count": 0
+  },
+  "verified": {
+    "real_device_baseline": "HISTORICAL_STABLE_IDENTITY_MATCHED",
+    "wifi": "VERIFIED_FROZEN",
+    "luci_chinese": "REVERIFY_REQUIRED",
+    "adguard_full_manager": "REVERIFY_REQUIRED",
+    "quickstart": "REVERIFY_REQUIRED"
+  },
+  "pending": [],
+  "conflicts": [],
+  "legacy_gate_summary": {
     "POSTFLASH_LUCI_PACKAGE_MANAGER": "PASS",
     "DEVICE_EXACT_ARTIFACT_MATCH": "PASS",
     "LIVE_LUCI_PACKAGE_MANAGER": "PASS",
@@ -37,18 +75,6 @@
     "ROOT_PASSWORD_SEMANTIC_GATE": "PASS",
     "POSTFLASH_APK_UPDATE": "PASS"
   },
-  "artifact": {
-    "stable_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-production-36764137044",
-    "factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9",
-    "candidate_release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/arthur-update-36764137044",
-    "sysupgrade": "XinZhaoWrt-Arthur-v0.1.5-20260930-sysupgrade.bin",
-    "factory": "XinZhaoWrt-Arthur-v0.1.5-20260930-factory.bin",
-    "sysupgrade_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664"
-  },
-  "rollback": {
-    "sysupgrade_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
-    "stable_tag": "arthur-production-36348777394",
-    "local_copy": "output/real-device/rollback-36348777394/XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin"
-  },
-  "NEXT_ACTION": "NONE"
+  "migration_basis": "SCHEMA1_TERMINAL_IDENTITY_MATCHED_TO_STATUS_AND_PRODUCT_GOAL_VERIFICATION",
+  "semantic_sha256": "05faeaf1e8549f5a0ceae1c370c084522bc5fe12558586893087f1b48323b2b5"
 }

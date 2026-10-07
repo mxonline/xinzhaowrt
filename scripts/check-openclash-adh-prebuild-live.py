@@ -49,6 +49,7 @@ VALIDATION_ONLY_APK_FIXES = {
 POST_VALIDATION_ALLOWLIST = {
     EVIDENCE_PATH,
     PACKAGE_CLOSURE_EVIDENCE_PATH,
+    "production/operator-intent.json",
     "scripts/check-openclash-adh-prebuild-live.py",
     OPENCLASH_CORE_BUNDLE_TEST,
 }
@@ -67,7 +68,9 @@ RUNTIME_FILES = {
     "scripts/apply-arthur-config.sh",
     "scripts/build.sh",
     "scripts/fetch-openclash-core.sh",
-    "scripts/stage-openclash-core.sh",
+    "scripts/stage-openclash-core.py",
+    "scripts/verify-final-rootfs-openclash-core.py",
+    "scripts/verify-final-rootfs-adh-manager.py",
     "scripts/patch-adguardhome-coexistence.py",
     "production/openclash-adguardhome-coexistence.json",
 }
@@ -240,6 +243,8 @@ errors: list[str] = []
 try:
     known_good = json.loads(show_text(target_sha, "production/known-good.json"))
     evidence = json.loads(show_text(target_sha, EVIDENCE_PATH))
+    operator_intent = json.loads(show_text(target_sha, "production/operator-intent.json"))
+    release_mode = json.loads(show_text(target_sha, "production/release-mode.json"))
 except (RuntimeError, json.JSONDecodeError) as exc:
     raise SystemExit(fail([str(exc)]))
 
@@ -279,6 +284,18 @@ validated_sha = str(evidence.get("validated_source_sha") or "")
 require(bool(re.fullmatch(r"[0-9a-f]{40}", validated_sha)), "validated_source_sha must be a full commit SHA")
 require((evidence.get("source_fix") or {}).get("source_commit") == validated_sha, "source_fix.source_commit must equal validated_source_sha")
 require((evidence.get("source_fix") or {}).get("status") == "HOT_DEPLOYED_AND_VERIFIED", "source_fix.status must be HOT_DEPLOYED_AND_VERIFIED")
+
+firmware_state = operator_intent.get("firmware_state") or {}
+machine_evidence = operator_intent.get("highest_machine_evidence") or {}
+repair_scope = operator_intent.get("live_repair_scope") or {}
+guardrails = operator_intent.get("guardrails") or {}
+require(firmware_state.get("active_source_sha") == validated_sha, "operator active_source_sha must equal validated_source_sha")
+require(machine_evidence.get("accepted_source_sha") == validated_sha, "highest_machine_evidence.accepted_source_sha must equal validated_source_sha")
+require(operator_intent.get("device_write_authorized") is False, "device_write_authorized must be false after live repair")
+require(repair_scope.get("authorized") is False, "live_repair_scope.authorized must be false after live repair")
+require(operator_intent.get("release_mode") == "RELEASE_ONLY" and release_mode.get("mode") == "RELEASE_ONLY", "release mode must remain RELEASE_ONLY")
+require(release_mode.get("automatic_flash") is False and guardrails.get("automatic_flash") is False, "automatic flash must remain forbidden")
+require(guardrails.get("sysupgrade_forbidden") is True and guardrails.get("device_reboot_forbidden") is True, "sysupgrade and reboot must remain forbidden")
 
 require(evidence.get("openclash_fully_usable") == "PASS", "OPENCLASH_FULLY_USABLE=PASS is required")
 require(evidence.get("adguardhome_fully_usable") == "PASS", "ADGUARDHOME_FULLY_USABLE=PASS is required")

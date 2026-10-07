@@ -15,10 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "production" / "openclash-adguardhome-coexistence.json"
 HELPER = ROOT / "files" / "usr" / "libexec" / "xinzhao-dns-coexist"
 INIT = ROOT / "files" / "etc" / "init.d" / "xinzhao-dns-coexist"
-ADH_OVERLAY_DIR = ROOT / "files" / "usr" / "share" / "AdGuardHome"
-TEMPLATE = ADH_OVERLAY_DIR / "AdGuardHome_template.yaml"
-ADH_PATCH = ROOT / "scripts" / "patch-adguardhome-coexistence.py"
-PACKAGE_SCRIPT = ROOT / "scripts" / "add-custom-packages.sh"
+TEMPLATE = ROOT / "files" / "usr" / "share" / "AdGuardHome" / "AdGuardHome_template.yaml"
 
 
 def fail(message: str) -> None:
@@ -31,14 +28,8 @@ if not HELPER.is_file():
     fail("runtime DNS reconciliation helper is missing")
 if not INIT.is_file():
     fail("coexistence init wrapper is missing")
-if TEMPLATE.exists():
-    fail("duplicate AdGuardHome template overlay must not exist; pinned mature package owns this file")
-if ADH_OVERLAY_DIR.is_dir() and any(ADH_OVERLAY_DIR.iterdir()):
-    fail("duplicate files/usr/share/AdGuardHome overlay must be empty; pinned mature package owns these files")
-if not ADH_PATCH.is_file():
-    fail("AdGuardHome coexistence source patch is missing")
-if not PACKAGE_SCRIPT.is_file():
-    fail("custom package source script is missing")
+if not TEMPLATE.is_file():
+    fail("Stable AdGuardHome runtime template is missing")
 
 contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
 if contract.get("lan_frontend") != {"service": "dnsmasq", "port": 53}:
@@ -56,17 +47,22 @@ if contract.get("coexistence", {}).get("adh_redirect") != "dnsmasq-upstream":
     fail("coexistence must use mature AdGuardHome dnsmasq-upstream mode")
 if contract.get("coexistence", {}).get("openclash_enable_redirect_dns") != 0:
     fail("OpenClash DNS hijack must be disabled while AdGuardHome owns the upstream hop")
+if contract.get("coexistence", {}).get("adguardhome_upstream") != "127.0.0.1:7874":
+    fail("AdGuardHome runtime upstream must terminate at OpenClash DNS 7874")
 
 helper = HELPER.read_text(encoding="utf-8")
 for required in (
-    "uci",
-    "AdGuardHome",
+    "AdGuardHome.AdGuardHome.enabled",
     "dnsmasq-upstream",
     "enable_redirect_dns",
     "redirect_dns",
-    "127.0.0.1#1745",
-    "127.0.0.1:7874",
-    "start|stop|restart",
+    '127.0.0.1:$OC_PORT',
+    'addr="127.0.0.1#$1"',
+    "prepare_adh()",
+    "adh_ready()",
+    "adh_stopped()",
+    "openclash_ready()",
+    "openclash_stopped()",
 ):
     if required not in helper:
         fail(f"coexistence helper is missing required lifecycle/topology primitive: {required}")
@@ -75,15 +71,9 @@ if "procd_add_reload_trigger AdGuardHome openclash dhcp" not in init:
     fail("coexistence init must reconcile after mature service UCI changes")
 if any(token in helper for token in ("iptables", "iptables-restore", "nft ", "nftables")):
     fail("coexistence helper must delegate firewall ownership to mature packages")
-
-adh_patch = ADH_PATCH.read_text(encoding="utf-8")
-package_script = PACKAGE_SCRIPT.read_text(encoding="utf-8")
-if "127.0.0.1:7874" not in adh_patch:
-    fail("AdGuardHome coexistence patch must terminate upstream at OpenClash DNS 7874")
-if "patch-adguardhome-coexistence.py" not in package_script:
-    fail("mature AdGuardHome source patch is not wired into package staging")
-if "  port: 1745" not in adh_patch:
-    fail("AdGuardHome coexistence patch must require mature DNS listener port 1745")
+template = TEMPLATE.read_text(encoding="utf-8")
+if "  port: 1745" not in template:
+    fail("Stable AdGuardHome template must listen on its dedicated DNS port 1745")
 
 # Deterministic lifecycle simulation.  This exercises the coordinator's
 # contract without pretending that a Windows checkout is a running router.
