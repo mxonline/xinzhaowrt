@@ -1,0 +1,27 @@
+{
+  "purpose": "Arthur v0.1.6 live LinkEase validation only; no firmware image",
+  "source_refs": {
+    "nas-packages-luci": "8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449",
+    "nas-packages": "0c789dc2b88f684476f6174201105da6ca6f5133"
+  },
+  "arch": "aarch64",
+  "firewall_default_in_payload": false,
+  "packages": [
+    {
+      "file": "linkease-1.7.5~aa64-r8.apk",
+      "sha256": "f14abd4bbf12c126b2275d7cdd1b1e5afda30fa3d7e17794b8812edfb37ab32d"
+    },
+    {
+      "file": "linkease-common-bin-1.7.5~aa64-r5.apk",
+      "sha256": "5c35d4ee13988f08fb4a3af7fbc4832a7054ada99b231087764e26c8a24b753f"
+    },
+    {
+      "file": "luci-app-linkease-2.1.70-r3.apk",
+      "sha256": "2ca49dbefc2104283010a45aea9ace91d9164b2e3b5bb8a181c3ea2e4943743a"
+    },
+    {
+      "file": "luci-lib-linkeasefile-2.1.70-r3.apk",
+      "sha256": "f974ea30c050e19a62c4df8e807ba18864ea23e46a723255017d560e3d2615e6"
+    }
+  ]
+}
