@@ -12,7 +12,7 @@
     "current_stage": "SOURCE_BINDING",
     "next_stage": "PREBUILD_OPENCLASH_ADH_LIVE",
     "active_run_id": 0,
-    "active_source_sha": "817fee497c31cdf661663ffadb501aa9f7620beb",
+    "active_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "active_artifact_id": null,
     "candidate_release_conclusion": null,
     "verified_frozen": [
@@ -55,7 +55,7 @@
     "objective": "Ship Arthur v0.1.6 with the live-proven QuickStart to LinkEase file-management path persisted in the firmware and with QuickFile 502 repaired. Prove the exact intended LinkEase and QuickFile behavior on the real Arthur before authorizing the build source, then follow the existing single-build exact-artifact release process.",
     "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
     "target_release": "v0.1.6",
-    "accepted_source_sha": "817fee497c31cdf661663ffadb501aa9f7620beb",
+    "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "required_terminal": "PRODUCTION_RELEASED",
     "required_live_markers_before_build": [
       "QUICKSTART_LINKEASE_FILE_MANAGER=PASS",
