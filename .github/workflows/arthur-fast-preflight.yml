@@ -117,9 +117,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p test-apks
-          for pkg in linkease-common-bin linkease luci-lib-linkeasefile luci-app-linkease; do
-            mapfile -t hits < <(find "$SDK_DIR/bin/packages" -type f -name "$pkg-*.apk")
+          for spec in linkease-common-bin:1.7.5 linkease:1.7.5 luci-lib-linkeasefile:2.1.70-r3 luci-app-linkease:2.1.70-r3; do
+            pkg="${spec%%:*}"
+            version="${spec#*:}"
+            mapfile -t hits < <(find "$SDK_DIR/bin/packages" -type f -name "$pkg-$version*.apk")
             test "${#hits[@]}" -eq 1
+            echo "TEST_APK_FILE=${hits[0]}"
             cp "${hits[0]}" test-apks/
           done
           test "$(find test-apks -type f -name '*.apk' | wc -l)" -eq 4
