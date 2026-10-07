@@ -35,6 +35,7 @@ is_xinzhao_package() {
   case "$1" in
     luci-app-istorex|luci-app-lucky|lucky|luci-app-quickfile|quickfile|\
     luci-app-quickstart|quickstart|luci-app-diskman|luci-app-easytier|easytier|\
+    luci-app-linkease|luci-lib-linkeasefile|linkease|linkease-common-bin|\
     luci-app-mosdns|mosdns|v2ray-geodata|luci-app-openclash|\
     luci-app-oaf|oaf|open-app-filter|luci-app-adguardhome|luci-app-autoreboot|\
     luci-app-firewall|luci-app-package-manager|luci-app-pbr|luci-app-samba4|\
@@ -77,6 +78,19 @@ while IFS= read -r pkg; do
     fi
   fi
 done < "$REQUIRED_FILE"
+
+# File-management runtime packages are required firmware dependencies, but
+# only luci-app-linkease is a LuCI app and it is intentionally outside the
+# immutable 22-app required-plugins.txt product baseline.
+for pkg in luci-app-linkease luci-lib-linkeasefile linkease linkease-common-bin; do
+  path="$SRC/package/feeds/xinzhao/$pkg"
+  if [[ ! -f "$path/Makefile" ]]; then
+    report_missing_package "$pkg" xinzhao "$path/Makefile"
+  else
+    echo "FOUND_PACKAGE: package=$pkg feed=xinzhao path=$path/Makefile"
+    PACKAGE_ROWS+=("$pkg|xinzhao|$path/Makefile|FOUND")
+  fi
+done
 
 if grep -Eq '^[[:space:]]*luci-app-istore([[:space:]]|$)' "$REQUIRED_FILE"; then
   echo "INVALID_PACKAGE: luci-app-istore; use luci-app-store from feed istore"

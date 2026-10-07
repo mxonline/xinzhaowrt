@@ -142,6 +142,16 @@ grep -Fq 'quickstart.$(PKG_ARCH_quickstart)' "$QUICKSTART_MAKEFILE" || {
 link_pkg luci-app-quickstart "$ISTOREOS_LUCI/luci/luci-app-quickstart"
 link_pkg quickstart "$ISTOREOS_PACKAGES/network/services/quickstart"
 
+# QuickStart's live file-management card opens the LinkEase LuCI route.
+# Remove only the upstream WAN firewall UCI-default from the package payload;
+# keep the official LinkEase sources and their safe allowPublic=0 default.
+LINKEASE_COMMON_BIN_DIR="$ISTOREOS_PACKAGES/network/services/linkease-common-bin"
+"$PROJECT_ROOT/scripts/remove-linkease-wan-firewall-default.sh" "$LINKEASE_COMMON_BIN_DIR/Makefile"
+link_pkg linkease-common-bin "$LINKEASE_COMMON_BIN_DIR"
+link_pkg linkease "$ISTOREOS_PACKAGES/network/services/linkease"
+link_pkg luci-lib-linkeasefile "$ISTOREOS_LUCI/luci/luci-lib-linkeasefile"
+link_pkg luci-app-linkease "$ISTOREOS_LUCI/luci/luci-app-linkease"
+
 # 官方 iStore feed。
 clone_or_update \
   istore \
@@ -276,6 +286,7 @@ CUSTOM_PKGS=(
   luci-theme-argon luci-theme-kucat
   luci-app-istorex luci-app-lucky lucky
   luci-app-quickfile quickfile luci-app-quickstart quickstart
+  luci-app-linkease luci-lib-linkeasefile linkease linkease-common-bin
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall
   luci-app-package-manager luci-app-pbr luci-app-samba4
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol
@@ -293,6 +304,7 @@ done
 ./scripts/feeds install -f -p xinzhao \
   luci-theme-argon luci-theme-kucat \
   luci-app-istorex luci-app-quickstart quickstart \
+  luci-app-linkease luci-lib-linkeasefile linkease linkease-common-bin \
   luci-app-adguardhome luci-app-autoreboot luci-app-firewall \
   luci-app-package-manager luci-app-pbr luci-app-samba4 \
   luci-app-smartdns luci-app-sqm luci-app-ttyd luci-app-upnp luci-app-vlmcsd luci-app-wol \

@@ -5,6 +5,7 @@ SRC="${1:?Usage: $0 /path/to/immortalwrt}"
 FEED_DIR="$SRC/package/feeds/xinzhao"
 ISTORE_FEED_DIR="$SRC/package/feeds/istore"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/config/istore-quickstart.lock"
 
 OPENCLASH_SELECTED_MAKEFILE="$SRC/package/feeds/xinzhao/openclash-core/Makefile" \
   bash "$PROJECT_ROOT/scripts/check-openclash-core-authority.sh" \
@@ -15,6 +16,10 @@ required=(
   luci-app-lucky
   luci-app-quickfile
   luci-app-quickstart
+  luci-app-linkease
+  luci-lib-linkeasefile
+  linkease
+  linkease-common-bin
   luci-app-adguardhome
   luci-app-autoreboot
   luci-app-firewall
@@ -81,6 +86,10 @@ ISTOREOS_PACKAGES_SOURCE="$SRC/.xinzhao-sources/istoreos-packages"
 IMMORTAL_LUCI_SOURCE="$SRC/.xinzhao-sources/immortalwrt-luci"
 assert_source luci-app-quickstart "$ISTOREOS_LUCI_SOURCE/luci/luci-app-quickstart"
 assert_source quickstart "$ISTOREOS_PACKAGES_SOURCE/network/services/quickstart"
+assert_source luci-app-linkease "$ISTOREOS_LUCI_SOURCE/luci/luci-app-linkease"
+assert_source luci-lib-linkeasefile "$ISTOREOS_LUCI_SOURCE/luci/luci-lib-linkeasefile"
+assert_source linkease "$ISTOREOS_PACKAGES_SOURCE/network/services/linkease"
+assert_source linkease-common-bin "$ISTOREOS_PACKAGES_SOURCE/network/services/linkease-common-bin"
 assert_source luci-app-istorex "$KENZO_SOURCE/luci-app-istorex"
 assert_istore_source() {
   local pkg="$1" expected="$2" actual
@@ -96,6 +105,43 @@ assert_istore_source luci-app-store "$ISTORE_SOURCE/luci/luci-app-store"
 assert_istore_source luci-lib-taskd "$ISTORE_SOURCE/luci/luci-lib-taskd"
 assert_istore_source luci-lib-xterm "$ISTORE_SOURCE/luci/luci-lib-xterm"
 assert_istore_source taskd "$ISTORE_SOURCE/luci/taskd"
+
+assert_locked_ref() {
+  local name="$1" source_dir="$2" expected="$3" actual
+  actual="$(git -C "$source_dir" rev-parse HEAD 2>/dev/null || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "SOURCE_REF_MISMATCH: $name (expected=$expected actual=$actual)"
+    missing=1
+  fi
+}
+assert_source_text() {
+  local file="$1" expected="$2" label="$3"
+  if ! grep -Fq -- "$expected" "$file"; then
+    echo "SOURCE_CONTENT_MISMATCH: $label (expected=$expected file=$file)"
+    missing=1
+  fi
+}
+assert_locked_ref nas-packages "$ISTOREOS_PACKAGES_SOURCE" "$ISTORE_QUICKSTART_REF"
+assert_locked_ref nas-packages-luci "$ISTOREOS_LUCI_SOURCE" "$ISTORE_QUICKSTART_LUCI_REF"
+LINKEASE_SOURCE="$ISTOREOS_PACKAGES_SOURCE/network/services/linkease"
+LINKEASE_COMMON_SOURCE="$ISTOREOS_PACKAGES_SOURCE/network/services/linkease-common-bin"
+LINKEASE_APP_SOURCE="$ISTOREOS_LUCI_SOURCE/luci/luci-app-linkease"
+LINKEASE_FILE_LIB_SOURCE="$ISTOREOS_LUCI_SOURCE/luci/luci-lib-linkeasefile"
+assert_source_text "$LINKEASE_SOURCE/Makefile" "PKG_SOURCE_DATE:=$ISTORE_LINKEASE_VERSION" 'LinkEase runtime version'
+assert_source_text "$LINKEASE_SOURCE/Makefile" "PKG_RELEASE:=$ISTORE_LINKEASE_RELEASE" 'LinkEase package release'
+assert_source_text "$LINKEASE_SOURCE/Makefile" "PKG_HASH:=$ISTORE_LINKEASE_AARCH64_BIN_SHA256" 'LinkEase AArch64 runtime hash'
+assert_source_text "$LINKEASE_COMMON_SOURCE/Makefile" "PKG_SOURCE_DATE:=$ISTORE_LINKEASE_COMMON_BIN_VERSION" 'LinkEase common runtime version'
+assert_source_text "$LINKEASE_COMMON_SOURCE/Makefile" "PKG_RELEASE:=$ISTORE_LINKEASE_COMMON_BIN_RELEASE" 'LinkEase common package release'
+assert_source_text "$LINKEASE_COMMON_SOURCE/Makefile" "PKG_HASH:=$ISTORE_LINKEASE_COMMON_AARCH64_BIN_SHA256" 'LinkEase common AArch64 runtime hash'
+assert_source_text "$LINKEASE_APP_SOURCE/Makefile" "PKG_VERSION:=$ISTORE_LINKEASE_LUCI_VERSION-r$ISTORE_LINKEASE_LUCI_RELEASE" 'LinkEase LuCI app version'
+assert_source_text "$LINKEASE_FILE_LIB_SOURCE/Makefile" "PKG_VERSION:=$ISTORE_LINKEASE_LUCI_VERSION-r$ISTORE_LINKEASE_LUCI_RELEASE" 'LinkEase file library version'
+assert_source_text "$LINKEASE_APP_SOURCE/Makefile" 'LUCI_DEPENDS:=+linkease +luci-lib-linkeasefile' 'QuickStart LinkEase app runtime dependencies'
+assert_source_text "$LINKEASE_FILE_LIB_SOURCE/Makefile" 'LUCI_DEPENDS:=+linkease-common-bin' 'LinkEase common runtime dependency'
+assert_source_text "$LINKEASE_SOURCE/files/linkease.uci-default" 'set_default allowPublic 0' 'LinkEase safe public-access default'
+if grep -Fq '$(1)/etc/uci-defaults/linkease-fw' "$LINKEASE_COMMON_SOURCE/Makefile"; then
+  echo 'UNSAFE_SOURCE_PAYLOAD: linkease-common-bin still installs the WAN 8897 UCI-default'
+  missing=1
+fi
 
 if [[ -e "$SRC/.xinzhao-feed/luci-app-store" || -e "$FEED_DIR/luci-app-store" ]]; then
   echo "DUPLICATE_SOURCE: luci-app-store must not exist in .xinzhao-feed; use feed=istore"

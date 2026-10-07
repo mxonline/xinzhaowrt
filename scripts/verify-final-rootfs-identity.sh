@@ -21,10 +21,42 @@ require_config() {
 require_config 'CONFIG_VERSIONOPT=y'
 require_config 'CONFIG_VERSION_DIST="XinZhaoWrt"'
 require_config "CONFIG_VERSION_NUMBER=\"$VERSION\""
+require_config 'CONFIG_PACKAGE_luci-app-linkease=y'
+require_config 'CONFIG_PACKAGE_luci-lib-linkeasefile=y'
+require_config 'CONFIG_PACKAGE_linkease=y'
+require_config 'CONFIG_PACKAGE_linkease-common-bin=y'
 [[ -f "$ROOTFS_DIR/etc/uci-defaults/99-xinzhao-defaults" ]] || {
   echo 'ERROR: final rootfs is missing /etc/uci-defaults/99-xinzhao-defaults' >&2
   exit 1
 }
+
+require_file() {
+  [[ -f "$1" ]] || { echo "ERROR: final rootfs is missing $1" >&2; exit 1; }
+}
+require_dir() {
+  [[ -d "$1" ]] || { echo "ERROR: final rootfs is missing directory $1" >&2; exit 1; }
+}
+require_file_text() {
+  [[ -f "$1" ]] && grep -Fq -- "$2" "$1" || { echo "ERROR: expected text missing from $1: $2" >&2; exit 1; }
+}
+require_file "$ROOTFS_DIR/usr/sbin/linkease"
+require_file "$ROOTFS_DIR/usr/sbin/linkease-media"
+require_file "$ROOTFS_DIR/etc/init.d/linkease"
+require_file "$ROOTFS_DIR/etc/config/linkease"
+require_file "$ROOTFS_DIR/etc/uci-defaults/linkease"
+require_file "$ROOTFS_DIR/usr/lib/lua/luci/controller/linkease_file.lua"
+require_dir "$ROOTFS_DIR/www/luci-static/linkeasefile"
+require_file "$ROOTFS_DIR/usr/bin/quickfile"
+require_file "$ROOTFS_DIR/etc/init.d/quickfile"
+require_file "$ROOTFS_DIR/www/luci-static/resources/view/system/quickfile.js"
+require_file "$ROOTFS_DIR/etc/uci-defaults/zzzz-xinzhao-file-management"
+if [[ -e "$ROOTFS_DIR/etc/uci-defaults/linkease-fw" ]]; then
+  echo 'ERROR: final rootfs includes LinkEase WAN 8897 firewall UCI-default' >&2
+  exit 1
+fi
+require_file_text "$ROOTFS_DIR/etc/uci-defaults/linkease" 'set_default allowPublic 0'
+require_file_text "$ROOTFS_DIR/etc/uci-defaults/zzzz-xinzhao-file-management" '/etc/init.d/linkease start'
+require_file_text "$ROOTFS_DIR/etc/uci-defaults/zzzz-xinzhao-file-management" '/etc/init.d/quickfile start'
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 command -v "$PYTHON_BIN" >/dev/null 2>&1 || PYTHON_BIN=python
@@ -125,4 +157,4 @@ if any(os_release.get(key) != value for key, value in os_expected.items()):
 print(f"IDENTITY_MATCH=PASS version={version} commit={short_commit} build_id={build_id}")
 PY
 
-echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity and first-boot defaults overlay."
+echo "PASS: final rootfs contains XinZhaoWrt v$VERSION identity, first-boot defaults, and safe LinkEase/QuickFile runtime."

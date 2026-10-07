@@ -3,6 +3,18 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_BIN=python3
+  elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_BIN=python
+  else
+    echo 'CHANGESET_GATE: FAIL -- a working Python interpreter is required' >&2
+    exit 1
+  fi
+fi
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || { echo "CHANGESET_GATE: FAIL -- Python interpreter not found: $PYTHON_BIN" >&2; exit 1; }
 
 fail() { echo "CHANGESET_GATE: FAIL -- $*" >&2; exit 1; }
 pass() { echo "$1=PASS"; }
@@ -12,11 +24,14 @@ pass() { echo "$1=PASS"; }
 for test_script in \
   tests/test-adguard-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
+  tests/test-expected-diff-gate.sh \
+  tests/test-linkease-safe-payload.sh \
+  tests/test-linkease-source-binding.sh \
   tests/test-functional-acceptance.sh; do
   bash "$test_script"
 done
 
-release_mode="$(python3 - <<'PY'
+release_mode="$("$PYTHON_BIN" - <<'PY'
 import json
 with open('production/release-mode.json', encoding='utf-8') as f:
     print(str(json.load(f).get('mode') or ''))
@@ -67,17 +82,11 @@ if git diff --name-only "${CHANGESET_BASE:-3efb9f7}"..HEAD | \
   grep -E '(^|/)(target|profile|DTS|supported_devices|partition|sysupgrade)' >/dev/null; then
   fail 'protected target/profile/DTS/sysupgrade metadata changed'
 fi
+"$PYTHON_BIN" scripts/check-expected-diff.py
 pass EXPECTED_DIFF_GATE
 pass BASELINE_INHERITANCE_GATE
 
 mkdir -p output
-if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
-  PYTHON_BIN=python3
-elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
-  PYTHON_BIN=python
-else
-  fail 'a working Python interpreter is required for changeset evidence'
-fi
 "$PYTHON_BIN" - <<'PY'
 import json
 import os

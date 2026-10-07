@@ -84,6 +84,9 @@ for required in \
   tests/test-adguard-manager.sh \
   tests/test-adguard-defaults.sh \
   tests/test-quickstart-web-stack-source.sh \
+  tests/test-expected-diff-gate.sh \
+  tests/test-linkease-safe-payload.sh \
+  tests/test-linkease-source-binding.sh \
   scripts/real-device-verify.ps1; do
   [[ -e "$required" ]] || fail "acceptance evidence is missing: $required"
 done

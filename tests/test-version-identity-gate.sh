@@ -14,7 +14,7 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
 fi
 command -v "$PYTHON_BIN" >/dev/null 2>&1 || fail "Python interpreter not found"
 VERSION="$(tr -d '\r\n ' < "$ROOT/VERSION")"
-TARGET_RELEASE="${TARGET_RELEASE:-v0.1.5}"
+TARGET_RELEASE="${TARGET_RELEASE:-v$VERSION}"
 TARGET_VERSION="${TARGET_RELEASE#v}"
 
 [[ "$TARGET_RELEASE" == v[0-9]* ]] || fail "invalid target release: $TARGET_RELEASE"
@@ -27,7 +27,7 @@ import pathlib
 import sys
 
 state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-stable = state.get("accepted_release") or state.get("production", {}).get("release")
+stable = state.get("accepted_release") or state.get("release") or state.get("production", {}).get("release")
 if not isinstance(stable, str) or not stable.startswith("v"):
     raise SystemExit("missing accepted stable release")
 print(stable)
@@ -107,7 +107,7 @@ echo "VERSION_AFTER=$VERSION"
 echo "VERSION_GT_CURRENT_STABLE=PASS"
 echo "VERSION_MATCH_TARGET_RELEASE=PASS"
 echo "VERSION_NOT_ALREADY_RELEASED=PASS"
-echo "TAG_v0.1.5_AVAILABLE=PASS"
+echo "TAG_${TARGET_RELEASE}_AVAILABLE=PASS"
 echo "ARTIFACT_VERSION_SOURCE_SINGLE=PASS"
 echo "BUILD_ENV_VERSION_OVERRIDE=PASS"
 echo "NO_VERSION_REGRESSION=PASS"

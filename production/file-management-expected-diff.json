@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "name": "FILE_MANAGEMENT_EXPECTED_DIFF",
+  "baseline_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+  "target_release": "v0.1.6",
+  "expected_product_paths": [
+    "VERSION",
+    "config/arthur.config",
+    "config/istore-quickstart.lock",
+    "files/etc/uci-defaults/zzzz-xinzhao-file-management",
+    "scripts/add-custom-packages.sh",
+    "scripts/check-package-existence.sh",
+    "scripts/check-package-sources.sh",
+    "scripts/remove-linkease-wan-firewall-default.sh",
+    "scripts/verify-final-rootfs-identity.sh"
+  ],
+  "linkease_source_lock": {
+    "nas_packages_luci_ref": "8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449",
+    "nas_packages_ref": "0c789dc2b88f684476f6174201105da6ca6f5133",
+    "linkease": "1.7.5",
+    "linkease_release": "8",
+    "linkease_aarch64_sha256": "92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9",
+    "linkease_common_bin": "1.7.5",
+    "linkease_common_bin_release": "5",
+    "linkease_common_bin_aarch64_sha256": "1646db48f5a512b96a34971e5af82eacd5a51f32abab2c5e84f277c408a72eb8",
+    "luci_app_linkease": "2.1.70-r3",
+    "luci_lib_linkeasefile": "2.1.70-r3"
+  },
+  "required_runtime_packages": [
+    "luci-app-linkease",
+    "luci-lib-linkeasefile",
+    "linkease",
+    "linkease-common-bin"
+  ],
+  "mandatory_luci_apps_count": 22,
+  "linkease_in_mandatory_luci_apps": false,
+  "allow_public": 0,
+  "excluded_upstream_payload": "/etc/uci-defaults/linkease-fw",
+  "forbidden_product_changes": [
+    "LAN/WAN/Wi-Fi/DHCP defaults",
+    "firewall rules",
+    "mount or partition layout",
+    "mmcblk0p24/mmcblk0p25/mmcblk0p26/mmcblk0p27 contents or filesystem",
+    "OpenClash and AdGuardHome runtime payload",
+    "DNS coexistence logic",
+    "themes and root password defaults"
+  ],
+  "live_acceptance": {
+    "QUICKSTART_LINKEASE_FILE_MANAGER": "PASS",
+    "LINKEASE_MMCBLK0P27_BROWSE": "PASS",
+    "QUICKFILE_BACKEND": "PASS",
+    "QUICKFILE_UI": "PASS",
+    "NO_FILE_MANAGEMENT_404_502": "PASS",
+    "WAN_8897_RULE_ADDED": "NO",
+    "FIREWALL_UNRELATED_DIFF": "NONE"
+  }
+}

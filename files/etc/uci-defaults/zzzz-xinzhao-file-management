@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Run after the official LinkEase UCI-default so allowPublic remains 0.
+# Persist and start the two file-management backends on first boot.
+if [ -x /etc/init.d/linkease ]; then
+	/etc/init.d/linkease enable || exit 1
+	/etc/init.d/linkease start || exit 1
+fi
+
+if [ -x /etc/init.d/quickfile ]; then
+	/etc/init.d/quickfile enable || exit 1
+	/etc/init.d/quickfile start || exit 1
+fi
+
+exit 0
