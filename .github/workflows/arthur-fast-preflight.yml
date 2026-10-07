@@ -84,6 +84,19 @@ jobs:
             git -C "$sdk_dir/feeds/luci" checkout -q --detach FETCH_HEAD
             test "$(git -C "$sdk_dir/feeds/luci" rev-parse HEAD)" = '1df16f1ef5845a9c2cacd5d6f1e0d2fe95cdad37'
           fi
+          luci_host_src="$sdk_dir/feeds/luci/modules/luci-base/src"
+          if ! test -f "$luci_host_src/Makefile"; then
+            git init -q sources/luci-host
+            git -C sources/luci-host remote add origin https://github.com/immortalwrt/luci.git
+            git -C sources/luci-host sparse-checkout init --cone
+            git -C sources/luci-host sparse-checkout set modules/luci-base/src
+            git -C sources/luci-host -c http.version=HTTP/1.1 fetch --depth 1 --filter=blob:none origin 1df16f1ef5845a9c2cacd5d6f1e0d2fe95cdad37
+            git -C sources/luci-host checkout -q --detach FETCH_HEAD
+            test "$(git -C sources/luci-host rev-parse HEAD)" = '1df16f1ef5845a9c2cacd5d6f1e0d2fe95cdad37'
+            luci_host_src="$GITHUB_WORKSPACE/sources/luci-host/modules/luci-base/src"
+          fi
+          make -C "$luci_host_src" po2lmo
+          install -Dm755 "$luci_host_src/po2lmo" "$sdk_dir/staging_dir/host/bin/po2lmo"
           mkdir -p "$sdk_dir/package/feeds/xinzhao"
           ln -s "$GITHUB_WORKSPACE/sources/nas/network/services/linkease-common-bin" "$sdk_dir/package/feeds/xinzhao/linkease-common-bin"
           ln -s "$GITHUB_WORKSPACE/sources/nas/network/services/linkease" "$sdk_dir/package/feeds/xinzhao/linkease"
@@ -111,6 +124,8 @@ jobs:
           done
           test "$(find test-apks -type f -name '*.apk' | wc -l)" -eq 4
           ! tar --zstd -tf test-apks/linkease-common-bin-*.apk | grep -F 'etc/uci-defaults/linkease-fw'
+          test -s "$SDK_DIR/public-key.pem"
+          cp "$SDK_DIR/public-key.pem" test-apks/package-signing-public-key.pem
           test "$(find "$SDK_DIR/dl" -type f -name 'linkease-bin-1.7.5-linux-aarch64.tar.gz' | wc -l)" -eq 1
           test "$(find "$SDK_DIR/dl" -type f -name 'linkease-common-bin-1.7.5-linux-aarch64.tar.gz' | wc -l)" -eq 1
           runtime="$(find "$SDK_DIR/dl" -type f -name 'linkease-bin-1.7.5-linux-aarch64.tar.gz' -print -quit)"
