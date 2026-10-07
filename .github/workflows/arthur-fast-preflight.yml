@@ -126,8 +126,10 @@ jobs:
             cp "${hits[0]}" test-apks/
           done
           test "$(find test-apks -type f -name '*.apk' | wc -l)" -eq 4
-          tar -tf test-apks/linkease-common-bin-*.apk > test-apks/common-payload.txt
-          ! grep -F 'etc/uci-defaults/linkease-fw' test-apks/common-payload.txt
+          apk_tool="$SDK_DIR/staging_dir/host/bin/apk"
+          mkdir -p test-apks/common-extracted test-apks/runtime-extracted
+          "$apk_tool" --allow-untrusted extract --destination test-apks/common-extracted test-apks/linkease-common-bin-*.apk
+          test ! -e test-apks/common-extracted/etc/uci-defaults/linkease-fw
           test -s "$SDK_DIR/public-key.pem"
           cp "$SDK_DIR/public-key.pem" test-apks/package-signing-public-key.pem
           test "$(find "$SDK_DIR/dl" -type f -name 'linkease-bin-1.7.5-linux-aarch64.tar.gz' | wc -l)" -eq 1
@@ -136,10 +138,11 @@ jobs:
           common="$(find "$SDK_DIR/dl" -type f -name 'linkease-common-bin-1.7.5-linux-aarch64.tar.gz' -print -quit)"
           echo "92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9  $runtime" | sha256sum -c -
           echo "1646db48f5a512b96a34971e5af82eacd5a51f32abab2c5e84f277c408a72eb8  $common" | sha256sum -c -
-          mkdir -p test-apks/extracted
-          tar -xf test-apks/linkease-1.7.5*.apk -C test-apks/extracted
-          file test-apks/extracted/usr/sbin/linkease | grep -Eq 'ELF 64-bit.*ARM aarch64'
-          rm -rf test-apks/extracted
+          "$apk_tool" --allow-untrusted extract --destination test-apks/runtime-extracted test-apks/linkease-1.7.5*.apk
+          runtime_elf="$(find test-apks/runtime-extracted -type f -name linkease -print -quit)"
+          test -n "$runtime_elf"
+          file "$runtime_elf" | grep -Eq 'ELF 64-bit.*ARM aarch64'
+          rm -rf test-apks/common-extracted test-apks/runtime-extracted
           (cd test-apks && sha256sum *.apk > SHA256SUMS)
           python3 - <<'PY'
           import hashlib, json
