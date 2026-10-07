@@ -18,6 +18,7 @@
     "files/etc/uci-defaults/zzzz-xinzhao-file-management",
     "production/expected-diff.json",
     "production/file-management-expected-diff.json",
+    "production/operator-intent.json",
     "scripts/acceptance-contract-gate.sh",
     "scripts/add-custom-packages.sh",
     "scripts/check-changeset-complete.sh",
