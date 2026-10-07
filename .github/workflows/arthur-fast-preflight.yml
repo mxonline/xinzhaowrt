@@ -139,9 +139,11 @@ jobs:
           echo "92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9  $runtime" | sha256sum -c -
           echo "1646db48f5a512b96a34971e5af82eacd5a51f32abab2c5e84f277c408a72eb8  $common" | sha256sum -c -
           "$apk_tool" --allow-untrusted extract --destination test-apks/runtime-extracted test-apks/linkease-1.7.5*.apk
+          find test-apks/runtime-extracted -maxdepth 6 -name '*linkease*' -print
           runtime_elf="$(find test-apks/runtime-extracted -type f -name linkease -print -quit)"
           test -n "$runtime_elf"
-          file "$runtime_elf" | grep -Eq 'ELF 64-bit.*ARM aarch64'
+          file "$runtime_elf"
+          readelf -h "$runtime_elf" | grep -F 'Machine:' | grep -F 'AArch64'
           rm -rf test-apks/common-extracted test-apks/runtime-extracted
           (cd test-apks && sha256sum *.apk > SHA256SUMS)
           python3 - <<'PY'
