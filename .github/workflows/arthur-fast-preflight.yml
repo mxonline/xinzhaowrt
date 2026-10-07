@@ -1,323 +1,153 @@
-name: Arthur Fast Preflight
+name: Arthur Locked LinkEase APK Probe
 
 'on':
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
-      build_closure:
-        description: 'Run exact locked source/feed/package/defconfig closure without firmware compile'
-        required: false
-        default: false
-        type: boolean
-      update_mode:
-        description: 'Candidate lock mode to mirror during closure'
-        required: false
-        default: rebuild_known_good
+      confirm:
+        description: Build only the four locked LinkEase test APKs; no firmware image
+        required: true
         type: choice
         options:
-          - rebuild_known_good
-          - update_immortalwrt
-          - update_feeds
-          - update_plugins
-          - update_all
+          - PACKAGE_ONLY
 
 permissions:
   contents: read
 
-concurrency:
-  group: arthur-fast-preflight-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  preflight:
+  linkease-apk-probe:
+    if: ${{ inputs.confirm == 'PACKAGE_ONLY' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      scope: ${{ steps.changes.outputs.scope }}
-
+    timeout-minutes: 90
     steps:
-      - name: Checkout project
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-
-      - name: Normalize script permissions
-        run: |
-          chmod +x tests/*.sh scripts/*.sh || true
-
-      - name: Enforce highest-priority Arthur product goal contract
-        shell: pwsh
-        run: ./tests/arthur-product-goal-contract.tests.ps1
-
-      - name: Test build-scope classifier
-        run: ./tests/test-classify-build-scope.sh
-
-      - name: Test Candidate dedup and failed-run recovery contract
-        run: ./tests/test-build-dedup-contract.sh
-
-      - name: Test Codex auto-recovery state transitions
-        run: python3 -m unittest tests.test_codex_auto_recovery -v
-
-      - name: Test Arthur Codex runtime probe
-        shell: pwsh
-        run: python -m unittest tests.test_arthur_codex_runtime_probe -v
-
-      - name: Test Arthur Windows repair controller diagnostic contract
-        shell: pwsh
-        run: ./tests/arthur-windows-repair-controller.tests.ps1
-
-      - name: Test Arthur Git remote Schannel fallback
-        shell: pwsh
-        run: ./tests/arthur-git-remote-fallback.tests.ps1
-
-      - name: Test Arthur Windows repair Scheduled Task contract
-        shell: pwsh
-        run: ./tests/arthur-windows-repair-task.tests.ps1
-
-      - name: Test Windows failed Candidate recovery wiring
-        shell: pwsh
-        run: ./tests/arthur-candidate-failure-recovery.tests.ps1
-
-      - name: Test source/config closure preflight contract
-        run: ./tests/test-build-closure-preflight.sh
-
-      - name: Test LIVE_PREVIEW safety contract
-        run: ./tests/test-live-preview-contract.sh
-
-      - name: Test feature handoff contract
-        shell: pwsh
-        run: ./tests/feature-handoff.tests.ps1
-
-      - name: Test non-admin Feature Handoff task contract
-        shell: pwsh
-        run: ./tests/feature-handoff-task-privilege.tests.ps1
-
-      - name: Test durable v3 request auto trigger contract
-        shell: pwsh
-        run: ./tests/feature-handoff-auto-trigger.tests.ps1
-
-      - name: Test Arthur control-plane executor contract
-        shell: pwsh
-        run: ./tests/arthur-control-plane-executor.tests.ps1
-
-      - name: Test Arthur recovery supervisor wiring contract
-        shell: pwsh
-        run: ./tests/arthur-recovery-supervisor-wiring.tests.ps1
-
-      - name: Test Arthur stale human-wait supervisor recovery
-        run: python3 -m unittest tests.test_supervisor_child_exit_observation -v
-
-      - name: Test Arthur canonical resume-state contract
-        shell: pwsh
-        run: ./tests/arthur-resume-state.tests.ps1
-
-      - name: Test Arthur operator intent gate contract
-        shell: pwsh
-        run: ./tests/arthur-operator-intent.tests.ps1
-
-      - name: Test Arthur firmware event-ledger resume contract
-        shell: pwsh
-        run: ./tests/arthur-firmware-resume.tests.ps1
-
-      - name: Enforce append-only Arthur firmware event history
-        shell: pwsh
-        run: |
-          if ('${{ github.event_name }}' -eq 'pull_request') {
-            $baseRef = '${{ github.event.pull_request.base.sha }}'
-          }
-          else {
-            $baseRef = (git rev-parse HEAD^).Trim()
-          }
-          ./scripts/check-firmware-event-ledger-history.ps1 -BaseRef $baseRef
-
-      - name: Parse LIVE_PREVIEW and control-plane PowerShell
-        shell: pwsh
-        run: |
-          foreach ($file in @(
-            'scripts/live-preview.ps1',
-            'scripts/live-preview-mature-safe.ps1',
-            'scripts/prepare-live-preview-sources.ps1',
-            'scripts/feature-handoff-lib.ps1',
-            'scripts/feature-handoff.ps1',
-            'scripts/install-feature-handoff.ps1',
-            'scripts/feature-handoff-status.ps1',
-            'scripts/arthur-resume-state.ps1',
-            'scripts/arthur-operator-intent.ps1',
-            'scripts/arthur-control-plane-gate.ps1',
-            'scripts/arthur-candidate-failure-recovery.ps1',
-            'scripts/arthur-firmware-event-ledger.ps1',
-            'scripts/arthur-firmware-resume.ps1',
-            'scripts/check-firmware-event-ledger-history.ps1',
-            'scripts/arthur-control-plane.ps1',
-            'scripts/arthur-git-remote.ps1',
-            'scripts/arthur-windows-repair-controller.ps1',
-            'scripts/ensure-arthur-persistent-supervisor.ps1',
-            'scripts/ensure-arthur-windows-repair-controller.ps1'
-          )) {
-            if (-not (Test-Path $file)) {
-              Write-Error "Required PowerShell file missing: $file"
-              exit 1
-            }
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
-            if ($errors.Count -gt 0) {
-              $errors | Format-List | Out-String | Write-Error
-              exit 1
-            }
-          }
-
-      - name: Compile Arthur orchestrator Python
-        run: python3 -m py_compile ai_orchestrator/arthur.py ai_orchestrator/cli.py ai_orchestrator/runtime.py ai_orchestrator/supervisor.py ai_orchestrator/recovery.py ai_orchestrator/recovery_runtime.py scripts/arthur-codex-runtime-probe.py
-
-      - name: Test runtime checkpoint synchronization
-        run: python3 -m unittest tests.test_runtime_checkpoint_sync -v
-
-      - name: Validate LIVE_PREVIEW JSON contracts
-        run: |
-          python3 -m json.tool production/live-preview-policy.json >/dev/null
-          python3 -m json.tool production/mature-ui-sources.json >/dev/null
-          python3 -m json.tool production/operator-intent.json >/dev/null
-
-      - name: Test v4 toolchain bootstrap gate
-        run: ./tests/test-v4-toolchain-bootstrap.sh
-
-      - name: Test v4 toolchain acceptance gate
-        run: ./tests/test-v4-toolchain-acceptance.sh
-
-      - name: Determine changed files
-        id: changes
-        if: success()
-        shell: bash
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify project source locks and install SDK tools
         run: |
           set -Eeuo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          else
-            BASE_SHA="$(git rev-parse HEAD^)"
-            HEAD_SHA="$(git rev-parse HEAD)"
-          fi
-
-          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | tee changed-files.txt
-          SCOPE="$(bash ./scripts/classify-build-scope.sh < changed-files.txt)"
-          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
-          echo "Build scope: $SCOPE"
-
-      - name: Run static project verification
-        if: success() && steps.changes.outputs.scope != 'DOC_ONLY'
-        run: ./scripts/verify-project.sh
-
-      - name: Preflight summary
-        if: always()
-        run: |
-          {
-            echo '## Arthur Fast Preflight'
-            echo
-            echo "- Scope: \`${{ steps.changes.outputs.scope || 'UNRESOLVED' }}\`"
-            echo '- This workflow never compiles firmware or mutates Stable Known-Good state.'
-            echo '- Firmware event history is append-only; historical ledger rewrites fail closed.'
-            echo '- LIVE_PREVIEW is a pre-Candidate development aid and never counts as formal REAL_DEVICE_VERIFY.'
-            echo '- Mature AdGuard Home and official QuickStart sources are pinned separately from Known-Good firmware refs.'
-            echo '- Mature ADH LIVE_PREVIEW uses safe UI-only fallback; DNS/firewall/start-stop runtime mutation tests are deferred to formal REAL_DEVICE_VERIFY.'
-            echo '- Feature Handoff must continue accepted LIVE_PREVIEW through the durable v3 request auto trigger unless pause_after_live_preview is explicit.'
-            echo '- DOC_ONLY: documentation/knowledge only; no firmware build required.'
-            echo '- FAST_GATE: CI/verifier/test/control-plane change; static gates only.'
-            echo '- IMAGEBUILDER: assemble firmware from Known-Good-compatible prebuilt packages.'
-            echo '- SDK_BUILD: rebuild user-space packages with the Known-Good-matched SDK.'
-            echo '- FULL_BUILD: kernel/ABI/unknown change; full Candidate build required.'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  build-closure:
-    if: ${{ needs.preflight.result == 'success' && ((github.event_name == 'workflow_dispatch' && inputs.build_closure == true) || (github.event_name == 'pull_request' && (needs.preflight.outputs.scope == 'FULL_BUILD' || needs.preflight.outputs.scope == 'SDK_BUILD'))) }}
-    needs: preflight
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-
-    steps:
-      - name: Checkout exact source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-
-      - name: Free runner disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc || true
-          df -h
-
-      - name: Install build dependencies
-        run: bash ./scripts/codex-setup.sh
-
-      - name: Prepare exact Candidate lock
-        id: lock
-        shell: bash
+          grep -Fxq 'ISTORE_QUICKSTART_LUCI_REF="8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449"' config/istore-quickstart.lock
+          grep -Fxq 'ISTORE_QUICKSTART_REF="0c789dc2b88f684476f6174201105da6ca6f5133"' config/istore-quickstart.lock
+          sudo apt-get update -qq
+          sudo apt-get install -y zstd file
+      - name: Download hash-verified official Arthur SDK
         run: |
           set -Eeuo pipefail
-          chmod +x scripts/*.sh
-          CLOSURE_LOCK="$RUNNER_TEMP/arthur-build-closure.lock"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            CLOSURE_MODE="${{ inputs.update_mode }}"
-          else
-            CLOSURE_MODE="rebuild_known_good"
-          fi
-          ./scripts/prepare-update-lock.sh "$CLOSURE_MODE" "$CLOSURE_LOCK"
-          echo "path=$CLOSURE_LOCK" >> "$GITHUB_OUTPUT"
-          echo "sha=$(sha256sum "$CLOSURE_LOCK" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "mode=$CLOSURE_MODE" >> "$GITHUB_OUTPUT"
-
-      - name: Run exact source and config closure
-        shell: bash
-        env:
-          USE_KNOWN_GOOD_LOCK: '1'
-          KNOWN_GOOD_LOCK: ${{ steps.lock.outputs.path }}
-          JOBS: '2'
-          QUIET_BUILD: '0'
-          REUSE_SOURCE: '0'
-          BUILD_CLOSURE_ONLY: '1'
+          url='https://downloads.immortalwrt.org/snapshots/targets/qualcommax/ipq60xx/immortalwrt-sdk-qualcommax-ipq60xx_gcc-14.4.0_musl.Linux-x86_64.tar.zst'
+          curl -fL --retry 4 --retry-delay 5 --output sdk.tar.zst "$url"
+          echo 'f1fe279ef3334dd76b5a9e952a529dfe2a51b32e8fa4dc0f5e259bfc2e976b68  sdk.tar.zst' | sha256sum -c -
+          mkdir sdk
+          tar --zstd -xf sdk.tar.zst -C sdk
+      - name: Fetch exact locked official package commits
         run: |
           set -Eeuo pipefail
-          ./scripts/build.sh
-          grep -q '^BUILD_CLOSURE_PREFLIGHT=PASS$' output/logs/build.log
-
-      - name: Analyze closure failure
-        if: failure()
-        shell: bash
+          mkdir -p sources
+          fetch_exact() {
+            local name="$1" url="$2" ref="$3"
+            shift 3
+            git init -q "sources/$name"
+            git -C "sources/$name" remote add origin "$url"
+            git -C "sources/$name" sparse-checkout init --cone
+            git -C "sources/$name" sparse-checkout set "$@"
+            git -C "sources/$name" -c http.version=HTTP/1.1 fetch --depth 1 --filter=blob:none origin "$ref"
+            git -C "sources/$name" checkout -q --detach FETCH_HEAD
+            test "$(git -C "sources/$name" rev-parse HEAD)" = "$ref"
+          }
+          fetch_exact nas-luci https://github.com/linkease/nas-packages-luci.git 8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449 luci/luci-app-linkease luci/luci-lib-linkeasefile
+          fetch_exact nas https://github.com/linkease/nas-packages.git 0c789dc2b88f684476f6174201105da6ca6f5133 network/services/linkease network/services/linkease-common-bin
+          grep -Fq 'PKG_SOURCE_DATE:=1.7.5' sources/nas/network/services/linkease/Makefile
+          grep -Fq 'PKG_SOURCE_DATE:=1.7.5' sources/nas/network/services/linkease-common-bin/Makefile
+          grep -Fq 'PKG_VERSION:=2.1.70-r3' sources/nas-luci/luci/luci-app-linkease/Makefile
+          grep -Fq 'PKG_VERSION:=2.1.70-r3' sources/nas-luci/luci/luci-lib-linkeasefile/Makefile
+          grep -Fq '92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9' sources/nas/network/services/linkease/Makefile
+          grep -Fq '1646db48f5a512b96a34971e5af82eacd5a51f32abab2c5e84f277c408a72eb8' sources/nas/network/services/linkease-common-bin/Makefile
+      - name: Remove only WAN 8897 default from test package payload
         run: |
-          set +e
-          if [[ -s output/logs/build.log ]]; then
-            ./scripts/analyze-error.sh output/logs/build.log
-          elif [[ -s output/logs/build-diagnostic.log ]]; then
-            ./scripts/analyze-error.sh output/logs/build-diagnostic.log
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('sources/nas/network/services/linkease-common-bin/Makefile')
+          source = p.read_text()
+          line = '\t$(INSTALL_BIN) ./files/linkease-fw.uci-default $(1)/etc/uci-defaults/linkease-fw\n'
+          assert source.count(line) == 1, 'WAN default installer line changed upstream'
+          p.write_text(source.replace(line, ''))
+          assert '$(1)/etc/uci-defaults/linkease-fw' not in p.read_text()
+          PY
+          git -C sources/nas diff -- network/services/linkease-common-bin/Makefile
+      - name: SDK build four packages only
+        run: |
+          set -Eeuo pipefail
+          sdk_dir="$(find sdk -mindepth 1 -maxdepth 1 -type d -name 'immortalwrt-sdk-*' -print -quit)"
+          test -n "$sdk_dir"
+          if ! test -f "$sdk_dir/feeds/luci/luci.mk"; then
+            mkdir -p "$sdk_dir/feeds/luci"
+            git init -q "$sdk_dir/feeds/luci"
+            git -C "$sdk_dir/feeds/luci" remote add origin https://github.com/immortalwrt/luci.git
+            git -C "$sdk_dir/feeds/luci" -c http.version=HTTP/1.1 fetch --depth 1 --filter=blob:none origin 1df16f1ef5845a9c2cacd5d6f1e0d2fe95cdad37
+            git -C "$sdk_dir/feeds/luci" checkout -q --detach FETCH_HEAD
+            test "$(git -C "$sdk_dir/feeds/luci" rev-parse HEAD)" = '1df16f1ef5845a9c2cacd5d6f1e0d2fe95cdad37'
           fi
-          exit 0
-
-      - name: Upload build closure diagnostics
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: Arthur-build-closure-${{ github.run_id }}
-          path: |
-            output/logs/build.log
-            output/logs/build-diagnostic.log
-            output/logs/error-context.txt
-            output/logs/error-summary.txt
-            output/logs/failure-report.txt
-            output/full.config
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Build closure summary
-        if: always()
+          mkdir -p "$sdk_dir/package/feeds/xinzhao"
+          ln -s "$GITHUB_WORKSPACE/sources/nas/network/services/linkease-common-bin" "$sdk_dir/package/feeds/xinzhao/linkease-common-bin"
+          ln -s "$GITHUB_WORKSPACE/sources/nas/network/services/linkease" "$sdk_dir/package/feeds/xinzhao/linkease"
+          ln -s "$GITHUB_WORKSPACE/sources/nas-luci/luci/luci-lib-linkeasefile" "$sdk_dir/package/feeds/xinzhao/luci-lib-linkeasefile"
+          ln -s "$GITHUB_WORKSPACE/sources/nas-luci/luci/luci-app-linkease" "$sdk_dir/package/feeds/xinzhao/luci-app-linkease"
+          cat >> "$sdk_dir/.config" <<'EOF'
+          CONFIG_PACKAGE_linkease-common-bin=m
+          CONFIG_PACKAGE_linkease=m
+          CONFIG_PACKAGE_luci-lib-linkeasefile=m
+          CONFIG_PACKAGE_luci-app-linkease=m
+          EOF
+          make -C "$sdk_dir" defconfig
+          for pkg in linkease-common-bin linkease luci-lib-linkeasefile luci-app-linkease; do
+            make -C "$sdk_dir" "package/feeds/xinzhao/$pkg/compile" V=sc
+          done
+          echo "SDK_DIR=$sdk_dir" >> "$GITHUB_ENV"
+      - name: Verify package payload, architecture and identity
         run: |
-          {
-            echo '## Arthur exact build closure'
-            echo
-            echo "- Source: \`${GITHUB_SHA}\`"
-            echo "- Update mode: \`${{ steps.lock.outputs.mode || 'UNAVAILABLE' }}\`"
-            echo "- Candidate lock SHA256: \`${{ steps.lock.outputs.sha || 'UNAVAILABLE' }}\`"
-            echo '- Boundary: exact source/feeds/custom packages/provenance/package existence/overlay/make defconfig/check-config only.'
-            echo '- Firmware source download: not run after closure PASS.'
-            echo '- Firmware compile: not run.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -Eeuo pipefail
+          mkdir -p test-apks
+          for pkg in linkease-common-bin linkease luci-lib-linkeasefile luci-app-linkease; do
+            mapfile -t hits < <(find "$SDK_DIR/bin/packages" -type f -name "$pkg-*.apk")
+            test "${#hits[@]}" -eq 1
+            cp "${hits[0]}" test-apks/
+          done
+          test "$(find test-apks -type f -name '*.apk' | wc -l)" -eq 4
+          ! tar --zstd -tf test-apks/linkease-common-bin-*.apk | grep -F 'etc/uci-defaults/linkease-fw'
+          test "$(find "$SDK_DIR/dl" -type f -name 'linkease-bin-1.7.5-linux-aarch64.tar.gz' | wc -l)" -eq 1
+          test "$(find "$SDK_DIR/dl" -type f -name 'linkease-common-bin-1.7.5-linux-aarch64.tar.gz' | wc -l)" -eq 1
+          runtime="$(find "$SDK_DIR/dl" -type f -name 'linkease-bin-1.7.5-linux-aarch64.tar.gz' -print -quit)"
+          common="$(find "$SDK_DIR/dl" -type f -name 'linkease-common-bin-1.7.5-linux-aarch64.tar.gz' -print -quit)"
+          echo "92d0c6f9d05a0ba283d03fef2b7f4675eee032c303e959b1e4198e12806510f9  $runtime" | sha256sum -c -
+          echo "1646db48f5a512b96a34971e5af82eacd5a51f32abab2c5e84f277c408a72eb8  $common" | sha256sum -c -
+          mkdir -p test-apks/extracted
+          tar --zstd -xf test-apks/linkease-1.7.5-*.apk -C test-apks/extracted
+          file test-apks/extracted/usr/sbin/linkease | grep -Eq 'ELF 64-bit.*ARM aarch64'
+          rm -rf test-apks/extracted
+          (cd test-apks && sha256sum *.apk > SHA256SUMS)
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('test-apks')
+          packages = []
+          for p in sorted(root.glob('*.apk')):
+              packages.append({'file': p.name, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()})
+          assert len(packages) == 4
+          manifest = {
+              'purpose': 'Arthur v0.1.6 live LinkEase validation only; no firmware image',
+              'source_refs': {
+                  'nas-packages-luci': '8aa8467aabe86f1cf8d23fdb6b0cdd2ef14d2449',
+                  'nas-packages': '0c789dc2b88f684476f6174201105da6ca6f5133',
+              },
+              'arch': 'aarch64',
+              'firewall_default_in_payload': False,
+              'packages': packages,
+          }
+          (root / 'source-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+          echo 'TEST_APK_SOURCE_LOCK=PASS'
+          echo 'TEST_APK_ARCH=aarch64'
+          echo 'FIRMWARE_BUILD=NOT_RUN'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: arthur-locked-linkease-test-apks
+          path: test-apks/
+          if-no-files-found: error
+          retention-days: 7
