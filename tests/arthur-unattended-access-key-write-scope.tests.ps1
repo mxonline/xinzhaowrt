@@ -1,0 +1,164 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$projectRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $projectRoot 'scripts\ensure-arthur-unattended-access.ps1')
+
+$policy = [pscustomobject]@{
+    device = [pscustomobject]@{
+        verified_management_mac = 'dc:d8:7c:45:91:99'
+        board_pattern = 'jdcloud,re-ss-01|RE-SS-01'
+        build_marker = 'XinZhaoWrt'
+        build_info_path = '/luci-static/xinzhao/build-info.json'
+    }
+}
+
+$validOutput = @'
+{"model":"jdcloud,re-ss-01"}
+---XINZHAO_BUILD---
+{"Firmware":"XinZhaoWrt","Target":"qualcommax/ipq60xx","Profile":"jdcloud_re-ss-01","Version":"0.1.5","Build ID":"36764137044"}
+---REMOTE_BR_LAN_MAC---
+dc:d8:7c:45:91:99
+---REMOTE_LINKS---
+br-lan UP
+---REMOTE_LAN_STATUS---
+{"up":true}
+'@
+$probe = [pscustomobject]@{ ExitCode = 0; Output = $validOutput }
+
+if (-not (Get-Command Test-ArthurReadOnlyAuthenticatedEvidence -ErrorAction SilentlyContinue)) {
+    throw 'TEST_FAIL: password identity acceptance must include an explicit br-lan identity verifier.'
+}
+if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $probe -Policy $policy)) {
+    throw 'TEST_FAIL: matching board, build, target, profile, and br-lan MAC must pass.'
+}
+
+$wrongMac = [pscustomobject]@{ ExitCode = 0; Output = ($validOutput -replace 'dc:d8:7c:45:91:99','dc:d8:7c:46:91:24') }
+if (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $wrongMac -Policy $policy) {
+    throw 'TEST_FAIL: a mismatched br-lan MAC must fail before any device write.'
+}
+
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("arthur-key-scope-{0}" -f [guid]::NewGuid().ToString('N'))
+$sshDir = Join-Path $tempRoot '.ssh'
+New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
+$knownHosts = Join-Path $sshDir 'known_hosts'
+$privateKey = Join-Path $sshDir 'id_ed25519'
+$publicKey = "$privateKey.pub"
+[System.IO.File]::WriteAllText($privateKey,'test-only-private-key-placeholder')
+[System.IO.File]::WriteAllText($publicKey,'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFRlc3RLZXlCeXRlcw== xinzhaowrt-controller')
+
+$originalAuthorizedKeys = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFByZXZpb3VzS2V5 prior`n"
+$originalBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($originalAuthorizedKeys))
+$script:ProbeCalls = @()
+$script:BackupPresent = $true
+function Invoke-ArthurSshProbe {
+    param(
+        [string]$DeviceIp,
+        [string]$KnownHostsFile,
+        [ValidateSet('yes','accept-new')][string]$StrictMode,
+        [string]$Command,
+        [string]$IdentityFile,
+        [switch]$PasswordAuth
+    )
+    $script:ProbeCalls += [pscustomobject]@{ Command = $Command; PasswordAuth = $PasswordAuth.IsPresent }
+    if ($Command -match 'base64') {
+        if ($script:BackupPresent) { return [pscustomobject]@{ ExitCode = 0; Output = "ARTHUR_AUTHKEYS_PRESENT`n$originalBase64" } }
+        return [pscustomobject]@{ ExitCode = 0; Output = 'ARTHUR_AUTHKEYS_MISSING' }
+    }
+    return [pscustomobject]@{ ExitCode = 0; Output = 'BACKUP_EXISTING' }
+}
+
+try {
+    $record = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts
+    if (-not $record.BackupPath -or -not (Test-Path -LiteralPath $record.BackupPath -PathType Leaf)) {
+        throw 'TEST_FAIL: existing authorized_keys must be backed up to the runner before the device write.'
+    }
+    $saved = [System.IO.File]::ReadAllText($record.BackupPath)
+    if ($saved -ne $originalAuthorizedKeys) {
+        throw 'TEST_FAIL: runner backup must preserve the exact existing authorized_keys bytes.'
+    }
+
+    foreach ($call in $script:ProbeCalls) {
+        $remotePaths = @([regex]::Matches($call.Command,'/etc/dropbear/[A-Za-z0-9_.-]+') | ForEach-Object { $_.Value } | Sort-Object -Unique)
+        if ($remotePaths | Where-Object { $_ -ne '/etc/dropbear/authorized_keys' }) {
+            throw "TEST_FAIL: remote command touched a path outside /etc/dropbear/authorized_keys: $($remotePaths -join ',')"
+        }
+    }
+
+    $script:ProbeCalls = @()
+    $env:ARTHUR_ROOT_PASSWORD = 'test-only-not-a-real-password'
+    Restore-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -Record $record
+    if ($script:ProbeCalls.Count -ne 1) { throw 'TEST_FAIL: failed strict verification must perform one exact rollback command.' }
+    $rollbackPaths = @([regex]::Matches($script:ProbeCalls[0].Command,'/etc/dropbear/[A-Za-z0-9_.-]+') | ForEach-Object { $_.Value } | Sort-Object -Unique)
+    if ($rollbackPaths.Count -ne 1 -or $rollbackPaths[0] -ne '/etc/dropbear/authorized_keys') {
+        throw 'TEST_FAIL: rollback may only restore /etc/dropbear/authorized_keys.'
+    }
+    if ($script:ProbeCalls[0].Command -notmatch [regex]::Escape($originalBase64)) {
+        throw 'TEST_FAIL: rollback must restore the exact runner-side backup content.'
+    }
+
+    $script:ProbeCalls = @()
+    $script:BackupPresent = $false
+    $missingRecord = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts
+    if ($missingRecord.HadFile -or $missingRecord.BackupPath) {
+        throw 'TEST_FAIL: absence of an original authorized_keys file must be recorded without a fabricated backup.'
+    }
+    $script:ProbeCalls = @()
+    Restore-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -Record $missingRecord
+    if ($script:ProbeCalls.Count -ne 1 -or $script:ProbeCalls[0].Command -ne 'rm -f /etc/dropbear/authorized_keys') {
+        throw 'TEST_FAIL: rollback must remove only authorized_keys when no original file existed.'
+    }
+
+    $script:RecoveryPolicy = [pscustomobject]@{
+        device = [pscustomobject]@{
+            management_ip = '192.168.6.1'
+            verified_management_mac = 'dc:d8:7c:45:91:99'
+            board_pattern = 'jdcloud,re-ss-01|RE-SS-01'
+            build_marker = 'XinZhaoWrt'
+            build_info_path = '/luci-static/xinzhao/build-info.json'
+        }
+    }
+    $script:EnsureKeyCallCount = 0
+    $script:RecoveryProbeCalls = @()
+    function Get-ArthurAccessPolicy { $script:RecoveryPolicy }
+    function Assert-ArthurEthernetIdentity { param([string]$DeviceIp,$Policy) [pscustomobject]@{ Network = $null; Build = $null } }
+    function Ensure-ArthurRunnerKey { $script:EnsureKeyCallCount++; [pscustomobject]@{ Changed = $true } }
+    function Invoke-ArthurSshProbe {
+        param(
+            [string]$DeviceIp,
+            [string]$KnownHostsFile,
+            [ValidateSet('yes','accept-new')][string]$StrictMode,
+            [string]$Command,
+            [string]$IdentityFile,
+            [switch]$PasswordAuth
+        )
+        $script:RecoveryProbeCalls += [pscustomobject]@{ Command = $Command; StrictMode = $StrictMode; PasswordAuth = $PasswordAuth.IsPresent }
+        if (-not $PasswordAuth) {
+            return [pscustomobject]@{ ExitCode = 255; Output = 'Permission denied (publickey).' }
+        }
+        if ($Command -match 'REMOTE_BR_LAN_MAC') {
+            return [pscustomobject]@{ ExitCode = 0; Output = ($validOutput -replace 'dc:d8:7c:45:91:99','dc:d8:7c:46:91:24') }
+        }
+        return [pscustomobject]@{ ExitCode = 0; Output = $validOutput }
+    }
+
+    $env:ARTHUR_ROOT_PASSWORD = 'test-only-not-a-real-password'
+    $identityMismatch = ''
+    try { Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1' | Out-Null }
+    catch { $identityMismatch = $_.Exception.Message }
+    if ($identityMismatch -notmatch 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH') {
+        throw 'TEST_FAIL: a password-authenticated br-lan MAC mismatch must abort recovery.'
+    }
+    if ($script:EnsureKeyCallCount -ne 0 -or $script:RecoveryProbeCalls.Command -match 'authorized_keys') {
+        throw 'TEST_FAIL: the helper must prove br-lan identity before calling the device key writer.'
+    }
+
+    Write-Output 'ARTHUR_PASSWORD_IDENTITY_INCLUDES_BRLAN_MAC=PASS'
+    Write-Output 'ARTHUR_AUTHORIZED_KEYS_REMOTE_WRITE_SCOPE=PASS'
+    Write-Output 'ARTHUR_AUTHORIZED_KEYS_ROLLBACK=PASS'
+    Write-Output 'ARTHUR_NO_KEY_WRITE_BEFORE_BRLAN_IDENTITY=PASS'
+}
+finally {
+    Remove-Item Env:ARTHUR_ROOT_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -LiteralPath $tempRoot
+}

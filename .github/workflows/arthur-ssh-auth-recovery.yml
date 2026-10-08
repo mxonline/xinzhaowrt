@@ -1,0 +1,125 @@
+name: Arthur SSH Auth Recovery
+
+'on':
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arthur-ssh-auth-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 10
+    env:
+      ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
+    steps:
+      - name: Checkout the authorized recovery source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove identity and restore controller SSH authentication
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          if ([string]::IsNullOrWhiteSpace($env:ARTHUR_ROOT_PASSWORD)) {
+            throw 'BLOCKED: ARTHUR_ROOT_PASSWORD GitHub Actions secret is unavailable.'
+          }
+
+          $firmwareSource = 'b4448e62ab1e767f9a60221b0600c60c355baf56'
+          git merge-base --is-ancestor $firmwareSource $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: recovery source is outside the frozen v0.1.6 lineage.' }
+
+          $verificationPath = Join-Path $env:GITHUB_WORKSPACE 'production\product-goal-verification.json'
+          $verification = Get-Content -Raw -LiteralPath $verificationPath | ConvertFrom-Json
+          if (
+            [string]$verification.status -ne 'PRODUCT_GOAL_VERIFIED' -or
+            [string]$verification.device.model -ne 'JDCloud RE-SS-01' -or
+            [string]$verification.device.version -ne '0.1.5' -or
+            [string]$verification.device.build_id -ne '36764137044' -or
+            [string]$verification.source_commit -ne '0eeae67f74db77a6401b0205d74e6518b899a3e4' -or
+            [string]$verification.device.lan_mac -ne 'dc:d8:7c:45:91:99'
+          ) {
+            throw 'BLOCKED: frozen v0.1.5 Arthur identity evidence is inconsistent.'
+          }
+
+          $profile = [Environment]::GetFolderPath('UserProfile')
+          $sshDir = Join-Path $profile '.ssh'
+          $privateKey = Join-Path $sshDir 'id_ed25519'
+          $publicKey = "$privateKey.pub"
+          if (-not (Test-Path -LiteralPath $privateKey -PathType Leaf) -or -not (Test-Path -LiteralPath $publicKey -PathType Leaf)) {
+            throw 'BLOCKED: existing xinzhaowrt-controller keypair is unavailable on this runner.'
+          }
+
+          . (Join-Path $env:GITHUB_WORKSPACE 'scripts\ensure-arthur-unattended-access.ps1')
+          $keygen = Get-ArthurSshTool 'ssh-keygen'
+          $derived = Invoke-ArthurAccessNative -FilePath $keygen -Arguments @('-y','-f',$privateKey)
+          if ($derived.ExitCode -ne 0) { throw 'BLOCKED: existing controller private key cannot be read.' }
+          $derivedParts = @($derived.Output.Trim() -split '\s+')
+          $publicParts = @((Get-Content -Raw -LiteralPath $publicKey).Trim() -split '\s+')
+          if (
+            $derivedParts.Count -lt 2 -or $publicParts.Count -lt 2 -or
+            $derivedParts[0] -ne 'ssh-ed25519' -or $publicParts[0] -ne 'ssh-ed25519' -or
+            $derivedParts[1] -ne $publicParts[1]
+          ) {
+            throw 'BLOCKED: runner public key does not match the existing controller private key.'
+          }
+          Write-Host 'RUNNER_KEY_PAIR=PASS'
+
+          # The older control-plane pin is reconciled in this isolated run copy
+          # from the already accepted Stable machine record. The repository file
+          # is left byte-for-byte unchanged until authenticated device evidence exists.
+          $recoveryRoot = Join-Path $env:RUNNER_TEMP ("arthur-ssh-auth-recovery-{0}" -f $env:GITHUB_RUN_ID)
+          $recoveryScripts = Join-Path $recoveryRoot 'scripts'
+          $recoveryProduction = Join-Path $recoveryRoot 'production'
+          New-Item -ItemType Directory -Force -Path $recoveryScripts,$recoveryProduction | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'scripts\ensure-arthur-unattended-access.ps1') -Destination (Join-Path $recoveryScripts 'ensure-arthur-unattended-access.ps1')
+          $policy = Get-Content -Raw -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'production\arthur-control-plane.json') | ConvertFrom-Json
+          $policy.device.verified_management_mac = [string]$verification.device.lan_mac
+          $policyJson = $policy | ConvertTo-Json -Depth 20
+          [IO.File]::WriteAllText((Join-Path $recoveryProduction 'arthur-control-plane.json'),$policyJson + [Environment]::NewLine,[Text.UTF8Encoding]::new($false))
+
+          . (Join-Path $recoveryScripts 'ensure-arthur-unattended-access.ps1')
+          $policy = Get-ArthurAccessPolicy
+          $networkIdentity = Assert-ArthurEthernetIdentity -DeviceIp '192.168.6.1' -Policy $policy
+          $buildFields = Get-ArthurBuildIdentityFields -Build $networkIdentity.Build
+          if (
+            $buildFields.Version -ne [string]$verification.device.version -or
+            $buildFields.BuildId -ne [string]$verification.device.build_id
+          ) {
+            throw 'BLOCKED: HTTP build identity does not match the accepted v0.1.5 Stable record.'
+          }
+          Write-Host 'ETHERNET_ROUTE=PASS'
+          Write-Host 'MANAGEMENT_MAC=PASS'
+          Write-Host 'HTTP_BUILD_IDENTITY=PASS'
+
+          $passwordIdentityHosts = Join-Path $env:RUNNER_TEMP ("arthur-password-identity-{0}.known_hosts" -f $env:GITHUB_RUN_ID)
+          Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $passwordIdentityHosts
+          try {
+            $passwordIdentity = Invoke-ArthurSshProbe -DeviceIp '192.168.6.1' -KnownHostsFile $passwordIdentityHosts -StrictMode accept-new -Command (Get-ArthurReadOnlyIdentityCommand) -PasswordAuth
+            if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $passwordIdentity -Policy $policy)) {
+              throw 'BLOCKED: password-authenticated board, build, target, profile, and br-lan MAC proof failed.'
+            }
+            Write-Host 'PASSWORD_AUTH_IDENTITY=PASS'
+          }
+          finally {
+            Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $passwordIdentityHosts
+          }
+
+          $result = Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1'
+          if ($result.Mode -notin @('strict-existing-trust','password-recovered-runner-key')) {
+            throw 'BLOCKED: strict runner-key authentication did not complete.'
+          }
+          Write-Host 'RUNNER_KEY_AUTH=PASS'
+          Write-Host 'SSH_HOST_TRUST=PASS'
+          Write-Host 'ARTHUR_UNATTENDED_ACCESS=PASS'

@@ -43,6 +43,7 @@ function Invoke-ArthurSshProbe {
         [Parameter(Mandatory=$true)][string]$KnownHostsFile,
         [Parameter(Mandatory=$true)][ValidateSet('yes','accept-new')][string]$StrictMode,
         [Parameter(Mandatory=$true)][string]$Command,
+        [string]$IdentityFile,
         [switch]$PasswordAuth
     )
     $ssh = Get-ArthurSshTool 'ssh'
@@ -77,7 +78,11 @@ function Invoke-ArthurSshProbe {
         }
     }
 
-    $args += @('-o','BatchMode=yes',"root@$DeviceIp",$Command)
+    $args += @('-o','BatchMode=yes')
+    if (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
+        $args += @('-o','IdentitiesOnly=yes','-i',$IdentityFile)
+    }
+    $args += @("root@$DeviceIp",$Command)
     return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args
 }
 
@@ -117,8 +122,8 @@ function Normalize-ArthurMac([string]$Mac) {
     return (($Mac.Trim().ToLowerInvariant()) -replace '-',':')
 }
 
-function Assert-ArthurEthernetIdentity {
-    param([Parameter(Mandatory=$true)][string]$DeviceIp,$Policy)
+function Get-ArthurEthernetIdentityContext {
+    param([Parameter(Mandatory=$true)][string]$DeviceIp)
     if (-not (Get-Command Get-NetRoute -ErrorAction SilentlyContinue) -or -not (Get-Command Get-NetAdapter -ErrorAction SilentlyContinue) -or -not (Get-Command Get-NetNeighbor -ErrorAction SilentlyContinue)) {
         throw 'UNSAFE_CONTROL_PATH: Windows route/adapter/neighbor commands are required.'
     }
@@ -143,14 +148,29 @@ function Assert-ArthurEthernetIdentity {
     Test-Connection -ComputerName $DeviceIp -Count 1 -Quiet -ErrorAction SilentlyContinue | Out-Null
     Start-Sleep -Milliseconds 250
     $neighbors = @(Get-NetNeighbor -AddressFamily IPv4 -IPAddress $DeviceIp -ErrorAction SilentlyContinue |
-        Where-Object { $_.LinkLayerAddress -and $_.State -notin @('Unreachable','Incomplete') })
-    if ($neighbors.Count -lt 1) { throw "DEVICE_UNREACHABLE: no Ethernet neighbor entry for $DeviceIp" }
-    $actualMac = Normalize-ArthurMac ([string]$neighbors[0].LinkLayerAddress)
-    $expectedMac = Normalize-ArthurMac ([string]$Policy.device.verified_management_mac)
-    if ($actualMac -ne $expectedMac) {
-        throw "MANAGEMENT_MAC_MISMATCH expected=$expectedMac actual=$actualMac"
+        Where-Object {
+            [int]$_.InterfaceIndex -eq [int]$selected.Route.InterfaceIndex -and
+            $_.LinkLayerAddress -and
+            $_.State -notin @('Unreachable','Incomplete')
+        })
+    if ($neighbors.Count -lt 1) { throw "DEVICE_UNREACHABLE: no Ethernet neighbor entry for $DeviceIp on interface $($selected.Route.InterfaceIndex)" }
+    $neighborMacs = @($neighbors |
+        ForEach-Object { Normalize-ArthurMac ([string]$_.LinkLayerAddress) } |
+        Where-Object { $_ } |
+        Sort-Object -Unique)
+    if ($neighborMacs.Count -lt 1) { throw "IDENTITY_UNRESOLVED: no usable Ethernet neighbor MAC for $DeviceIp on interface $($selected.Route.InterfaceIndex)" }
+    if ($neighborMacs.Count -gt 1) { throw "AMBIGUOUS_MANAGEMENT_IDENTITY: multiple neighbor MACs for $DeviceIp on interface $($selected.Route.InterfaceIndex)" }
+    return [pscustomobject]@{
+        DeviceIp = $DeviceIp
+        Route = $selected.Route
+        Adapter = $selected.Adapter
+        InterfaceIndex = [int]$selected.Route.InterfaceIndex
+        Mac = [string]$neighborMacs[0]
     }
+}
 
+function Get-ArthurHttpBuildInfo {
+    param([Parameter(Mandatory=$true)][string]$DeviceIp,$Policy)
     $uri = "http://$DeviceIp$([string]$Policy.device.build_info_path)"
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10
@@ -162,9 +182,21 @@ function Assert-ArthurEthernetIdentity {
     if ([string]$build.Firmware -ne [string]$Policy.device.build_marker -or [string]$build.Target -ne 'qualcommax/ipq60xx' -or [string]$build.Profile -ne 'jdcloud_re-ss-01') {
         throw 'HTTP_BUILD_IDENTITY_MISMATCH: endpoint does not match the authorized Arthur firmware identity.'
     }
+    return $build
+}
 
-    Write-Host "ARTHUR_CONTROL_PATH=PASS interface=$($selected.Adapter.Name) mac=$actualMac"
+function Assert-ArthurEthernetIdentity {
+    param([Parameter(Mandatory=$true)][string]$DeviceIp,$Policy)
+    $context = Get-ArthurEthernetIdentityContext -DeviceIp $DeviceIp
+    $expectedMac = Normalize-ArthurMac ([string]$Policy.device.verified_management_mac)
+    if ($context.Mac -ne $expectedMac) {
+        throw "MANAGEMENT_MAC_MISMATCH expected=$expectedMac actual=$($context.Mac)"
+    }
+    $build = Get-ArthurHttpBuildInfo -DeviceIp $DeviceIp -Policy $Policy
+
+    Write-Host "ARTHUR_CONTROL_PATH=PASS interface=$($context.Adapter.Name) mac=$($context.Mac)"
     Write-Host 'ARTHUR_HTTP_IDENTITY=PASS device=jdcloud_re-ss-01'
+    return [pscustomobject]@{ Network=$context; Build=$build }
 }
 
 function Test-ArthurAuthenticatedEvidence {
@@ -176,8 +208,124 @@ function Test-ArthurAuthenticatedEvidence {
            ($Probe.Output -match 'jdcloud_re-ss-01')
 }
 
+function Test-ArthurReadOnlyAuthenticatedEvidence {
+    param([Parameter(Mandatory=$true)]$Probe,$Policy)
+    if (-not (Test-ArthurAuthenticatedEvidence -Probe $Probe -Policy $Policy)) { return $false }
+    $match = [regex]::Match([string]$Probe.Output,'(?m)^---REMOTE_BR_LAN_MAC---\r?\n(?<mac>[0-9a-fA-F:.-]+)\s*(?:\r?\n|$)')
+    if (-not $match.Success) { return $false }
+    return (Normalize-ArthurMac $match.Groups['mac'].Value) -eq (Normalize-ArthurMac ([string]$Policy.device.verified_management_mac))
+}
+
 function Get-ArthurIdentityCommand {
     return "ubus call system board; printf '\n---XINZHAO_BUILD---\n'; cat /www/luci-static/xinzhao/build-info.json"
+}
+
+function Get-ArthurReadOnlyIdentityCommand {
+    $identity = Get-ArthurIdentityCommand
+    return "$identity; printf '\n---REMOTE_BR_LAN_MAC---\n'; cat /sys/class/net/br-lan/address; printf '\n---REMOTE_LINKS---\n'; ip -br link; printf '\n---REMOTE_LAN_STATUS---\n'; ubus call network.interface.lan status"
+}
+
+function Get-ArthurBuildField {
+    param($Build,[Parameter(Mandatory=$true)][string[]]$Names)
+    foreach ($name in $Names) {
+        $property = $Build.PSObject.Properties[$name]
+        if ($property -and $null -ne $property.Value -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            return [string]$property.Value
+        }
+    }
+    return ''
+}
+
+function Get-ArthurBuildIdentityFields {
+    param($Build)
+    return [pscustomobject]@{
+        Firmware = Get-ArthurBuildField -Build $Build -Names @('Firmware','Distribution')
+        Target = Get-ArthurBuildField -Build $Build -Names @('Target')
+        Profile = Get-ArthurBuildField -Build $Build -Names @('Profile','Device Profile')
+        Version = Get-ArthurBuildField -Build $Build -Names @('Version')
+        BuildId = Get-ArthurBuildField -Build $Build -Names @('Build ID','BuildID','Build Id','build_id','buildId')
+        GitCommit = Get-ArthurBuildField -Build $Build -Names @('Git Commit','GitCommit','git_commit')
+    }
+}
+
+function Invoke-ArthurReadOnlyIdentityForensics {
+    param([string]$DeviceIp = '192.168.6.1')
+    $policy = Get-ArthurAccessPolicy
+    if ($DeviceIp -ne [string]$policy.device.management_ip) {
+        throw "DEVICE_IDENTITY_MISMATCH expected=$($policy.device.management_ip) actual=$DeviceIp"
+    }
+
+    $network = Get-ArthurEthernetIdentityContext -DeviceIp $DeviceIp
+    $httpBuild = Get-ArthurHttpBuildInfo -DeviceIp $DeviceIp -Policy $policy
+    $httpFields = Get-ArthurBuildIdentityFields -Build $httpBuild
+    if ([string]::IsNullOrWhiteSpace($httpFields.BuildId)) {
+        throw 'HTTP_BUILD_IDENTITY_INCOMPLETE: build ID is required for stale-MAC reconciliation.'
+    }
+
+    $sshDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.ssh'
+    $runnerKey = Join-Path $sshDir 'id_ed25519'
+    $tempKnownHosts = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-forensic-{0}-{1}.known_hosts" -f $PID,[guid]::NewGuid().ToString('N'))
+    try {
+        $probe = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode 'accept-new' -Command (Get-ArthurReadOnlyIdentityCommand) -IdentityFile $runnerKey
+        if ($probe.ExitCode -ne 0) {
+            $failureClass = Get-ArthurSshFailureClass -ExitCode $probe.ExitCode -Output $probe.Output
+            throw "TEMP_SSH_EXISTING_RUNNER_KEY_AUTH=FAIL class=$failureClass"
+        }
+        if (-not (Test-ArthurAuthenticatedEvidence -Probe $probe -Policy $policy)) {
+            throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: temporary runner-key SSH did not prove the authorized Arthur board and build.'
+        }
+
+        $remoteBuildMatch = [regex]::Match([string]$probe.Output,'(?s)---XINZHAO_BUILD---\s*(\{.*?\})\s*---REMOTE_BR_LAN_MAC---')
+        if (-not $remoteBuildMatch.Success) { throw 'SSH_BUILD_IDENTITY_UNRESOLVED: build-info JSON missing from authenticated probe.' }
+        try { $remoteBuild = $remoteBuildMatch.Groups[1].Value | ConvertFrom-Json }
+        catch { throw 'SSH_BUILD_IDENTITY_UNRESOLVED: authenticated build-info JSON is invalid.' }
+        $remoteFields = Get-ArthurBuildIdentityFields -Build $remoteBuild
+        foreach ($field in @('Firmware','Target','Profile','Version','BuildId')) {
+            if ([string]::IsNullOrWhiteSpace([string]$remoteFields.$field) -or [string]$remoteFields.$field -ne [string]$httpFields.$field) {
+                throw "AUTHENTICATED_BUILD_IDENTITY_MISMATCH: HTTP and SSH $field values differ or are missing."
+            }
+        }
+
+        $remoteMacMatch = [regex]::Match([string]$probe.Output,'(?m)^---REMOTE_BR_LAN_MAC---\s*\r?\n\s*([0-9a-fA-F:-]+)\s*$')
+        if (-not $remoteMacMatch.Success) { throw 'REMOTE_BR_LAN_MAC_UNRESOLVED: authenticated SSH did not report br-lan address.' }
+        $remoteMac = Normalize-ArthurMac $remoteMacMatch.Groups[1].Value
+        if ($remoteMac -ne [string]$network.Mac) {
+            throw "AMBIGUOUS_DEVICE_IDENTITY: Ethernet neighbor MAC $($network.Mac) differs from remote br-lan MAC $remoteMac."
+        }
+
+        $frozenMac = Normalize-ArthurMac ([string]$policy.device.verified_management_mac)
+        $frozenStatus = if ($remoteMac -eq $frozenMac) { 'MATCH' } else { 'STALE' }
+        Write-Host 'ARTHUR_HTTP_IDENTITY=PASS'
+        Write-Host 'TEMP_SSH_EXISTING_RUNNER_KEY_AUTH=PASS'
+        Write-Host 'SSH_BOARD_TARGET_PROFILE=PASS'
+        Write-Host "FROZEN_MANAGEMENT_MAC_STATUS=$frozenStatus"
+        return [pscustomobject]@{
+            DeviceIp = $DeviceIp
+            EthernetRoute = 'PASS'
+            SelectedEthernetInterfaceIndex = [int]$network.InterfaceIndex
+            SelectedEthernetInterface = [string]$network.Adapter.Name
+            LocalEthernetMac = [string]$network.Mac
+            FrozenManagementMac = [string]$frozenMac
+            FrozenManagementMacStatus = [string]$frozenStatus
+            HttpIdentity = 'PASS'
+            HttpFirmware = [string]$httpFields.Firmware
+            HttpTarget = [string]$httpFields.Target
+            HttpProfile = [string]$httpFields.Profile
+            HttpVersion = [string]$httpFields.Version
+            HttpBuildId = [string]$httpFields.BuildId
+            HttpGitCommit = [string]$httpFields.GitCommit
+            RunnerKeyAuth = 'PASS'
+            SshBoardIdentity = 'PASS'
+            SshBuildIdentity = 'PASS'
+            RemoteBrLanMac = [string]$remoteMac
+            RemoteNetworkStatus = 'READ_ONLY_CAPTURED'
+            FormalKnownHostsChanged = $false
+            TempTrustStore = 'DISPOSABLE_ACCEPT_NEW'
+        }
+    }
+    finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $tempKnownHosts
+    }
 }
 
 function Ensure-ArthurRunnerKey {
@@ -201,26 +349,52 @@ function Ensure-ArthurRunnerKey {
     $parts = @((Get-Content -Raw -LiteralPath $publicKey).Trim() -split '\s+' | Where-Object { $_ })
     if ($parts.Count -lt 2 -or $parts[0] -ne 'ssh-ed25519') { throw 'UNRECOVERABLE_SSH_AUTH: invalid controller public key.' }
     $line = "ssh-ed25519 $($parts[1]) xinzhaowrt-controller"
-    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
-    $backup = "/etc/dropbear/authorized_keys.xinzhaowrt-backup-$stamp"
-    $command = "umask 077; mkdir -p /etc/dropbear; if [ -e /etc/dropbear/authorized_keys ]; then cp -p /etc/dropbear/authorized_keys '$backup'; echo BACKUP_EXISTING; else echo BACKUP_MISSING; fi; touch /etc/dropbear/authorized_keys; chmod 600 /etc/dropbear/authorized_keys; grep -qxF '$line' /etc/dropbear/authorized_keys || printf '%s\n' '$line' >> /etc/dropbear/authorized_keys"
+    $backupCommand = "if [ -f /etc/dropbear/authorized_keys ]; then printf 'ARTHUR_AUTHKEYS_PRESENT\n'; base64 /etc/dropbear/authorized_keys; else printf 'ARTHUR_AUTHKEYS_MISSING\n'; fi"
+    $backupProbe = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $KnownHostsFile -StrictMode yes -Command $backupCommand -PasswordAuth
+    if ($backupProbe.ExitCode -ne 0) { throw 'UNRECOVERABLE_SSH_AUTH: could not read authorized_keys for local rollback backup.' }
+
+    $backupLines = @(([string]$backupProbe.Output -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $hadFile = $backupLines.Count -gt 0 -and $backupLines[0] -eq 'ARTHUR_AUTHKEYS_PRESENT'
+    $missingFile = $backupLines.Count -gt 0 -and $backupLines[0] -eq 'ARTHUR_AUTHKEYS_MISSING'
+    if (-not $hadFile -and -not $missingFile) { throw 'UNRECOVERABLE_SSH_AUTH: authorized_keys backup response was malformed.' }
+
+    $backupPath = $null
+    if ($hadFile) {
+        $encoded = ($backupLines | Select-Object -Skip 1) -join ''
+        try { $backupBytes = [Convert]::FromBase64String($encoded) }
+        catch { throw 'UNRECOVERABLE_SSH_AUTH: authorized_keys backup could not be decoded.' }
+        $backupPath = "$KnownHostsFile.authorized_keys_backup"
+        try { [System.IO.File]::WriteAllBytes($backupPath,$backupBytes) }
+        catch { throw 'UNRECOVERABLE_SSH_AUTH: could not save authorized_keys backup on the runner.' }
+    }
+
+    $record = [pscustomobject]@{ Changed=$true; BackupPath=$backupPath; HadFile=$hadFile }
+    $command = "test -d /etc/dropbear || exit 72; touch /etc/dropbear/authorized_keys; chmod 600 /etc/dropbear/authorized_keys; grep -qxF '$line' /etc/dropbear/authorized_keys || printf '%s\n' '$line' >> /etc/dropbear/authorized_keys"
     $install = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $KnownHostsFile -StrictMode yes -Command $command -PasswordAuth
-    if ($install.ExitCode -ne 0) { throw 'UNRECOVERABLE_SSH_AUTH: verified password authentication could not install the controller key.' }
-    $hadFile = $install.Output -match 'BACKUP_EXISTING'
+    if ($install.ExitCode -ne 0) {
+        Restore-ArthurRunnerKey -DeviceIp $DeviceIp -KnownHostsFile $KnownHostsFile -Record $record
+        throw 'UNRECOVERABLE_SSH_AUTH: verified password authentication could not install the controller key.'
+    }
     Write-Host 'ARTHUR_RUNNER_KEY=PASS'
-    return [pscustomobject]@{ Changed=$true; Backup=$backup; HadFile=$hadFile }
+    return $record
 }
 
 function Restore-ArthurRunnerKey {
     param([string]$DeviceIp,[string]$KnownHostsFile,$Record)
     if (-not $Record -or -not $Record.Changed -or [string]::IsNullOrWhiteSpace($env:ARTHUR_ROOT_PASSWORD)) { return }
     $command = if ($Record.HadFile) {
-        "test -e '$($Record.Backup)' && cp -p '$($Record.Backup)' /etc/dropbear/authorized_keys && rm -f '$($Record.Backup)'"
+        if (-not $Record.BackupPath -or -not (Test-Path -LiteralPath $Record.BackupPath -PathType Leaf)) {
+            Write-Warning 'AUTHORIZED_KEYS_ROLLBACK_FAILED: runner-side authorized_keys backup is unavailable.'
+            return
+        }
+        $encoded = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($Record.BackupPath))
+        "printf '%s' '$encoded' | base64 -d > /etc/dropbear/authorized_keys && chmod 600 /etc/dropbear/authorized_keys"
     } else {
-        "rm -f /etc/dropbear/authorized_keys '$($Record.Backup)'"
+        'rm -f /etc/dropbear/authorized_keys'
     }
     $restore = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $KnownHostsFile -StrictMode yes -Command $command -PasswordAuth
-    if ($restore.ExitCode -ne 0) { Write-Warning 'KNOWN_HOSTS_ROLLBACK_FAILED: remote authorized_keys rollback also failed.' }
+    if ($restore.ExitCode -ne 0) { Write-Warning 'AUTHORIZED_KEYS_ROLLBACK_FAILED: remote restore of /etc/dropbear/authorized_keys failed.' }
+    elseif ($Record.BackupPath) { Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $Record.BackupPath }
 }
 
 function Get-ArthurKnownHostLines {
@@ -316,6 +490,11 @@ function Ensure-ArthurUnattendedAccess {
                 if ($passwordProbe.ExitCode -eq 61) { throw 'UNRECOVERABLE_SSH_AUTH: neither runner key nor secured password recovery is available.' }
                 throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: password-authenticated endpoint did not prove the authorized Arthur identity.'
             }
+        $readOnlyProbe = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode yes -Command (Get-ArthurReadOnlyIdentityCommand) -PasswordAuth
+        if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $readOnlyProbe -Policy $policy)) {
+            throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: password-authenticated board, build, target, profile, and br-lan MAC evidence did not match the authorized Arthur identity.'
+        }
+        Write-Host 'PASSWORD_AUTH_IDENTITY=PASS board=target=profile=br-lan'
             $runnerRecord = Ensure-ArthurRunnerKey -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts
             $candidate = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode yes -Command $identityCommand
             if (-not (Test-ArthurAuthenticatedEvidence -Probe $candidate -Policy $policy)) {

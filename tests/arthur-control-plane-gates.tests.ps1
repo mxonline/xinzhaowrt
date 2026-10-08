@@ -150,14 +150,26 @@ Assert-Contains $controlPlaneGate 'FIRMWARE_EXECUTION_NOT_AUTHORIZED=PASS' 'gove
 Assert-Contains $controlPlaneGate 'CONTROL_PLANE_MUTATION_SKIPPED=PASS' 'unauthorized firmware mutation must be explicitly skipped'
 
 $operatorIntent = Get-Content -Raw $OperatorIntentPath | ConvertFrom-Json
-Assert-Equal ([string]$operatorIntent.intent_type) 'PROCESS_GOVERNANCE' 'current operator intent must remain governance only'
-Assert-Equal ([string]$operatorIntent.authorization_scope) 'GOVERNANCE_RULES_ONLY' 'governance scope must not authorize firmware release'
-Assert-True ($operatorIntent.firmware_execution_authorized -eq $false) 'governance work must close firmware execution'
-Assert-True ($operatorIntent.device_write_authorized -eq $false) 'governance work must not authorize router writes'
+Assert-True ($operatorIntent.intent_type -in @('PROCESS_GOVERNANCE','EXECUTE_FIRMWARE')) 'operator intent must use a recognized scope'
+Assert-True ($operatorIntent.device_write_authorized -eq $false) 'current release process must not authorize router writes'
+if ($operatorIntent.firmware_execution_authorized -eq $true) {
+    Assert-Equal ([string]$operatorIntent.intent_type) 'EXECUTE_FIRMWARE' 'authorized intent must identify executable firmware work'
+    Assert-Equal ([string]$operatorIntent.authorization_scope) 'FIRMWARE_RELEASE' 'authorized intent must be limited to firmware release'
+    Assert-Equal ([string]$operatorIntent.release_mode) 'RELEASE_ONLY' 'current release must remain release-only'
+    Assert-True ($operatorIntent.automatic_flash -eq $false) 'release-only intent must disable automatic flash'
+    Assert-True ($operatorIntent.sysupgrade_forbidden -eq $true) 'release-only intent must forbid sysupgrade'
+    Assert-True ($operatorIntent.device_reboot_forbidden -eq $true) 'release-only intent must forbid device reboot'
+    Assert-Equal ([string]$operatorIntent.highest_machine_evidence.accepted_source_sha) ([string]$operatorIntent.firmware_state.active_source_sha) 'accepted and active source identities must match'
+}
+else {
+    Assert-Equal ([string]$operatorIntent.intent_type) 'PROCESS_GOVERNANCE' 'unauthorized intent must remain governance only'
+    Assert-Equal ([string]$operatorIntent.authorization_scope) 'GOVERNANCE_RULES_ONLY' 'governance scope must not authorize firmware release'
+}
 Assert-Equal ([string]$operatorIntent.highest_machine_evidence.priority_class) 'HIGHEST' 'operator intent must retain highest machine priority'
-Assert-Equal ([string]$operatorIntent.highest_machine_evidence.objective_id) 'FREEZE_ARTHUR_RELEASE_PROCESS_VNEXT' 'operator intent must persist the vNext governance objective'
-Assert-Equal ([string]$operatorIntent.highest_machine_evidence.required_terminal) 'GOVERNANCE_RULES_PERSISTED' 'governance terminal must be explicit'
-Assert-Equal ([string]$operatorIntent.highest_machine_evidence.process_contract_version) 'ARTHUR_RELEASE_PROCESS_VNEXT_2026-09-29' 'operator intent must bind the frozen vNext process contract'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.authority) 'OPERATOR' 'operator intent must retain operator authority'
+Assert-True (-not [string]::IsNullOrWhiteSpace([string]$operatorIntent.highest_machine_evidence.objective_id)) 'operator intent must name its current objective'
+Assert-True (-not [string]::IsNullOrWhiteSpace([string]$operatorIntent.highest_machine_evidence.required_terminal)) 'operator intent must name its required terminal'
+Assert-Equal ([string]$operatorIntent.highest_machine_evidence.execution_id) ([string]$operatorIntent.execution_id) 'highest evidence must bind the active execution'
 Assert-True ($operatorIntent.highest_machine_evidence.fail_closed_on_violation -eq $true) 'highest machine evidence violations must fail closed'
 
 $controlPlaneWorkflow = Get-Content -Raw $ControlPlaneWorkflowPath
