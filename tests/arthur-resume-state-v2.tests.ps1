@@ -20,6 +20,8 @@ Assert-True (Test-Path $ContractPath) 'state-contract helper must exist'
 . $ContractPath
 . $ResumePath
 
+Assert-Equal (Resolve-ArthurMigrationExecutionId -ExplicitExecutionId 'arthur-v0.1.6-file-management-repair-20261006' -PreviousResumeState $null -BaselineFirmware $null) 'arthur-v0.1.6-file-management-repair-20261006' 'operator-authorized release execution id must survive reconciliation'
+
 $baseline = [pscustomobject]@{
     active_development_baseline = $true
     firmware = [pscustomobject]@{

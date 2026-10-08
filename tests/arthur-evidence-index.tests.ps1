@@ -31,6 +31,11 @@ try {
     Assert-Equal ([IO.Path]::GetFileName($indexPath)) 'index.json' 'evidence index filename must be fixed'
     Assert-Equal ([IO.Path]::GetFileName([IO.Path]::GetDirectoryName($indexPath))) $executionId 'evidence index must live under execution_id directory'
 
+    $operatorExecutionId = 'arthur-v0.1.6-file-management-repair-20261006'
+    $operatorIndexPath = Get-ArthurEvidenceIndexPath -Root $temp -ExecutionId $operatorExecutionId
+    Assert-Equal ([IO.Path]::GetFileName([IO.Path]::GetDirectoryName($operatorIndexPath))) $operatorExecutionId 'operator-authorized release execution id must be accepted'
+    Assert-Throws { Get-ArthurEvidenceIndexPath -Root $temp -ExecutionId 'arthur-v0.1.6-../repair-20261006' | Out-Null } 'path traversal must remain invalid'
+
     $record = [ordered]@{
         evidence_id = 'artifact-12-34'
         gate_id = 'ARTIFACT'
@@ -48,6 +53,8 @@ try {
     }
 
     Add-ArthurEvidenceRecord -Path $indexPath -Record $record | Out-Null
+    Add-ArthurEvidenceRecord -Path $operatorIndexPath -Record $record | Out-Null
+    Assert-Equal (Read-ArthurEvidenceIndex -Path $operatorIndexPath).execution_id $operatorExecutionId 'operator execution evidence must bind exact id'
     $index = Read-ArthurEvidenceIndex -Path $indexPath
     Assert-Equal $index.schema_version 1 'evidence index schema must be version 1'
     Assert-Equal $index.execution_id $executionId 'index must retain execution identity'
