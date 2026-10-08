@@ -329,24 +329,37 @@ function Invoke-ArthurReadOnlyIdentityForensics {
 }
 
 function Ensure-ArthurRunnerKey {
-    param([Parameter(Mandatory=$true)][string]$DeviceIp,[Parameter(Mandatory=$true)][string]$KnownHostsFile)
-    $sshDir = Split-Path -Parent $KnownHostsFile
-    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+    param(
+        [Parameter(Mandatory=$true)][string]$DeviceIp,
+        [Parameter(Mandatory=$true)][string]$KnownHostsFile,
+        [string]$RunnerKeyDirectory = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.ssh')
+    )
+    if (-not (Test-Path -LiteralPath $RunnerKeyDirectory -PathType Container)) {
+        throw 'UNRECOVERABLE_SSH_AUTH: existing controller SSH keypair is unavailable.'
+    }
+    $sshDir = (Resolve-Path -LiteralPath $RunnerKeyDirectory).Path
     $privateKey = Join-Path $sshDir 'id_ed25519'
     $publicKey = "$privateKey.pub"
     $keygen = Get-ArthurSshTool 'ssh-keygen'
 
-    if (-not (Test-Path -LiteralPath $privateKey -PathType Leaf)) {
-        $created = Invoke-ArthurAccessNative -FilePath $keygen -Arguments @('-q','-t','ed25519','-N','','-C','xinzhaowrt-controller','-f',$privateKey)
-        if ($created.ExitCode -ne 0) { throw 'UNRECOVERABLE_SSH_AUTH: failed to create controller SSH key.' }
+    if (-not (Test-Path -LiteralPath $privateKey -PathType Leaf) -or -not (Test-Path -LiteralPath $publicKey -PathType Leaf)) {
+        throw 'UNRECOVERABLE_SSH_AUTH: existing controller SSH keypair is unavailable.'
     }
-    if (-not (Test-Path -LiteralPath $publicKey -PathType Leaf)) {
-        $derived = Invoke-ArthurAccessNative -FilePath $keygen -Arguments @('-y','-f',$privateKey)
-        if ($derived.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($derived.Output)) { throw 'UNRECOVERABLE_SSH_AUTH: failed to derive controller public key.' }
-        ("{0} xinzhaowrt-controller" -f $derived.Output.Trim()) | Set-Content -Encoding ASCII -LiteralPath $publicKey
+    $derived = Invoke-ArthurAccessNative -FilePath $keygen -Arguments @('-y','-f',$privateKey)
+    if ($derived.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($derived.Output)) {
+        throw 'UNRECOVERABLE_SSH_AUTH: existing controller private key cannot be read.'
+    }
+    $derivedParts = @($derived.Output.Trim() -split '\s+')
+    $publicParts = @((Get-Content -Raw -LiteralPath $publicKey).Trim() -split '\s+')
+    if (
+        $derivedParts.Count -lt 2 -or $publicParts.Count -lt 2 -or
+        $derivedParts[0] -ne 'ssh-ed25519' -or $publicParts[0] -ne 'ssh-ed25519' -or
+        $derivedParts[1] -ne $publicParts[1]
+    ) {
+        throw 'UNRECOVERABLE_SSH_AUTH: controller public key does not match the existing private key.'
     }
 
-    $parts = @((Get-Content -Raw -LiteralPath $publicKey).Trim() -split '\s+' | Where-Object { $_ })
+    $parts = @($publicParts | Where-Object { $_ })
     if ($parts.Count -lt 2 -or $parts[0] -ne 'ssh-ed25519') { throw 'UNRECOVERABLE_SSH_AUTH: invalid controller public key.' }
     $line = "ssh-ed25519 $($parts[1]) xinzhaowrt-controller"
     $backupCommand = "if [ -f /etc/dropbear/authorized_keys ]; then printf 'ARTHUR_AUTHKEYS_PRESENT\n'; base64 /etc/dropbear/authorized_keys; else printf 'ARTHUR_AUTHKEYS_MISSING\n'; fi"

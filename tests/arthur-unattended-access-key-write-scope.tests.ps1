@@ -41,16 +41,27 @@ if (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $wrongMac -Policy $policy) {
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("arthur-key-scope-{0}" -f [guid]::NewGuid().ToString('N'))
 $sshDir = Join-Path $tempRoot '.ssh'
 New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
-$knownHosts = Join-Path $sshDir 'known_hosts'
+$trustDir = Join-Path $tempRoot 'temporary-trust'
+New-Item -ItemType Directory -Path $trustDir -Force | Out-Null
+$knownHosts = Join-Path $trustDir 'candidate.known_hosts'
 $privateKey = Join-Path $sshDir 'id_ed25519'
 $publicKey = "$privateKey.pub"
+$expectedPublicKey = 'AAAAC3NzaC1lZDI1NTE5AAAAIFRlc3RLZXlCeXRlcw=='
 [System.IO.File]::WriteAllText($privateKey,'test-only-private-key-placeholder')
-[System.IO.File]::WriteAllText($publicKey,'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFRlc3RLZXlCeXRlcw== xinzhaowrt-controller')
+[System.IO.File]::WriteAllText($publicKey,"ssh-ed25519 $expectedPublicKey xinzhaowrt-controller")
 
 $originalAuthorizedKeys = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFByZXZpb3VzS2V5 prior`n"
 $originalBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($originalAuthorizedKeys))
 $script:ProbeCalls = @()
 $script:BackupPresent = $true
+$script:DerivedPublicKey = $expectedPublicKey
+function Invoke-ArthurAccessNative {
+    param([string]$FilePath,[string[]]$Arguments)
+    if ($Arguments.Count -eq 3 -and $Arguments[0] -eq '-y' -and $Arguments[1] -eq '-f') {
+        return [pscustomobject]@{ ExitCode = 0; Output = "ssh-ed25519 $script:DerivedPublicKey" }
+    }
+    throw 'TEST_FAIL: unexpected local SSH native invocation in mocked key-scope test.'
+}
 function Invoke-ArthurSshProbe {
     param(
         [string]$DeviceIp,
@@ -69,7 +80,27 @@ function Invoke-ArthurSshProbe {
 }
 
 try {
-    $record = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts
+    $missingKeyDirectory = Join-Path $tempRoot 'missing-controller-key'
+    $missingKeyFailure = ''
+    try { Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -RunnerKeyDirectory $missingKeyDirectory | Out-Null }
+    catch { $missingKeyFailure = $_.Exception.Message }
+    if ($missingKeyFailure -notmatch 'existing controller SSH keypair is unavailable') {
+        throw 'TEST_FAIL: key repair must require the existing controller keypair instead of generating another key.'
+    }
+    if (Test-Path -LiteralPath $missingKeyDirectory) {
+        throw 'TEST_FAIL: missing controller keypair must not create a new key in a temporary trust directory.'
+    }
+
+    $script:DerivedPublicKey = 'AAAAC3NzaC1lZDI1NTE5AAAAIURpZmZlcmVudEtleQ=='
+    $mismatchFailure = ''
+    try { Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -RunnerKeyDirectory $sshDir | Out-Null }
+    catch { $mismatchFailure = $_.Exception.Message }
+    if ($mismatchFailure -notmatch 'does not match the existing private key' -or $script:ProbeCalls.Count -ne 0) {
+        throw 'TEST_FAIL: a public key that differs from the current private key must fail before remote access.'
+    }
+    $script:DerivedPublicKey = $expectedPublicKey
+
+    $record = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -RunnerKeyDirectory $sshDir
     if (-not $record.BackupPath -or -not (Test-Path -LiteralPath $record.BackupPath -PathType Leaf)) {
         throw 'TEST_FAIL: existing authorized_keys must be backed up to the runner before the device write.'
     }
@@ -83,6 +114,9 @@ try {
         if ($remotePaths | Where-Object { $_ -ne '/etc/dropbear/authorized_keys' }) {
             throw "TEST_FAIL: remote command touched a path outside /etc/dropbear/authorized_keys: $($remotePaths -join ',')"
         }
+    }
+    if (@($script:ProbeCalls | Where-Object { $_.Command -match [regex]::Escape($expectedPublicKey) }).Count -lt 1) {
+        throw 'TEST_FAIL: remote key installation must use the existing runner public key.'
     }
 
     $script:ProbeCalls = @()
@@ -99,7 +133,7 @@ try {
 
     $script:ProbeCalls = @()
     $script:BackupPresent = $false
-    $missingRecord = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts
+    $missingRecord = Ensure-ArthurRunnerKey -DeviceIp '192.168.6.1' -KnownHostsFile $knownHosts -RunnerKeyDirectory $sshDir
     if ($missingRecord.HadFile -or $missingRecord.BackupPath) {
         throw 'TEST_FAIL: absence of an original authorized_keys file must be recorded without a fabricated backup.'
     }
