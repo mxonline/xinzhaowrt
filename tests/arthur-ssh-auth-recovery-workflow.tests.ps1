@@ -7,6 +7,18 @@ if (-not (Test-Path -LiteralPath $workflowPath -PathType Leaf)) {
     throw 'TEST_FAIL: the narrowly scoped SSH recovery workflow must exist.'
 }
 $workflow = Get-Content -Raw -LiteralPath $workflowPath
+foreach ($requiredSourceLoad in @(
+    'git -C $sourceRoot status --porcelain --untracked-files=normal',
+    'git -c http.sslBackend=openssl -C $sourceRoot fetch --no-tags origin $env:GITHUB_SHA',
+    'git -C $sourceRoot checkout --detach FETCH_HEAD'
+)) {
+    if (-not $workflow.Contains($requiredSourceLoad)) {
+        throw "TEST_FAIL: workflow must load the exact authorized source safely: $requiredSourceLoad"
+    }
+}
+if ($workflow -match '(?m)^\s*uses:\s*actions/') {
+    throw 'TEST_FAIL: recovery workflow must not depend on downloading external actions.'
+}
 
 foreach ($required in @(
     "'on':`n  workflow_dispatch:",
@@ -42,26 +54,31 @@ if (-not ($routeIndex -lt $passwordIndex -and $passwordIndex -lt $readOnlyIndex 
 }
 
 $lines = Get-Content -LiteralPath $workflowPath
-$runLine = [Array]::IndexOf($lines,'        run: |')
-if ($runLine -lt 0) { throw 'TEST_FAIL: recovery workflow PowerShell step is missing.' }
-$scriptLines = @()
-for ($i = $runLine + 1; $i -lt $lines.Count; $i++) {
-    $line = [string]$lines[$i]
-    if ($line.Length -gt 0 -and $line -notmatch '^ {10}') { break }
-    if ($line.Length -gt 0) { $scriptLines += $line.Substring(10) } else { $scriptLines += '' }
+$runBlocks = @()
+for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ([string]$lines[$i] -ne '        run: |') { continue }
+    $scriptLines = @()
+    for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+        $line = [string]$lines[$j]
+        if ($line.Length -gt 0 -and $line -notmatch '^ {10}') { break }
+        if ($line.Length -gt 0) { $scriptLines += $line.Substring(10) } else { $scriptLines += '' }
+    }
+    $runBlocks += ,$scriptLines
 }
-$temporaryScript = Join-Path ([System.IO.Path]::GetTempPath()) ("arthur-ssh-workflow-parse-{0}.ps1" -f [guid]::NewGuid().ToString('N'))
-try {
-    [System.IO.File]::WriteAllLines($temporaryScript,$scriptLines,[Text.UTF8Encoding]::new($false))
-    $tokens = $null
-    $errors = $null
-    [void][System.Management.Automation.Language.Parser]::ParseFile($temporaryScript,[ref]$tokens,[ref]$errors)
-    if ($errors.Count -gt 0) {
-        throw "TEST_FAIL: workflow PowerShell syntax is invalid: $(($errors | ForEach-Object Message) -join '; ')"
+if ($runBlocks.Count -lt 2) { throw 'TEST_FAIL: both source loading and recovery PowerShell steps must exist.' }
+foreach ($scriptLines in $runBlocks) {
+    $temporaryScript = Join-Path ([System.IO.Path]::GetTempPath()) ("arthur-ssh-workflow-parse-{0}.ps1" -f [guid]::NewGuid().ToString('N'))
+    try {
+        [System.IO.File]::WriteAllLines($temporaryScript,$scriptLines,[Text.UTF8Encoding]::new($false))
+        $tokens = $null
+        $errors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile($temporaryScript,[ref]$tokens,[ref]$errors)
+        if ($errors.Count -gt 0) {
+            throw "TEST_FAIL: workflow PowerShell syntax is invalid: $(($errors | ForEach-Object Message) -join '; ')"
+        }
+    }
+    finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $temporaryScript
     }
 }
-finally {
-    Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $temporaryScript
-}
-
 Write-Output 'ARTHUR_SSH_AUTH_RECOVERY_WORKFLOW_CONTRACT=PASS'

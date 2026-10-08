@@ -21,11 +21,29 @@ jobs:
     env:
       ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
     steps:
-      - name: Checkout the authorized recovery source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
+      - name: Load exact recovery source without external actions
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
 
+          $sourceRoot = $env:GITHUB_WORKSPACE
+          if (-not (Test-Path -LiteralPath (Join-Path $sourceRoot '.git'))) {
+            throw 'BLOCKED: the existing runner workspace is not the Arthur repository.'
+          }
+          $dirty = @(& git -C $sourceRoot status --porcelain --untracked-files=normal 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: could not inspect runner workspace before source update.' }
+          if ($dirty.Count -gt 0) { throw 'BLOCKED: runner workspace has local changes; preserving it without checkout.' }
+
+          & git -c http.sslBackend=openssl -C $sourceRoot fetch --no-tags origin $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: failed to fetch exact workflow source commit.' }
+          & git -C $sourceRoot checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: failed to select exact workflow source commit.' }
+          $sourceSha = (& git -C $sourceRoot rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sourceSha -ne $env:GITHUB_SHA) {
+            throw 'BLOCKED: runner workspace did not resolve to the exact workflow source commit.'
+          }
+          Write-Host "RECOVERY_SOURCE_FETCH=PASS sha=$sourceSha"
       - name: Prove identity and restore controller SSH authentication
         shell: powershell
         run: |
