@@ -35,9 +35,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: could not inspect runner workspace before source update.' }
           if ($dirty.Count -gt 0) { throw 'BLOCKED: runner workspace has local changes; preserving it without checkout.' }
 
-          & git -c http.sslBackend=openssl -C $sourceRoot fetch --no-tags origin $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: failed to fetch exact workflow source commit.' }
-          & git -C $sourceRoot checkout --detach FETCH_HEAD
+          # A verified local Git object avoids an unreliable runner HTTPS fetch.
+          # The checkout and SHA check below still bind the run to GITHUB_SHA.
+          $previousPreference = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = 'Continue'
+            & git -C $sourceRoot cat-file -e "${env:GITHUB_SHA}^{commit}" 2>$null
+            $sourcePresent = $LASTEXITCODE -eq 0
+          }
+          finally { $ErrorActionPreference = $previousPreference }
+          if (-not $sourcePresent) {
+            $env:GIT_TERMINAL_PROMPT = '0'
+            & git -c http.sslBackend=openssl -C $sourceRoot fetch --no-tags origin $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: failed to fetch exact workflow source commit.' }
+          }
+          & git -C $sourceRoot checkout --detach $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'BLOCKED: failed to select exact workflow source commit.' }
           $sourceSha = (& git -C $sourceRoot rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $sourceSha -ne $env:GITHUB_SHA) {

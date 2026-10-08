@@ -9,8 +9,9 @@ if (-not (Test-Path -LiteralPath $workflowPath -PathType Leaf)) {
 $workflow = Get-Content -Raw -LiteralPath $workflowPath
 foreach ($requiredSourceLoad in @(
     'git -C $sourceRoot status --porcelain --untracked-files=normal',
+    'git -C $sourceRoot cat-file -e "${env:GITHUB_SHA}^{commit}"',
     'git -c http.sslBackend=openssl -C $sourceRoot fetch --no-tags origin $env:GITHUB_SHA',
-    'git -C $sourceRoot checkout --detach FETCH_HEAD'
+    'git -C $sourceRoot checkout --detach $env:GITHUB_SHA'
 )) {
     if (-not $workflow.Contains($requiredSourceLoad)) {
         throw "TEST_FAIL: workflow must load the exact authorized source safely: $requiredSourceLoad"
