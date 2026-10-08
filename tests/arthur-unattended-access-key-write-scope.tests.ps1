@@ -187,6 +187,32 @@ try {
         throw 'TEST_FAIL: the helper must prove br-lan identity before calling the device key writer.'
     }
 
+    $script:RecoveryProbeCalls = @()
+    $script:KeyInstalled = $false
+    function Ensure-ArthurRunnerKey {
+        $script:EnsureKeyCallCount++
+        $script:KeyInstalled = $true
+        [pscustomobject]@{ Changed = $true }
+    }
+    function Set-ArthurVerifiedKnownHost { [pscustomobject]@{ HadKnownHosts = $true; Backup = 'test-backup' } }
+    function Invoke-ArthurSshProbe {
+        param(
+            [string]$DeviceIp,
+            [string]$KnownHostsFile,
+            [ValidateSet('yes','accept-new')][string]$StrictMode,
+            [string]$Command,
+            [string]$IdentityFile,
+            [switch]$PasswordAuth
+        )
+        $script:RecoveryProbeCalls += [pscustomobject]@{ Command = $Command; StrictMode = $StrictMode; PasswordAuth = $PasswordAuth.IsPresent }
+        if ($PasswordAuth -or $script:KeyInstalled) { return [pscustomobject]@{ ExitCode = 0; Output = $validOutput } }
+        return [pscustomobject]@{ ExitCode = 255; Output = 'Permission denied (publickey).' }
+    }
+    $recovered = @(Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1')
+    if ($recovered.Count -ne 1 -or $recovered[0].Mode -ne 'password-recovered-runner-key') {
+        throw 'TEST_FAIL: recovery must return only its result object after the Ethernet assertion.'
+    }
+
     Write-Output 'ARTHUR_PASSWORD_IDENTITY_INCLUDES_BRLAN_MAC=PASS'
     Write-Output 'ARTHUR_AUTHORIZED_KEYS_REMOTE_WRITE_SCOPE=PASS'
     Write-Output 'ARTHUR_AUTHORIZED_KEYS_ROLLBACK=PASS'

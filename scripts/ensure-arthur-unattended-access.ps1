@@ -484,7 +484,7 @@ function Ensure-ArthurUnattendedAccess {
     if ($strict.ExitCode -eq 0) { throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: strict SSH endpoint returned unexpected identity.' }
     if ($class -eq 'DEVICE_UNREACHABLE') { throw "DEVICE_UNREACHABLE: $($strict.Output)" }
 
-    Assert-ArthurEthernetIdentity -DeviceIp $DeviceIp -Policy $policy
+    $null = Assert-ArthurEthernetIdentity -DeviceIp $DeviceIp -Policy $policy
 
     $tempKnownHosts = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-candidate-{0}.known_hosts" -f $PID)
     Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $tempKnownHosts
