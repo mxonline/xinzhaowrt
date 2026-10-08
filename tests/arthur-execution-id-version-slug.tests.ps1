@@ -23,4 +23,13 @@ $path = Get-ArthurEvidenceIndexPath -Root $Root -ExecutionId $executionId
 $leafExecution = [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($path))
 Assert-Equal $leafExecution $executionId 'evidence index path must preserve the authorized execution id exactly'
 
+# Schema-2 migration must still load the terminal execution id produced by the
+# original v0.1.5 release workflow, so its historical evidence index can be read.
+$historicalExecutionId = 'arthur-v015-software-source-repair-36764137044'
+Assert-Equal (Test-ArthurExecutionId -ExecutionId $historicalExecutionId) $true 'historical v015 release execution id must remain readable'
+$historicalPath = Get-ArthurEvidenceIndexPath -Root $Root -ExecutionId $historicalExecutionId
+$historicalLeaf = [IO.Path]::GetFileName([IO.Path]::GetDirectoryName($historicalPath))
+Assert-Equal $historicalLeaf $historicalExecutionId 'historical execution id must map to its original evidence directory'
+Assert-Equal (Test-ArthurExecutionId -ExecutionId 'arthur-v015-..-36764137044') $false 'path traversal tokens must remain invalid in historical ids'
+
 Write-Host 'ARTHUR_VERSIONED_EXECUTION_ID=PASS'

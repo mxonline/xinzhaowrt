@@ -41,7 +41,7 @@ function Test-ArthurExecutionId {
     param([string]$ExecutionId)
     if ([string]::IsNullOrWhiteSpace($ExecutionId)) { return $false }
     $value = $ExecutionId.Trim().ToLowerInvariant()
-    return $value -match '^arthur-(?:[a-z0-9.-]+-[0-9a-f]{7}|v[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*)-\d{8}$'
+    return $value -match '^arthur-(?:[a-z0-9.-]+-[0-9a-f]{7}-\d{8}|v[0-9]+\.[0-9]+\.[0-9]+-[a-z0-9]+(?:-[a-z0-9]+)*-\d{8}|v\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*-\d{11})$'
 }
 
 function New-ArthurExecutionId {
