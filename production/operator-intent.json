@@ -9,8 +9,8 @@
   "target_release": "v0.1.6",
   "device_write_authorized": false,
   "firmware_state": {
-    "current_stage": "SOURCE_BINDING",
-    "next_stage": "PREBUILD_OPENCLASH_ADH_LIVE",
+    "current_stage": "CHANGE_IMPACT",
+    "next_stage": "CHANGE_IMPACT",
     "active_run_id": 0,
     "active_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "active_artifact_id": null,
@@ -26,7 +26,9 @@
       "OPENCLASH_ADH_CURRENT_VERIFIED_RUNTIME",
       "CURRENT_KNOWN_GOOD_ROLLBACK"
     ],
-    "source": "OPERATOR_AUTHORIZED_NEXT_RELEASE_FILE_MANAGEMENT_REPAIR"
+    "source": "OPERATOR_AUTHORIZED_NEXT_RELEASE_FILE_MANAGEMENT_REPAIR",
+    "source_ref": "codex/arthur-v016-firmware-source",
+    "validation_source_ref": "codex/arthur-v016-source-reconcile"
   },
   "guardrails": {
     "state_statement_is_not_execution_authorization": true,
@@ -78,7 +80,8 @@
       "AUTOMATIC_FLASH"
     ],
     "action_rule": "REAL_DEVICE_FIRST_SAME_IMPLEMENTATION_SINGLE_BUILD_EXACT_ARTIFACT",
-    "fail_closed_on_violation": true
+    "fail_closed_on_violation": true,
+    "accepted_source_ref": "codex/arthur-v016-firmware-source"
   },
   "live_repair_scope": {
     "authorized": false,

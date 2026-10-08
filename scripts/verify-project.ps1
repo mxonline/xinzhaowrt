@@ -76,6 +76,7 @@ try {
         'tests/test-linkease-source-binding.sh',
         'tests/test-full-openclash-adh-contract.sh',
         'tests/test-prebuild-openclash-adh-live-gate.sh',
+        'tests/test-arthur-v016-source-identity.sh',
         'tests/test-package-manager-concurrency-gate.sh'
     )
     foreach ($test in $testScripts) { Invoke-ProjectCheck $test $bash @($test) }
@@ -99,6 +100,7 @@ try {
     finally { Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $temporaryFunctional }
 
     Invoke-ProjectCheck 'tests/test-openclash-adguardhome-coexistence.py' $python @('tests/test-openclash-adguardhome-coexistence.py')
+    Invoke-ProjectCheck 'tests/test-prebuild-stable-inherited-evidence.py' $python @('tests/test-prebuild-stable-inherited-evidence.py')
     Invoke-ProjectCheck 'scripts/check-product-goal-contract.py' $python @('scripts/check-product-goal-contract.py')
     foreach ($json in @(
         'production/live-preview-policy.json',

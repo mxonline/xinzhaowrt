@@ -46,13 +46,14 @@ else
     echo 'ERROR: final source gate SHA does not match ARTHUR_CANDIDATE_SHA' >&2
     exit 1
   }
-  PREBUILD_LIVE_EVIDENCE="${PREBUILD_LIVE_EVIDENCE:-$PROJECT_ROOT/output/real-device/prebuild-clean-state-product.json}"
+  PREBUILD_VALIDATION_SHA="${PREBUILD_VALIDATION_SHA:-$(git -C "$PROJECT_ROOT" rev-parse HEAD)}"
+  [[ "$PREBUILD_VALIDATION_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+    echo 'ERROR: PREBUILD_VALIDATION_SHA must identify the commit containing the durable live evidence.' >&2
+    exit 1
+  }
   PREBUILD_GATE_PYTHON="${PREBUILD_GATE_PYTHON:-python3}"
-  export PREBUILD_LIVE_EVIDENCE
   "$PREBUILD_GATE_PYTHON" "$PROJECT_ROOT/scripts/check-openclash-adh-prebuild-live.py" \
-    --contract "$PROJECT_ROOT/production/product-goal-contract.json" \
-    --evidence "$PREBUILD_LIVE_EVIDENCE" \
-    --source-sha "$ARTHUR_CANDIDATE_SHA"
+    "$PREBUILD_VALIDATION_SHA"
 fi
 
 FIRMWARE_VERSION="$(tr -d '\r\n' < "$PROJECT_ROOT/VERSION")"

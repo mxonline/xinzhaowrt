@@ -47,8 +47,31 @@ jobs:
           test "$(jq -r '.name' /tmp/arthur-run.json)" = 'Arthur Known-Good Update v3' || { echo 'BLOCKED: wrong source workflow'; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" > /tmp/arthur-jobs.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" > /tmp/arthur-artifacts.json
+          artifact_name="Arthur-v3-Candidate-$run_id"
+          artifact_id="$(jq -r --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)][0].id // empty' /tmp/arthur-artifacts.json)"
+          artifact_digest="$(jq -r --arg name "$artifact_name" '[.artifacts[] | select(.name == $name and .expired == false)][0].digest // empty' /tmp/arthur-artifacts.json)"
+          [[ "$artifact_id" =~ ^[0-9]+$ ]] || { echo 'BLOCKED: exact Candidate artifact is missing'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > /tmp/arthur-candidate-artifact.zip
+          if [[ "$artifact_digest" == sha256:* ]]; then
+            actual_digest="sha256:$(sha256sum /tmp/arthur-candidate-artifact.zip | awk '{print $1}')"
+            test "$actual_digest" = "$artifact_digest" || { echo 'BLOCKED: downloaded Candidate artifact digest mismatch'; exit 1; }
+          fi
+          mkdir -p /tmp/arthur-candidate-artifact
+          unzip -q /tmp/arthur-candidate-artifact.zip -d /tmp/arthur-candidate-artifact
+          metadata="$(find /tmp/arthur-candidate-artifact -type f -name update-metadata.json -print -quit)"
+          test -n "$metadata" || { echo 'BLOCKED: Candidate update-metadata.json missing'; exit 1; }
+          run_head="$(jq -r '.head_sha' /tmp/arthur-run.json | tr '[:upper:]' '[:lower:]')"
+          firmware_source="$(jq -r '.project_commit' "$metadata" | tr '[:upper:]' '[:lower:]')"
+          control_source="$(jq -r '.build_control_commit' "$metadata" | tr '[:upper:]' '[:lower:]')"
+          [[ "$firmware_source" =~ ^[0-9a-f]{40}$ ]] || { echo 'BLOCKED: Candidate firmware source identity is invalid'; exit 1; }
+          test "$control_source" = "$run_head" || { echo 'BLOCKED: Candidate build-control commit differs from workflow run head'; exit 1; }
+          cp "$metadata" /tmp/arthur-build-metadata.json
           echo "SOURCE_RUN_ID=$run_id" >> "$GITHUB_ENV"
-          echo "SOURCE_SHA=$(jq -r '.head_sha' /tmp/arthur-run.json)" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$firmware_source" >> "$GITHUB_ENV"
+          echo "VALIDATION_SHA=$run_head" >> "$GITHUB_ENV"
+          echo "CANDIDATE_ARTIFACT_ID=$artifact_id" >> "$GITHUB_ENV"
+          echo "CANDIDATE_ARTIFACT_DIGEST=$artifact_digest" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SOURCE_IDENTITY=PASS firmware=$firmware_source validation=$run_head artifact=$artifact_id"
 
       - name: Reconcile Gate and Evidence state
         id: reconcile
@@ -70,7 +93,13 @@ jobs:
               raise SystemExit('BLOCKED: RELEASE_ONLY cannot authorize automatic flash')
 
           run_id = int(run['id'])
-          source_sha = str(run['head_sha']).lower()
+          source_sha = os.environ['SOURCE_SHA'].lower()
+          validation_sha = str(run['head_sha']).lower()
+          metadata = json.load(open('/tmp/arthur-build-metadata.json', encoding='utf-8'))
+          if metadata.get('project_commit', '').lower() != source_sha:
+              raise SystemExit('BLOCKED: Candidate metadata firmware source mismatch')
+          if metadata.get('build_control_commit', '').lower() != validation_sha:
+              raise SystemExit('BLOCKED: Candidate metadata build-control commit mismatch')
           resume_path = Path('production/resume-state.json')
           intent_path = Path('production/operator-intent.json')
           resume = json.load(open(resume_path, encoding='utf-8'))
@@ -94,6 +123,8 @@ jobs:
               raise SystemExit(0)
           if resume.get('source', {}).get('accepted_source_sha', '').lower() != source_sha:
               raise SystemExit('BLOCKED: source SHA differs from durable execution')
+          if resume.get('source', {}).get('repository_head', '').lower() != validation_sha:
+              raise SystemExit('BLOCKED: validation commit differs from durable execution')
 
           execution_id = str(resume.get('execution_id') or '')
           if not execution_id:

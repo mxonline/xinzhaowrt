@@ -51,6 +51,27 @@ grep -Fq 'scripts/stage-openclash-core.py' "$GATE" || fail 'runtime drift gate m
 grep -Fq 'scripts/fetch-openclash-core.sh' "$GATE" || fail 'runtime drift gate must track the Stable OpenClash Core fetch path'
 ! grep -Fq 'scripts/stage-openclash-core.sh' "$GATE" || fail 'runtime drift gate must not track an unused current-main staging helper'
 
+grep -Fq 'STABLE_PRODUCT_GOAL_PLUS_READ_ONLY_LIVE_SNAPSHOT' "$GATE" || fail 'gate must support explicit Stable inheritance plus a fresh read-only live snapshot'
+grep -Fq '0eeae67f74db77a6401b0205d74e6518b899a3e4' "$GATE" || fail 'Stable product evidence must bind the exact verified v0.1.5 source'
+grep -Fq 'b4448e62ab1e767f9a60221b0600c60c355baf56' "$GATE" || fail 'v0.1.6 evidence must bind the frozen firmware source, not a control commit'
+grep -Fq 'semantic_protected_payload_unchanged' "$GATE" || fail 'gate must recompute Stable-to-frozen protected payload parity'
+grep -Fq 'CURRENT_READ_ONLY_SNAPSHOT_AND_SOURCE_PARITY' "$GATE" || fail 'current markers must have a live snapshot evidence basis'
+grep -Fq 'EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE' "$GATE" || fail 'inherited behavioral markers must identify both the exact Stable baseline and prior full test evidence'
+grep -Fq 'PREBUILD_VALIDATION_SHA' "$ROOT/scripts/build.sh" || fail 'build entrypoint must validate the evidence commit independently from the firmware source'
+grep -Fq 'prior_adh.get("filter_blocked_ipv4") == "0.0.0.0"' "$GATE" || fail 'inherited ADH filtering marker must be backed by prior machine behavior evidence'
+grep -Fq 'prior_adh.get("query_log_recorded") is True' "$GATE" || fail 'inherited ADH query marker must be backed by prior machine behavior evidence'
+
+BINDER="$ROOT/scripts/bind-prebuild-openclash-adh-evidence.py"
+INSPECT="$ROOT/.github/workflows/arthur-openclash-adh-direct-inspect.yml"
+[[ -f "$BINDER" ]] || fail 'machine evidence binder is missing'
+grep -Fq 'actions/artifacts/' "$BINDER" || fail 'binder must resolve immutable GitHub Actions artifact evidence'
+grep -Fq 'archive_sha != digest' "$BINDER" || fail 'binder must verify the snapshot artifact digest'
+grep -Fq 'Arthur-OpenClash-ADH-ReadOnly-' "$INSPECT" || fail 'read-only Arthur inspection must upload a fresh snapshot artifact'
+grep -Fq 'management_http_status' "$INSPECT" || fail 'read-only snapshot must record LuCI management health'
+grep -Fq 'PROXY_HTTP=204' "$INSPECT" || fail 'read-only snapshot must prove live OpenClash proxy traffic'
+grep -Fq 'mixed-port|redir-port|tproxy-port' "$INSPECT" || fail 'read-only snapshot must capture runtime proxy settings for source parity'
+grep -Fq 'LIVE_READ_ONLY_SNAPSHOT=PASS' "$INSPECT" || fail 'read-only snapshot production must report its explicit marker'
+
 grep -Fq 'workflow_run:' "$GUARD" || fail 'guard must observe Candidate workflow runs from the default branch'
 grep -Fq 'Arthur Known-Good Update v3' "$GUARD" || fail 'guard must target the production Candidate workflow'
 grep -Fq 'actions: write' "$GUARD" || fail 'guard needs Actions write permission to cancel unsafe Candidate runs'

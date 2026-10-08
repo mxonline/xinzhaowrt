@@ -50,9 +50,33 @@ jobs:
           echo 'PASS: static project, Known-Good lock and 22-plugin preflight complete.'
 
       - name: Enforce prebuild OpenClash + AdGuardHome live gate
+        id: prebuild
         run: |
           set -Eeuo pipefail
           python3 scripts/check-openclash-adh-prebuild-live.py "$GITHUB_SHA"
+          echo 'PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS'
+
+      - name: Resolve frozen firmware source identity
+        id: source
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, pathlib, re
+          intent=json.loads(pathlib.Path('production/operator-intent.json').read_text(encoding='utf-8'))
+          firmware=intent.get('firmware_state') or {}
+          highest=intent.get('highest_machine_evidence') or {}
+          source=str(firmware.get('active_source_sha') or '').lower()
+          accepted=str(highest.get('accepted_source_sha') or '').lower()
+          version=pathlib.Path('VERSION').read_text(encoding='utf-8').strip()
+          target=str(intent.get('target_release') or '')
+          if not re.fullmatch(r'[0-9a-f]{40}', source) or source != accepted:
+              raise SystemExit('BLOCKED: frozen firmware source does not match highest accepted source')
+          if version != target.removeprefix('v'):
+              raise SystemExit('BLOCKED: frozen source VERSION differs from operator target')
+          print(f'source_sha={source}')
+          print(f'build_control_sha={os.environ["GITHUB_SHA"]}')
+          PY
+          echo 'FROZEN_FIRMWARE_SOURCE=PASS'
 
       - name: Free runner disk space
         run: |
@@ -107,6 +131,8 @@ jobs:
           echo "base_candidate=$BASE_CANDIDATE" >> "$GITHUB_OUTPUT"
 
           BASE_STABLE="$BASE_STABLE" BASE_CANDIDATE="$BASE_CANDIDATE" \
+          FIRMWARE_SOURCE_SHA='${{ steps.source.outputs.source_sha }}' \
+          BUILD_CONTROL_SHA='${{ steps.source.outputs.build_control_sha }}' \
           python3 - "$CANDIDATE_LOCK" "$UPDATE_MODE" "$LOCK_SHA" <<'PY'
           import json, os, re, sys
           path, mode, lock_sha = sys.argv[1:]
@@ -120,7 +146,8 @@ jobs:
           data = {
               'schema_version': '1.0',
               'mode': mode,
-              'project_commit': os.environ['GITHUB_SHA'],
+              'project_commit': os.environ['FIRMWARE_SOURCE_SHA'],
+              'build_control_commit': os.environ['BUILD_CONTROL_SHA'],
               'base_stable': os.environ['BASE_STABLE'],
               'base_candidate': os.environ['BASE_CANDIDATE'],
               'candidate_lock_sha256': lock_sha,
@@ -152,6 +179,11 @@ jobs:
           JOBS: '2'
           QUIET_BUILD: '1'
           REUSE_SOURCE: '0'
+          VALIDATION_BUILD: 'true'
+          PUBLISH_CANDIDATE: 'false'
+          ARTHUR_CANDIDATE_SHA: ${{ steps.source.outputs.source_sha }}
+          EXPECTED_ARTHUR_CANDIDATE_SHA: ${{ steps.source.outputs.source_sha }}
+          PREBUILD_VALIDATION_SHA: ${{ github.sha }}
         run: ./scripts/build.sh
 
       - name: Enforce Candidate acceptance gates
@@ -193,7 +225,8 @@ jobs:
             echo '- Mode: `${{ inputs.mode }}`'
             echo '- Base Stable: `${{ steps.prep.outputs.base_stable }}`'
             echo '- Base Candidate: `${{ steps.prep.outputs.base_candidate }}`'
-            echo '- Project commit: `${{ github.sha }}`'
+            echo '- Frozen firmware source: `${{ steps.source.outputs.source_sha }}`'
+            echo '- Build control commit: `${{ github.sha }}`'
             echo '- Candidate lock SHA256: `${{ steps.prep.outputs.lock_sha }}`'
             echo '- Device: `jdcloud_re-ss-01`'
             echo '- Required plugins: `22`'
@@ -263,6 +296,7 @@ jobs:
           UPDATE_MODE: ${{ inputs.mode }}
           BASE_STABLE: ${{ steps.prep.outputs.base_stable }}
           LOCK_SHA: ${{ steps.prep.outputs.lock_sha }}
+          FIRMWARE_SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
         run: |
           set -Eeuo pipefail
           tag="arthur-update-${GITHUB_RUN_ID}"
@@ -276,7 +310,7 @@ jobs:
             output/update-lock.diff \
             output/update-metadata.json \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --target "$FIRMWARE_SOURCE_SHA" \
             --title "Arthur Update Candidate ${GITHUB_RUN_ID}" \
             --notes "Known-Good Update v3 Candidate. Base Stable: ${BASE_STABLE}. Mode: ${UPDATE_MODE}. Lock SHA256: ${LOCK_SHA}. Includes the Arthur large-upload OOM guard. Not Stable until JDCloud RE-SS-01 real-device verification and v3 Stable promotion both pass." \
             --prerelease

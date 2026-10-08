@@ -60,7 +60,7 @@ $runtimeConsistency = Test-ArthurRuntimeStateConsistency -ResumeState $resume -E
 
 Push-Location $root
 try {
-    $effectiveHeadRaw = (& git log -1 --format=%H -- . ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' ':(exclude)production/evidence/**' | Out-String)
+    $effectiveHeadRaw = (& git log -1 --format=%H -- . ':(exclude)production/operator-intent.json' ':(exclude)production/resume-state.json' ':(exclude)production/firmware-events.jsonl' ':(exclude)production/evidence/**' | Out-String)
 }
 finally { Pop-Location }
 $effectiveHead = ConvertTo-ArthurCanonicalGitSha $effectiveHeadRaw
