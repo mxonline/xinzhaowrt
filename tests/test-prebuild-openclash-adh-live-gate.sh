@@ -68,6 +68,7 @@ grep -Fq 'actions/artifacts/' "$BINDER" || fail 'binder must resolve immutable G
 grep -Fq 'archive_sha != digest' "$BINDER" || fail 'binder must verify the snapshot artifact digest'
 grep -Fq 'Arthur-OpenClash-ADH-ReadOnly-' "$INSPECT" || fail 'read-only Arthur inspection must upload a fresh snapshot artifact'
 grep -Fq 'management_http_status' "$INSPECT" || fail 'read-only snapshot must record LuCI management health'
+grep -Fq '$luciHttp = [int]$buildResponse.StatusCode' "$INSPECT" || fail 'management HTTP evidence must reuse the successful public build-info response'
 grep -Fq 'PROXY_HTTP=204' "$INSPECT" || fail 'read-only snapshot must prove live OpenClash proxy traffic'
 grep -Fq 'mixed-port|redir-port|tproxy-port' "$INSPECT" || fail 'read-only snapshot must capture runtime proxy settings for source parity'
 grep -Fq 'LIVE_READ_ONLY_SNAPSHOT=PASS' "$INSPECT" || fail 'read-only snapshot production must report its explicit marker'
