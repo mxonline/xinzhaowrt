@@ -42,6 +42,14 @@ Current-state precedence is fixed: **explicit current operator state correction 
 
 After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAILURES.md`. After a release passes the independent post-release device test and becomes eligible for Known-Good promotion, update the project state/known-good knowledge to match the promoted machine-readable Stable record.
 
+## Long-session handoff and resume｜2026-10-09
+
+- `HANDOFF.md` is a **human-readable navigation/projection only**, not a live checkpoint or permission to execute firmware work. The authoritative stage/next action stays in `production/resume-state.json` after reconciliation with `production/firmware-events.jsonl`, operator intent, highest product-goal contract, and live GitHub/build/release evidence.
+- On a verified checkpoint, an actual external BLOCKED event, a recoverable controller/session interruption, or **before voluntarily ending a long Codex conversation**, refresh only a brief non-sensitive HANDOFF summary with: current `operator-intent` scope, checkpoint and `next_action` as recorded by the reconciled machine state, build run/artifact/release identity and URLs, completed evidence refs, first causal failure, already attempted remedies to avoid, and the exact resume command. Preserve detailed historical records in the ledger. Do not reclassify old historical HANDOFF facts as current.
+- At the start of a fresh session, read `production/product-goal-contract.json` and `production/operator-intent.json`, cold-read the machine resume state and event ledger, run the existing `scripts/arthur-firmware-resume.ps1` equivalent, and inspect live GitHub before acting on the HANDOFF summary. If `status != RESUME_SAFE`, `instruction_allowed != true`, evidence mismatches, or scope is not firmware-authorized, fail closed: reconciliation is not an implicit firmware-build permission.
+- Handoff must never initiate Build/Flash/Release, restart a successful Build, unlock a verified device gate, require pre-release whole-device testing, or add a controller/Stage/Gate. Recover from the last verified machine checkpoint; maintain RELEASE-FIRST, POST_RELEASE_DEVICE_TEST as independent post-release work, and product-goal safety.
+- No tokens, root passwords, cookies, SSH key material, or secrets in HANDOFF. If persistence/readback is unavailable, disclose that the summary was not updated; never invent a completed write.
+
 ## Reuse Gate hard rule
 
 `knowledge/REUSE-GATE.md` is a prospective source/implementation decision gate. It does not create a new firmware workflow and does not supersede the current Known-Good/Candidate/Stable gates.
