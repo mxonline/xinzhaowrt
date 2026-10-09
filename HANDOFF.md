@@ -1,5 +1,14 @@
 # Arthur Current Handoff
 
+> Session bridge only. This file is **not the current execution snapshot**. Before any action, read `production/product-goal-contract.json`, `production/operator-intent.json`, `production/resume-state.json`, `production/firmware-events.jsonl`, and real GitHub workflow / release state; run the existing Arthur Resume Gate. Never infer authorization or a fresh Build/Flash/Release from this document.
+>
+> For a session close, copy only the *reconciled* checkpoint, scope, current `next_action`, evidence references, actual blocker/failed repair fingerprints, and a safe resume command from these authorities. Do not copy secrets. If the source cannot be verified, leave this file unchanged and report it as stale. This summary is optional; it never overrides the machine state.
+>
+> After opening a new session, use the instruction: **“先检查 Arthur 最高产品目标、operator intent、resume-state、event ledger 和 live GitHub，运行现有 Resume Gate，再继续被授权的最小动作。”**
+
+## Historical handoff snapshot (archived; not an authority for today's stage)
+
+
 ## Current state
 
 - Device: JDCloud RE-SS-01 / Arthur.
