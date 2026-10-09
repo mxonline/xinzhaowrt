@@ -24,6 +24,7 @@ FROZEN_SOURCE = "b4448e62ab1e767f9a60221b0600c60c355baf56"
 EVIDENCE_PATH = pathlib.Path("production/evidence/prebuild-openclash-adh-live.json")
 SNAPSHOT_ARTIFACT_PREFIX = "Arthur-OpenClash-ADH-ReadOnly-"
 MODE = "STABLE_PRODUCT_GOAL_PLUS_READ_ONLY_LIVE_SNAPSHOT"
+OPERATOR_DISABLED_MODE = "STABLE_PRODUCT_GOAL_PLUS_OPERATOR_DISABLED_RUNTIME_SNAPSHOT"
 
 
 def gh_json(endpoint: str) -> dict:
@@ -108,6 +109,20 @@ def main() -> int:
     accepted = str(intent.get("highest_machine_evidence", {}).get("accepted_source_sha") or "").lower()
     if source != FROZEN_SOURCE or accepted != FROZEN_SOURCE:
         raise SystemExit("BIND_BLOCKED: operator intent does not bind the authorized frozen source")
+    if intent.get("device_write_authorized") is not False or (intent.get("live_repair_scope") or {}).get("authorized") is not False:
+        raise SystemExit("BIND_BLOCKED: live device write scope is not closed")
+
+    disabled = snapshot.get("runtime_state") == "OPERATOR_DISABLED"
+    if disabled:
+        if intent.get("OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR") is not True:
+            raise SystemExit("BIND_BLOCKED: operator-disabled assertion is missing")
+        if snapshot.get("openclash_enable") != 0 or snapshot.get("ssh_identity") != "PASS":
+            raise SystemExit("BIND_BLOCKED: operator-disabled snapshot identity/state is incomplete")
+        observations = snapshot.get("read_only_observations") or {}
+        if "enable=0" not in str(observations.get("openclash_uci") or ""):
+            raise SystemExit("BIND_BLOCKED: current OpenClash UCI is not explicitly disabled")
+    elif snapshot.get("runtime_state") not in (None, "ENABLED"):
+        raise SystemExit("BIND_BLOCKED: unknown OpenClash runtime state")
 
     product_goal = json.loads(subprocess.check_output(["git", "show", f"{FROZEN_SOURCE}:production/product-goal-verification.json"], text=True, encoding="utf-8"))
     contract = json.loads(subprocess.check_output(["git", "show", f"{FROZEN_SOURCE}:production/product-goal-contract.json"], text=True, encoding="utf-8"))
@@ -117,6 +132,25 @@ def main() -> int:
         raise SystemExit("BIND_BLOCKED: exact Stable product-goal evidence is unavailable")
     if prior.get("validated_source_sha") != "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56" or prior.get("status") != "PASS":
         raise SystemExit("BIND_BLOCKED: historical prebuild evidence identity is invalid")
+    prior_device = prior.get("device") or {}
+    if prior_device.get("firmware") != "v0.1.5" or prior_device.get("address") != "192.168.6.1" or prior_device.get("target") != "qualcommax/ipq60xx/jdcloud_re-ss-01":
+        raise SystemExit("BIND_BLOCKED: historical prebuild evidence is not for the exact Stable Arthur identity")
+    if (
+        prior.get("openclash_fully_usable") != "PASS"
+        or prior.get("adguardhome_fully_usable") != "PASS"
+        or prior.get("openclash_adh_coexistence") != "PASS"
+        or (prior.get("openclash") or {}).get("real_proxy_http", {}).get("google_generate_204") != 204
+        or (prior.get("adguardhome") or {}).get("query_log_recorded") is not True
+    ):
+        raise SystemExit("BIND_BLOCKED: historical full behavioral evidence is incomplete")
+
+    manifest = json.loads(subprocess.check_output(["git", "show", f"{FROZEN_SOURCE}:production/file-management-expected-diff.json"], text=True, encoding="utf-8"))
+    if manifest.get("name") != "FILE_MANAGEMENT_EXPECTED_DIFF" or manifest.get("baseline_source_sha") != product_goal.get("source_sha"):
+        raise SystemExit("BIND_BLOCKED: file-management-only source diff is not established")
+    changed = subprocess.check_output(["git", "diff", "--name-only", f"{product_goal['source_sha']}..{FROZEN_SOURCE}"], text=True, encoding="utf-8").splitlines()
+    protected_drift = [path for path in changed if path.startswith(("package/", "patches/", "config/openclash", "files/usr/libexec/xinzhao-openclash", "files/etc/config/", "files/etc/firewall", "files/etc/hotplug.d/")) or path in {"build.env", "scripts/fetch-openclash-core.sh", "scripts/stage-openclash-core.py", "scripts/patch-adguardhome-coexistence.py", "production/openclash-adguardhome-coexistence.json"}]
+    if protected_drift:
+        raise SystemExit("BIND_BLOCKED: protected OpenClash/ADH/DNS/firewall/network source changed: " + ", ".join(protected_drift))
 
     required = (contract.get("prebuild_live_validation") or {}).get("required_markers") or []
     current_basis = {
@@ -129,6 +163,13 @@ def main() -> int:
         "ADGUARDHOME_FILTERING=PASS", "ADGUARDHOME_QUERY_LOG=PASS", "ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS",
         "ADH_REENABLE_RESTORES_CHAIN=PASS",
     }
+    if disabled:
+        current_basis = {"NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS", "FINAL_ADH_DEFAULT_OFF=PASS"}
+        historical_behavior.update({
+            "OPENCLASH_CONTROLLER=PASS", "ZASHBOARD_RUNTIME=PASS", "OPENCLASH_RUNTIME_CONFIG_PARITY=PASS",
+            "OPENCLASH_DNS_RUNTIME=PASS", "OPENCLASH_ADH_DNS_CHAIN=PASS", "NO_DNS_LOOP=PASS",
+            "REAL_PROXY_TRAFFIC=PASS", "NO_PORT_CONFLICT=PASS",
+        })
     snapshot_ref = f"github-actions:{REPOSITORY}/runs/{args.run_id}/artifacts/{artifact_id}/arthur-live-snapshot.json"
     prior_ref = f"production/evidence/prebuild-openclash-adh-live.json@{prior['validated_source_sha']}#sha256={hashlib.sha256(prior_text).hexdigest()}"
     markers = {}
@@ -157,7 +198,7 @@ def main() -> int:
         "schema_version": 1,
         "gate": "PREBUILD_OPENCLASH_ADH_LIVE_GATE",
         "status": "PASS",
-        "mode": MODE,
+        "mode": OPERATOR_DISABLED_MODE if disabled else MODE,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "validated_source_sha": FROZEN_SOURCE,
         "source_fix": {
@@ -175,12 +216,17 @@ def main() -> int:
             "baseline_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
             "frozen_source_sha": FROZEN_SOURCE,
             "semantic_protected_payload_unchanged": True,
+            "protected_openclash_adh_dns_firewall_network_unchanged": True,
             "verification": "The checker independently recomputes Stable-to-frozen protected product payload parity.",
         },
         "current_live_snapshot": {
             "snapshot": snapshot,
             "sha256": hashlib.sha256(canonical_snapshot).hexdigest(),
             "artifact": {"run_id": args.run_id, "artifact_id": artifact_id, "digest": digest},
+        },
+        "runtime_capability": {
+            "currently_running": "NO" if disabled else "YES",
+            "firmware_capability_inherited": "PASS" if disabled else "NOT_APPLICABLE",
         },
         "markers": markers,
         "live_runtime_prebuild": {

@@ -99,7 +99,7 @@ jobs:
 
           $cmdIdentity = 'ubus call system board; echo ---BUILD---; cat /www/luci-static/xinzhao/build-info.json 2>/dev/null || true'
           $cmdUci = 'for k in enable config_path en_mode enable_redirect_dns redirect_dns default_dashboard dns_port cn_port; do v=$(uci -q get openclash.config.$k 2>/dev/null || true); echo $k=$v; done'
-          $cmdRuntime = 'echo ---PROC---; ps w | grep clash || true; ps w | grep mihomo || true; echo ---LISTEN---; if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null; else netstat -lntup 2>/dev/null; fi; echo ---CONFIG---; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); case $cfg in ?*) grep -n external-controller $cfg 2>/dev/null || true; grep -n external-ui $cfg 2>/dev/null || true; grep -n mixed-port $cfg 2>/dev/null || true; grep -n redir-port $cfg 2>/dev/null || true; grep -n tproxy-port $cfg 2>/dev/null || true; grep -n enhanced-mode: $cfg 2>/dev/null || true; grep -n fake-ip-range: $cfg 2>/dev/null || true; grep -n listen: $cfg 2>/dev/null || true;; esac'
+          $cmdRuntime = 'echo ---PROC---; ps w | grep clash || true; ps w | grep mihomo || true; if command -v pidof >/dev/null 2>&1; then pids=$(pidof clash_meta mihomo clash 2>/dev/null || true); echo CORE_PIDS=$pids; else echo CORE_PIDS=UNAVAILABLE; fi; echo ---LISTEN---; if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null; else netstat -lntup 2>/dev/null; fi; echo ---CONFIG---; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); case $cfg in ?*) grep -n external-controller $cfg 2>/dev/null || true; grep -n external-ui $cfg 2>/dev/null || true; grep -n mixed-port $cfg 2>/dev/null || true; grep -n redir-port $cfg 2>/dev/null || true; grep -n tproxy-port $cfg 2>/dev/null || true; grep -n enhanced-mode: $cfg 2>/dev/null || true; grep -n fake-ip-range: $cfg 2>/dev/null || true; grep -n listen: $cfg 2>/dev/null || true;; esac'
           $cmdFiles = 'find /usr/share/openclash/ui/zashboard -maxdepth 2 -type f 2>/dev/null | head -n 40; test -s /usr/share/openclash/ui/zashboard/index.html && echo ZASHBOARD_INDEX=YES || echo ZASHBOARD_INDEX=NO'
           $cmdHttp = 'for u in http://127.0.0.1:9090/ui/zashboard/ http://192.168.6.1:9090/ui/zashboard/; do code=$(curl -sS -o /dev/null -w %{http_code} --max-time 8 $u 2>/dev/null || true); echo $code $u; done; code=$(curl -sS -o /dev/null -w %{http_code} --max-time 8 http://127.0.0.1:9090/version 2>/dev/null || true); echo CONTROLLER_VERSION_HTTP=$code'
           $cmdProxy = 'code=$(curl -sS -o /dev/null -w %{http_code} --proxy http://127.0.0.1:7890 --connect-timeout 8 --max-time 20 https://www.google.com/generate_204 2>/dev/null || true); echo PROXY_HTTP=$code'
@@ -108,13 +108,29 @@ jobs:
 
           Remote 'ARTHUR_IDENTITY' $cmdIdentity
           Remote 'OPENCLASH_UCI' $cmdUci
+          $operatorIntent = Get-Content -Raw -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'production\operator-intent.json') | ConvertFrom-Json
+          $runtimeState = 'ENABLED'
+          $openclashEnable = -1
+          if ($remoteResults['OPENCLASH_UCI'] -match '(?m)^enable=0\s*$') {
+            if ($operatorIntent.OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR -ne $true) { throw 'DIRECT_INSPECT_OPERATOR_DISABLED_ASSERTION_MISSING' }
+            $runtimeState = 'OPERATOR_DISABLED'
+            $openclashEnable = 0
+          } elseif ($remoteResults['OPENCLASH_UCI'] -match '(?m)^enable=1\s*$') {
+            $openclashEnable = 1
+          } else {
+            throw 'DIRECT_INSPECT_OPENCLASH_ENABLE_STATE_UNKNOWN'
+          }
           Remote 'OPENCLASH_RUNTIME' $cmdRuntime
           Remote 'ZASHBOARD_FILES' $cmdFiles
           Remote 'DASHBOARD_HTTP' $cmdHttp
-          Remote 'PROXY_TRAFFIC' $cmdProxy
+          if ($runtimeState -eq 'OPERATOR_DISABLED') {
+            $remoteResults['PROXY_TRAFFIC'] = 'PROXY_HTTP=NOT_RUN_OPERATOR_DISABLED'
+          } else {
+            Remote 'PROXY_TRAFFIC' $cmdProxy
+            if ($remoteResults['PROXY_TRAFFIC'] -notmatch '(?m)^PROXY_HTTP=204\s*$') { throw 'DIRECT_INSPECT_OPENCLASH_REAL_PROXY_TRAFFIC_FAILED' }
+          }
           Remote 'DNS_UCI' $cmdDns
           Remote 'MEMORY' $cmdMem
-          if ($remoteResults['PROXY_TRAFFIC'] -notmatch '(?m)^PROXY_HTTP=204\s*$') { throw 'DIRECT_INSPECT_OPENCLASH_REAL_PROXY_TRAFFIC_FAILED' }
 
           $identityParts = $remoteResults['ARTHUR_IDENTITY'] -split '---BUILD---', 2
           if ($identityParts.Count -ne 2) { throw 'DIRECT_INSPECT_BUILD_INFO_PARSE_FAILED' }
@@ -132,6 +148,9 @@ jobs:
             schema_version = 1
             observed_at = [DateTimeOffset]::UtcNow.ToString('o')
             github = [ordered]@{ run_id = [long]$env:GITHUB_RUN_ID; source_commit = [string]$env:GITHUB_SHA; workflow = 'Arthur OpenClash ADH Direct Inspect' }
+            runtime_state = $runtimeState
+            openclash_enable = $openclashEnable
+            ssh_identity = 'PASS'
             device = [ordered]@{
               address = $deviceIp; lan_mac = $mac; firmware = $buildFields.Firmware; target = $buildFields.Target
               profile = $buildFields.Profile; version = $buildFields.Version; build_id = $buildFields.BuildId
@@ -151,7 +170,7 @@ jobs:
           $snapshotPath = Join-Path $env:GITHUB_WORKSPACE 'output\arthur-live-snapshot.json'
           New-Item -ItemType Directory -Force -Path (Split-Path -Parent $snapshotPath) | Out-Null
           [IO.File]::WriteAllText($snapshotPath, ($snapshot | ConvertTo-Json -Depth 12) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-          Write-Host "LIVE_READ_ONLY_SNAPSHOT=PASS path=$snapshotPath"
+          Write-Host "LIVE_READ_ONLY_SNAPSHOT=PASS runtime_state=$runtimeState path=$snapshotPath"
 
           Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $knownHosts
 

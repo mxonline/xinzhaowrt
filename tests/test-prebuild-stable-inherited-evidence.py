@@ -93,6 +93,7 @@ def evidence_for(repo: pathlib.Path) -> dict:
             "baseline_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
             "frozen_source_sha": FROZEN,
             "semantic_protected_payload_unchanged": True,
+            "protected_openclash_adh_dns_firewall_network_unchanged": True,
         },
         "current_live_snapshot": {
             "snapshot": snapshot,
@@ -111,7 +112,7 @@ def evidence_for(repo: pathlib.Path) -> dict:
 
 
 def commit(repo: pathlib.Path, message: str) -> str:
-    git(repo, "add", EVIDENCE, "production/operator-intent.json", "scripts/check-openclash-adh-prebuild-live.py")
+    git(repo, "add", "-A")
     git(repo, "commit", "-m", message)
     return git(repo, "rev-parse", "HEAD").strip()
 
@@ -133,6 +134,74 @@ def main() -> None:
         if passed.returncode or "PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS" not in passed.stdout or "FIRMWARE_BUILD_ALLOWED=YES" not in passed.stdout:
             raise SystemExit(f"valid inherited evidence was rejected:\n{passed.stdout}")
 
+        disabled = evidence_for(repo)
+        disabled["mode"] = "STABLE_PRODUCT_GOAL_PLUS_OPERATOR_DISABLED_RUNTIME_SNAPSHOT"
+        snap = disabled["current_live_snapshot"]["snapshot"]
+        snap["runtime_state"] = "OPERATOR_DISABLED"
+        snap["openclash_enable"] = 0
+        snap["ssh_identity"] = "PASS"
+        obs = snap["read_only_observations"]
+        obs["openclash_uci"] = "enable=0\ndefault_dashboard=metacubexd\ndns_port=7874\ncn_port=9090\n"
+        obs["openclash_process_and_ports"] = "---PROC---\nCORE_PIDS=\n---LISTEN---\n127.0.0.1:80\n---CONFIG---\n"
+        obs["http"] = "000 http://127.0.0.1:9090/ui/zashboard/\nCONTROLLER_VERSION_HTTP=000\n"
+        obs["proxy_traffic"] = "PROXY_HTTP=000\n"
+        obs["dns_and_adh"] = "---DNSMASQ---\n---ADH_UCI---\nAdGuardHome.AdGuardHome.enabled='0'\n---ADH_PROC---\n\n---ADH_YAML_DNS---\nport: 1745\n"
+        current = {"NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS", "FINAL_ADH_DEFAULT_OFF=PASS"}
+        prior = disabled["prior_full_prebuild_evidence"]
+        prior_ref = f"{EVIDENCE}@{prior['source_sha']}#sha256={prior['sha256']}"
+        for name, marker in disabled["markers"].items():
+            if name not in current:
+                marker["basis"] = "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE"
+                marker["evidence_ref"] = prior_ref
+        disabled["runtime_capability"] = {"currently_running": "NO", "firmware_capability_inherited": "PASS"}
+        disabled["current_live_snapshot"]["sha256"] = hashlib.sha256(json.dumps(snap, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        intent = json.loads((repo / "production/operator-intent.json").read_text(encoding="utf-8"))
+        intent["OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR"] = True
+        write_json(repo / "production/operator-intent.json", intent)
+        write_json(repo / EVIDENCE, disabled)
+        disabled_commit = commit(repo, "test: operator-disabled read-only evidence")
+        disabled_pass = subprocess.run(["python", str(gate), disabled_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if disabled_pass.returncode or "FIRMWARE_CAPABILITY_INHERITED=PASS" not in disabled_pass.stdout or "CURRENTLY_RUNNING=NO" not in disabled_pass.stdout:
+            raise SystemExit(f"operator-disabled unchanged firmware capability was rejected:\n{disabled_pass.stdout}")
+
+        intent.pop("OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR")
+        write_json(repo / "production/operator-intent.json", intent)
+        no_assertion_commit = commit(repo, "test: missing operator assertion")
+        no_assertion = subprocess.run(["python", str(gate), no_assertion_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if no_assertion.returncode == 0 or "operator-disabled assertion" not in no_assertion.stdout:
+            raise SystemExit(f"missing operator assertion was not rejected:\n{no_assertion.stdout}")
+
+        git(repo, "checkout", "--detach", disabled_commit)
+        recipe = repo / "files/usr/libexec/xinzhao-openclash-lowmem-config"
+        recipe.write_text(recipe.read_text(encoding="utf-8") + "\n# unverified runtime change\n", encoding="utf-8")
+        changed_payload_commit = commit(repo, "test: changed protected OpenClash runtime payload")
+        changed_payload = subprocess.run(["python", str(gate), changed_payload_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if changed_payload.returncode == 0 or "post-freeze changes are outside" not in changed_payload.stdout:
+            raise SystemExit(f"changed OpenClash payload was not rejected:\n{changed_payload.stdout}")
+
+        git(repo, "checkout", "--detach", disabled_commit)
+        bad_digest = json.loads((repo / EVIDENCE).read_text(encoding="utf-8"))
+        bad_digest["prior_full_prebuild_evidence"]["sha256"] = "0" * 64
+        write_json(repo / EVIDENCE, bad_digest)
+        bad_digest_commit = commit(repo, "test: invalid historical evidence digest")
+        digest_result = subprocess.run(["python", str(gate), bad_digest_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if digest_result.returncode == 0 or "prior prebuild evidence digest mismatch" not in digest_result.stdout:
+            raise SystemExit(f"historical evidence digest mismatch was not rejected:\n{digest_result.stdout}")
+
+        git(repo, "checkout", "--detach", disabled_commit)
+        partial = json.loads((repo / EVIDENCE).read_text(encoding="utf-8"))
+        partial_snap = partial["current_live_snapshot"]["snapshot"]
+        partial_snap["read_only_observations"]["openclash_process_and_ports"] = "---PROC---\nCORE_PIDS=987\n---LISTEN---\n127.0.0.1:9090\n---CONFIG---\n"
+        partial["current_live_snapshot"]["sha256"] = hashlib.sha256(json.dumps(partial_snap, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        write_json(repo / EVIDENCE, partial)
+        partial_commit = commit(repo, "test: partially running disabled OpenClash")
+        partial_result = subprocess.run(["python", str(gate), partial_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if partial_result.returncode == 0 or "operator-disabled OpenClash has a running core" not in partial_result.stdout:
+            raise SystemExit(f"partially running disabled OpenClash was not rejected:\n{partial_result.stdout}")
+
+        git(repo, "checkout", "--detach", valid_commit)
+
+        evidence = evidence_for(repo)
         evidence["current_live_snapshot"]["snapshot"]["device"]["version"] = "0.1.6"
         canonical = json.dumps(evidence["current_live_snapshot"]["snapshot"], sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         evidence["current_live_snapshot"]["sha256"] = hashlib.sha256(canonical).hexdigest()

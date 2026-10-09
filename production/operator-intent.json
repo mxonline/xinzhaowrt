@@ -8,6 +8,7 @@
   "release_mode": "RELEASE_ONLY",
   "target_release": "v0.1.6",
   "device_write_authorized": false,
+  "OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR": true,
   "firmware_state": {
     "current_stage": "CHANGE_IMPACT",
     "next_stage": "CHANGE_IMPACT",

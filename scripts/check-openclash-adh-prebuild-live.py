@@ -35,6 +35,7 @@ STABLE_PRODUCT_SYSUPGRADE_SHA256 = "ac58eee2654efe684c3e05a30205ae8f6a5d9e954546
 STABLE_PRODUCT_FACTORY_SHA256 = "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9"
 PRIOR_LIVE_VALIDATION_SHA = "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56"
 STABLE_INHERITED_MODE = "STABLE_PRODUCT_GOAL_PLUS_READ_ONLY_LIVE_SNAPSHOT"
+OPERATOR_DISABLED_MODE = "STABLE_PRODUCT_GOAL_PLUS_OPERATOR_DISABLED_RUNTIME_SNAPSHOT"
 
 # Files allowed after the validated runtime/source commit. These are evidence
 # and gate-only metadata; they must not alter firmware/runtime behavior.
@@ -215,6 +216,16 @@ def stable_product_parity(baseline: str, frozen_source: str, manifest: dict) -> 
         errors.append("OpenClash/AdGuardHome package or patch payload changed since the verified Stable source")
     if any(p.startswith("config/openclash") for p in paths):
         errors.append("OpenClash source/config lock changed since the verified Stable source")
+    protected_drift = [p for p in paths if p.startswith((
+        "package/", "patches/", "config/openclash", "files/usr/libexec/xinzhao-openclash",
+        "files/etc/config/", "files/etc/firewall", "files/etc/hotplug.d/",
+    )) or p in {
+        "build.env", "scripts/fetch-openclash-core.sh", "scripts/stage-openclash-core.py",
+        "scripts/patch-adguardhome-coexistence.py", "production/openclash-adguardhome-coexistence.json",
+    }]
+    if protected_drift:
+        errors.append("protected OpenClash/ADH/DNS/firewall/network source changed: " + ", ".join(protected_drift))
+    details["protected_openclash_adh_dns_firewall_network_unchanged"] = not protected_drift
 
     required_lock_values = (
         'ISTORE_LINKEASE_VERSION="1.7.5"',
@@ -248,7 +259,9 @@ def verify_stable_inherited_evidence(
     require(evidence.get("schema_version") == 1, "schema_version must be 1")
     require(evidence.get("gate") == "PREBUILD_OPENCLASH_ADH_LIVE_GATE", "gate identity mismatch")
     require(evidence.get("status") == "PASS", "evidence.status must be PASS")
-    require(evidence.get("mode") == STABLE_INHERITED_MODE, "stable inheritance mode mismatch")
+    mode = evidence.get("mode")
+    disabled = mode == OPERATOR_DISABLED_MODE
+    require(mode in {STABLE_INHERITED_MODE, OPERATOR_DISABLED_MODE}, "stable inheritance mode mismatch")
     require(bool(str(evidence.get("generated_at") or "").strip()), "generated_at is required")
     require(validated == FROZEN_V016_SOURCE_SHA, "validated_source_sha must bind the frozen v0.1.6 firmware source")
     require(evidence.get("source_fix", {}).get("source_commit") == validated, "source_fix.source_commit must equal validated_source_sha")
@@ -265,6 +278,8 @@ def verify_stable_inherited_evidence(
     require(operator_intent.get("release_mode") == "RELEASE_ONLY" and release_mode.get("mode") == "RELEASE_ONLY", "release mode must remain RELEASE_ONLY")
     require(release_mode.get("automatic_flash") is False and guardrails.get("automatic_flash") is False, "automatic flash must remain forbidden")
     require(guardrails.get("sysupgrade_forbidden") is True and guardrails.get("device_reboot_forbidden") is True, "sysupgrade and reboot must remain forbidden")
+    if disabled:
+        require(operator_intent.get("OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR") is True, "operator-disabled assertion is missing")
 
     stable = evidence.get("stable_baseline") or {}
     require(stable.get("source_sha") == STABLE_PRODUCT_SOURCE_SHA, "stable baseline source must be the exact verified v0.1.5 source")
@@ -301,6 +316,8 @@ def verify_stable_inherited_evidence(
     require(prior.get("source_sha") == PRIOR_LIVE_VALIDATION_SHA, "prior prebuild evidence source identity mismatch")
     require(prior.get("sha256") == prior_sha256, "prior prebuild evidence digest mismatch")
     require(prior_data.get("status") == "PASS" and prior_data.get("validated_source_sha") == PRIOR_LIVE_VALIDATION_SHA, "prior full prebuild evidence identity/status mismatch")
+    prior_device = prior_data.get("device") or {}
+    require(prior_device.get("firmware") == "v0.1.5" and prior_device.get("address") == "192.168.6.1" and prior_device.get("target") == "qualcommax/ipq60xx/jdcloud_re-ss-01", "prior full prebuild evidence is not for the exact Stable Arthur identity")
     require(prior_data.get("openclash_fully_usable") == "PASS" and prior_data.get("adguardhome_fully_usable") == "PASS" and prior_data.get("openclash_adh_coexistence") == "PASS", "prior prebuild evidence lacks full OpenClash/ADH markers")
     prior_openclash = prior_data.get("openclash") or {}
     prior_controller = prior_openclash.get("controller_api") or {}
@@ -327,10 +344,15 @@ def verify_stable_inherited_evidence(
     manifest = json.loads(show_text(FROZEN_V016_SOURCE_SHA, "production/file-management-expected-diff.json"))
     parity_errors, parity = stable_product_parity(STABLE_PRODUCT_SOURCE_SHA, FROZEN_V016_SOURCE_SHA, manifest)
     errors.extend(parity_errors)
+    require(manifest.get("name") == "FILE_MANAGEMENT_EXPECTED_DIFF", "file-management-only expected diff is missing")
+    require((manifest.get("forbidden_product_changes") or []) and not parity_errors, "unrelated product diff or protected source drift exists")
     parity_record = evidence.get("source_parity") or {}
     require(parity_record.get("baseline_source_sha") == STABLE_PRODUCT_SOURCE_SHA, "source parity baseline SHA mismatch")
     require(parity_record.get("frozen_source_sha") == FROZEN_V016_SOURCE_SHA, "source parity frozen SHA mismatch")
     require(parity_record.get("semantic_protected_payload_unchanged") is True, "source parity semantic preservation claim missing")
+    if disabled:
+        require(parity_record.get("protected_openclash_adh_dns_firewall_network_unchanged") is True, "protected OpenClash/ADH source parity claim missing")
+        require(parity.get("protected_openclash_adh_dns_firewall_network_unchanged") is True, "protected OpenClash/ADH source parity failed")
     if parity_errors:
         errors.append("Stable-to-frozen protected product payload parity failed")
     if re.fullmatch(r"[0-9a-f]{40}", validated):
@@ -369,6 +391,9 @@ def verify_stable_inherited_evidence(
     require(device.get("lan_mac", "").lower() == "dc:d8:7c:45:91:99", "live Arthur MAC differs from exact Stable identity")
     require("RE-SS-01" in str(device.get("model") or ""), "read-only snapshot board model mismatch")
     require(snapshot_payload.get("management_http_status") == 200, "live LuCI management HTTP did not return 200")
+    if disabled:
+        require(snapshot_payload.get("ssh_identity") == "PASS", "current authenticated SSH identity is missing")
+        require(snapshot_payload.get("runtime_state") == "OPERATOR_DISABLED" and snapshot_payload.get("openclash_enable") == 0, "operator-disabled snapshot state mismatch")
 
     observations = snapshot_payload.get("read_only_observations") or {}
     uci = str(observations.get("openclash_uci") or "")
@@ -388,14 +413,20 @@ def verify_stable_inherited_evidence(
         'TPROXY_PORT="${6:-7895}"', 'MIXED_PORT="${7:-7890}"',
     ):
         require(setting in runtime_recipe, f"frozen OpenClash runtime recipe no longer has the verified setting: {setting}")
-    require(re.search(r"(?im)^enable=1\s*$", uci) is not None, "current OpenClash UCI is not enabled")
-    require("zashboard" in uci.lower(), "current OpenClash dashboard selection is not Zashboard")
-    for setting, expected in (("dns_port", "7874"), ("cn_port", "9090"), ("enable_redirect_dns", "0"), ("redirect_dns", "0")):
-        require(re.search(rf"(?im)^{setting}={expected}\s*$", uci) is not None, f"current OpenClash UCI differs from the verified runtime setting: {setting}={expected}")
-    require(re.search(r"(?i)(clash_meta|mihomo|/clash(?:\s|$))", runtime) is not None, "current OpenClash core process is missing")
-    require(re.search(r":7874\b", runtime) is not None and re.search(r":9090\b", runtime) is not None, "current OpenClash DNS/controller listeners are missing")
-    require(re.search(r":1745\b", runtime) is None, "AdGuardHome DNS port is unexpectedly occupied while its service is OFF")
-    for pattern, label in (
+    if disabled:
+        require(re.search(r"(?im)^enable=0\s*$", uci) is not None, "operator-disabled OpenClash UCI is not explicitly 0")
+        require(re.search(r"(?m)^CORE_PIDS=\s*$", runtime) is not None, "operator-disabled OpenClash has a running core or lacks a process probe")
+        listen = runtime.partition("---LISTEN---")[2].partition("---CONFIG---")[0]
+        require(bool(listen) and re.search(r":(?:7874|9090|7890|7892|7895)\b", listen) is None, "operator-disabled OpenClash has active DNS/controller/proxy listeners")
+    else:
+        require(re.search(r"(?im)^enable=1\s*$", uci) is not None, "current OpenClash UCI is not enabled")
+        require("zashboard" in uci.lower(), "current OpenClash dashboard selection is not Zashboard")
+        for setting, expected in (("dns_port", "7874"), ("cn_port", "9090"), ("enable_redirect_dns", "0"), ("redirect_dns", "0")):
+            require(re.search(rf"(?im)^{setting}={expected}\s*$", uci) is not None, f"current OpenClash UCI differs from the verified runtime setting: {setting}={expected}")
+        require(re.search(r"(?i)(clash_meta|mihomo|/clash(?:\s|$))", runtime) is not None, "current OpenClash core process is missing")
+        require(re.search(r":7874\b", runtime) is not None and re.search(r":9090\b", runtime) is not None, "current OpenClash DNS/controller listeners are missing")
+        require(re.search(r":1745\b", runtime) is None, "AdGuardHome DNS port is unexpectedly occupied while its service is OFF")
+        for pattern, label in (
         (r"(?m)^external-controller:\s*0\.0\.0\.0:9090\s*$", "controller bind"),
         (r"(?m)^external-ui:\s*/usr/share/openclash/ui\s*$", "dashboard path"),
         (r"(?m)^external-ui-name:\s*zashboard\s*$", "dashboard name"),
@@ -404,14 +435,14 @@ def verify_stable_inherited_evidence(
         (r"(?m)^tproxy-port:\s*7895\s*$", "transparent proxy port"),
         (r"(?m)^[ \t]*enhanced-mode:\s*fake-ip\s*$", "fake-ip runtime mode"),
         (r"(?m)^[ \t]*listen:\s*0\.0\.0\.0:7874\s*$", "OpenClash DNS listener"),
-    ):
-        require(re.search(pattern, runtime) is not None, f"current OpenClash runtime config is missing verified {label}")
-    require("ZASHBOARD_INDEX=YES" in files, "current Zashboard index file is missing")
-    require(re.search(r"(?m)^200\s+http://127\.0\.0\.1:9090/ui/zashboard/", http) is not None, "current local Zashboard HTTP did not return 200")
-    controller = re.search(r"(?m)^CONTROLLER_VERSION_HTTP=(\d{3})\s*$", http)
-    require(controller is not None and controller.group(1) in {"200", "401"}, "current OpenClash controller endpoint is not responding")
-    require(re.search(r"(?m)^PROXY_HTTP=204\s*$", proxy_traffic) is not None, "current real proxy traffic did not return HTTP 204")
-    require("127.0.0.1#7874" in dns, "current dnsmasq upstream is not OpenClash at 7874")
+        ):
+            require(re.search(pattern, runtime) is not None, f"current OpenClash runtime config is missing verified {label}")
+        require("ZASHBOARD_INDEX=YES" in files, "current Zashboard index file is missing")
+        require(re.search(r"(?m)^200\s+http://127\.0\.0\.1:9090/ui/zashboard/", http) is not None, "current local Zashboard HTTP did not return 200")
+        controller = re.search(r"(?m)^CONTROLLER_VERSION_HTTP=(\d{3})\s*$", http)
+        require(controller is not None and controller.group(1) in {"200", "401"}, "current OpenClash controller endpoint is not responding")
+        require(re.search(r"(?m)^PROXY_HTTP=204\s*$", proxy_traffic) is not None, "current real proxy traffic did not return HTTP 204")
+        require("127.0.0.1#7874" in dns, "current dnsmasq upstream is not OpenClash at 7874")
     require(re.search(r"(?i)enabled=['\"]?0['\"]?", dns) is not None, "current AdGuardHome UCI is not disabled")
     adh_process_section = dns.partition("---ADH_PROC---")[2].partition("---ADH_YAML_DNS---")[0]
     require(bool(adh_process_section) and not adh_process_section.strip(), "AdGuardHome process is not OFF in the current read-only snapshot")
@@ -431,6 +462,16 @@ def verify_stable_inherited_evidence(
         "ADGUARDHOME_FILTERING=PASS", "ADGUARDHOME_QUERY_LOG=PASS", "ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS",
         "ADH_REENABLE_RESTORES_CHAIN=PASS",
     }
+    if disabled:
+        current_basis = {"NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS", "FINAL_ADH_DEFAULT_OFF=PASS"}
+        historical_behavior.update({
+            "OPENCLASH_CONTROLLER=PASS", "ZASHBOARD_RUNTIME=PASS", "OPENCLASH_RUNTIME_CONFIG_PARITY=PASS",
+            "OPENCLASH_DNS_RUNTIME=PASS", "OPENCLASH_ADH_DNS_CHAIN=PASS", "NO_DNS_LOOP=PASS",
+            "REAL_PROXY_TRAFFIC=PASS", "NO_PORT_CONFLICT=PASS",
+        })
+        capability = evidence.get("runtime_capability") or {}
+        require(capability.get("currently_running") == "NO", "CURRENTLY_RUNNING=NO must be explicit")
+        require(capability.get("firmware_capability_inherited") == "PASS", "FIRMWARE_CAPABILITY_INHERITED=PASS must be explicit")
     snapshot_ref = f"github-actions:mxonline/xinzhaowrt/runs/{run_id}/artifacts/{artifact_id}/arthur-live-snapshot.json"
     historical_ref = f"{EVIDENCE_PATH}@{PRIOR_LIVE_VALIDATION_SHA}#sha256={prior_sha256}"
     for name in required:
@@ -463,6 +504,11 @@ def verify_stable_inherited_evidence(
     print("PROTECTED_PRODUCT_PAYLOAD_PARITY=PASS")
     print("CURRENT_ARTHUR_READ_ONLY_SNAPSHOT=PASS")
     print("STABLE_PRODUCT_GOAL_INHERITANCE=PASS")
+    if disabled:
+        print("OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR=true")
+        print("CURRENTLY_RUNNING=NO")
+        print("FIRMWARE_CAPABILITY_INHERITED=PASS")
+        print("OPERATOR_DISABLED_STATE_CONFIRMED=PASS")
     for name in required:
         print(name)
     print("PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS")
@@ -612,7 +658,7 @@ def require(condition: bool, message: str) -> None:
         errors.append(message)
 
 
-if evidence.get("mode") == STABLE_INHERITED_MODE:
+if evidence.get("mode") in {STABLE_INHERITED_MODE, OPERATOR_DISABLED_MODE}:
     inherited_errors = verify_stable_inherited_evidence(
         target_sha, evidence, operator_intent, release_mode, product_goal, contract
     )
