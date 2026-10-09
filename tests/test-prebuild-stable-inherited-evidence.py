@@ -134,6 +134,15 @@ def main() -> None:
         if passed.returncode or "PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS" not in passed.stdout or "FIRMWARE_BUILD_ALLOWED=YES" not in passed.stdout:
             raise SystemExit(f"valid inherited evidence was rejected:\n{passed.stdout}")
 
+        build_setup = repo / "scripts/codex-setup.sh"
+        setup_text = build_setup.read_text(encoding="utf-8")
+        if "qemu-user-static" not in setup_text:
+            build_setup.write_text(setup_text.replace("qemu-utils", "qemu-utils qemu-user-static"), encoding="utf-8")
+        tooling_commit = commit(repo, "test: add target QEMU runner to build tooling")
+        tooling_result = subprocess.run(["python", str(gate), tooling_commit], cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if tooling_result.returncode or "PREBUILD_OPENCLASH_ADH_LIVE_GATE=PASS" not in tooling_result.stdout or "FIRMWARE_BUILD_ALLOWED=YES" not in tooling_result.stdout:
+            raise SystemExit(f"post-freeze build-tooling change invalidated unchanged firmware evidence:\n{tooling_result.stdout}")
+
         disabled = evidence_for(repo)
         disabled["mode"] = "STABLE_PRODUCT_GOAL_PLUS_OPERATOR_DISABLED_RUNTIME_SNAPSHOT"
         snap = disabled["current_live_snapshot"]["snapshot"]

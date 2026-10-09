@@ -68,6 +68,7 @@ POST_VALIDATION_ALLOWLIST = {
     "scripts/bind-prebuild-openclash-adh-evidence.py",
     "scripts/collect-arthur-openclash-adh-readonly.ps1",
     "scripts/check-arthur-validation-build.sh",
+    "scripts/codex-setup.sh",
     "scripts/build.sh",
     "scripts/derive-stable-overlay-manifest.py",
     "scripts/luci-legacy-template-smoke.py",
