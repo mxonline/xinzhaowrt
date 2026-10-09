@@ -21,16 +21,18 @@ TARGET_VERSION="${TARGET_RELEASE#v}"
 [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid target version: $TARGET_VERSION"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid VERSION: $VERSION"
 
-CURRENT_STABLE="$("$PYTHON_BIN" - "$ROOT/production/resume-state.json" <<'PY'
+CURRENT_STABLE="$("$PYTHON_BIN" - "$ROOT/production/product-goal-verification.json" <<'PY'
 import json
 import pathlib
 import sys
 
-state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-stable = state.get("accepted_release") or state.get("release") or state.get("production", {}).get("release")
-if not isinstance(stable, str) or not stable.startswith("v"):
-    raise SystemExit("missing accepted stable release")
-print(stable)
+evidence = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if evidence.get("status") != "PRODUCT_GOAL_VERIFIED":
+    raise SystemExit("missing verified Stable product-goal evidence")
+version = (evidence.get("device") or {}).get("version")
+if not isinstance(version, str) or not version:
+    raise SystemExit("missing verified Stable version")
+print(f"v{version}")
 PY
 )"
 CURRENT_STABLE_VERSION="${CURRENT_STABLE#v}"
@@ -52,20 +54,6 @@ PY
 
 if git -C "$ROOT" show-ref --verify --quiet "refs/tags/$TARGET_RELEASE"; then
   fail "target tag already exists locally: $TARGET_RELEASE"
-fi
-
-STATE_RELEASES="$("$PYTHON_BIN" - "$ROOT/production/resume-state.json" <<'PY'
-import json
-import pathlib
-import sys
-
-state = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-values = [state.get("accepted_release"), state.get("release"), state.get("production", {}).get("release")]
-print("\n".join(value for value in values if isinstance(value, str)))
-PY
-)"
-if grep -Fxq "$TARGET_RELEASE" <<<"$STATE_RELEASES"; then
-  fail "target release is already recorded in resume-state"
 fi
 
 CONFIG_VERSION="$(sed -nE 's/^CONFIG_VERSION_NUMBER="([^"]+)"$/\1/p' "$ROOT/config/arthur.config")"

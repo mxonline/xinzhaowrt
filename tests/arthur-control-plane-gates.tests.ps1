@@ -208,4 +208,14 @@ $credentialWorkflow = Get-Content -Raw $CredentialWorkflowPath
 Assert-Contains $credentialWorkflow 'workflow_dispatch:' 'legacy credential recovery must remain available only for explicit manual recovery'
 Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'legacy credential recovery must not auto-run on main pushes during canonical release'
 
+$directInspectPath = Join-Path $Root '.github\workflows\arthur-openclash-adh-direct-inspect.yml'
+$directInspect = Get-Content -Raw $directInspectPath
+$remoteCommandLines = @($directInspect -split "`r?`n" | Where-Object { $_ -match '^\s*\$cmd\w+\s*=' })
+Assert-True ($remoteCommandLines.Count -gt 0) 'direct inspect must define its remote read-only commands'
+foreach ($line in $remoteCommandLines) {
+    foreach ($match in [regex]::Matches($line, 'grep(?:\s+-[^\s]+)?\s+"([^"]*)"')) {
+        Assert-True ($match.Groups[1].Value -notmatch '[()]') "remote grep pattern '$($match.Groups[1].Value)' must avoid shell-sensitive grouping parentheses because SSH transmits the command through the remote shell"
+    }
+}
+
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'
