@@ -77,6 +77,23 @@ def main() -> int:
         found = shutil.which(name)
         if found:
             runners.append((name, [found], {}))
+    source_root = Path(args.source_root).resolve()
+    host_runtime_candidates = (
+        source_root / "staging_dir/host/bin/lua",
+        source_root / "staging_dir/host/bin/luajit",
+        source_root / "staging_dir/host/bin/lua5.1",
+    )
+    for candidate in host_runtime_candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            runners.append((f"host-{candidate.name}", [str(candidate)], {}))
+    host_globs = (
+        (source_root / "build_dir/host").glob("lua-*/src/lua"),
+        (source_root / "build_dir/host").glob("luajit-*/src/luajit"),
+    )
+    for candidates in host_globs:
+        for candidate in sorted(candidates):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                runners.append((f"host-{candidate.name}", [str(candidate)], {}))
     for name in ("qemu-aarch64-static", "qemu-aarch64"):
         found = shutil.which(name)
         if found and (rootfs / "usr/bin/lua").is_file():

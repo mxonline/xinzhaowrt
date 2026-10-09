@@ -48,6 +48,7 @@ allowed_control_path() {
     scripts/bind-prebuild-openclash-adh-evidence.py|\
     scripts/build.sh|\
     scripts/derive-stable-overlay-manifest.py|\
+    scripts/luci-legacy-template-smoke.py|\
     scripts/check-arthur-validation-build.sh|\
     scripts/check-openclash-adh-prebuild-live.py|\
     scripts/collect-arthur-openclash-adh-readonly.ps1|\
