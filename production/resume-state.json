@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "ed4d61e2ffceef0cd4d54f614117d7339413a734",
+    "repository_head": "c0cea4fcba995308274ff764e66a4abc80d72ca7",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -13,7 +13,7 @@
     "accepted_factory_sha256": ""
   },
   "production": {
-    "github_run_id": 0,
+    "github_run_id": 37901599660,
     "artifact_id": 0,
     "release_id": 0,
     "release": "v0.1.6",
@@ -67,44 +67,61 @@
     },
     "CHANGE_IMPACT": {
       "gate_id": "CHANGE_IMPACT",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#change-impact-gate",
       "requirement_digest": "a12c51c4d521a8644100d0e69e92ba333baefa892bcde74fdb04eb6407204c9d",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56"
+      },
+      "evidence_refs": [
+        "evidence:change-impact-b4448e62ab1e"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-09T07:53:22.561744+00:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#baseline-inheritance-gate",
       "requirement_digest": "ead7295c2719482b4f126610a63da8e3a53e88a477df17c7beb244c906bc85c9",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56"
+      },
+      "evidence_refs": [
+        "evidence:baseline-inheritance-b4448e62ab1e"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-09T07:53:22.561744+00:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#expected-diff-gate",
       "requirement_digest": "cc1bdff91417e73de98d109d3443fe0b53cdd4b6fe8ca3faeba408e787cc1c3e",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56"
+      },
+      "evidence_refs": [
+        "evidence:expected-diff-b4448e62ab1e"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-09T07:53:22.561744+00:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "PENDING",
+      "status": "RUNNING",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+        "github_run_id": 37901599660
+      },
+      "evidence_refs": [
+        "evidence:build-run-37901599660"
+      ],
       "inherited": false,
       "inherited_from": "",
       "verified_at": ""
@@ -154,9 +171,9 @@
       "verified_at": ""
     }
   },
-  "current_gate": "CHANGE_IMPACT",
-  "next_action": "CHANGE_IMPACT",
-  "repository_head": "ed4d61e2ffceef0cd4d54f614117d7339413a734",
+  "current_gate": "BUILD",
+  "next_action": "BUILD",
+  "repository_head": "c0cea4fcba995308274ff764e66a4abc80d72ca7",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -167,9 +184,9 @@
     "lan_mac": "dc:d8:7c:45:91:99"
   },
   "checkpoint": {
-    "current": "CHANGE_IMPACT",
-    "next_action": "CHANGE_IMPACT",
-    "turn_count": 0
+    "current": "BUILD",
+    "next_action": "BUILD",
+    "turn_count": 1
   },
   "verified": {
     "real_device_baseline": "ROLLBACK_AUTHORITY_PRESERVED",
@@ -179,7 +196,7 @@
     "quickstart": "REVERIFY_REQUIRED"
   },
   "pending": [
-    "CHANGE_IMPACT"
+    "BUILD"
   ],
   "conflicts": [],
   "post_release_device_test": "PENDING_INDEPENDENT",
@@ -195,5 +212,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "semantic_sha256": "0fb10d74a2d0b0240887c802557e5b436544461c87d11c94f203168497d83631"
+  "evidence_timestamp": "2026-10-09T07:53:22.561744+00:00",
+  "semantic_sha256": "d9f96ac19e4f0e14f484cf44ee633e676fdfd1a203326835fa133c30933fa7d1"
 }

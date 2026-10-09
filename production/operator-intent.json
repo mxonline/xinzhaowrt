@@ -10,9 +10,9 @@
   "device_write_authorized": false,
   "OPENCLASH_RUNTIME_DISABLED_BY_OPERATOR": true,
   "firmware_state": {
-    "current_stage": "CHANGE_IMPACT",
-    "next_stage": "CHANGE_IMPACT",
-    "active_run_id": 0,
+    "current_stage": "BUILD",
+    "next_stage": "BUILD",
+    "active_run_id": 37901599660,
     "active_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "active_artifact_id": null,
     "candidate_release_conclusion": null,
