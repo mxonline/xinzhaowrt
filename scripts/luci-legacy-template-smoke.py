@@ -64,36 +64,14 @@ def discover_lua_runners(
     search_path: str | None = None,
 ) -> list[tuple[str, list[str], dict[str, str]]]:
     runners: list[tuple[str, list[str], dict[str, str]]] = []
-    for name in ("lua", "luajit", "lua5.1"):
-        found = shutil.which(name, path=search_path)
-        if found:
-            runners.append((name, [found], {}))
 
-    host_runtime_candidates = (
-        source_root / "staging_dir/hostpkg/bin/lua",
-        source_root / "staging_dir/hostpkg/bin/luajit",
-        source_root / "staging_dir/hostpkg/bin/lua5.1",
-        source_root / "staging_dir/host/bin/lua",
-        source_root / "staging_dir/host/bin/luajit",
-        source_root / "staging_dir/host/bin/lua5.1",
-    )
-    for candidate in host_runtime_candidates:
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            runners.append((f"host-{candidate.name}", [str(candidate)], {}))
-
-    host_globs = (
-        (source_root / "build_dir/host").glob("lua-*/src/lua"),
-        (source_root / "build_dir/host").glob("luajit-*/src/luajit"),
-    )
-    for candidates in host_globs:
-        for candidate in sorted(candidates):
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                runners.append((f"host-{candidate.name}", [str(candidate)], {}))
-
+    # The final rootfs contains target-architecture Lua modules. Prefer its
+    # interpreter under QEMU; host Lua cannot load those modules.
     for name in ("qemu-aarch64-static", "qemu-aarch64"):
         found = shutil.which(name, path=search_path)
-        if found and (rootfs / "usr/bin/lua").is_file():
-            runners.append((name, [found, str(rootfs / "usr/bin/lua")], {"QEMU_LD_PREFIX": str(rootfs)}))
+        target_lua = rootfs / "usr/bin/lua"
+        if found and target_lua.is_file():
+            runners.append((name, [found, str(target_lua)], {"QEMU_LD_PREFIX": str(rootfs)}))
     return runners
 
 
@@ -115,7 +93,7 @@ def main() -> int:
     source_root = Path(args.source_root).resolve()
     runners = discover_lua_runners(source_root, rootfs)
     if not runners:
-        raise SystemExit("FAIL: no Lua/LuaJIT or aarch64 Lua runtime is available for actual LuCI parser validation")
+        raise SystemExit("FAIL: no QEMU user-mode runner with the final rootfs Lua interpreter is available for target LuCI parser validation")
 
     lua_path = ";".join(str(p) for p in (rootfs / "usr/lib/lua").glob("?.lua"))
     env = os.environ.copy()
