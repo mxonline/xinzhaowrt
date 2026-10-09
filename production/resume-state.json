@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "6cee5bd41629b6eb6e43c5557aa32c86f9155921",
+    "repository_head": "666f099c496647cd61fafebc459abccf991783a6",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -13,7 +13,7 @@
     "accepted_factory_sha256": ""
   },
   "production": {
-    "github_run_id": 37901599660,
+    "github_run_id": 37923169640,
     "artifact_id": 0,
     "release_id": 0,
     "release": "v0.1.6",
@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T07:53:22.561744+00:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T07:53:22.561744+00:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,23 +108,23 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T07:53:22.561744+00:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "FAIL",
+      "status": "RUNNING",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
         "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
-        "github_run_id": 37901599660
+        "github_run_id": 37923169640
       },
       "evidence_refs": [
-        "evidence:build-run-37901599660"
+        "evidence:build-run-37923169640"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T11:17:07.7590289+00:00"
+      "verified_at": ""
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -173,7 +173,7 @@
   },
   "current_gate": "BUILD",
   "next_action": "BUILD",
-  "repository_head": "6cee5bd41629b6eb6e43c5557aa32c86f9155921",
+  "repository_head": "666f099c496647cd61fafebc459abccf991783a6",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -186,7 +186,7 @@
   "checkpoint": {
     "current": "BUILD",
     "next_action": "BUILD",
-    "turn_count": 1
+    "turn_count": 2
   },
   "verified": {
     "real_device_baseline": "ROLLBACK_AUTHORITY_PRESERVED",
@@ -212,6 +212,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "semantic_sha256": "bdeaf682e5d1e0cca5d7b77fca9bbb4679c7dd815a09b4efa33dedb5dc062bd5",
-  "evidence_timestamp": "2026-10-09T11:17:07.7590289+00:00"
+  "evidence_timestamp": "2026-10-09T11:21:09.376497+00:00",
+  "semantic_sha256": "e9d7bf8170d8740146cef6be29acbddf826a02a2ae1df17f609b6d280af3952d"
 }
