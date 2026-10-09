@@ -76,6 +76,21 @@
       "sha256": "",
       "observed_at": "2026-10-09T11:21:09.376497+00:00",
       "result": "RUNNING"
+    },
+    {
+      "evidence_id": "build-run-37936119231",
+      "gate_id": "BUILD",
+      "type": "GITHUB_ACTIONS_RUN",
+      "producer": "ARTHUR_KNOWN_GOOD_UPDATE_V3",
+      "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+      "github_run_id": 37936119231,
+      "artifact_id": 11626928672,
+      "candidate_sha256": "",
+      "device_build_id": "",
+      "ref": "github-actions:mxonline/xinzhaowrt/runs/37936119231",
+      "sha256": "7c8e3343fc7fa4162e4cd6aa5a3711c90626cecb5b2b02da2d2932890caa153c",
+      "observed_at": "2026-10-09T16:15:15.6330048+00:00",
+      "result": "FAIL"
     }
   ]
 }
