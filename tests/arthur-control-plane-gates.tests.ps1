@@ -210,10 +210,9 @@ Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::
 
 $directInspectPath = Join-Path $Root '.github\workflows\arthur-openclash-adh-direct-inspect.yml'
 $directInspect = Get-Content -Raw $directInspectPath
-Assert-Contains $directInspect 'function ConvertTo-ArthurRemoteShellCommand' 'direct inspect must encode remote commands before Windows OpenSSH transports shell quotes'
-Assert-Contains $directInspect 'base64 -d | /bin/sh' 'direct inspect must decode the protected command payload on Arthur'
-Assert-Contains $directInspect '$safeCommand = ConvertTo-ArthurRemoteShellCommand $Command' 'each remote read-only command must be converted before SSH invocation'
-Assert-Contains $directInspect '-Command $safeCommand' 'each remote read-only command must use the protected shell transport'
-Assert-True ($directInspect.IndexOf('-Command $Command',[System.StringComparison]::Ordinal) -lt 0) 'direct inspect must not pass raw shell commands through Windows OpenSSH argument handling'
+Assert-Contains $directInspect '-CommandViaStdin' 'direct inspect must send remote shell scripts over SSH stdin to preserve Windows quote characters'
+$accessHelper = Get-Content -Raw (Join-Path $Root 'scripts\ensure-arthur-unattended-access.ps1')
+Assert-Contains $accessHelper '[switch]$CommandViaStdin' 'Arthur SSH probe must expose safe stdin script transport'
+Assert-Contains $accessHelper '-InputText ($Command +' 'Arthur SSH probe must pass a newline-terminated script through native process stdin'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'

@@ -87,13 +87,8 @@ jobs:
           Write-Host 'ARTHUR_ACCESS=PASS mode=actions-secret-password-direct'
 
           $remoteResults = [ordered]@{}
-          function ConvertTo-ArthurRemoteShellCommand([string]$Command) {
-            $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Command))
-            return "printf %s $payload | base64 -d | /bin/sh"
-          }
           function Remote([string]$Label,[string]$Command) {
-            $safeCommand = ConvertTo-ArthurRemoteShellCommand $Command
-            $r = Invoke-ArthurSshProbe -DeviceIp $deviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $safeCommand -PasswordAuth
+            $r = Invoke-ArthurSshProbe -DeviceIp $deviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $Command -PasswordAuth -CommandViaStdin
             $script:remoteResults[$Label] = [string]$r.Output
             Write-Host "$($Label)_EXIT=$($r.ExitCode)"
             Write-Host "$($Label)_BEGIN"
