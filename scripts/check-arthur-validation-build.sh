@@ -45,6 +45,7 @@ allowed_control_path() {
     scripts/arthur-state-contract.ps1|\
     scripts/bind-prebuild-openclash-adh-evidence.py|\
     scripts/build.sh|\
+    scripts/derive-stable-overlay-manifest.py|\
     scripts/check-arthur-validation-build.sh|\
     scripts/check-openclash-adh-prebuild-live.py|\
     scripts/collect-arthur-openclash-adh-readonly.ps1|\

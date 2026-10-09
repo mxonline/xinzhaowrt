@@ -101,6 +101,7 @@ try {
 
     Invoke-ProjectCheck 'tests/test-openclash-adguardhome-coexistence.py' $python @('tests/test-openclash-adguardhome-coexistence.py')
     Invoke-ProjectCheck 'tests/test-prebuild-stable-inherited-evidence.py' $python @('tests/test-prebuild-stable-inherited-evidence.py')
+    Invoke-ProjectCheck 'tests/test-stable-overlay-inheritance.py' $python @('tests/test-stable-overlay-inheritance.py')
     Invoke-ProjectCheck 'scripts/check-product-goal-contract.py' $python @('scripts/check-product-goal-contract.py')
     foreach ($json in @(
         'production/live-preview-policy.json',

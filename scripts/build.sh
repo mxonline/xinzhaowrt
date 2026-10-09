@@ -155,9 +155,14 @@ mkdir -p "$SRC/files"
 rsync -a "$PROJECT_ROOT/files/" "$SRC/files/"
 "$PROJECT_ROOT/scripts/resolve-build-identity.sh" \
   "$PROJECT_ROOT/VERSION" "$SOURCE_SHA" "$BUILD_ID" "$SRC/files"
+STABLE_OVERLAY_MANIFEST="$OUT/stable-overlay-manifest.json"
+python3 "$PROJECT_ROOT/scripts/derive-stable-overlay-manifest.py" \
+  --root "$PROJECT_ROOT" \
+  --source-sha "$ARTHUR_CANDIDATE_SHA" \
+  --output "$STABLE_OVERLAY_MANIFEST"
 python3 "$PROJECT_ROOT/scripts/materialize-accepted-overlay.py" \
   --root "$PROJECT_ROOT" \
-  --manifest production/accepted-preview/arthur-adh-quickstart.json \
+  --manifest "$STABLE_OVERLAY_MANIFEST" \
   --dest "$SRC/files"
 bash "$PROJECT_ROOT/scripts/restore-pinned-adguard-manager.sh" "$SRC"
 
@@ -214,6 +219,7 @@ python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-adh-manager.py" \
   "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" \
   "$SRC/package/feeds/xinzhao/luci-app-adguardhome/Makefile" \
   "$SRC/package/feeds/xinzhao/luci-app-adguardhome-manager/Makefile" "$SRC" \
+  --accepted-manifest "$STABLE_OVERLAY_MANIFEST" \
   | tee "$OUT/adh-manager-verification.txt"
 python3 "$PROJECT_ROOT/scripts/verify-final-rootfs-openclash-core.py" \
   "$FINAL_ROOTFS_DIR" "$FINAL_PACKAGE_MANIFEST" "$SRC" \
