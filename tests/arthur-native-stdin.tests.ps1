@@ -21,5 +21,10 @@ if ($result.ExitCode -ne 7) {
 if ($result.Output -notmatch 'STDIN_COMMAND=PASS') {
     throw 'STDIN_TRANSPORT_COMMAND_CONTENT_MISMATCH'
 }
+$python = Get-Command python.exe -ErrorAction Stop
+$byteResult = Invoke-ArthurAccessNative -FilePath $python.Source -Arguments @('-c', 'import sys; print(sys.stdin.buffer.read(1).hex())') -InputText 'X'
+if ($byteResult.ExitCode -ne 0 -or $byteResult.Output -notmatch '^58$') {
+    throw "STDIN_TRANSPORT_UTF8_PREFIX_MISMATCH expected=58 actual=$($byteResult.Output)"
+}
 
 Write-Output 'ARTHUR_NATIVE_STDIN_TRANSPORT=PASS'

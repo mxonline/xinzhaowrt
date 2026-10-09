@@ -18,9 +18,11 @@ function Invoke-ArthurAccessNative {
         [AllowEmptyString()][string]$InputText
     )
     $previous = $ErrorActionPreference
+    $previousOutputEncoding = $global:OutputEncoding
     try {
         $ErrorActionPreference = 'Continue'
         if ($PSBoundParameters.ContainsKey('InputText')) {
+            $global:OutputEncoding = [System.Text.UTF8Encoding]::new($false)
             $raw = @($InputText | & $FilePath @Arguments 2>&1)
         }
         else {
@@ -30,6 +32,7 @@ function Invoke-ArthurAccessNative {
     }
     finally {
         $ErrorActionPreference = $previous
+        $global:OutputEncoding = $previousOutputEncoding
     }
     [pscustomobject]@{ ExitCode = $code; Output = (($raw | ForEach-Object { [string]$_ }) -join "`n").Trim() }
 }
