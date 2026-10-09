@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "7488b4c9c1a125f9e39143bdd24963ca122d1f81",
+    "repository_head": "54a552be243260f58a38f5be4569f874799876f8",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -174,7 +174,7 @@
   },
   "current_gate": "BUILD",
   "next_action": "BUILD",
-  "repository_head": "7488b4c9c1a125f9e39143bdd24963ca122d1f81",
+  "repository_head": "54a552be243260f58a38f5be4569f874799876f8",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -213,6 +213,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "semantic_sha256": "561f4989d57fc4c82305058b6ddd00722fa2b8ac82e26ddc4648f4304bde4b97",
+  "semantic_sha256": "2aa2cf4e79262df576a7ff816fccaa72b00da9c36e60e3e817ff626b0ea68e17",
   "evidence_timestamp": "2026-10-09T16:36:31.1781127+00:00"
 }
