@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "6212fc035fa11c4cf7c77d6b365ca28496168ef4",
+    "repository_head": "de8f7cd1a3d39eade651ba5e3ca6f982d95f314a",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -13,7 +13,7 @@
     "accepted_factory_sha256": ""
   },
   "production": {
-    "github_run_id": 37974194195,
+    "github_run_id": 37999598995,
     "artifact_id": 0,
     "release_id": 0,
     "release": "v0.1.6",
@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T02:34:21.850849+08:00"
+      "verified_at": "2026-10-09T22:30:45.513954+00:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T02:34:21.850849+08:00"
+      "verified_at": "2026-10-09T22:30:45.513954+00:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,27 +108,23 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T02:34:21.850849+08:00"
+      "verified_at": "2026-10-09T22:30:45.513954+00:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "FAIL",
+      "status": "RUNNING",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
         "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
-        "github_run_id": 37974194195,
-        "diagnostics_artifact_id": 11645414246,
-        "artifact_id": 0,
-        "firmware_artifact_available": false
+        "github_run_id": 37999598995
       },
       "evidence_refs": [
-        "evidence:build-run-failed-37974194195",
-        "evidence:build-diagnostics-37974194195"
+        "evidence:build-run-37999598995"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T05:36:45.6126042+08:00"
+      "verified_at": ""
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -177,7 +173,7 @@
   },
   "current_gate": "BUILD",
   "next_action": "BUILD",
-  "repository_head": "6212fc035fa11c4cf7c77d6b365ca28496168ef4",
+  "repository_head": "de8f7cd1a3d39eade651ba5e3ca6f982d95f314a",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -190,7 +186,7 @@
   "checkpoint": {
     "current": "BUILD",
     "next_action": "BUILD",
-    "turn_count": 5
+    "turn_count": 6
   },
   "verified": {
     "real_device_baseline": "ROLLBACK_AUTHORITY_PRESERVED",
@@ -216,6 +212,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "semantic_sha256": "9be9f3b697d6828b5bde5bd9608c50f75ddd2161adb7f0e1fa9fc73911b590d0",
-  "evidence_timestamp": "2026-10-09T22:23:58.5747749+00:00"
+  "evidence_timestamp": "2026-10-09T22:30:45.513954+00:00",
+  "semantic_sha256": "3928cd247d0a4c5d4c863336245c01a4028133565bce3c3050c229c72ce2dfe0"
 }
