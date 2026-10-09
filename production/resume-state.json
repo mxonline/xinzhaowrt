@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T18:34:21.850849+00:00"
+      "verified_at": "2026-10-10T02:34:21.850849+08:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T18:34:21.850849+00:00"
+      "verified_at": "2026-10-10T02:34:21.850849+08:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,23 +108,27 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T18:34:21.850849+00:00"
+      "verified_at": "2026-10-10T02:34:21.850849+08:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "RUNNING",
+      "status": "FAIL",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
         "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
-        "github_run_id": 37974194195
+        "github_run_id": 37974194195,
+        "diagnostics_artifact_id": 11645414246,
+        "artifact_id": 0,
+        "firmware_artifact_available": false
       },
       "evidence_refs": [
-        "evidence:build-run-37974194195"
+        "evidence:build-run-failed-37974194195",
+        "evidence:build-diagnostics-37974194195"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T05:36:45.6126042+08:00"
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -186,7 +190,7 @@
   "checkpoint": {
     "current": "BUILD",
     "next_action": "BUILD",
-    "turn_count": 4
+    "turn_count": 5
   },
   "verified": {
     "real_device_baseline": "ROLLBACK_AUTHORITY_PRESERVED",
@@ -212,6 +216,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-09T18:34:21.850849+00:00",
-  "semantic_sha256": "e4ac6c8f2bcd376a6991b466f5acb94d2bcfd996ed92b0ea6a8deaeba6a143a6"
+  "semantic_sha256": "113d1a977395cb7b8e73e70647361e91aa156aa1a9e99f982086e52caa1a4891",
+  "evidence_timestamp": "2026-10-10T05:36:45.6126042+08:00"
 }
