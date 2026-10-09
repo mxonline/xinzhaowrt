@@ -81,9 +81,6 @@ try {
     )
     foreach ($test in $testScripts) { Invoke-ProjectCheck $test $bash @($test) }
 
-    Write-Host 'RUN=tests/arthur-native-stdin.tests.ps1'
-    & (Join-Path $projectRoot 'tests/arthur-native-stdin.tests.ps1')
-
     # This test invokes another Bash process. Run that child independently, then
     # run the parent checks from a same-directory temporary copy with only the
     # already-covered child invocation replaced, avoiding Git Bash's nested

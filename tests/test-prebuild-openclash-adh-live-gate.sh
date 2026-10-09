@@ -70,7 +70,9 @@ grep -Fq 'Arthur-OpenClash-ADH-ReadOnly-' "$INSPECT" || fail 'read-only Arthur i
 grep -Fq 'management_http_status' "$INSPECT" || fail 'read-only snapshot must record LuCI management health'
 grep -Fq '$luciHttp = [int]$buildResponse.StatusCode' "$INSPECT" || fail 'management HTTP evidence must reuse the successful public build-info response'
 grep -Fq 'PROXY_HTTP=204' "$INSPECT" || fail 'read-only snapshot must prove live OpenClash proxy traffic'
-grep -Fq 'mixed-port|redir-port|tproxy-port' "$INSPECT" || fail 'read-only snapshot must capture runtime proxy settings for source parity'
+grep -Fq 'grep -n mixed-port $cfg' "$INSPECT" || fail 'read-only snapshot must capture the runtime mixed proxy port'
+grep -Fq 'grep -n redir-port $cfg' "$INSPECT" || fail 'read-only snapshot must capture the runtime redirect proxy port'
+grep -Fq 'grep -n tproxy-port $cfg' "$INSPECT" || fail 'read-only snapshot must capture the runtime transparent proxy port'
 grep -Fq 'LIVE_READ_ONLY_SNAPSHOT=PASS' "$INSPECT" || fail 'read-only snapshot production must report its explicit marker'
 
 grep -Fq 'workflow_run:' "$GUARD" || fail 'guard must observe Candidate workflow runs from the default branch'

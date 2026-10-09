@@ -210,9 +210,12 @@ Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::
 
 $directInspectPath = Join-Path $Root '.github\workflows\arthur-openclash-adh-direct-inspect.yml'
 $directInspect = Get-Content -Raw $directInspectPath
-Assert-Contains $directInspect '-CommandViaStdin' 'direct inspect must send remote shell scripts over SSH stdin to preserve Windows quote characters'
-$accessHelper = Get-Content -Raw (Join-Path $Root 'scripts\ensure-arthur-unattended-access.ps1')
-Assert-Contains $accessHelper '[switch]$CommandViaStdin' 'Arthur SSH probe must expose safe stdin script transport'
-Assert-Contains $accessHelper '-InputText ($Command +' 'Arthur SSH probe must pass a newline-terminated script through native process stdin'
+Assert-Contains $directInspect '-Command $Command -PasswordAuth' 'direct inspect must use the authenticated remote-command path'
+Assert-True ($directInspect.IndexOf('-CommandViaStdin',[System.StringComparison]::Ordinal) -lt 0) 'direct inspect must not use stdin transport that adds a BOM on Arthur'
+$remoteCommandLines = @($directInspect -split "`r?`n" | Where-Object { $_ -match '^\s*\$cmd\w+\s*=' })
+Assert-True ($remoteCommandLines.Count -gt 0) 'direct inspect must define read-only remote commands'
+foreach ($line in $remoteCommandLines) {
+    Assert-True ($line.IndexOf('"',[StringComparison]::Ordinal) -lt 0) 'direct remote commands must avoid embedded double quotes that Windows OpenSSH strips before the Arthur shell parses them'
+}
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'

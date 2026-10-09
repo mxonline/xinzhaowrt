@@ -14,25 +14,16 @@ function Get-ArthurAccessPolicy {
 function Invoke-ArthurAccessNative {
     param(
         [Parameter(Mandatory=$true)][string]$FilePath,
-        [Parameter(Mandatory=$true)][string[]]$Arguments,
-        [AllowEmptyString()][string]$InputText
+        [Parameter(Mandatory=$true)][string[]]$Arguments
     )
     $previous = $ErrorActionPreference
-    $previousOutputEncoding = $global:OutputEncoding
     try {
         $ErrorActionPreference = 'Continue'
-        if ($PSBoundParameters.ContainsKey('InputText')) {
-            $global:OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-            $raw = @($InputText | & $FilePath @Arguments 2>&1)
-        }
-        else {
-            $raw = @(& $FilePath @Arguments 2>&1)
-        }
+        $raw = @(& $FilePath @Arguments 2>&1)
         $code = $LASTEXITCODE
     }
     finally {
         $ErrorActionPreference = $previous
-        $global:OutputEncoding = $previousOutputEncoding
     }
     [pscustomobject]@{ ExitCode = $code; Output = (($raw | ForEach-Object { [string]$_ }) -join "`n").Trim() }
 }
@@ -53,8 +44,7 @@ function Invoke-ArthurSshProbe {
         [Parameter(Mandatory=$true)][ValidateSet('yes','accept-new')][string]$StrictMode,
         [Parameter(Mandatory=$true)][string]$Command,
         [string]$IdentityFile,
-        [switch]$PasswordAuth,
-        [switch]$CommandViaStdin
+        [switch]$PasswordAuth
     )
     $ssh = Get-ArthurSshTool 'ssh'
     $args = @(
@@ -78,10 +68,6 @@ function Invoke-ArthurSshProbe {
             $env:SSH_ASKPASS_REQUIRE = 'force'
             $env:DISPLAY = 'xinzhaowrt-unattended'
             $args += @('-o','BatchMode=no','-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','NumberOfPasswordPrompts=1')
-            if ($CommandViaStdin) {
-                $args += @('-T',"root@$DeviceIp")
-                return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args -InputText ($Command + "`n")
-            }
             $args += @("root@$DeviceIp", $Command)
             return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args
         }
@@ -95,10 +81,6 @@ function Invoke-ArthurSshProbe {
     $args += @('-o','BatchMode=yes')
     if (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
         $args += @('-o','IdentitiesOnly=yes','-i',$IdentityFile)
-    }
-    if ($CommandViaStdin) {
-        $args += @('-T',"root@$DeviceIp")
-        return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args -InputText ($Command + "`n")
     }
     $args += @("root@$DeviceIp",$Command)
     return Invoke-ArthurAccessNative -FilePath $ssh -Arguments $args
