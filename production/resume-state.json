@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "666f099c496647cd61fafebc459abccf991783a6",
+    "repository_head": "56bd8d0394805854d2408489367a13fcaaf54f18",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T11:21:09.376497+00:00"
+      "verified_at": "2026-10-09T19:21:09.376497+08:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T11:21:09.376497+00:00"
+      "verified_at": "2026-10-09T19:21:09.376497+08:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,11 +108,11 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T11:21:09.376497+00:00"
+      "verified_at": "2026-10-09T19:21:09.376497+08:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "RUNNING",
+      "status": "FAIL",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
@@ -124,7 +124,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-09T13:17:10.9323951+00:00"
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -173,7 +173,7 @@
   },
   "current_gate": "BUILD",
   "next_action": "BUILD",
-  "repository_head": "666f099c496647cd61fafebc459abccf991783a6",
+  "repository_head": "56bd8d0394805854d2408489367a13fcaaf54f18",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -212,6 +212,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-09T11:21:09.376497+00:00",
-  "semantic_sha256": "e9d7bf8170d8740146cef6be29acbddf826a02a2ae1df17f609b6d280af3952d"
+  "evidence_timestamp": "2026-10-09T13:17:10.9323951+00:00",
+  "semantic_sha256": "b0466633bb5671784fa0d207dace335ed7da3ea325cb55f93b7932b1983361f1"
 }
