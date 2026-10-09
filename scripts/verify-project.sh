@@ -46,6 +46,7 @@ bash tests/test-package-manager-concurrency-gate.sh
 "$PYTHON_BIN" tests/test-openclash-adguardhome-coexistence.py
 "$PYTHON_BIN" tests/test-prebuild-stable-inherited-evidence.py
 "$PYTHON_BIN" tests/test-stable-overlay-inheritance.py
+"$PYTHON_BIN" tests/test-luci-smoke-hostpkg-runtime.py
 "$PYTHON_BIN" scripts/check-product-goal-contract.py
 "$PYTHON_BIN" -m json.tool production/live-preview-policy.json >/dev/null
 "$PYTHON_BIN" -m json.tool production/mature-ui-sources.json >/dev/null

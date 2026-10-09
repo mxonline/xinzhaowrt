@@ -71,6 +71,8 @@ POST_VALIDATION_ALLOWLIST = {
     "scripts/build.sh",
     "scripts/derive-stable-overlay-manifest.py",
     "scripts/luci-legacy-template-smoke.py",
+    "tests/test-luci-smoke-hostpkg-runtime.py",
+    "scripts/verify-project.sh",
     "scripts/verify-project.ps1",
     "production/resume-state.json",
     "production/firmware-events.jsonl",

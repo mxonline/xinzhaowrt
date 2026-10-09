@@ -57,6 +57,46 @@ print("LUCI_TEMPLATE_RENDER=PASS")
 '''
 
 
+def discover_lua_runners(
+    source_root: Path,
+    rootfs: Path,
+    *,
+    search_path: str | None = None,
+) -> list[tuple[str, list[str], dict[str, str]]]:
+    runners: list[tuple[str, list[str], dict[str, str]]] = []
+    for name in ("lua", "luajit", "lua5.1"):
+        found = shutil.which(name, path=search_path)
+        if found:
+            runners.append((name, [found], {}))
+
+    host_runtime_candidates = (
+        source_root / "staging_dir/hostpkg/bin/lua",
+        source_root / "staging_dir/hostpkg/bin/luajit",
+        source_root / "staging_dir/hostpkg/bin/lua5.1",
+        source_root / "staging_dir/host/bin/lua",
+        source_root / "staging_dir/host/bin/luajit",
+        source_root / "staging_dir/host/bin/lua5.1",
+    )
+    for candidate in host_runtime_candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            runners.append((f"host-{candidate.name}", [str(candidate)], {}))
+
+    host_globs = (
+        (source_root / "build_dir/host").glob("lua-*/src/lua"),
+        (source_root / "build_dir/host").glob("luajit-*/src/luajit"),
+    )
+    for candidates in host_globs:
+        for candidate in sorted(candidates):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                runners.append((f"host-{candidate.name}", [str(candidate)], {}))
+
+    for name in ("qemu-aarch64-static", "qemu-aarch64"):
+        found = shutil.which(name, path=search_path)
+        if found and (rootfs / "usr/bin/lua").is_file():
+            runners.append((name, [found, str(rootfs / "usr/bin/lua")], {"QEMU_LD_PREFIX": str(rootfs)}))
+    return runners
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", required=True)
@@ -72,32 +112,8 @@ def main() -> int:
         if not path.is_file():
             raise SystemExit(f"FAIL: final rootfs template missing: {path}")
 
-    runners: list[tuple[str, list[str], dict[str, str]]] = []
-    for name in ("lua", "luajit", "lua5.1"):
-        found = shutil.which(name)
-        if found:
-            runners.append((name, [found], {}))
     source_root = Path(args.source_root).resolve()
-    host_runtime_candidates = (
-        source_root / "staging_dir/host/bin/lua",
-        source_root / "staging_dir/host/bin/luajit",
-        source_root / "staging_dir/host/bin/lua5.1",
-    )
-    for candidate in host_runtime_candidates:
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            runners.append((f"host-{candidate.name}", [str(candidate)], {}))
-    host_globs = (
-        (source_root / "build_dir/host").glob("lua-*/src/lua"),
-        (source_root / "build_dir/host").glob("luajit-*/src/luajit"),
-    )
-    for candidates in host_globs:
-        for candidate in sorted(candidates):
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                runners.append((f"host-{candidate.name}", [str(candidate)], {}))
-    for name in ("qemu-aarch64-static", "qemu-aarch64"):
-        found = shutil.which(name)
-        if found and (rootfs / "usr/bin/lua").is_file():
-            runners.append((name, [found, str(rootfs / "usr/bin/lua")], {"QEMU_LD_PREFIX": str(rootfs)}))
+    runners = discover_lua_runners(source_root, rootfs)
     if not runners:
         raise SystemExit("FAIL: no Lua/LuaJIT or aarch64 Lua runtime is available for actual LuCI parser validation")
 
