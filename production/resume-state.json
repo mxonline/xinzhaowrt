@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T19:21:09.376497+08:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T19:21:09.376497+08:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,7 +108,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T19:21:09.376497+08:00"
+      "verified_at": "2026-10-09T11:21:09.376497+00:00"
     },
     "BUILD": {
       "gate_id": "BUILD",
@@ -212,6 +212,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-09T13:17:10.9323951+00:00",
-  "semantic_sha256": "b0466633bb5671784fa0d207dace335ed7da3ea325cb55f93b7932b1983361f1"
+  "semantic_sha256": "b653ac39c35a4e42b50b4a864754e8871a3b8e1c3e493a6888bc50b6529fac4b",
+  "evidence_timestamp": "2026-10-09T13:17:10.9323951+00:00"
 }
