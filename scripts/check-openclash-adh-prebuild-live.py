@@ -58,6 +58,8 @@ VALIDATION_ONLY_APK_FIXES = {
 }
 
 POST_VALIDATION_ALLOWLIST = {
+    "AGENTS.md",
+    "HANDOFF.md",
     EVIDENCE_PATH,
     PACKAGE_CLOSURE_EVIDENCE_PATH,
     "production/operator-intent.json",
@@ -67,6 +69,7 @@ POST_VALIDATION_ALLOWLIST = {
     "scripts/collect-arthur-openclash-adh-readonly.ps1",
     "scripts/check-arthur-validation-build.sh",
     "scripts/build.sh",
+    "scripts/derive-stable-overlay-manifest.py",
     "scripts/verify-project.ps1",
     "production/resume-state.json",
     "production/firmware-events.jsonl",

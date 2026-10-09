@@ -34,6 +34,8 @@ git -C "$PROJECT_ROOT" merge-base --is-ancestor "$ARTHUR_CANDIDATE_SHA" "$actual
 
 allowed_control_path() {
   case "$1" in
+    AGENTS.md|\
+    HANDOFF.md|\
     .github/workflows/*|\
     production/evidence/*|\
     production/operator-intent.json|\
