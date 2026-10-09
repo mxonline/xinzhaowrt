@@ -51,6 +51,7 @@ allowed_control_path() {
     scripts/luci-legacy-template-smoke.py|\
     scripts/check-arthur-validation-build.sh|\
     scripts/check-openclash-adh-prebuild-live.py|\
+    scripts/codex-setup.sh|\
     scripts/collect-arthur-openclash-adh-readonly.ps1|\
     scripts/ensure-arthur-unattended-access.ps1|\
     scripts/verify-project.ps1|\

@@ -50,6 +50,17 @@ validation_success="$(GITHUB_ACTIONS=true VALIDATION_BUILD=true PUBLISH_CANDIDAT
   PROJECT_ROOT="$PROJECT" bash "$GATE")"
 grep -Fqx 'VALIDATION_BUILD_ALLOWED=PASS' <<<"$validation_success"
 
+# Target-runtime smoke setup is control-plane tooling and may advance after
+# the firmware source is frozen without changing the product payload.
+printf '# target Lua/QEMU setup\n' > "$PROJECT/scripts/codex-setup.sh"
+git -C "$PROJECT" add scripts/codex-setup.sh
+git -C "$PROJECT" commit -qm 'control: configure target smoke runtime'
+setup_success="$(GITHUB_ACTIONS=true VALIDATION_BUILD=true PUBLISH_CANDIDATE=false \
+  ARTHUR_CANDIDATE_SHA="$CANDIDATE_SHA" EXPECTED_ARTHUR_CANDIDATE_SHA="$CANDIDATE_SHA" \
+  PROJECT_ROOT="$PROJECT" bash "$GATE")"
+grep -Fq 'POST_FREEZE_CONTROL_CHANGE=PASS path=scripts/codex-setup.sh' <<<"$setup_success"
+grep -Fqx 'VALIDATION_BUILD_ALLOWED=PASS' <<<"$setup_success"
+
 mkdir -p "$PROJECT/config"
 printf 'CONFIG_PACKAGE_unexpected=y\n' > "$PROJECT/config/arthur.config"
 git -C "$PROJECT" add config/arthur.config
