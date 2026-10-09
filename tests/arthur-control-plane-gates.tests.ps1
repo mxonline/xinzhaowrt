@@ -210,12 +210,10 @@ Assert-True ($credentialWorkflow.IndexOf("  push:`n",[System.StringComparison]::
 
 $directInspectPath = Join-Path $Root '.github\workflows\arthur-openclash-adh-direct-inspect.yml'
 $directInspect = Get-Content -Raw $directInspectPath
-$remoteCommandLines = @($directInspect -split "`r?`n" | Where-Object { $_ -match '^\s*\$cmd\w+\s*=' })
-Assert-True ($remoteCommandLines.Count -gt 0) 'direct inspect must define its remote read-only commands'
-foreach ($line in $remoteCommandLines) {
-    foreach ($match in [regex]::Matches($line, 'grep(?:\s+-[^\s]+)?\s+"([^"]*)"')) {
-        Assert-True ($match.Groups[1].Value -notmatch '[()]') "remote grep pattern '$($match.Groups[1].Value)' must avoid shell-sensitive grouping parentheses because SSH transmits the command through the remote shell"
-    }
-}
+Assert-Contains $directInspect 'function ConvertTo-ArthurRemoteShellCommand' 'direct inspect must encode remote commands before Windows OpenSSH transports shell quotes'
+Assert-Contains $directInspect 'base64 -d | /bin/sh' 'direct inspect must decode the protected command payload on Arthur'
+Assert-Contains $directInspect '$safeCommand = ConvertTo-ArthurRemoteShellCommand $Command' 'each remote read-only command must be converted before SSH invocation'
+Assert-Contains $directInspect '-Command $safeCommand' 'each remote read-only command must use the protected shell transport'
+Assert-True ($directInspect.IndexOf('-Command $Command',[System.StringComparison]::Ordinal) -lt 0) 'direct inspect must not pass raw shell commands through Windows OpenSSH argument handling'
 
 Write-Host 'ARTHUR_CONTROL_PLANE_GATES=PASS'

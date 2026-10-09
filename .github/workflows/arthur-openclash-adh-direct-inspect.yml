@@ -87,8 +87,13 @@ jobs:
           Write-Host 'ARTHUR_ACCESS=PASS mode=actions-secret-password-direct'
 
           $remoteResults = [ordered]@{}
+          function ConvertTo-ArthurRemoteShellCommand([string]$Command) {
+            $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Command))
+            return "printf %s $payload | base64 -d | /bin/sh"
+          }
           function Remote([string]$Label,[string]$Command) {
-            $r = Invoke-ArthurSshProbe -DeviceIp $deviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $Command -PasswordAuth
+            $safeCommand = ConvertTo-ArthurRemoteShellCommand $Command
+            $r = Invoke-ArthurSshProbe -DeviceIp $deviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $safeCommand -PasswordAuth
             $script:remoteResults[$Label] = [string]$r.Output
             Write-Host "$($Label)_EXIT=$($r.ExitCode)"
             Write-Host "$($Label)_BEGIN"
@@ -99,12 +104,12 @@ jobs:
 
           $cmdIdentity = 'ubus call system board; echo ---BUILD---; cat /www/luci-static/xinzhao/build-info.json 2>/dev/null || true'
           $cmdUci = 'for k in enable config_path en_mode enable_redirect_dns redirect_dns default_dashboard dns_port cn_port; do v=$(uci -q get openclash.config.$k 2>/dev/null || true); echo "$k=$v"; done'
-          $cmdRuntime = 'echo ---PROC---; ps w | grep -E "[c]lash|[m]ihomo" || true; echo ---LISTEN---; if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null; else netstat -lntup 2>/dev/null; fi | grep -E ":53|:1745|:7874|:9090" || true; echo ---CONFIG---; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); if [ -n "$cfg" ]; then grep -nE "external-controller|external-ui|external-ui-name|mixed-port|redir-port|tproxy-port|enhanced-mode:|fake-ip-range:|listen:" "$cfg" 2>/dev/null || true; fi'
+          $cmdRuntime = 'echo ---PROC---; ps w | grep -E "[c]lash|[m]ihomo" || true; echo ---LISTEN---; if command -v ss >/dev/null 2>&1; then ss -lntup 2>/dev/null; else netstat -lntup 2>/dev/null; fi | grep -E ":(53|1745|7874|9090)([[:space:]]|$)" || true; echo ---CONFIG---; cfg=$(uci -q get openclash.config.config_path 2>/dev/null || true); if [ -n "$cfg" ]; then grep -nE "^(external-controller|external-ui|external-ui-name|mixed-port|redir-port|tproxy-port|[[:space:]]*enhanced-mode:|[[:space:]]*fake-ip-range:|[[:space:]]*listen:)" "$cfg" 2>/dev/null || true; fi'
           $cmdFiles = 'find /usr/share/openclash/ui/zashboard -maxdepth 2 -type f 2>/dev/null | head -n 40; test -s /usr/share/openclash/ui/zashboard/index.html && echo ZASHBOARD_INDEX=YES || echo ZASHBOARD_INDEX=NO'
           $cmdHttp = 'for u in http://127.0.0.1:9090/ui/zashboard/ http://192.168.6.1:9090/ui/zashboard/; do code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 8 "$u" 2>/dev/null || true); echo "$code $u"; done; code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 8 http://127.0.0.1:9090/version 2>/dev/null || true); echo CONTROLLER_VERSION_HTTP=$code'
           $cmdProxy = 'code=$(curl -sS -o /dev/null -w "%{http_code}" --proxy http://127.0.0.1:7890 --connect-timeout 8 --max-time 20 https://www.google.com/generate_204 2>/dev/null || true); echo PROXY_HTTP=$code'
-          $cmdDns = 'echo ---DNSMASQ---; uci -q show dhcp.@dnsmasq[0] 2>/dev/null | grep -E "server=|noresolv=|resolvfile=|localuse=" || true; echo ---ADH_UCI---; uci -q show AdGuardHome 2>/dev/null | grep -E "enabled=|redirect=|configpath=" || uci -q show adguardhome 2>/dev/null | grep -E "enabled=|redirect=|configpath=" || true; echo ---ADH_PROC---; pidof AdGuardHome 2>/dev/null || true; echo ---ADH_YAML_DNS---; f=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null || echo /etc/AdGuardHome.yaml); if [ -s "$f" ]; then grep -nE "dns:|  port:|  upstream_dns:|    - " "$f" | head -n 30 || true; fi'
-          $cmdMem = 'grep -E "MemTotal:|MemAvailable:|SwapTotal:|SwapFree:" /proc/meminfo; uptime; logread -l 200 2>/dev/null | grep -Ei "out of memory|oom-killer|killed process|segfault" | tail -n 30 || true'
+          $cmdDns = 'echo ---DNSMASQ---; uci -q show dhcp.@dnsmasq[0] 2>/dev/null | grep -E "(server=|noresolv=|resolvfile=|localuse=)" || true; echo ---ADH_UCI---; uci -q show AdGuardHome 2>/dev/null | grep -E "(enabled=|redirect=|configpath=)" || uci -q show adguardhome 2>/dev/null | grep -E "(enabled=|redirect=|configpath=)" || true; echo ---ADH_PROC---; pidof AdGuardHome 2>/dev/null || true; echo ---ADH_YAML_DNS---; f=$(uci -q get AdGuardHome.AdGuardHome.configpath 2>/dev/null || echo /etc/AdGuardHome.yaml); if [ -s "$f" ]; then grep -nE "^(dns:|  port:|  upstream_dns:|    - )" "$f" | head -n 30 || true; fi'
+          $cmdMem = 'grep -E "^(MemTotal|MemAvailable|SwapTotal|SwapFree):" /proc/meminfo; uptime; logread -l 200 2>/dev/null | grep -Ei "out of memory|oom-killer|killed process|segfault" | tail -n 30 || true'
 
           Remote 'ARTHUR_IDENTITY' $cmdIdentity
           Remote 'OPENCLASH_UCI' $cmdUci
