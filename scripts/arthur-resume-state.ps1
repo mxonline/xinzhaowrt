@@ -144,9 +144,58 @@ function Resolve-ArthurControlPlaneCheckpoint {
     }
 }
 
+function ConvertTo-ArthurResumeHashCanonicalValue {
+    param([AllowNull()][object]$Value)
+
+    if ($null -eq $Value) { return $null }
+
+    $utcTimestamp = $null
+    if ($Value -is [DateTimeOffset]) {
+        $utcTimestamp = $Value.UtcDateTime
+    }
+    elseif ($Value -is [DateTime]) {
+        $utcTimestamp = if ($Value.Kind -eq [DateTimeKind]::Unspecified) {
+            [DateTime]::SpecifyKind($Value, [DateTimeKind]::Utc)
+        }
+        else {
+            $Value.ToUniversalTime()
+        }
+    }
+    if ($null -ne $utcTimestamp) {
+        return $utcTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $canonical = [ordered]@{}
+        foreach ($key in $Value.Keys) {
+            $canonical[$key] = ConvertTo-ArthurResumeHashCanonicalValue -Value $Value[$key]
+        }
+        return ,$canonical
+    }
+
+    if ($Value -is [pscustomobject]) {
+        $canonical = [ordered]@{}
+        foreach ($property in $Value.PSObject.Properties) {
+            $canonical[$property.Name] = ConvertTo-ArthurResumeHashCanonicalValue -Value $property.Value
+        }
+        return ,$canonical
+    }
+
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        $canonical = [System.Collections.Generic.List[object]]::new()
+        foreach ($item in $Value) {
+            $canonical.Add((ConvertTo-ArthurResumeHashCanonicalValue -Value $item))
+        }
+        return ,$canonical.ToArray()
+    }
+
+    return $Value
+}
+
 function Get-ArthurResumeSemanticHash {
     param([object]$State)
-    $json = $State | ConvertTo-Json -Depth 30 -Compress
+    $canonicalState = ConvertTo-ArthurResumeHashCanonicalValue -Value $State
+    $json = $canonicalState | ConvertTo-Json -Depth 30 -Compress
     $bytes = [Text.Encoding]::UTF8.GetBytes($json)
     $sha = [Security.Cryptography.SHA256]::Create()
     try {

@@ -78,6 +78,15 @@ $resumeForHash.PSObject.Properties.Remove('semantic_sha256')
 $resumeForHash.PSObject.Properties.Remove('evidence_timestamp')
 $expectedResumeHash = Get-ArthurResumeSemanticHash $resumeForHash
 Assert-Equal ([string]$resume.semantic_sha256) $expectedResumeHash 'durable resume semantic hash must match its semantic content'
+$offsetStateUtc = [pscustomobject]@{
+    verified_at = [DateTimeOffset]::Parse('2026-10-09T13:20:26.8685980+00:00')
+}
+$offsetStatePlusEight = [pscustomobject]@{
+    verified_at = [DateTimeOffset]::Parse('2026-10-09T21:20:26.8685980+08:00')
+}
+$offsetHashUtc = Get-ArthurResumeSemanticHash $offsetStateUtc
+$offsetHashPlusEight = Get-ArthurResumeSemanticHash $offsetStatePlusEight
+Assert-Equal $offsetHashUtc $offsetHashPlusEight 'equivalent timestamp offsets must produce the same resume semantic hash'
 
 $runningBuildIntent = [pscustomobject]@{
     intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true
