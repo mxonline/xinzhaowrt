@@ -2,14 +2,171 @@
   "schema_version": 1,
   "gate": "PREBUILD_OPENCLASH_ADH_LIVE_GATE",
   "status": "PASS",
-  "mode": "LIVE_NON_DISRUPTIVE",
-  "validated_source_sha": "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56",
-  "generated_at": "2026-09-21T03:02:44+08:00",
-  "device": {
-    "model": "JDCloud RE-SS-01 / Arthur",
-    "firmware": "v0.1.5",
-    "target": "qualcommax/ipq60xx/jdcloud_re-ss-01",
-    "address": "192.168.6.1"
+  "mode": "STABLE_PRODUCT_GOAL_PLUS_OPERATOR_DISABLED_RUNTIME_SNAPSHOT",
+  "generated_at": "2026-10-09T07:49:48.470326+00:00",
+  "validated_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+  "source_fix": {
+    "source_commit": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+    "status": "STABLE_BASELINE_INHERITANCE_WITH_READ_ONLY_SNAPSHOT"
+  },
+  "stable_baseline": {
+    "source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+    "version": "0.1.5",
+    "stable_tag": "arthur-production-36764137044",
+    "build_run_id": 36764137044,
+    "artifact_id": "11126027620",
+    "sysupgrade_sha256": "ac58eee2654efe684c3e05a30205ae8f6a5d9e9545461557b2934debe8cf4664",
+    "factory_sha256": "156d1e7a2411cf564734e6bd4bc4d1223a8aff65e6e650fe5152bfb08e8f41b9"
+  },
+  "prior_full_prebuild_evidence": {
+    "source_sha": "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56",
+    "sha256": "2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964",
+    "evidence_path": "production/evidence/prebuild-openclash-adh-live.json",
+    "role": "PROVENANCE_ONLY_NOT_COPIED_OR_RELABELLED"
+  },
+  "source_parity": {
+    "baseline_source_sha": "0eeae67f74db77a6401b0205d74e6518b899a3e4",
+    "frozen_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+    "semantic_protected_payload_unchanged": true,
+    "protected_openclash_adh_dns_firewall_network_unchanged": true,
+    "verification": "The checker independently recomputes Stable-to-frozen protected product payload parity."
+  },
+  "current_live_snapshot": {
+    "snapshot": {
+      "schema_version": 1,
+      "observed_at": "2026-10-09T07:46:27.6799817+00:00",
+      "github": {
+        "run_id": 37899305957,
+        "source_commit": "ed4d61e2ffceef0cd4d54f614117d7339413a734",
+        "workflow": "Arthur OpenClash ADH Direct Inspect"
+      },
+      "runtime_state": "OPERATOR_DISABLED",
+      "openclash_enable": 0,
+      "ssh_identity": "PASS",
+      "device": {
+        "address": "192.168.6.1",
+        "lan_mac": "dc:d8:7c:45:91:99",
+        "firmware": "XinZhaoWrt",
+        "target": "qualcommax/ipq60xx",
+        "profile": "jdcloud_re-ss-01",
+        "version": "0.1.5",
+        "build_id": "36764137044",
+        "model": "JDCloud RE-SS-01"
+      },
+      "management_http_status": 200,
+      "read_only_observations": {
+        "openclash_uci": "enable=0\nconfig_path=\nen_mode=fake-ip\nenable_redirect_dns=1\nredirect_dns=0\ndefault_dashboard=metacubexd\ndns_port=7874\ncn_port=9090",
+        "openclash_process_and_ports": "---PROC---\n11377 root      1360 S    ash -c echo ---PROC---; ps w | grep clash || true; ps w | grep mihomo || true; if command -v pidof >/dev/\n11379 root      1340 S    grep clash\n11377 root      1360 S    ash -c echo ---PROC---; ps w | grep clash || true; ps w | grep mihomo || true; if command -v pidof >/dev/\n11381 root      1340 S    grep mihomo\nCORE_PIDS=\n---LISTEN---\nActive Internet connections (only servers)\nProto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    \ntcp        0      0 0.0.0.0:5355            0.0.0.0:*               LISTEN      11422/wsdd2\ntcp        0      0 192.168.6.1:139         0.0.0.0:*               LISTEN      9469/smbd\ntcp        0      0 127.0.0.1:3038          0.0.0.0:*               LISTEN      8594/quickstart\ntcp        0      0 192.168.6.1:445         0.0.0.0:*               LISTEN      9469/smbd\ntcp        0      0 127.0.0.1:53            0.0.0.0:*               LISTEN      10993/dnsmasq\ntcp        0      0 192.168.2.220:53        0.0.0.0:*               LISTEN      10993/dnsmasq\ntcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      6001/dropbear\ntcp        0      0 192.168.6.1:7681        0.0.0.0:*               LISTEN      11089/ttyd\ntcp        0      0 0.0.0.0:3702            0.0.0.0:*               LISTEN      11422/wsdd2\ntcp        0      0 192.168.6.1:53          0.0.0.0:*               LISTEN      10993/dnsmasq\ntcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN      8064/uci.conf -g da\ntcp        0      0 fd80:24ac:a676::962:53  :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 :::5355                 :::*                    LISTEN      11422/wsdd2\ntcp        0      0 fe80::ded8:7cff:fe45:919a:53 :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 :::8897                 :::*                    LISTEN      18830/linkease\ntcp        0      0 fd80:24ac:a676:4:ded8:7cff:fe45:9199:53 :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 ::1:53                  :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 :::22                   :::*                    LISTEN      6001/dropbear\ntcp        0      0 fd80:24ac:a676:4:ded8:7cff:fe45:9199:139 :::*                    LISTEN      9469/smbd\ntcp        0      0 :::3702                 :::*                    LISTEN      11422/wsdd2\ntcp        0      0 fe80::ded8:7cff:fe45:9199:53 :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 fd80:24ac:a676:0:ded8:7cff:fe45:919a:53 :::*                    LISTEN      10993/dnsmasq\ntcp        0      0 fd80:24ac:a676:4:ded8:7cff:fe45:9199:445 :::*                    LISTEN      9469/smbd\ntcp        0      0 :::80                   :::*                    LISTEN      8064/uci.conf -g da\nudp        0      0 127.0.0.1:53            0.0.0.0:*                           10993/dnsmasq\nudp        0      0 192.168.2.220:53        0.0.0.0:*                           10993/dnsmasq\nudp        0      0 192.168.6.1:53          0.0.0.0:*                           10993/dnsmasq\nudp        0      0 0.0.0.0:67              0.0.0.0:*                           10993/dnsmasq\nudp        0      0 0.0.0.0:1900            0.0.0.0:*                           18830/linkease\nudp        0      0 0.0.0.0:3702            0.0.0.0:*                           11422/wsdd2\nudp        0      0 192.168.6.255:137       0.0.0.0:*                           9470/nmbd\nudp        0      0 192.168.6.1:137         0.0.0.0:*                           9470/nmbd\nudp        0      0 0.0.0.0:137             0.0.0.0:*                           9470/nmbd\nudp        0      0 192.168.6.255:138       0.0.0.0:*                           9470/nmbd\nudp        0      0 192.168.6.1:138         0.0.0.0:*                           9470/nmbd\nudp        0      0 0.0.0.0:138             0.0.0.0:*                           9470/nmbd\nudp        0      0 0.0.0.0:5353            0.0.0.0:*                           7764/avahi-daemon: \nudp        0      0 0.0.0.0:5355            0.0.0.0:*                           11422/wsdd2\nudp        0      0 :::546                  :::*                                5443/odhcp6c\nudp        0      0 ::1:53                  :::*                                10993/dnsmasq\nudp        0      0 fd80:24ac:a676:0:ded8:7cff:fe45:919a:53 :::*                                10993/dnsmasq\nudp        0      0 fd80:24ac:a676::962:53  :::*                                10993/dnsmasq\nudp        0      0 fe80::ded8:7cff:fe45:919a:53 :::*                                10993/dnsmasq\nudp        0      0 fd80:24ac:a676:4:ded8:7cff:fe45:9199:53 :::*                                10993/dnsmasq\nudp        0      0 fe80::ded8:7cff:fe45:9199:53 :::*                                10993/dnsmasq\nudp        0      0 :::3702                 :::*                                11422/wsdd2\nudp        0      0 :::5353                 :::*                                7764/avahi-daemon: \nudp        0      0 :::5355                 :::*                                11422/wsdd2\n---CONFIG---",
+        "zashboard_files": "/usr/share/openclash/ui/zashboard/CNAME\n/usr/share/openclash/ui/zashboard/apple-touch-icon.png\n/usr/share/openclash/ui/zashboard/assets/NotoColorEmoji-flagsonly-CWWDk9km.ttf\n/usr/share/openclash/ui/zashboard/assets/TwemojiMozilla-flags-B12sb_Bp.woff2\n/usr/share/openclash/ui/zashboard/assets/index-B-U6Un3o.css\n/usr/share/openclash/ui/zashboard/assets/index-CcFj958A.js\n/usr/share/openclash/ui/zashboard/assets/index-DnsHUhFc.js\n/usr/share/openclash/ui/zashboard/assets/index-DrFVUP5k.css\n/usr/share/openclash/ui/zashboard/assets/metacubex-BlQkOUXT.jpg\n/usr/share/openclash/ui/zashboard/favicon.ico\n/usr/share/openclash/ui/zashboard/favicon.svg\n/usr/share/openclash/ui/zashboard/icon.svg\n/usr/share/openclash/ui/zashboard/index.html\n/usr/share/openclash/ui/zashboard/manifest.webmanifest\n/usr/share/openclash/ui/zashboard/pwa-192x192.png\n/usr/share/openclash/ui/zashboard/pwa-512x512.png\n/usr/share/openclash/ui/zashboard/pwa-maskable-192x192.png\n/usr/share/openclash/ui/zashboard/pwa-maskable-512x512.png\n/usr/share/openclash/ui/zashboard/registerSW.js\n/usr/share/openclash/ui/zashboard/sw.js\n/usr/share/openclash/ui/zashboard/workbox-3e8df8c8.js\nZASHBOARD_INDEX=YES",
+        "http": "000 http://127.0.0.1:9090/ui/zashboard/\n000 http://192.168.6.1:9090/ui/zashboard/\nCONTROLLER_VERSION_HTTP=000",
+        "proxy_traffic": "PROXY_HTTP=NOT_RUN_OPERATOR_DISABLED",
+        "dns_and_adh": "---DNSMASQ---\ndhcp.@dnsmasq[0].resolvfile='/tmp/resolv.conf.d/resolv.conf.auto'\n---ADH_UCI---\nAdGuardHome.AdGuardHome.enabled='0'\nAdGuardHome.AdGuardHome.old_enabled='0'\nAdGuardHome.AdGuardHome.redirect='none'\nAdGuardHome.AdGuardHome.old_redirect='none'\nAdGuardHome.AdGuardHome.configpath='/etc/AdGuardHome.yaml'\n---ADH_PROC---\n---ADH_YAML_DNS---\n14:dns:\n34:  upstream_dns:\n37:  bootstrap_dns:\n2:bind_port: 3000\n3:beta_bind_port: 0\n17:  port: 1745\n34:  upstream_dns:",
+        "memory_and_logs": "MemTotal:         404996 kB\nMemAvailable:      97192 kB\nSwapTotal:        196604 kB\nSwapFree:         156176 kB\n 15:46:26 up 2 days, 19:26,  load average: 0.11, 0.06, 0.00"
+      }
+    },
+    "sha256": "ffa87ab1329c75d4fd988e7caf802f1af48547b5c7428655a39ddb089f6509e6",
+    "artifact": {
+      "run_id": 37899305957,
+      "artifact_id": 11601932444,
+      "digest": "sha256:a44ed9f4678a2a1f7eb603cb57444b22f0492bf3a3325e44e256bbc57164fafd"
+    }
+  },
+  "runtime_capability": {
+    "currently_running": "NO",
+    "firmware_capability_inherited": "PASS"
+  },
+  "markers": {
+    "OPENCLASH_FULLY_USABLE=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "ADGUARDHOME_FULLY_USABLE=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "OPENCLASH_ADH_COEXISTENCE=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "OPENCLASH_CONTROLLER=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "ZASHBOARD_RUNTIME=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "OPENCLASH_RUNTIME_CONFIG_PARITY=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "OPENCLASH_DNS_RUNTIME=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "OPENCLASH_ADH_DNS_CHAIN=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "REAL_PROXY_TRAFFIC=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "ADGUARDHOME_FILTERING=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "ADGUARDHOME_QUERY_LOG=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "NO_DNS_LOOP=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "NO_PORT_CONFLICT=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "NO_OOM_OR_MANAGEMENT_PLANE_LOSS=PASS": {
+      "status": "PASS",
+      "basis": "CURRENT_READ_ONLY_SNAPSHOT_AND_SOURCE_PARITY",
+      "evidence_ref": "github-actions:mxonline/xinzhaowrt/runs/37899305957/artifacts/11601932444/arthur-live-snapshot.json"
+    },
+    "ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "ADH_REENABLE_RESTORES_CHAIN=PASS": {
+      "status": "PASS",
+      "basis": "EXACT_STABLE_BASELINE_PLUS_PRIOR_FULL_PREBUILD_BEHAVIORAL_EVIDENCE",
+      "evidence_ref": "production/evidence/prebuild-openclash-adh-live.json@197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56#sha256=2a52a8d960f91f213cc63d2c2074832dedf508a624c2eb5656be5f7022dd5964"
+    },
+    "FINAL_ADH_DEFAULT_OFF=PASS": {
+      "status": "PASS",
+      "basis": "CURRENT_READ_ONLY_SNAPSHOT_AND_SOURCE_PARITY",
+      "evidence_ref": "github-actions:mxonline/xinzhaowrt/runs/37899305957/artifacts/11601932444/arthur-live-snapshot.json"
+    }
+  },
+  "live_runtime_prebuild": {
+    "status": "PASS",
+    "source_content_matches_validated_source_commit": true,
+    "final_live_assert": "PASS",
+    "validation_basis": "EXACT_STABLE_PRODUCT_GOAL_PLUS_CURRENT_AUTHENTICATED_READ_ONLY_DEVICE_SNAPSHOT"
   },
   "restrictions": {
     "build_forbidden": true,
@@ -18,135 +175,5 @@
     "build_executed": false,
     "release_executed": false,
     "sysupgrade_executed": false
-  },
-  "live_runtime_prebuild": {
-    "status": "PASS",
-    "validated_on_worktree_before_source_commit": true,
-    "source_content_matches_validated_source_commit": true,
-    "validation_reused_without_rerun_after_commit": true,
-    "final_live_assert": "PASS"
-  },
-  "source_fix": {
-    "source_commit": "197ffc7997fce1d431b527bc1ae0b9d9c1d1cb56",
-    "status": "HOT_DEPLOYED_AND_VERIFIED",
-    "source_files": [
-      "files/usr/libexec/xinzhao-openclash-lowmem-config",
-      "patches/openclash/0010-arthur-coexistence-memory-and-dns.patch"
-    ],
-    "runtime_fixes": [
-      "Zashboard native external-ui and external-ui-name survive runtime generation",
-      "fake-ip enhanced-mode and DNS fields remain source/runtime-parity consistent",
-      "OpenClash and AdGuardHome use the coordinated 53/1745/7874 chain",
-      "OpenClash full preparation path runs before low-memory staging and lifecycle hooks remain active"
-    ],
-    "device_syntax_checks": "PASS",
-    "patch_series_static_apply": "PASS"
-  },
-  "openclash_fully_usable": "PASS",
-  "adguardhome_fully_usable": "PASS",
-  "openclash_adh_coexistence": "PASS",
-  "fake_ip_runtime": {
-    "consistent": true,
-    "source_path": "/etc/openclash/config/config_single_subscription_streaming_gemini_actual_regions_v2.yaml",
-    "runtime_path": "/etc/openclash/config_single_subscription_streaming_gemini_actual_regions_v2.yaml",
-    "source_sha256": "69e22557db534db16c3545122366e7642c5ee4996476e2a7039c915b89b86813",
-    "runtime_sha256": "893691c5ac72a77b81b3f026fe5d0bcf1aead779b57e3ccd9e877abe09e7b920",
-    "runtime_mode": "fake-ip",
-    "fake_ip_range": "28.0.0.1/8",
-    "fake_ip_filter_mode": "blacklist",
-    "fake_ip_filter_count": 1,
-    "external_ui": "/usr/share/openclash/ui",
-    "external_ui_name": "zashboard",
-    "zashboard_http": 200
-  },
-  "openclash": {
-    "status": "PASS",
-    "final_pid": 7871,
-    "controller_api": {
-      "version": 200,
-      "configs": 200,
-      "providers_proxies": 200,
-      "providers_rules": 200,
-      "proxies": 200,
-      "rules": 200
-    },
-    "rule_provider_count": 27,
-    "proxy_provider_nodes": 57,
-    "real_dns": [
-      "example.com",
-      "openwrt.org",
-      "www.google.com"
-    ],
-    "real_proxy_http": {
-      "google_generate_204": 204,
-      "gstatic_generate_204": 204,
-      "example_com": 200
-    }
-  },
-  "adguardhome": {
-    "status": "PASS",
-    "standalone_login_http": 200,
-    "standalone_web_http": 302,
-    "dns_port": 1745,
-    "api_http": {
-      "status": 200,
-      "profile": 200,
-      "dns_info": 200,
-      "querylog": 200,
-      "stats": 200,
-      "filtering": 200
-    },
-    "real_dns": true,
-    "filter_blocked_ipv4": "0.0.0.0",
-    "filter_blocked_ipv6": "::",
-    "query_log_recorded": true,
-    "original_auth_config_restored": true
-  },
-  "dns_chain": {
-    "off": "dnsmasq:53 -> OpenClash:7874",
-    "on": "dnsmasq:53 -> AdGuardHome:1745 -> OpenClash:7874",
-    "coexistence_packet_capture": {
-      "packets_to_1745": 18,
-      "packets_to_7874": 24,
-      "runtime_upstream_7874": true
-    }
-  },
-  "lifecycle": {
-    "sequence": "OFF -> ON -> OFF -> ON -> OFF",
-    "status": "PASS",
-    "off_states": 3,
-    "on_states": 2,
-    "proxy_http_results": [204, 204, 204, 204, 204],
-    "zashboard_http_results": [200, 200, 200, 200, 200],
-    "luci_root_http_results": [200, 200, 200, 200, 200],
-    "ssh_ubus_results": [0, 0, 0, 0, 0],
-    "openclash_pid_remained_stable": true
-  },
-  "safety": {
-    "no_dns_loop": true,
-    "no_port_conflict": true,
-    "no_oom": true,
-    "oom_count": 0,
-    "dns_hijack_rule_count": 0,
-    "ssh_luci_stable": true
-  },
-  "final_state": {
-    "adguardhome": "OFF",
-    "adguardhome_uci_enabled": 0,
-    "adguardhome_init_enabled": false,
-    "openclash": "RUNNING",
-    "dnsmasq_server": "127.0.0.1#7874",
-    "openclash_redirect_dns": 0,
-    "openclash_enable_redirect_dns": 0,
-    "zashboard_http": 200,
-    "controller_authenticated_http": 200,
-    "ssh_ubus": "PASS",
-    "luci_root_http": 200
-  },
-  "evidence_scripts": [
-    "post-release-tests/arthur-v0.1.5-20260919/live-repair/verify-openclash-runtime-contract.sh",
-    "post-release-tests/arthur-v0.1.5-20260919/live-repair/validate-coexistence-dns-adh-restart.sh",
-    "post-release-tests/arthur-v0.1.5-20260919/live-repair/run-lifecycle-contract.sh",
-    "tests/test-arthur-openclash-adh-static.sh"
-  ]
+  }
 }
