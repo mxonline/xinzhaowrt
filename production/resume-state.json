@@ -5,7 +5,7 @@
   "instruction_allowed": true,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "de8f7cd1a3d39eade651ba5e3ca6f982d95f314a",
+    "repository_head": "e3d944fd5183f48d8db144c2160e36c05ad9d981",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
     "accepted_firmware": "",
@@ -112,19 +112,24 @@
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "RUNNING",
+      "status": "FAIL",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
         "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
-        "github_run_id": 37999598995
+        "github_run_id": 37999598995,
+        "diagnostics_artifact_id": 11647749132,
+        "diagnostics_artifact_sha256": "78d973c1856d74ca149dae604205e371462c17ca2192ed4a99c8b5a2fbff0812",
+        "artifact_id": 0,
+        "firmware_artifact_available": false
       },
       "evidence_refs": [
-        "evidence:build-run-37999598995"
+        "evidence:build-run-failed-37999598995",
+        "evidence:build-diagnostics-37999598995"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-09T22:37:56.9470911+00:00"
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -173,7 +178,7 @@
   },
   "current_gate": "BUILD",
   "next_action": "BUILD",
-  "repository_head": "de8f7cd1a3d39eade651ba5e3ca6f982d95f314a",
+  "repository_head": "e3d944fd5183f48d8db144c2160e36c05ad9d981",
   "real_device": {
     "version": "0.1.5",
     "build_id": "36764137044",
@@ -212,6 +217,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-09T22:30:45.513954+00:00",
-  "semantic_sha256": "3928cd247d0a4c5d4c863336245c01a4028133565bce3c3050c229c72ce2dfe0"
+  "semantic_sha256": "379e09c574ff6c2f430aa5ebbe076e83fd735d28945f7a4f41bb4d2574d9c95a",
+  "evidence_timestamp": "2026-10-09T22:37:56.9470911+00:00"
 }
