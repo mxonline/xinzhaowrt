@@ -35,6 +35,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install pinned PowerShell 7 runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+          $version = '7.6.6'
+          $expectedSha256 = '02FE458BE20493FBDF43F61EA20610B811EE6C738AB1676C61B9CFCD1A33C860'
+          $archive = Join-Path $env:RUNNER_TEMP "PowerShell-$version-win-x64.zip"
+          $installDir = Join-Path $env:RUNNER_TEMP "arthur-powershell-$version-$env:GITHUB_RUN_ID"
+          $downloadUri = 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip'
+
+          Invoke-WebRequest -UseBasicParsing -Uri $downloadUri -OutFile $archive
+          $actualSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToUpperInvariant()
+          if ($actualSha256 -ne $expectedSha256) { throw "POWERSHELL_ARCHIVE_SHA256_MISMATCH expected=$expectedSha256 actual=$actualSha256" }
+
+          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+          Expand-Archive -LiteralPath $archive -DestinationPath $installDir
+          $pwsh = Join-Path $installDir 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) { throw 'POWERSHELL_BOOTSTRAP_PWSH_MISSING' }
+
+          $runtimeVersion = (& $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
+          $runtimeExitCode = $LASTEXITCODE
+          if ($runtimeExitCode -ne 0 -or $runtimeVersion -ne $version) { throw "POWERSHELL_BOOTSTRAP_RUNTIME_MISMATCH expected=$version actual=$runtimeVersion exit=$runtimeExitCode" }
+          [System.IO.File]::AppendAllText($env:GITHUB_PATH, $installDir + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "PWSH_BOOTSTRAP=PASS version=$runtimeVersion archive_sha256=$actualSha256"
+
       - name: Execute exact-release flash and base/file-management acceptance
         shell: powershell
         run: |
