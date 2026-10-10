@@ -93,18 +93,29 @@ jobs:
             if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) {
               $sourceRepoCandidates += $env:GITHUB_WORKSPACE
             }
+            $persistentSourceRoot = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace')) } else { '' }
+            $githubWorkspaceRoot = if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) { [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE) } else { '' }
             $seenCandidates = @{}
             foreach ($candidate in $sourceRepoCandidates) {
               $candidate = [IO.Path]::GetFullPath($candidate)
               if ($seenCandidates.ContainsKey($candidate)) { continue }
               $seenCandidates[$candidate] = $true
+              $isEphemeralWorkspace = -not [string]::IsNullOrWhiteSpace($githubWorkspaceRoot) -and
+                [string]::Equals($candidate,$githubWorkspaceRoot,[StringComparison]::OrdinalIgnoreCase) -and
+                -not [string]::Equals($candidate,$persistentSourceRoot,[StringComparison]::OrdinalIgnoreCase)
               if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
 
               $candidateGit = Invoke-Git @('-C',$candidate,'rev-parse','--git-dir') -AllowFailure
               if ($candidateGit.ExitCode -ne 0) { continue }
               $origin = Invoke-Git @('-C',$candidate,'remote','get-url','origin') -AllowFailure
-              if ($origin.ExitCode -ne 0) { throw 'SOURCE_ORIGIN_IDENTITY_UNAVAILABLE' }
-              if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
+              if ($origin.ExitCode -ne 0) {
+                if ($isEphemeralWorkspace) { Write-Output 'SOURCE_LOCAL_CANDIDATE=ORIGIN_UNAVAILABLE'; continue }
+                throw 'SOURCE_ORIGIN_IDENTITY_UNAVAILABLE'
+              }
+              if ($origin.Output.Trim() -ne $remote) {
+                if ($isEphemeralWorkspace) { Write-Output 'SOURCE_LOCAL_CANDIDATE=ORIGIN_MISMATCH'; continue }
+                throw 'SOURCE_ORIGIN_MISMATCH'
+              }
 
               $objectExists = Invoke-Git @('-C',$candidate,'cat-file','-e',$commitSpec) -AllowFailure
               if ($objectExists.ExitCode -ne 0) {

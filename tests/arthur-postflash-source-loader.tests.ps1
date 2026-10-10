@@ -107,7 +107,7 @@ function New-TestRepository {
     return (Invoke-TestGit @('-C',$Path,'rev-parse','HEAD'))
 }
 
-$testRoot = Join-Path ([IO.Path]::GetTempPath()) ("arthur-postflash-source-loader-tests-{0}" -f [guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ("als-{0}" -f [guid]::NewGuid().ToString('N').Substring(0,8))
 $bareRemote = Join-Path $testRoot 'network-origin.git'
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 
@@ -239,6 +239,21 @@ try {
     Assert-LoadedSource -Scenario $fallback -ExpectedSha $targetSha -ExpectedOrigin $expectedOrigin
     Remove-TestLoadedSource $fallback
 
+    # A runner's GITHUB_WORKSPACE may be an unrelated checkout. Never reuse it,
+    # but allow the canonical persistent repo miss to fall back to the pinned origin.
+    $workspaceMismatchRoot = Join-Path $testRoot 'workspace-origin-mismatch'
+    $workspaceMismatch = New-TestRepository -Path $workspaceMismatchRoot -Origin 'https://github.com/other/checkout.git' -FileName 'workspace.txt' -Content 'untrusted runner workspace'
+    $persistentMissRoot = Join-Path $testRoot 'localappdata-ws-mismatch\XinZhaoWrt\ControlPlane\workspace'
+    $null = New-TestRepository -Path $persistentMissRoot -Origin $expectedOrigin -FileName 'decoy.txt' -Content 'canonical repo without target commit'
+    $workspaceFallback = Invoke-LoaderScenario -Name 'ws-mismatch' -Workspace $workspaceMismatchRoot -Sha $targetSha -Mode 'normal' -RemotePath $bareRemote -WrongSha $wrongSha
+    if ($workspaceFallback.FetchCount -ne 1 -or
+        -not $workspaceFallback.Output.Contains('SOURCE_LOCAL_CANDIDATE=ORIGIN_MISMATCH') -or
+        -not $workspaceFallback.Output.Contains('WORKFLOW_SOURCE=PASS')) {
+        throw "TEST_FAIL: an untrusted GITHUB_WORKSPACE should be skipped in favor of the exact pinned network source: $($workspaceFallback.Output)"
+    }
+    Assert-LoadedSource -Scenario $workspaceFallback -ExpectedSha $targetSha -ExpectedOrigin $expectedOrigin
+    Remove-TestLoadedSource $workspaceFallback
+
     # Four bounded retries use the configured backoff and stop before device access.
     $exhaustionRepo = Join-Path $testRoot 'network-exhaustion-candidate'
     $null = New-TestRepository -Path $exhaustionRepo -Origin $expectedOrigin -FileName 'decoy.txt' -Content 'target absent locally'
@@ -249,10 +264,10 @@ try {
         throw "TEST_FAIL: exhausted transient fetches must stop after four retries, clean partial state and remain pre-device: fetches=$($exhaustion.FetchCount) sleep=$($exhaustion.SleepSeconds) root_exists=$(Test-Path -LiteralPath $exhaustion.SourceRoot) output=$($exhaustion.Output)"
     }
 
-    # CASE 5a: an origin mismatch fails closed without a network retry.
-    $badOriginRepo = Join-Path $testRoot 'wrong-origin'
-    $badOriginSha = New-TestRepository -Path $badOriginRepo -Origin 'https://github.com/other/repository.git' -FileName 'bad.txt' -Content 'untrusted origin'
-    $badOrigin = Invoke-LoaderScenario -Name 'bad-origin' -Workspace $badOriginRepo -Sha $badOriginSha -Mode 'transient-once' -RemotePath $bareRemote -WrongSha $wrongSha
+    # CASE 5a: a mismatched canonical persistent repo fails closed without network fallback.
+    $badOriginRoot = Join-Path $testRoot 'localappdata-bad-origin\XinZhaoWrt\ControlPlane\workspace'
+    $badOriginSha = New-TestRepository -Path $badOriginRoot -Origin 'https://github.com/other/repository.git' -FileName 'bad.txt' -Content 'untrusted persistent origin'
+    $badOrigin = Invoke-LoaderScenario -Name 'bad-origin' -Workspace $emptyWorkspace -Sha $badOriginSha -Mode 'transient-once' -RemotePath $bareRemote -WrongSha $wrongSha
     if (-not $badOrigin.Output.Contains('SOURCE_ORIGIN_MISMATCH') -or $badOrigin.FetchCount -ne 0) {
         throw "TEST_FAIL: origin mismatch must fail closed before network fetch: $($badOrigin.Output)"
     }
