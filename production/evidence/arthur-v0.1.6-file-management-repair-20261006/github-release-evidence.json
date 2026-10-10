@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "evidence_id": "release-38000704263",
+  "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
+  "gate_id": "RELEASE",
+  "type": "GITHUB_RELEASE",
+  "producer": "ARTHUR_PRODUCTION_STATE_SYNC",
+  "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+  "github_run_id": 38000704263,
+  "artifact_id": 11655711894,
+  "release_tag": "v0.1.6",
+  "release_id": 408579983,
+  "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.6",
+  "firmware": "XinZhaoWrt-Arthur-v0.1.6-20261009-sysupgrade.bin",
+  "firmware_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+  "factory_sha256": "ea15c18b3e1b28ab454a25b540ab6e7389e5f9504494cc8ebd8c06a056fff44f",
+  "post_release_device_test": "PENDING_INDEPENDENT",
+  "known_good_promoted": false,
+  "observed_at": "2026-10-10T03:11:51.8866566+00:00",
+  "result": "PASS"
+}

@@ -1,26 +1,26 @@
 {
   "schema_version": 2,
   "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
-  "status": "RESUME_SAFE",
-  "instruction_allowed": true,
+  "status": "PRODUCTION_RELEASED",
+  "instruction_allowed": false,
   "release": "v0.1.6",
   "source": {
-    "repository_head": "604345df7afd77ba8cf7bea4617c2ab90479245d",
+    "repository_head": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
     "accepted_release": "v0.1.6",
-    "accepted_firmware": "",
-    "accepted_firmware_sha256": "",
-    "accepted_factory_sha256": ""
+    "accepted_firmware": "XinZhaoWrt-Arthur-v0.1.6-20261009-sysupgrade.bin",
+    "accepted_firmware_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+    "accepted_factory_sha256": "ea15c18b3e1b28ab454a25b540ab6e7389e5f9504494cc8ebd8c06a056fff44f"
   },
   "production": {
     "github_run_id": 38000704263,
-    "artifact_id": 0,
-    "release_id": 0,
+    "artifact_id": 11655711894,
+    "release_id": 408579983,
     "release": "v0.1.6",
-    "release_url": "",
-    "firmware": "",
-    "candidate_sha256": "",
-    "factory_sha256": ""
+    "release_url": "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.6",
+    "firmware": "XinZhaoWrt-Arthur-v0.1.6-20261009-sysupgrade.bin",
+    "candidate_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+    "factory_sha256": "ea15c18b3e1b28ab454a25b540ab6e7389e5f9504494cc8ebd8c06a056fff44f"
   },
   "device": {
     "version": "0.1.5",
@@ -112,7 +112,7 @@
     },
     "BUILD": {
       "gate_id": "BUILD",
-      "status": "RUNNING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#build",
       "requirement_digest": "f9c422cb2e4ae579ffb149badbdad59feed476d773ee102e41a6b176013264d2",
       "subject": {
@@ -124,55 +124,81 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T01:31:49Z"
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#artifact",
       "requirement_digest": "f36157acd988c3ae05ab573e72434ea441c3bea6d0686742edf995bdb5386afe",
       "subject": {},
-      "evidence_refs": [],
+      "evidence_refs": [
+        "evidence:artifact-run-38000704263"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T01:31:49Z"
     },
     "RELEASE_GATE": {
       "gate_id": "RELEASE_GATE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#release-gate",
       "requirement_digest": "6f21c03ee002e6e521fc5262bd4a2dd38a0e4623b48ed0a633cf4513a9df956e",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+        "github_run_id": 38000704263,
+        "artifact_id": 11655711894,
+        "candidate_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+        "release_tag": "v0.1.6"
+      },
+      "evidence_refs": [
+        "evidence:release-38000704263"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
     },
     "RELEASE": {
       "gate_id": "RELEASE",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#release",
       "requirement_digest": "d84560a72e09da57d729081eab2709121c923d98eaa5d010b10deac855e12bb3",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+        "github_run_id": 38000704263,
+        "artifact_id": 11655711894,
+        "candidate_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+        "release_tag": "v0.1.6"
+      },
+      "evidence_refs": [
+        "evidence:release-38000704263"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
     },
     "PRODUCTION_RELEASED": {
       "gate_id": "PRODUCTION_RELEASED",
-      "status": "PENDING",
+      "status": "PASS",
       "requirement_ref": "production/release-policy.md#production-released",
       "requirement_digest": "7a9b451ebd2d27c6f82a9d4af0bdb526bd75b86b0b89f7ee97dfbd8454bd5fb0",
-      "subject": {},
-      "evidence_refs": [],
+      "subject": {
+        "source_sha": "b4448e62ab1e767f9a60221b0600c60c355baf56",
+        "github_run_id": 38000704263,
+        "artifact_id": 11655711894,
+        "candidate_sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
+        "release_tag": "v0.1.6"
+      },
+      "evidence_refs": [
+        "evidence:release-38000704263"
+      ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": ""
+      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
     }
   },
-  "current_gate": "BUILD",
-  "next_action": "BUILD",
+  "current_gate": "PRODUCTION_RELEASED",
+  "next_action": "NONE",
   "repository_head": "604345df7afd77ba8cf7bea4617c2ab90479245d",
   "real_device": {
     "version": "0.1.5",
@@ -184,9 +210,9 @@
     "lan_mac": "dc:d8:7c:45:91:99"
   },
   "checkpoint": {
-    "current": "BUILD",
-    "next_action": "BUILD",
-    "turn_count": 7
+    "current": "PRODUCTION_RELEASED",
+    "next_action": "NONE",
+    "turn_count": 8
   },
   "verified": {
     "real_device_baseline": "ROLLBACK_AUTHORITY_PRESERVED",
@@ -195,9 +221,7 @@
     "adguard_full_manager": "REVERIFY_REQUIRED",
     "quickstart": "REVERIFY_REQUIRED"
   },
-  "pending": [
-    "BUILD"
-  ],
+  "pending": [],
   "conflicts": [],
   "post_release_device_test": "PENDING_INDEPENDENT",
   "source_precedence": [
@@ -213,5 +237,5 @@
     "chat/model narrative"
   ],
   "evidence_timestamp": "2026-10-09T22:43:13.204074+00:00",
-  "semantic_sha256": "27f74f7cea0cf07cf2644efbc3721656f64eadd254032ebc66db56e58d213731"
+  "semantic_sha256": "47869be4ba6b33b775890079264708fae6c095e77bf29303c59d40df9cccc516"
 }
