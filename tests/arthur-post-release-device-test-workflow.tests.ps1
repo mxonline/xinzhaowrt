@@ -39,6 +39,11 @@ $expandIndex = $setupStep.IndexOf('Expand-Archive', [StringComparison]::Ordinal)
 if ($hashIndex -lt 0 -or $expandIndex -lt 0 -or $hashIndex -ge $expandIndex) {
     throw 'TEST_FAIL: PowerShell archive SHA-256 must be checked before extraction.'
 }
+$downloadLoopIndex = $setupStep.IndexOf('for ($attempt = 1; $attempt -le 3; $attempt++)', [StringComparison]::Ordinal)
+$downloadCallIndex = $setupStep.IndexOf('Invoke-WebRequest', [StringComparison]::Ordinal)
+if ($downloadLoopIndex -lt 0 -or $downloadCallIndex -lt $downloadLoopIndex -or $setupStep -notmatch '(?i)unexpected EOF\|0 bytes from the transport stream\|TLS handshake timeout\|connection reset' -or $setupStep -notmatch 'Start-Sleep -Seconds') {
+    throw 'TEST_FAIL: official PowerShell archive download must retry only bounded transient transport failures.'
+}
 
 $lines = $setupStep -split "`r?`n"
 $runStart = -1
@@ -83,11 +88,11 @@ if ($deviceTest -match 'Invoke-NativeCaptured\s+-FilePath\s+\$gh') {
 }
 
 $request = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
-if ([int]$request.retry_sequence -ne 4 -or [long]$request.previous_run_id -ne 38026533271L -or $request.previous_run_device_write_started -ne $false) {
+if ([int]$request.retry_sequence -ne 5 -or [long]$request.previous_run_id -ne 38027280140L -or $request.previous_run_device_write_started -ne $false) {
     throw 'TEST_FAIL: recovery request must record the completed no-write GitHub API failure before triggering one retry.'
 }
-if ([string]$request.retry_reason -notmatch 'GitHub API.*EOF|GitHub API.*TLS') {
-    throw 'TEST_FAIL: retry reason must identify the actual pre-device GitHub API network failure.'
+if ([string]$request.retry_reason -notmatch 'PowerShell.*unexpected EOF|archive download.*unexpected EOF') {
+    throw 'TEST_FAIL: retry reason must identify the actual pre-device PowerShell archive transport failure.'
 }
 
 Write-Output 'ARTHUR_POST_RELEASE_DEVICE_TEST_POWERSHELL_BOOTSTRAP=PASS'

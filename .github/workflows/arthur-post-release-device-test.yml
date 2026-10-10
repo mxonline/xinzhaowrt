@@ -46,7 +46,26 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "arthur-powershell-$version-$env:GITHUB_RUN_ID"
           $downloadUri = 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip'
 
-          Invoke-WebRequest -UseBasicParsing -Uri $downloadUri -OutFile $archive
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -UseBasicParsing -TimeoutSec 240 -Uri $downloadUri -OutFile $archive
+              $downloaded = $true
+              break
+            }
+            catch {
+              $downloadError = $_.Exception.ToString()
+              $transientTransportFailure = $downloadError -match '(?i)(unexpected EOF|0 bytes from the transport stream|TLS handshake timeout|connection reset|connection closed|timed out)'
+              if (Test-Path -LiteralPath $archive) { Remove-Item -Force -LiteralPath $archive }
+              if (-not $transientTransportFailure -or $attempt -eq 3) {
+                throw "POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempt=$attempt transient=$transientTransportFailure error=$downloadError"
+              }
+              $delaySeconds = 5 * $attempt
+              Write-Host "POWERSHELL_ARCHIVE_DOWNLOAD_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
+              Start-Sleep -Seconds $delaySeconds
+            }
+          }
+          if (-not $downloaded) { throw 'POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempts=3' }
           $actualSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToUpperInvariant()
           if ($actualSha256 -ne $expectedSha256) { throw "POWERSHELL_ARCHIVE_SHA256_MISMATCH expected=$expectedSha256 actual=$actualSha256" }
 
