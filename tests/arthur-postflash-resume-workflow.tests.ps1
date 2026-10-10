@@ -14,6 +14,12 @@ foreach ($required in @(
     'resume_postflash_only:',
     'ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}',
     "if: github.event_name == 'push' || inputs.resume_postflash_only == 'true'",
+    '- name: Load exact current workflow source',
+    "'-C',`$sourceRoot,'remote','get-url','origin'",
+    "'-c','http.sslBackend=openssl','-C',`$sourceRoot,'fetch','--no-tags','--depth=1','origin',`$env:GITHUB_SHA",
+    "'-C',`$sourceRoot,'checkout','--detach','FETCH_HEAD'",
+    '[System.IO.File]::AppendAllText($env:GITHUB_ENV',
+    'ARTHUR_SOURCE_ROOT',
     '- self-hosted',
     '- windows',
     '- x64',
@@ -25,6 +31,9 @@ foreach ($required in @(
     if (-not $workflow.Contains($required)) {
         throw "TEST_FAIL: guarded PostFlash dispatch is missing required workflow behavior: $required"
     }
+}
+if ($workflow -match '(?m)^\s*uses:\s*actions/') {
+    throw 'TEST_FAIL: the postflash resume workflow must not depend on downloading an external GitHub Action.'
 }
 
 $resume = Get-Content -Raw -LiteralPath $resumeScriptPath
@@ -76,6 +85,31 @@ $errors = $null
 if ($errors.Count -gt 0) {
     throw "TEST_FAIL: PostFlash-only verifier PowerShell syntax is invalid: $(($errors | ForEach-Object Message) -join '; ')"
 }
+
+$workflowLines = Get-Content -LiteralPath $workflowPath
+$runBlockCount = 0
+for ($i = 0; $i -lt $workflowLines.Count; $i++) {
+    if ([string]$workflowLines[$i] -ne '        run: |') { continue }
+    $scriptLines = @()
+    for ($j = $i + 1; $j -lt $workflowLines.Count; $j++) {
+        $line = [string]$workflowLines[$j]
+        if ($line.Length -gt 0 -and $line -notmatch '^ {10}') { break }
+        if ($line.Length -gt 0) { $scriptLines += $line.Substring(10) } else { $scriptLines += '' }
+    }
+    $temporaryScript = Join-Path ([System.IO.Path]::GetTempPath()) ("arthur-postflash-workflow-parse-{0}-{1}.ps1" -f $PID,$i)
+    try {
+        [System.IO.File]::WriteAllLines($temporaryScript,$scriptLines,[Text.UTF8Encoding]::new($false))
+        $workflowTokens = $null
+        $workflowErrors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile($temporaryScript,[ref]$workflowTokens,[ref]$workflowErrors)
+        if ($workflowErrors.Count -gt 0) {
+            throw "TEST_FAIL: workflow PowerShell block at line $($i+1) is invalid: $(($workflowErrors | ForEach-Object Message) -join '; ')"
+        }
+        $runBlockCount++
+    }
+    finally { Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $temporaryScript }
+}
+if ($runBlockCount -lt 5) { throw 'TEST_FAIL: workflow PowerShell blocks were not parsed.' }
 
 Write-Output 'ARTHUR_POSTFLASH_RESUME_ONLY_WORKFLOW=PASS'
 Write-Output 'ARTHUR_POSTFLASH_RESUME_NO_FLASH_BOUNDARY=PASS'

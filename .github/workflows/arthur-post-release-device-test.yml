@@ -40,10 +40,55 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
-      - name: Checkout current control plane
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Load exact current workflow source
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceRoot = Join-Path $env:RUNNER_TEMP ("arthur-post-release-source-{0}" -f $env:GITHUB_RUN_ID)
+          $remote = "https://github.com/$($env:GITHUB_REPOSITORY).git"
+          function Invoke-Git([string[]]$Arguments,[switch]$AllowFailure) {
+            $oldPreference = $ErrorActionPreference
+            try {
+              $ErrorActionPreference = 'Continue'
+              $raw = @(& git @Arguments 2>&1)
+              $code = $LASTEXITCODE
+            }
+            finally { $ErrorActionPreference = $oldPreference }
+            $output = (($raw | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+            if (-not $AllowFailure -and $code -ne 0) { throw "SOURCE_GIT_FAILED exit=$code output=$output" }
+            [pscustomobject]@{ExitCode=$code;Output=$output}
+          }
+
+          if (Test-Path -LiteralPath $sourceRoot -PathType Container) {
+            $origin = Invoke-Git @('-C',$sourceRoot,'remote','get-url','origin')
+            if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
+            $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
+            if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_ROOT_OCCUPIED_BY_DIFFERENT_COMMIT' }
+            $dirty = Invoke-Git @('-C',$sourceRoot,'status','--porcelain','--untracked-files=no')
+            if (-not [string]::IsNullOrWhiteSpace($dirty.Output)) { throw 'SOURCE_ROOT_HAS_TRACKED_CHANGES' }
+          }
+          else {
+            New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+            Invoke-Git @('init','--quiet',$sourceRoot) | Out-Null
+            Invoke-Git @('-C',$sourceRoot,'remote','add','origin',$remote) | Out-Null
+            $fetched = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              $fetch = Invoke-Git @('-c','http.sslBackend=openssl','-C',$sourceRoot,'fetch','--no-tags','--depth=1','origin',$env:GITHUB_SHA) -AllowFailure
+              if ($fetch.ExitCode -eq 0) { $fetched = $true; break }
+              $transient = $fetch.Output -match '(?i)(unexpected EOF|TLS handshake timeout|connection reset|connection closed|timed out|curl 56|SSL connection.*closed)'
+              if (-not $transient -or $attempt -eq 3) { throw "SOURCE_FETCH_FAILED attempt=$attempt transient=$transient error=$($fetch.Output)" }
+              $delaySeconds = 5 * $attempt
+              Write-Host "SOURCE_FETCH_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
+              Start-Sleep -Seconds $delaySeconds
+            }
+            if (-not $fetched) { throw 'SOURCE_FETCH_FAILED attempts=3' }
+            Invoke-Git @('-C',$sourceRoot,'checkout','--detach','FETCH_HEAD') | Out-Null
+            $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
+            if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_COMMIT_MISMATCH' }
+          }
+
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV,('ARTHUR_SOURCE_ROOT=' + $sourceRoot + [Environment]::NewLine),[System.Text.UTF8Encoding]::new($false))
+          Write-Host "WORKFLOW_SOURCE=PASS commit=$env:GITHUB_SHA"
 
       - name: Install pinned PowerShell 7 runtime
         shell: powershell
@@ -97,6 +142,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:ARTHUR_SOURCE_ROOT
           pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-post-release-v016-device-test.ps1 -RequestPath .\production\post-release-device-test-request.json
 
       - name: Execute strictly no-flash PostFlash resume
@@ -106,12 +152,15 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:ARTHUR_SOURCE_ROOT
           pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-postflash-resume.ps1 -RequestPath .\production\post-release-device-test-request.json
 
       - name: Execute exact-release highest product-goal runtime validation
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          $sourceRoot = $env:ARTHUR_SOURCE_ROOT
+          if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container)) { throw 'WORKFLOW_SOURCE_MISSING' }
           $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
           $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
           if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
@@ -324,7 +373,7 @@ jobs:
 
           $oldPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
-          $output = (Get-Content -Raw -LiteralPath $promptPath | & $codexCmd exec --sandbox workspace-write -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+          $output = (Get-Content -Raw -LiteralPath $promptPath | & $codexCmd exec --sandbox workspace-write -c 'approval_policy="never"' -C $sourceRoot -o $lastMessage - 2>&1 | Out-String)
           $exitCode = $LASTEXITCODE
           $ErrorActionPreference = $oldPreference
           Write-Host $output
@@ -339,6 +388,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:ARTHUR_SOURCE_ROOT
           $path = 'output\real-device\v016-product-goal-exact-release.json'
           if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'PRODUCT_GOAL_EVIDENCE_MISSING' }
           $e = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -Depth 50
@@ -374,10 +424,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'
-          $src = Join-Path $env:GITHUB_WORKSPACE 'output\real-device'
+          $src = if ($env:ARTHUR_SOURCE_ROOT) { Join-Path $env:ARTHUR_SOURCE_ROOT 'output\real-device' } else { $null }
           $dst = Join-Path $env:LOCALAPPDATA ('XinZhaoWrt\PostReleaseDeviceTest\run-' + $env:GITHUB_RUN_ID + '\evidence')
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
-          if (Test-Path -LiteralPath $src) {
+          if ($src -and (Test-Path -LiteralPath $src)) {
             Copy-Item -Recurse -Force -Path (Join-Path $src '*') -Destination $dst
           }
           Write-Host "POST_RELEASE_EVIDENCE_LOCAL_PATH=$dst"
