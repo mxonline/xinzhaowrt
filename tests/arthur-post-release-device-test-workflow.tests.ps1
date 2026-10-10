@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 $workflowPath = Join-Path $root '.github\workflows\arthur-post-release-device-test.yml'
 $requestPath = Join-Path $root 'production\post-release-device-test-request.json'
+$deviceTestPath = Join-Path $root 'scripts\arthur-post-release-v016-device-test.ps1'
 $workflow = Get-Content -Raw -LiteralPath $workflowPath
 $setupName = '      - name: Install pinned PowerShell 7 runtime'
 $executeName = '      - name: Execute exact-release flash and base/file-management acceptance'
@@ -65,12 +66,19 @@ finally {
     Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $temporaryScript
 }
 
-$request = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
-if ([int]$request.retry_sequence -ne 2 -or [long]$request.previous_run_id -ne 38024798930L -or $request.previous_run_device_write_started -ne $false) {
-    throw 'TEST_FAIL: recovery request must record the completed no-write tooling failure before triggering one retry.'
+$deviceTest = Get-Content -Raw -LiteralPath $deviceTestPath
+$scpFunction = [regex]::Match($deviceTest, '(?ms)^function Invoke-StrictScp \{(?<body>.*?)(?=^function )')
+$scpArguments = if ($scpFunction.Success) { $scpFunction.Groups['body'].Value } else { '' }
+if ($scpArguments.IndexOf("'-O'", [StringComparison]::Ordinal) -lt 0) {
+    throw 'TEST_FAIL: Arthur upload must use OpenSSH legacy SCP mode for a target without sftp-server.'
 }
-if ([string]$request.retry_reason -notmatch 'pwsh.*not recognized|PowerShell 7.*unavailable') {
-    throw 'TEST_FAIL: retry reason must identify the actual pre-device PowerShell startup failure.'
+
+$request = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
+if ([int]$request.retry_sequence -ne 3 -or [long]$request.previous_run_id -ne 38025534348L -or $request.previous_run_device_write_started -ne $false) {
+    throw 'TEST_FAIL: recovery request must record the completed no-write SCP compatibility failure before triggering one retry.'
+}
+if ([string]$request.retry_reason -notmatch 'sftp-server.*not found|SCP.*compatibility') {
+    throw 'TEST_FAIL: retry reason must identify the actual pre-flash SFTP compatibility failure.'
 }
 
 Write-Output 'ARTHUR_POST_RELEASE_DEVICE_TEST_POWERSHELL_BOOTSTRAP=PASS'

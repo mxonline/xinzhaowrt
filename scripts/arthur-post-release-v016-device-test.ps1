@@ -37,7 +37,7 @@ function Invoke-StrictScp {
     param([string]$KnownHosts,[string]$LocalPath,[string]$RemotePath)
     $scp = Get-Command scp.exe -ErrorAction SilentlyContinue
     if (-not $scp) { $scp = Get-Command scp -ErrorAction Stop }
-    $args = @('-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$KnownHosts",'-o','ConnectTimeout=15',$LocalPath,("root@192.168.6.1:" + $RemotePath))
+    $args = @('-O','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$KnownHosts",'-o','ConnectTimeout=15',$LocalPath,("root@192.168.6.1:" + $RemotePath))
     Invoke-NativeCaptured -FilePath $scp.Source -Arguments $args
 }
 
