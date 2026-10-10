@@ -25,6 +25,27 @@ function Invoke-NativeCaptured {
     [pscustomobject]@{ ExitCode=$code; Output=$text }
 }
 
+function Invoke-GitHubRead {
+    param([string]$FilePath,[string[]]$Arguments,[string]$Operation)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $result = Invoke-NativeCaptured -FilePath $FilePath -Arguments $Arguments -AllowFailure
+        if ($result.ExitCode -eq 0) { return $result }
+
+        $transientNetworkFailure = $result.Output -match '(?i)(\bEOF\b|TLS handshake timeout|connection reset|connection closed|unexpected EOF|context deadline exceeded|i/o timeout)'
+        if (-not $transientNetworkFailure) {
+            throw "GITHUB_READ_FAILED operation=$Operation exit=$($result.ExitCode) output=$($result.Output)"
+        }
+        if ($attempt -eq 3) {
+            throw "GITHUB_READ_RETRIES_EXHAUSTED operation=$Operation attempts=$attempt output=$($result.Output)"
+        }
+
+        $delaySeconds = 5 * $attempt
+        Write-Host "GITHUB_READ_TRANSIENT_RETRY operation=$Operation attempt=$attempt/3 delay_seconds=$delaySeconds"
+        Start-Sleep -Seconds $delaySeconds
+    }
+    throw "GITHUB_READ_RETRIES_EXHAUSTED operation=$Operation"
+}
+
 function Invoke-StrictSsh {
     param([string]$KnownHosts,[string]$Command,[switch]$AllowFailure)
     $ssh = Get-Command ssh.exe -ErrorAction SilentlyContinue
@@ -107,15 +128,15 @@ Require ([string]$Status.post_release_device_test -eq 'PENDING_INDEPENDENT') 'PO
 
 $gh = (Get-Command gh -ErrorAction Stop).Source
 $repo = 'mxonline/xinzhaowrt'
-$releaseJson = (Invoke-NativeCaptured -FilePath $gh -Arguments @('release','view',$Request.release_tag,'--repo',$repo,'--json','tagName,targetCommitish,isDraft,isPrerelease,id')).Output | ConvertFrom-Json
-$candidateJson = (Invoke-NativeCaptured -FilePath $gh -Arguments @('release','view',$Request.candidate_tag,'--repo',$repo,'--json','tagName,targetCommitish,isDraft,isPrerelease,id')).Output | ConvertFrom-Json
+$releaseJson = (Invoke-GitHubRead -FilePath $gh -Arguments @('release','view',$Request.release_tag,'--repo',$repo,'--json','tagName,targetCommitish,isDraft,isPrerelease,id') -Operation 'stable-release-view').Output | ConvertFrom-Json
+$candidateJson = (Invoke-GitHubRead -FilePath $gh -Arguments @('release','view',$Request.candidate_tag,'--repo',$repo,'--json','tagName,targetCommitish,isDraft,isPrerelease,id') -Operation 'candidate-release-view').Output | ConvertFrom-Json
 Require (-not $releaseJson.isDraft -and -not $releaseJson.isPrerelease) 'STABLE_RELEASE_IDENTITY_INVALID' 'v0.1.6 is not a final release'
 Require ([string]$releaseJson.targetCommitish -eq [string]$Request.source_sha) 'STABLE_RELEASE_IDENTITY_INVALID' 'stable target source mismatch'
 Require ($candidateJson.isPrerelease -eq $true) 'CANDIDATE_RELEASE_IDENTITY_INVALID' 'candidate is not a prerelease'
 Require ([string]$candidateJson.targetCommitish -eq [string]$Request.source_sha) 'CANDIDATE_RELEASE_IDENTITY_INVALID' 'candidate target source mismatch'
-$runJson = (Invoke-NativeCaptured -FilePath $gh -Arguments @('api',"repos/$repo/actions/runs/$($Request.build_run_id)")).Output | ConvertFrom-Json
+$runJson = (Invoke-GitHubRead -FilePath $gh -Arguments @('api',"repos/$repo/actions/runs/$($Request.build_run_id)") -Operation 'build-run-api').Output | ConvertFrom-Json
 Require ([string]$runJson.status -eq 'completed' -and [string]$runJson.conclusion -eq 'success') 'BUILD_RUN_NOT_SUCCESSFUL' 'build run is not completed/success'
-$artifactJson = (Invoke-NativeCaptured -FilePath $gh -Arguments @('api',"repos/$repo/actions/artifacts/$($Request.artifact_id)")).Output | ConvertFrom-Json
+$artifactJson = (Invoke-GitHubRead -FilePath $gh -Arguments @('api',"repos/$repo/actions/artifacts/$($Request.artifact_id)") -Operation 'artifact-api').Output | ConvertFrom-Json
 Require ([string]$artifactJson.digest -eq [string]$Request.actions_artifact_sha256) 'ACTIONS_ARTIFACT_DIGEST_MISMATCH' 'actions artifact digest mismatch'
 
 $work = Join-Path $env:RUNNER_TEMP 'arthur-v016-post-release'
@@ -126,9 +147,9 @@ $rollbackDir = Join-Path $work 'rollback'
 New-Item -ItemType Directory -Force -Path $stableDir,$candidateDir,$rollbackDir | Out-Null
 $firmwareName = 'XinZhaoWrt-Arthur-v0.1.6-20261009-sysupgrade.bin'
 $rollbackName = 'XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin'
-Invoke-NativeCaptured -FilePath $gh -Arguments @('release','download',$Request.release_tag,'--repo',$repo,'--dir',$stableDir,'--clobber','--pattern',$firmwareName) | Out-Null
-Invoke-NativeCaptured -FilePath $gh -Arguments @('release','download',$Request.candidate_tag,'--repo',$repo,'--dir',$candidateDir,'--clobber','--pattern',$firmwareName) | Out-Null
-Invoke-NativeCaptured -FilePath $gh -Arguments @('release','download',$Request.rollback_tag,'--repo',$repo,'--dir',$rollbackDir,'--clobber','--pattern',$rollbackName) | Out-Null
+Invoke-GitHubRead -FilePath $gh -Arguments @('release','download',$Request.release_tag,'--repo',$repo,'--dir',$stableDir,'--clobber','--pattern',$firmwareName) -Operation 'stable-release-download' | Out-Null
+Invoke-GitHubRead -FilePath $gh -Arguments @('release','download',$Request.candidate_tag,'--repo',$repo,'--dir',$candidateDir,'--clobber','--pattern',$firmwareName) -Operation 'candidate-release-download' | Out-Null
+Invoke-GitHubRead -FilePath $gh -Arguments @('release','download',$Request.rollback_tag,'--repo',$repo,'--dir',$rollbackDir,'--clobber','--pattern',$rollbackName) -Operation 'rollback-release-download' | Out-Null
 $stableFirmware = Join-Path $stableDir $firmwareName
 $candidateFirmware = Join-Path $candidateDir $firmwareName
 $rollbackFirmware = Join-Path $rollbackDir $rollbackName

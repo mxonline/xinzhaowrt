@@ -73,12 +73,21 @@ if ($scpArguments.IndexOf("'-O'", [StringComparison]::Ordinal) -lt 0) {
     throw 'TEST_FAIL: Arthur upload must use OpenSSH legacy SCP mode for a target without sftp-server.'
 }
 
-$request = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
-if ([int]$request.retry_sequence -ne 3 -or [long]$request.previous_run_id -ne 38025534348L -or $request.previous_run_device_write_started -ne $false) {
-    throw 'TEST_FAIL: recovery request must record the completed no-write SCP compatibility failure before triggering one retry.'
+$githubRead = [regex]::Match($deviceTest, '(?ms)^function Invoke-GitHubRead \{(?<body>.*?)(?=^function )')
+$githubReadBody = if ($githubRead.Success) { $githubRead.Groups['body'].Value } else { '' }
+if (-not $githubRead.Success -or -not $githubReadBody.Contains('$attempt -le 3') -or $githubReadBody -notmatch '(?i)\bEOF\b|TLS handshake timeout') {
+    throw 'TEST_FAIL: read-only GitHub operations must retry transient EOF/TLS failures a bounded number of times.'
 }
-if ([string]$request.retry_reason -notmatch 'sftp-server.*not found|SCP.*compatibility') {
-    throw 'TEST_FAIL: retry reason must identify the actual pre-flash SFTP compatibility failure.'
+if ($deviceTest -match 'Invoke-NativeCaptured\s+-FilePath\s+\$gh') {
+    throw 'TEST_FAIL: GitHub release/API reads and downloads must use the transient-network retry wrapper.'
+}
+
+$request = Get-Content -Raw -LiteralPath $requestPath | ConvertFrom-Json
+if ([int]$request.retry_sequence -ne 4 -or [long]$request.previous_run_id -ne 38026533271L -or $request.previous_run_device_write_started -ne $false) {
+    throw 'TEST_FAIL: recovery request must record the completed no-write GitHub API failure before triggering one retry.'
+}
+if ([string]$request.retry_reason -notmatch 'GitHub API.*EOF|GitHub API.*TLS') {
+    throw 'TEST_FAIL: retry reason must identify the actual pre-device GitHub API network failure.'
 }
 
 Write-Output 'ARTHUR_POST_RELEASE_DEVICE_TEST_POWERSHELL_BOOTSTRAP=PASS'

@@ -30,9 +30,9 @@
   "rollback_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
   "required_terminal": "PRODUCT_GOAL_VERIFIED",
   "on_failure": "PRESERVE_RELEASE_KEEP_PREVIOUS_KNOWN_GOOD_OPEN_SEPARATE_REPAIR_EXECUTION",
-  "retry_sequence": 3,
-  "retry_reason": "Previous workflow attempt 38025534348 failed before FLASH_STARTED: Windows OpenSSH scp used SFTP, but Arthur lacks /usr/libexec/sftp-server (ash: line 0: /usr/libexec/sftp-server: not found). SCP exited 255 before remote firmware hashing or sysupgrade -T; the SFTP subsystem did not start, so no firmware bytes were transferred and no device write began. The retry uses OpenSSH legacy SCP mode only.",
-  "previous_run_id": 38025534348,
+  "retry_sequence": 4,
+  "retry_reason": "Previous workflow attempt 38026533271 failed before device access while reading the Candidate Release metadata: the GitHub API returned EOF. No device identity check, firmware transfer, sysupgrade -T, reboot, or flash began. The post-release script now retries read-only GitHub metadata and asset reads on transient EOF/TLS failures.",
+  "previous_run_id": 38026533271,
   "previous_run_device_write_started": false,
   "reauthorized_at": "2026-10-10T12:40:00+08:00"
 }
