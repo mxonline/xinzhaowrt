@@ -103,7 +103,25 @@ public static class XinZhaoWrtArthurAskPass {
     }
 }
 '@
-    Add-Type -TypeDefinition $source -Language CSharp -OutputAssembly $path -OutputType ConsoleApplication -ErrorAction Stop
+    $compilerCandidates = @(
+        (Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'),
+        (Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe')
+    )
+    $compilerCommand = Get-Command csc.exe -ErrorAction SilentlyContinue
+    if ($compilerCommand) { $compilerCandidates += $compilerCommand.Source }
+    $compiler = $compilerCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+    if (-not $compiler) { throw 'ARTHUR_ASKPASS_COMPILER_MISSING' }
+
+    $sourcePath = Join-Path ([System.IO.Path]::GetTempPath()) ("xinzhaowrt-arthur-askpass-{0}.cs" -f $PID)
+    try {
+        [System.IO.File]::WriteAllText($sourcePath,$source,[System.Text.UTF8Encoding]::new($false))
+        $compilerOutput = @(& $compiler '/nologo' '/target:exe' "/out:$path" $sourcePath 2>&1)
+        $compilerExitCode = $LASTEXITCODE
+    }
+    finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $sourcePath
+    }
+    if ($compilerExitCode -ne 0) { throw "ARTHUR_ASKPASS_HELPER_COMPILE_FAILED exit=$compilerExitCode" }
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'ARTHUR_ASKPASS_HELPER_FAILED' }
     $script:ArthurAccessAskPassExe = $path
     return $path
