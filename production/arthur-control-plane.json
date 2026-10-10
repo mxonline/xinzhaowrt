@@ -2,10 +2,15 @@
   "schema_version": 1,
   "device": {
     "management_ip": "192.168.6.1",
-    "verified_management_mac": "dc:d8:7c:46:91:24",
+    "verified_management_mac": "dc:d8:7c:45:91:99",
     "board_pattern": "jdcloud,re-ss-01|RE-SS-01",
     "build_marker": "XinZhaoWrt",
     "build_info_path": "/luci-static/xinzhao/build-info.json"
+  },
+  "identity_reconciliation": {
+    "previous_verified_management_mac": "dc:d8:7c:46:91:24",
+    "reason": "POSTFLASH_STALE_CONTROL_PLANE_MAC_RECONCILIATION",
+    "current_verified_management_mac": "dc:d8:7c:45:91:99"
   },
   "control_path": {
     "ethernet_required": true,
