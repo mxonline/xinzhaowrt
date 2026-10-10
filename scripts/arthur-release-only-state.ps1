@@ -128,6 +128,8 @@ function Complete-ArthurReleaseOnlyState {
     }
 
     Set-ArthurObjectProperty -Object $OperatorIntent -Name 'firmware_execution_authorized' -Value $false
+    Set-ArthurObjectProperty -Object $OperatorIntent -Name 'intent_type' -Value 'PROCESS_GOVERNANCE'
+    Set-ArthurObjectProperty -Object $OperatorIntent -Name 'authorization_scope' -Value 'GOVERNANCE_RULES_ONLY'
     if ($OperatorIntent.PSObject.Properties.Name -contains 'execution_id') { $OperatorIntent.execution_id = [string]$ResumeState.execution_id }
     if ($OperatorIntent.PSObject.Properties.Name -contains 'firmware_state' -and $OperatorIntent.firmware_state) {
         Set-ArthurObjectProperty -Object $OperatorIntent.firmware_state -Name 'current_stage' -Value 'PRODUCTION_RELEASED'
@@ -216,7 +218,7 @@ function Complete-ArthurReleaseOnlyStatus {
         device_exact_artifact_match = 'PENDING_INDEPENDENT'
         post_release_device_test = 'PENDING_INDEPENDENT'
         product_goal_status = 'POST_RELEASE_VALIDATION_PENDING'
-        NEXT_ACTION = 'NONE'
+        NEXT_ACTION = 'POST_RELEASE_DEVICE_VALIDATION'
         message = "Arthur $ReleaseTag Stable Release published from exact Candidate run $RunId. Post-release device validation is pending; Known-Good remains unchanged."
         updated_at = $VerifiedAt
     }

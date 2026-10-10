@@ -53,7 +53,7 @@
     "https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.6"
   ],
   "updated_at": "2026-10-10T11:11:51.8866566+08:00",
-  "NEXT_ACTION": "NONE",
+  "NEXT_ACTION": "POST_RELEASE_DEVICE_VALIDATION",
   "sha256": "e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39",
   "post_release_device_test": "PENDING_INDEPENDENT",
   "product_goal_status": "POST_RELEASE_VALIDATION_PENDING",

@@ -1,8 +1,8 @@
 {
   "schema_version": "1.2",
   "project": "Arthur",
-  "intent_type": "EXECUTE_FIRMWARE",
-  "authorization_scope": "FIRMWARE_RELEASE",
+  "intent_type": "PROCESS_GOVERNANCE",
+  "authorization_scope": "GOVERNANCE_RULES_ONLY",
   "firmware_execution_authorized": false,
   "execution_id": "arthur-v0.1.6-file-management-repair-20261006",
   "release_mode": "RELEASE_ONLY",

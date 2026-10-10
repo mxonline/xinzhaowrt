@@ -53,6 +53,7 @@ Assert-Equal $updated.sysupgrade_sha256 'e175fc88d32ea9308aab40b84fbcc8e84a6bf3d
 Assert-Equal $updated.factory_sha256 'ea15c18b3e1b28ab454a25b540ab6e7389e5f9504494cc8ebd8c06a056fff44f' 'Status must bind the released factory bytes'
 Assert-Equal $updated.known_good $false 'Release-only status must not promote untested firmware to Known-Good'
 Assert-Equal $updated.product_goal_status 'POST_RELEASE_VALIDATION_PENDING' 'Product verification must remain pending for the exact release'
+Assert-Equal $updated.NEXT_ACTION 'POST_RELEASE_DEVICE_VALIDATION' 'Release status must identify the independent exact-artifact device validation as the next action'
 Assert-Equal $updated.updated_at '2026-10-10T11:11:51.8866566+08:00' 'Status update time must preserve the evidence timestamp in stable ISO form'
 Assert-Equal $updated.device_exact_artifact_match 'PENDING_INDEPENDENT' 'Prior-version device verification must not carry over to the new release'
 Assert-Equal $updated.live_reboot_persistence 'PENDING_INDEPENDENT' 'Prior-version persistence evidence must not carry over to the new release'

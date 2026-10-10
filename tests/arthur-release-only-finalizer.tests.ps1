@@ -71,6 +71,8 @@ Assert-Equal $result.resume_state.production.artifact_id 888 'terminal identity 
 Assert-Equal $result.resume_state.production.release 'v0.1.5' 'terminal identity must bind to exact release tag'
 Assert-Equal $result.resume_state.production.candidate_sha256 ('c' * 64) 'terminal identity must bind to exact firmware hash'
 Assert-Equal $result.operator_intent.firmware_execution_authorized $false 'terminal finalizer must close operator execution authorization'
+Assert-Equal $result.operator_intent.intent_type 'PROCESS_GOVERNANCE' 'terminal finalizer must convert closed firmware intent to governance only'
+Assert-Equal $result.operator_intent.authorization_scope 'GOVERNANCE_RULES_ONLY' 'terminal finalizer must remove firmware release authorization scope'
 Assert-Equal $result.operator_intent.firmware_state.current_stage 'PRODUCTION_RELEASED' 'operator projection must close at terminal'
 Assert-Equal $result.operator_intent.firmware_state.next_stage 'NONE' 'operator projection must have no device stage after release'
 
