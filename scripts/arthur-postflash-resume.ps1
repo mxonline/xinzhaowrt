@@ -32,6 +32,64 @@ function Write-JsonFile([string]$Path,$Object) {
     $Object | ConvertTo-Json -Depth 30 | Set-Content -Encoding UTF8 -LiteralPath $Path
 }
 
+function ConvertTo-SanitizedPostFlashVerifierOutput {
+    param([AllowEmptyString()][string]$Text)
+
+    $safe = [string]$Text
+    if (-not [string]::IsNullOrEmpty($env:ARTHUR_ROOT_PASSWORD)) {
+        $safe = $safe.Replace($env:ARTHUR_ROOT_PASSWORD,'[REDACTED]')
+    }
+    $safe = [regex]::Replace($safe,'(?is)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----','[REDACTED PRIVATE KEY]')
+    $safe = [regex]::Replace($safe,'(?i)\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})\b','[REDACTED TOKEN]')
+    $safe = [regex]::Replace($safe,'(?i)(\bBearer\s+)[A-Za-z0-9._~+/-]+=*','$1[REDACTED]')
+    $safe = [regex]::Replace($safe,'(?im)(^\s*(?:cookie|set-cookie|authorization|proxy-authorization)\s*[:=]\s*).+$','$1[REDACTED]')
+    $safe = [regex]::Replace($safe,'(?i)((?:\bpassword|\bpasswd|\btoken|\baccess[_-]?token|\brefresh[_-]?token|\bapi[_-]?key|\bsecret|\bsysauth_http|\bubus_rpc_session)\s*[:=]\s*)[^\s,;"'']+','$1[REDACTED]')
+    $safe = [regex]::Replace($safe,'(?i)(https?://[^\s]*(?:subscribe|subscription)[^\s]*)','[REDACTED SUBSCRIPTION URL]')
+    $safe = [regex]::Replace($safe,'(?i)\b(?:ss|ssr|vmess|vless|trojan|hysteria2?|tuic)://[^\s,;"'']+','[REDACTED SUBSCRIPTION CONTENT]')
+    $safe = [regex]::Replace($safe,'(?im)(^\s*(?:subscription|subscribe|proxy[-_ ]?provider|proxies)\s*[:=]\s*).+$','$1[REDACTED SUBSCRIPTION CONTENT]')
+    return $safe
+}
+
+function Get-PostFlashBaseFirstFailure {
+    param([AllowEmptyString()][string]$Text)
+
+    $explicit = [regex]::Match($Text,'(?im)^\s*FIRST_FAILURE\s*[:=]\s*(?<marker>[A-Za-z0-9][A-Za-z0-9_.:-]*)')
+    if ($explicit.Success) { return $explicit.Groups['marker'].Value }
+
+    $failedMarker = [regex]::Match($Text,'(?im)^\s*(?<marker>[A-Za-z][A-Za-z0-9_.:-]*)\s*=\s*(?:FAIL|FAILED|BLOCKED)(?=\s|$|:)')
+    if ($failedMarker.Success) { return $failedMarker.Groups['marker'].Value }
+
+    $failedCheck = [regex]::Match($Text,'(?im)^\s*(?<marker>[A-Za-z][A-Za-z0-9_.:-]*)\s*[:=]\s*(?:FAIL|FAILED|BLOCKED)\b')
+    if ($failedCheck.Success) { return $failedCheck.Groups['marker'].Value }
+    return 'MARKER_NOT_FOUND'
+}
+
+function Complete-PostFlashBaseVerification {
+    param(
+        [AllowEmptyCollection()][object[]]$Output,
+        [int]$ExitCode,
+        [Parameter(Mandatory=$true)][string]$LogPath
+    )
+
+    $rawText = (($Output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine)
+    $safeText = ConvertTo-SanitizedPostFlashVerifierOutput -Text $rawText
+    $logDirectory = Split-Path -Parent $LogPath
+    New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
+    [IO.File]::WriteAllText($LogPath,$safeText,[Text.UTF8Encoding]::new($false))
+
+    Write-Host 'POSTFLASH_BASE_VERIFIER_OUTPUT_BEGIN'
+    if (-not [string]::IsNullOrEmpty($safeText)) { Write-Host $safeText }
+    Write-Host 'POSTFLASH_BASE_VERIFIER_OUTPUT_END'
+
+    if ($ExitCode -ne 0) {
+        $firstFailure = Get-PostFlashBaseFirstFailure -Text $safeText
+        Write-Host "POSTFLASH_BASE_FIRST_FAILURE=$firstFailure"
+        throw "POSTFLASH_BASE_VERIFICATION_FAILED exit=$ExitCode"
+    }
+    Write-Host 'POSTFLASH_BASE_VERIFICATION=PASS'
+    return $true
+}
+
 function New-RootLuciCookie {
     param([string]$KnownHosts)
     $create = Invoke-StrictSsh -KnownHosts $KnownHosts -Command 'ubus call session create'
@@ -131,8 +189,8 @@ try {
     $verifyExit = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $oldPreference }
-if ($verifyExit -ne 0) { throw "POSTFLASH_BASE_VERIFICATION_FAILED exit=$verifyExit" }
-Write-Host 'POSTFLASH_BASE_VERIFICATION=PASS'
+$verifyLogPath = Join-Path $Root 'output\real-device\postflash-base-verifier.log'
+Complete-PostFlashBaseVerification -Output $verifyOutput -ExitCode $verifyExit -LogPath $verifyLogPath | Out-Null
 
 $postNetwork = Assert-ArthurEthernetIdentity -DeviceIp '192.168.6.1' -Policy $policy
 $postFields = Get-ArthurBuildIdentityFields -Build $postNetwork.Build
