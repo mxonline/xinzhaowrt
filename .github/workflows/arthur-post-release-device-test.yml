@@ -1,0 +1,318 @@
+name: Arthur v0.1.6 Post-Release Device Test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - production/post-release-device-test-request.json
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: arthur-v016-post-release-device-test
+  cancel-in-progress: false
+
+jobs:
+  exact-release-device-test:
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
+      - xinzhaowrt-controller
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: \${{ github.token }}
+      GITHUB_TOKEN: \${{ github.token }}
+      ARTHUR_ROOT_PASSWORD: \${{ secrets.ARTHUR_ROOT_PASSWORD }}
+      PYTHONDONTWRITEBYTECODE: '1'
+
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Execute exact-release flash and base/file-management acceptance
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-post-release-v016-device-test.ps1 -RequestPath .\production\post-release-device-test-request.json
+
+      - name: Execute exact-release highest product-goal runtime validation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $codexPs1 = (Get-Command codex -ErrorAction Stop).Source
+          $codexCmd = Join-Path (Split-Path $codexPs1 -Parent) 'codex.cmd'
+          if (-not (Test-Path $codexCmd)) { $codexCmd = $codexPs1 }
+          $promptPath = Join-Path $env:RUNNER_TEMP 'arthur-v016-post-release-product-goal.prompt.txt'
+          $lastMessage = Join-Path $env:RUNNER_TEMP 'arthur-v016-post-release-product-goal.last.txt'
+
+          @'
+          Execute the independent Arthur v0.1.6 exact-release product acceptance now. Do not stop at explanation.
+
+          AUTHORIZED SCOPE:
+          POST_RELEASE_DEVICE_TEST_ONLY
+
+          Exact immutable identity:
+          release_tag=v0.1.6
+          candidate_tag=arthur-update-38000704263
+          source_sha=b4448e62ab1e767f9a60221b0600c60c355baf56
+          build_run_id=38000704263
+          artifact_id=11655711894
+          actions_artifact_sha256=sha256:29b3e95051501c16076a0ec1c4d1ce4ec9d27293faccddfa7e24b2838fe690c7
+          sysupgrade_sha256=e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39
+          device=JDCloud RE-SS-01
+          target=qualcommax/ipq60xx/jdcloud_re-ss-01
+          management=192.168.6.1
+
+          The preceding workflow step has already:
+          - independently verified Candidate/Stable exact bytes and rollback;
+          - performed at most one authorized standard sysupgrade -n if v0.1.6 was not already running;
+          - proven the running device is exact v0.1.6 build 38000704263;
+          - run canonical PostFlash verification including the formal reboot/persistence cycle;
+          - proven the v0.1.6 QuickFile + QuickStart/LinkEase file-management acceptance.
+          Read and verify, do not blindly trust:
+          output/real-device/real-device-verification.json
+          output/real-device/v016-file-management-postflash.json
+
+          HIGHEST AUTHORITY:
+          Read production/product-goal-contract.json and production/ARTHUR_PRODUCT_TARGETS.md.
+          PRODUCT_GOAL_VERIFIED may be emitted only if the exact released v0.1.6 on the real Arthur satisfies every required capability.
+
+          HARD BOUNDARIES:
+          - NO firmware Build.
+          - NO source/runtime implementation edits in the repository.
+          - NO new GitHub Release.
+          - NO second sysupgrade/flash.
+          - NO reboot beyond the reboot already completed by the canonical PostFlash verifier.
+          - NO raw storage/partition/bootloader writes.
+          - NO LAN/WAN/Wi-Fi firmware configuration redesign.
+          - NO package/source upgrades.
+          - Never print passwords, subscriptions, private keys, tokens, cookies or Wi-Fi credentials.
+          - A failed product check must not revoke the existing v0.1.6 Release and must not start a rebuild.
+          - If a firmware defect is proven, record requires_new_repair_execution=true and stop after evidence.
+
+          EXACT-RELEASE IDENTITY:
+          Before runtime mutation, use the existing verified strict SSH path and re-prove:
+          Firmware=XinZhaoWrt
+          Version=0.1.6
+          Build ID=38000704263
+          Target=qualcommax/ipq60xx
+          Profile=jdcloud_re-ss-01
+          LAN MAC=dc:d8:7c:45:91:99
+
+          FILE-MANAGEMENT RELEASE OBJECTIVE:
+          Verify the preceding evidence really contains PASS for:
+          QUICKSTART_LINKEASE_FILE_MANAGER
+          LINKEASE_MMCBLK0P27_BROWSE
+          QUICKFILE_BACKEND
+          QUICKFILE_UI
+          NO_FILE_MANAGEMENT_404_502
+          DEVICE_EXACT_ARTIFACT_MATCH
+          REBOOT_PERSISTENCE
+          Do not repeat destructive work.
+
+          OPENCLASH TEST CONFIG:
+          The previously approved test configuration is:
+          config_single_subscription_streaming_gemini_actual_regions_v2.yaml
+
+          Search for that exact filename only in existing local authorized locations, including:
+          - current checkout/workspace
+          - C:\Users\xinzhaowrt-runner\AppData\Local\XinZhaoWrt\ControlPlane\workspace
+          - existing local Arthur test assets
+          - the real Arthur if it already exists there
+          Do not download a new subscription.
+          Do not print its contents or credentials.
+          If it is unavailable, record BLOCKED_VALIDATION_CONFIG_MISSING. Do not invent a replacement.
+
+          PRESERVE OPERATOR STATE:
+          Capture the exact initial post-flash OpenClash and AdGuardHome enabled/running state.
+          Runtime validation may temporarily change only OpenClash, AdGuardHome and their DNS-coexistence state.
+          Backup every touched runtime config first.
+          At the end, restore the original OpenClash enable state and leave AdGuardHome OFF/default-disabled.
+          Re-prove LAN/DNS/management connectivity after restore.
+
+          OPENCLASH FULL USABILITY:
+          Using the approved existing test config, prove with real machine evidence:
+          - OpenClash/Mihomo starts normally and stays running.
+          - controller 9090 works and API is HTTP 200.
+          - Zashboard page and required assets are HTTP 200.
+          - OpenClash DNS listener/topology works.
+          - selected UCI/UI enhanced mode equals final runtime YAML semantics.
+          - providers/rule providers are healthy.
+          - real DNS query works.
+          - real HTTPS proxy traffic works. Ping-only is insufficient.
+          - no unexpected core restart, OOM, LuCI loss, SSH loss or global DNS failure.
+          Only then: OPENCLASH_FULLY_USABLE=PASS.
+
+          ADGUARDHOME FULL USABILITY + COEXISTENCE:
+          Prove the real lifecycle on this exact release:
+          OFF -> validate OpenClash
+          ON -> validate coexistence
+          OFF -> validate OpenClash restored
+          ON -> validate coexistence restored
+          OFF -> final default
+
+          While ADH is ON prove:
+          - dnsmasq owns LAN DNS :53
+          - AdGuardHome owns intended local port 1745
+          - OpenClash owns intended DNS port 7874
+          - dnsmasq upstream routes to AdGuardHome
+          - AdGuardHome upstream routes to OpenClash
+          - real client/local DNS query succeeds
+          - AdGuardHome query log receives a real query
+          - an actual filtering rule is proven and cleaned up
+          - OpenClash controller/providers remain healthy
+          - real proxy traffic still succeeds
+          - no DNS loop, no port conflict, no OOM/management loss
+          - configuration/service transitions are reversible and persistent as required
+          Only then:
+          ADGUARDHOME_FULLY_USABLE=PASS
+          OPENCLASH_ADH_COEXISTENCE=PASS
+          ADH_DISABLE_LEAVES_OPENCLASH_WORKING=PASS
+          ADH_REENABLE_RESTORES_CHAIN=PASS
+          FINAL_ADH_DEFAULT_OFF=PASS
+
+          WIFI:
+          The exact-release acceptance requires real client association, DHCP, LAN and WAN access, not radio/package presence alone.
+          Prefer an existing safe test-client path. If the Windows controller has a Wi-Fi adapter that can be tested without losing the Ethernet management/control path, perform a temporary real association without printing credentials and restore the controller's prior Wi-Fi state afterward.
+          If no safe real-client path exists, do not fake PASS. Record WIFI_REAL_CLIENT_PATH_UNAVAILABLE and leave PRODUCT_GOAL_VERIFIED blocked.
+
+          OTHER REQUIRED CAPABILITIES:
+          Use the exact-release canonical PostFlash report where it is sufficient and bound to this exact device/build:
+          LAN management, WAN/Internet, DHCP, DNS, SSH, LuCI, zh_cn, Argon default, Kucat selectable, 22 required packages, iStore/QuickStart, storage/overlay, logs/system health and reboot persistence.
+          Package/menu/PID presence alone cannot prove a capability where the product contract requires functional behavior.
+
+          FINAL EVIDENCE:
+          Create exactly:
+          output/real-device/v016-product-goal-exact-release.json
+
+          Required fields:
+          schema_version=1
+          status=PASS only if every required marker is genuinely PASS
+          release_tag=v0.1.6
+          candidate_tag=arthur-update-38000704263
+          source_sha=b4448e62ab1e767f9a60221b0600c60c355baf56
+          build_run_id=38000704263
+          artifact_id=11655711894
+          sysupgrade_sha256=e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39
+          device_build_id=38000704263
+          observed_at=<real timestamp>
+          errors=[]
+          requires_new_repair_execution=false
+
+          markers must contain PASS for:
+          DEVICE_EXACT_ARTIFACT_MATCH
+          LAN_MANAGEMENT
+          DHCP
+          WAN_INTERNET
+          DNS
+          SSH
+          LUCI
+          LUCI_CHINESE
+          ARGON_DEFAULT
+          KUCAT_SELECTABLE
+          REQUIRED_PLUGINS_22
+          ISTORE_QUICKSTART
+          QUICKSTART_LINKEASE_FILE_MANAGER
+          LINKEASE_MMCBLK0P27_BROWSE
+          QUICKFILE_BACKEND
+          QUICKFILE_UI
+          NO_FILE_MANAGEMENT_404_502
+          OPENCLASH_FULLY_USABLE
+          ADGUARDHOME_FULLY_USABLE
+          OPENCLASH_ADH_COEXISTENCE
+          OPENCLASH_CONTROLLER
+          ZASHBOARD_RUNTIME
+          OPENCLASH_RUNTIME_CONFIG_PARITY
+          OPENCLASH_DNS_RUNTIME
+          OPENCLASH_ADH_DNS_CHAIN
+          REAL_PROXY_TRAFFIC
+          ADGUARDHOME_FILTERING
+          ADGUARDHOME_QUERY_LOG
+          NO_DNS_LOOP
+          NO_PORT_CONFLICT
+          NO_OOM_OR_MANAGEMENT_PLANE_LOSS
+          ADH_DISABLE_LEAVES_OPENCLASH_WORKING
+          ADH_REENABLE_RESTORES_CHAIN
+          FINAL_ADH_DEFAULT_OFF
+          WIFI_CLIENT_ASSOCIATION
+          WIFI_DHCP
+          WIFI_LAN_WAN
+          REBOOT_PERSISTENCE
+          SYSTEM_HEALTH
+          POST_RELEASE_VALIDATED
+          PRODUCT_GOAL_VERIFIED
+
+          Each PASS must have structured observations/evidence in the JSON. Redact secrets.
+          If any required item cannot be proven, write status=BLOCKED or FAIL, list the exact failed marker and first real cause in errors, set PRODUCT_GOAL_VERIFIED marker to BLOCKED/FAIL, and exit nonzero after restoring runtime state.
+          Do not modify tracked repository files. Only write under output/real-device.
+
+          Final stdout only after checks:
+          POST_RELEASE_VALIDATED=PASS
+          PRODUCT_GOAL_VERIFIED=PASS
+          or the exact BLOCKED/FAIL reason.
+          '@ | Set-Content -LiteralPath $promptPath -Encoding UTF8
+
+          $oldPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          $output = (Get-Content -Raw -LiteralPath $promptPath | & $codexCmd exec --sandbox workspace-write -c 'approval_policy="never"' -C $env:GITHUB_WORKSPACE -o $lastMessage - 2>&1 | Out-String)
+          $exitCode = $LASTEXITCODE
+          $ErrorActionPreference = $oldPreference
+          Write-Host $output
+          if (Test-Path $lastMessage) {
+            Write-Host 'CODEX_FINAL_BEGIN'
+            Get-Content -Raw $lastMessage | Write-Host
+            Write-Host 'CODEX_FINAL_END'
+          }
+          if ($exitCode -ne 0) { throw "EXACT_RELEASE_PRODUCT_GOAL_VALIDATION_FAILED exit=$exitCode" }
+
+      - name: Enforce exact-release product terminal
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'output\real-device\v016-product-goal-exact-release.json'
+          if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'PRODUCT_GOAL_EVIDENCE_MISSING' }
+          $e = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json -Depth 50
+          if ([string]$e.status -ne 'PASS') { throw "PRODUCT_GOAL_EVIDENCE_NOT_PASS status=$($e.status)" }
+          if ([string]$e.release_tag -ne 'v0.1.6') { throw 'PRODUCT_GOAL_RELEASE_IDENTITY_MISMATCH' }
+          if ([string]$e.source_sha -ne 'b4448e62ab1e767f9a60221b0600c60c355baf56') { throw 'PRODUCT_GOAL_SOURCE_IDENTITY_MISMATCH' }
+          if ([string]$e.sysupgrade_sha256 -ne 'e175fc88d32ea9308aab40b84fbcc8e84a6bf3dc32bbe7e3a17894361cc89b39') { throw 'PRODUCT_GOAL_FIRMWARE_IDENTITY_MISMATCH' }
+          if ([string]$e.device_build_id -ne '38000704263') { throw 'PRODUCT_GOAL_DEVICE_BUILD_ID_MISMATCH' }
+          $required = @(
+            'DEVICE_EXACT_ARTIFACT_MATCH','LAN_MANAGEMENT','DHCP','WAN_INTERNET','DNS','SSH','LUCI','LUCI_CHINESE',
+            'ARGON_DEFAULT','KUCAT_SELECTABLE','REQUIRED_PLUGINS_22','ISTORE_QUICKSTART',
+            'QUICKSTART_LINKEASE_FILE_MANAGER','LINKEASE_MMCBLK0P27_BROWSE','QUICKFILE_BACKEND','QUICKFILE_UI','NO_FILE_MANAGEMENT_404_502',
+            'OPENCLASH_FULLY_USABLE','ADGUARDHOME_FULLY_USABLE','OPENCLASH_ADH_COEXISTENCE','OPENCLASH_CONTROLLER',
+            'ZASHBOARD_RUNTIME','OPENCLASH_RUNTIME_CONFIG_PARITY','OPENCLASH_DNS_RUNTIME','OPENCLASH_ADH_DNS_CHAIN',
+            'REAL_PROXY_TRAFFIC','ADGUARDHOME_FILTERING','ADGUARDHOME_QUERY_LOG','NO_DNS_LOOP','NO_PORT_CONFLICT',
+            'NO_OOM_OR_MANAGEMENT_PLANE_LOSS','ADH_DISABLE_LEAVES_OPENCLASH_WORKING','ADH_REENABLE_RESTORES_CHAIN','FINAL_ADH_DEFAULT_OFF',
+            'WIFI_CLIENT_ASSOCIATION','WIFI_DHCP','WIFI_LAN_WAN','REBOOT_PERSISTENCE','SYSTEM_HEALTH',
+            'POST_RELEASE_VALIDATED','PRODUCT_GOAL_VERIFIED'
+          )
+          foreach ($name in $required) {
+            $p = $e.markers.PSObject.Properties[$name]
+            if ($null -eq $p -or [string]$p.Value -ne 'PASS') { throw "REQUIRED_PRODUCT_MARKER_NOT_PASS=$name" }
+          }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'TRACKED_SOURCE_CHANGED_DURING_POST_RELEASE_TEST' }
+          git diff --cached --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'TRACKED_INDEX_CHANGED_DURING_POST_RELEASE_TEST' }
+          Write-Host 'POST_RELEASE_VALIDATED=PASS'
+          Write-Host 'PRODUCT_GOAL_VERIFIED=PASS'
+
+      - name: Upload independent post-release machine evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arthur-v0.1.6-post-release-device-test-\${{ github.run_id }}
+          path: |
+            output/real-device/real-device-verification.json
+            output/real-device/real-device-verification.md
+            output/real-device/v016-file-management-postflash.json
+            output/real-device/v016-product-goal-exact-release.json
+          if-no-files-found: warn
