@@ -21,6 +21,7 @@ function New-Gate([string]$Id,[string]$Status) {
 
 Assert-True (Test-Path -LiteralPath $FinalizerPath -PathType Leaf) 'release-only terminal state helper must exist'
 . $FinalizerPath
+. (Join-Path $Root 'scripts\arthur-resume-state.ps1')
 
 $gates = [pscustomobject][ordered]@{
     BUILD = New-Gate 'BUILD' 'PASS'
@@ -50,13 +51,15 @@ $resume = [pscustomobject][ordered]@{
     gates=$gates; current_gate='PRE_FLASH'; next_action='PRE_FLASH'; pending=@('PRE_FLASH'); post_release_device_test='';
     checkpoint=[pscustomobject][ordered]@{ current='PRE_FLASH'; next_action='PRE_FLASH'; turn_count=1 }
 }
+$resume.gates.BUILD.verified_at = '2026-09-15T13:30:00+08:00'
+$resume.gates.ARTIFACT.verified_at = '2026-09-15T13:31:00+08:00'
 $intent = [pscustomobject][ordered]@{
     schema_version='1.1'; project='Arthur'; intent_type='EXECUTE_FIRMWARE'; authorization_scope='FIRMWARE_RELEASE'; firmware_execution_authorized=$true;
     execution_id='arthur-release-aaaaaaa-20260915';
     firmware_state=[pscustomobject][ordered]@{ current_stage='ARTIFACT'; next_stage='PRE_FLASH'; active_run_id=123; active_source_sha=('a' * 40); active_artifact_id=456; candidate_release_conclusion='success' }
 }
 
-$result = Complete-ArthurReleaseOnlyState -ResumeState $resume -OperatorIntent $intent -RunId 777 -ArtifactId 888 -ReleaseTag 'v0.1.5' -SourceSha ('b' * 40) -Firmware 'XinZhaoWrt-Arthur-v0.1.5-20260915-sysupgrade.bin' -FirmwareSha256 ('c' * 64) -FactorySha256 ('d' * 64) -ReleaseId 999 -ReleaseUrl 'https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.5' -EvidenceId 'release-777' -VerifiedAt '2026-09-15T13:30:00Z'
+$result = Complete-ArthurReleaseOnlyState -ResumeState $resume -OperatorIntent $intent -RunId 777 -ArtifactId 888 -ReleaseTag 'v0.1.5' -SourceSha ('b' * 40) -Firmware 'XinZhaoWrt-Arthur-v0.1.5-20260915-sysupgrade.bin' -FirmwareSha256 ('c' * 64) -FactorySha256 ('d' * 64) -ReleaseId 999 -ReleaseUrl 'https://github.com/mxonline/xinzhaowrt/releases/tag/v0.1.5' -EvidenceId 'release-777' -ReleaseGateEvidenceId 'release-gate-777' -ProductionReleasedEvidenceId 'production-released-777'
 
 Assert-Equal $result.resume_state.status 'PRODUCTION_RELEASED' 'release-only finalizer must close production terminal state'
 Assert-Equal $result.resume_state.current_gate 'PRODUCTION_RELEASED' 'terminal gate must be PRODUCTION_RELEASED'
@@ -75,17 +78,28 @@ foreach ($gateId in @(Get-ArthurReleaseOnlySkippedGates)) {
     $property = $result.resume_state.gates.PSObject.Properties[$gateId]
     if ($property) { Assert-Equal ([string]$property.Value.status) 'SKIPPED' "$gateId must be SKIPPED in RELEASE_ONLY" }
 }
-foreach ($gateId in @('RELEASE_GATE','RELEASE','PRODUCTION_RELEASED')) {
-    $gate = $result.resume_state.gates.PSObject.Properties[$gateId].Value
-    Assert-Equal ([string]$gate.status) 'PASS' "$gateId must PASS from GitHub Release evidence"
-    Assert-Equal ([string]$gate.evidence_refs[0]) 'evidence:release-777' "$gateId must use durable release evidence"
+Assert-Equal $result.resume_state.gates.RELEASE_GATE.status 'PASS' 'RELEASE_GATE must PASS after Candidate-to-Stable verification'
+Assert-Equal $result.resume_state.gates.RELEASE_GATE.evidence_refs[0] 'evidence:release-gate-777' 'RELEASE_GATE must reference its gate-specific evidence'
+Assert-Equal $result.resume_state.gates.RELEASE.status 'PASS' 'RELEASE must PASS from stable Release evidence'
+Assert-Equal $result.resume_state.gates.RELEASE.evidence_refs[0] 'evidence:release-777' 'RELEASE must reference its gate-specific evidence'
+Assert-Equal $result.resume_state.gates.PRODUCTION_RELEASED.status 'PASS' 'PRODUCTION_RELEASED must PASS after durable state sync'
+Assert-Equal $result.resume_state.gates.PRODUCTION_RELEASED.evidence_refs[0] 'evidence:production-released-777' 'PRODUCTION_RELEASED must reference its gate-specific evidence'
+foreach ($gate in @($result.resume_state.gates.PSObject.Properties | ForEach-Object { $_.Value })) {
+    Assert-Equal ([string]$gate.verified_at) '' "$($gate.gate_id) must keep its terminal snapshot timestamp serialization-stable"
 }
+$hashInput = $result.resume_state | ConvertTo-Json -Depth 50 | ConvertFrom-Json
+[void]$hashInput.PSObject.Properties.Remove('semantic_sha256')
+$semantic = Get-ArthurResumeSemanticHash -State $hashInput
+$result.resume_state | Add-Member -NotePropertyName semantic_sha256 -NotePropertyValue $semantic
+$persistedResume = $result.resume_state | ConvertTo-Json -Depth 50 | ConvertFrom-Json
+[void]$persistedResume.PSObject.Properties.Remove('semantic_sha256')
+Assert-Equal (Get-ArthurResumeSemanticHash -State $persistedResume) $semantic 'terminal semantic hash must survive JSON persistence and reload'
 
 $blocked = $false
 $badResume = $resume | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $badResume.gates.BUILD.status = 'FAIL'
 try {
-    Complete-ArthurReleaseOnlyState -ResumeState $badResume -OperatorIntent $intent -RunId 777 -ArtifactId 888 -ReleaseTag 'v0.1.5' -SourceSha ('b' * 40) -Firmware 'firmware.bin' -FirmwareSha256 ('c' * 64) -ReleaseId 999 -ReleaseUrl 'https://example.invalid' -EvidenceId 'release-777' | Out-Null
+    Complete-ArthurReleaseOnlyState -ResumeState $badResume -OperatorIntent $intent -RunId 777 -ArtifactId 888 -ReleaseTag 'v0.1.5' -SourceSha ('b' * 40) -Firmware 'firmware.bin' -FirmwareSha256 ('c' * 64) -ReleaseId 999 -ReleaseUrl 'https://example.invalid' -EvidenceId 'release-777' -ReleaseGateEvidenceId 'release-gate-777' -ProductionReleasedEvidenceId 'production-released-777' | Out-Null
 } catch { $blocked = ($_.Exception.Message -eq 'ARTHUR_RELEASE_ONLY_BUILD_NOT_PASS') }
 Assert-True $blocked 'release-only finalizer must fail closed when BUILD is not PASS'
 

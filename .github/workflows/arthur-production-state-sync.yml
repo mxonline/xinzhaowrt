@@ -385,30 +385,71 @@ jobs:
           $indexPath = Join-Path $evidenceRoot 'index.json'
           $index = Get-Content -Raw $indexPath | ConvertFrom-Json
           if (-not ($index.PSObject.Properties.Name -contains 'evidence')) { throw 'ARTHUR_RELEASE_ONLY_EVIDENCE_INDEX_INVALID' }
-          $existingEvidence = @($index.evidence | Where-Object { [string]$_.evidence_id -eq $evidenceId })
-          if ($existingEvidence.Count -eq 0) {
-            $entry = [pscustomobject][ordered]@{
-              evidence_id = $evidenceId
-              gate_id = 'RELEASE'
-              type = 'GITHUB_RELEASE'
-              producer = 'ARTHUR_PRODUCTION_STATE_SYNC'
-              source_sha = $sourceSha
-              github_run_id = $runId
-              artifact_id = $artifactId
-              candidate_sha256 = $firmwareHash
-              device_build_id = ''
-              ref = "release:$releaseTag"
-              sha256 = $firmwareHash
-              observed_at = $observedAt
-              result = 'PASS'
-            }
-            $index.evidence = @($index.evidence) + @($entry)
-            [IO.File]::WriteAllText($indexPath, ($index | ConvertTo-Json -Depth 30) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+          $releaseGateEvidenceId = "release-gate-$runId"
+          $productionReleasedEvidenceId = "production-released-$runId"
+          $releaseGateEvidence = [pscustomobject][ordered]@{
+            evidence_id = $releaseGateEvidenceId
+            gate_id = 'RELEASE_GATE'
+            type = 'CANDIDATE_TO_STABLE_RELEASE_IDENTITY'
+            producer = 'ARTHUR_PRODUCTION_STATE_SYNC'
+            source_sha = $sourceSha
+            github_run_id = $runId
+            artifact_id = $artifactId
+            candidate_sha256 = $firmwareHash
+            device_build_id = ''
+            ref = "candidate:$candidateTag|stable:$releaseTag"
+            sha256 = $firmwareHash
+            observed_at = $observedAt
+            result = 'PASS'
           }
+          $releaseIndexEvidence = [pscustomobject][ordered]@{
+            evidence_id = $evidenceId
+            gate_id = 'RELEASE'
+            type = 'GITHUB_RELEASE'
+            producer = 'ARTHUR_PRODUCTION_STATE_SYNC'
+            source_sha = $sourceSha
+            github_run_id = $runId
+            artifact_id = $artifactId
+            candidate_sha256 = $firmwareHash
+            device_build_id = ''
+            ref = "release:$releaseTag"
+            sha256 = $firmwareHash
+            observed_at = $observedAt
+            result = 'PASS'
+          }
+          $productionReleasedEvidence = [pscustomobject][ordered]@{
+            evidence_id = $productionReleasedEvidenceId
+            gate_id = 'PRODUCTION_RELEASED'
+            type = 'PRODUCTION_RELEASE_STATE_SYNC'
+            producer = 'ARTHUR_PRODUCTION_STATE_SYNC'
+            source_sha = $sourceSha
+            github_run_id = $runId
+            artifact_id = $artifactId
+            candidate_sha256 = $firmwareHash
+            device_build_id = ''
+            ref = "state-sync-run:$runId|release:$releaseTag"
+            sha256 = $firmwareHash
+            observed_at = $observedAt
+            result = 'PASS'
+          }
+          $evidenceChanged = $false
+          foreach ($entry in @($releaseGateEvidence,$releaseIndexEvidence,$productionReleasedEvidence)) {
+            $existingEvidence = @($index.evidence | Where-Object { [string]$_.evidence_id -eq [string]$entry.evidence_id })
+            if ($existingEvidence.Count -gt 0) {
+              $existing = $existingEvidence[0]
+              foreach ($field in @('gate_id','source_sha','github_run_id','artifact_id','candidate_sha256','sha256','result')) {
+                if ([string]$existing.$field -ne [string]$entry.$field) { throw "ARTHUR_RELEASE_ONLY_EVIDENCE_IDENTITY_CONFLICT=$($entry.evidence_id)/$field" }
+              }
+            } else {
+              $index.evidence = @($index.evidence) + @($entry)
+              $evidenceChanged = $true
+            }
+          }
+          if ($evidenceChanged) { [IO.File]::WriteAllText($indexPath, ($index | ConvertTo-Json -Depth 30) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false)) }
 
           . ./scripts/arthur-release-only-state.ps1
           . ./scripts/arthur-resume-state.ps1
-          $result = Complete-ArthurReleaseOnlyState -ResumeState $resume -OperatorIntent $intent -RunId $runId -ArtifactId $artifactId -ReleaseTag $releaseTag -SourceSha $sourceSha -Firmware $firmware.Name -FirmwareSha256 $firmwareHash -FactorySha256 $factoryHash -ReleaseId ([long]$release.id) -ReleaseUrl ([string]$release.html_url) -EvidenceId $evidenceId -VerifiedAt $observedAt
+          $result = Complete-ArthurReleaseOnlyState -ResumeState $resume -OperatorIntent $intent -RunId $runId -ArtifactId $artifactId -ReleaseTag $releaseTag -SourceSha $sourceSha -Firmware $firmware.Name -FirmwareSha256 $firmwareHash -FactorySha256 $factoryHash -ReleaseId ([long]$release.id) -ReleaseUrl ([string]$release.html_url) -EvidenceId $evidenceId -ReleaseGateEvidenceId $releaseGateEvidenceId -ProductionReleasedEvidenceId $productionReleasedEvidenceId
           $finalResume = $result.resume_state
           $finalIntent = $result.operator_intent
           if ($finalResume.PSObject.Properties.Name -contains 'semantic_sha256') { [void]$finalResume.PSObject.Properties.Remove('semantic_sha256') }
@@ -416,6 +457,33 @@ jobs:
           $finalResume | Add-Member -NotePropertyName semantic_sha256 -NotePropertyValue $semanticHash
           [IO.File]::WriteAllText((Resolve-Path ./production/resume-state.json), ($finalResume | ConvertTo-Json -Depth 50) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
           [IO.File]::WriteAllText((Resolve-Path ./production/operator-intent.json), ($finalIntent | ConvertTo-Json -Depth 50) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+
+          $statusPath = (Resolve-Path ./production/status.json).Path
+          $productionStatus = Get-Content -Raw $statusPath | ConvertFrom-Json
+          $factoryName = if ($factory.Count -eq 1) { $factory[0].Name } else { '' }
+          $artifactArchiveHash = ([string]$env:CANDIDATE_ARTIFACT_DIGEST).Trim().ToLowerInvariant()
+          if ($artifactArchiveHash.StartsWith('sha256:')) { $artifactArchiveHash = $artifactArchiveHash.Substring(7) }
+          if ($artifactArchiveHash -notmatch '^[0-9a-f]{64}$') { throw 'ARTHUR_RELEASE_ONLY_STATUS_ARTIFACT_SHA_INVALID' }
+          $buildRunUrl = "$($env:GITHUB_SERVER_URL)/$($env:GITHUB_REPOSITORY)/actions/runs/$runId"
+          $productionStatus = Complete-ArthurReleaseOnlyStatus `
+            -Status $productionStatus `
+            -RunId $runId `
+            -ArtifactId $artifactId `
+            -CandidateTag $candidateTag `
+            -CandidateReleaseId ([long]$candidate.id) `
+            -CandidateReleaseUrl ([string]$candidate.html_url) `
+            -ActionsArtifactSha256 $artifactArchiveHash `
+            -ReleaseTag $releaseTag `
+            -SourceSha $sourceSha `
+            -Firmware $firmware.Name `
+            -FirmwareSha256 $firmwareHash `
+            -FactoryFirmware $factoryName `
+            -FactorySha256 $factoryHash `
+            -ReleaseId ([long]$release.id) `
+            -ReleaseUrl ([string]$release.html_url) `
+            -BuildRunUrl $buildRunUrl `
+            -VerifiedAt $observedAt
+          [IO.File]::WriteAllText($statusPath, ($productionStatus | ConvertTo-Json -Depth 50) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 
           . ./scripts/arthur-firmware-event-ledger.ps1
           [void](Add-ArthurFirmwareEvent -Path ./production/firmware-events.jsonl -Event 'PRODUCTION_RELEASED' -Stage 'PRODUCTION_RELEASED' -Source 'ARTHUR_RELEASE_ONLY_STATE_SYNC' -Timestamp $observedAt -Data ([ordered]@{
@@ -429,6 +497,7 @@ jobs:
           }))
 
           Write-Host "RELEASE_ONLY_FINALIZED=PASS release=$releaseTag run=$runId firmware=$($firmware.Name) sha256=$firmwareHash"
+          Write-Host 'RELEASE_ONLY_STATUS_SYNC=PASS'
           Write-Host 'POST_RELEASE_DEVICE_TEST=PENDING_INDEPENDENT'
 
       - name: Preserve explicit FLASH_AND_VERIFY compatibility state
@@ -448,7 +517,7 @@ jobs:
           fi
           git config user.name 'XinZhaoWrt State Bot'
           git config user.email 'xinzhaowrt@users.noreply.github.com'
-          git add production/resume-state.json production/operator-intent.json production/firmware-events.jsonl production/evidence/
+          git add production/resume-state.json production/operator-intent.json production/status.json production/firmware-events.jsonl production/evidence/
           if git diff --cached --quiet; then
             echo 'PASS: durable production state already reconciled.'
             exit 0

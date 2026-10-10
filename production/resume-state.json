@@ -78,7 +78,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T22:43:13.204074+00:00"
+      "verified_at": ""
     },
     "BASELINE_INHERITANCE": {
       "gate_id": "BASELINE_INHERITANCE",
@@ -93,7 +93,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T22:43:13.204074+00:00"
+      "verified_at": ""
     },
     "EXPECTED_DIFF": {
       "gate_id": "EXPECTED_DIFF",
@@ -108,7 +108,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-09T22:43:13.204074+00:00"
+      "verified_at": ""
     },
     "BUILD": {
       "gate_id": "BUILD",
@@ -124,7 +124,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T01:31:49Z"
+      "verified_at": ""
     },
     "ARTIFACT": {
       "gate_id": "ARTIFACT",
@@ -137,7 +137,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T01:31:49Z"
+      "verified_at": ""
     },
     "RELEASE_GATE": {
       "gate_id": "RELEASE_GATE",
@@ -152,11 +152,11 @@
         "release_tag": "v0.1.6"
       },
       "evidence_refs": [
-        "evidence:release-38000704263"
+        "evidence:release-gate-38000704263"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
+      "verified_at": ""
     },
     "RELEASE": {
       "gate_id": "RELEASE",
@@ -175,7 +175,7 @@
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
+      "verified_at": ""
     },
     "PRODUCTION_RELEASED": {
       "gate_id": "PRODUCTION_RELEASED",
@@ -190,11 +190,11 @@
         "release_tag": "v0.1.6"
       },
       "evidence_refs": [
-        "evidence:release-38000704263"
+        "evidence:production-released-38000704263"
       ],
       "inherited": false,
       "inherited_from": "",
-      "verified_at": "2026-10-10T03:11:51.8866566+00:00"
+      "verified_at": ""
     }
   },
   "current_gate": "PRODUCTION_RELEASED",
@@ -236,6 +236,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-09T22:43:13.204074+00:00",
-  "semantic_sha256": "47869be4ba6b33b775890079264708fae6c095e77bf29303c59d40df9cccc516"
+  "evidence_timestamp": "2026-10-10T06:43:13.204074+08:00",
+  "semantic_sha256": "cde4e645e529befd5dfb4055a349a8a70bd183a2b50e78c518d6c6450a6dfc32"
 }
