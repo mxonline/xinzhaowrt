@@ -6,6 +6,16 @@ on:
       - main
     paths:
       - production/post-release-device-test-request.json
+  workflow_dispatch:
+    inputs:
+      resume_postflash_only:
+        description: Resume validation on the exact v0.1.6 already running; never flash
+        required: true
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
 
 permissions:
   contents: read
@@ -17,6 +27,7 @@ concurrency:
 
 jobs:
   exact-release-device-test:
+    if: github.event_name == 'push' || inputs.resume_postflash_only == 'true'
     runs-on:
       - self-hosted
       - windows
@@ -26,7 +37,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
-      ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
       PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
@@ -81,10 +91,22 @@ jobs:
           Write-Host "PWSH_BOOTSTRAP=PASS version=$runtimeVersion archive_sha256=$actualSha256"
 
       - name: Execute exact-release flash and base/file-management acceptance
+        if: github.event_name == 'push'
+        env:
+          ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-post-release-v016-device-test.ps1 -RequestPath .\production\post-release-device-test-request.json
+
+      - name: Execute strictly no-flash PostFlash resume
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true'
+        env:
+          ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-postflash-resume.ps1 -RequestPath .\production\post-release-device-test-request.json
 
       - name: Execute exact-release highest product-goal runtime validation
         shell: powershell
@@ -114,12 +136,9 @@ jobs:
           target=qualcommax/ipq60xx/jdcloud_re-ss-01
           management=192.168.6.1
 
-          The preceding workflow step has already:
-          - independently verified Candidate/Stable exact bytes and rollback;
-          - performed at most one authorized standard sysupgrade -n if v0.1.6 was not already running;
-          - proven the running device is exact v0.1.6 build 38000704263;
-          - run canonical PostFlash verification including the formal reboot/persistence cycle;
-          - proven the v0.1.6 QuickFile + QuickStart/LinkEase file-management acceptance.
+          The preceding device-validation step has completed for this workflow mode. Read the evidence files below and verify their exact release identity and PASS markers.
+          For a workflow_dispatch run with resume_postflash_only=true, the preceding step performed read-only exact Ethernet/HTTP identity checks, authenticated SSH recovery, canonical PostFlash verification and read-only file-management acceptance. This path does not download or copy firmware, run sysupgrade checks, flash, build or release.
+          For the push-triggered path, the preceding step performed the existing authorized release and PostFlash flow, which can consume at most its single authorized flash.
           Read and verify, do not blindly trust:
           output/real-device/real-device-verification.json
           output/real-device/v016-file-management-postflash.json

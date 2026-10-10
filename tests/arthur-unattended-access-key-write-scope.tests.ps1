@@ -33,6 +33,16 @@ if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $probe -Policy $policy
     throw 'TEST_FAIL: matching board, build, target, profile, and br-lan MAC must pass.'
 }
 
+$exactRelease = [pscustomobject]@{ ExitCode = 0; Output = ($validOutput -replace '"Version":"0.1.5"','"Version":"0.1.6"' -replace '"Build ID":"36764137044"','"Build ID":"38000704263"') }
+if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $exactRelease -Policy $policy -ExpectedVersion '0.1.6' -ExpectedBuildId '38000704263')) {
+    throw 'TEST_FAIL: password-authenticated identity must match the exact expected version and build ID.'
+}
+
+$wrongRelease = [pscustomobject]@{ ExitCode = 0; Output = ($exactRelease.Output -replace '"Build ID":"38000704263"','"Build ID":"36764137044"') }
+if (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $wrongRelease -Policy $policy -ExpectedVersion '0.1.6' -ExpectedBuildId '38000704263') {
+    throw 'TEST_FAIL: an authenticated device with a different build ID must fail before key or trust writes.'
+}
+
 $wrongMac = [pscustomobject]@{ ExitCode = 0; Output = ($validOutput -replace 'dc:d8:7c:45:91:99','dc:d8:7c:46:91:24') }
 if (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $wrongMac -Policy $policy) {
     throw 'TEST_FAIL: a mismatched br-lan MAC must fail before any device write.'
@@ -185,6 +195,14 @@ try {
     }
     if ($script:EnsureKeyCallCount -ne 0 -or $script:RecoveryProbeCalls.Command -match 'authorized_keys') {
         throw 'TEST_FAIL: the helper must prove br-lan identity before calling the device key writer.'
+    }
+
+    $script:RecoveryProbeCalls = @()
+    $exactBuildMismatch = ''
+    try { Ensure-ArthurUnattendedAccess -DeviceIp '192.168.6.1' -ExpectedVersion '0.1.6' -ExpectedBuildId '38000704263' | Out-Null }
+    catch { $exactBuildMismatch = $_.Exception.Message }
+    if ($exactBuildMismatch -notmatch 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH' -or $script:EnsureKeyCallCount -ne 0) {
+        throw 'TEST_FAIL: an authenticated but non-exact release must abort before key repair or host trust update.'
     }
 
     $script:RecoveryProbeCalls = @()

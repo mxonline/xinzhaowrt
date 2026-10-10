@@ -209,11 +209,47 @@ function Test-ArthurAuthenticatedEvidence {
 }
 
 function Test-ArthurReadOnlyAuthenticatedEvidence {
-    param([Parameter(Mandatory=$true)]$Probe,$Policy)
+    param(
+        [Parameter(Mandatory=$true)]$Probe,
+        $Policy,
+        [string]$ExpectedVersion = '',
+        [string]$ExpectedBuildId = ''
+    )
     if (-not (Test-ArthurAuthenticatedEvidence -Probe $Probe -Policy $Policy)) { return $false }
     $match = [regex]::Match([string]$Probe.Output,'(?m)^---REMOTE_BR_LAN_MAC---\r?\n(?<mac>[0-9a-fA-F:.-]+)\s*(?:\r?\n|$)')
     if (-not $match.Success) { return $false }
-    return (Normalize-ArthurMac $match.Groups['mac'].Value) -eq (Normalize-ArthurMac ([string]$Policy.device.verified_management_mac))
+    if ((Normalize-ArthurMac $match.Groups['mac'].Value) -ne (Normalize-ArthurMac ([string]$Policy.device.verified_management_mac))) { return $false }
+    $versionRequested = -not [string]::IsNullOrWhiteSpace($ExpectedVersion)
+    $buildRequested = -not [string]::IsNullOrWhiteSpace($ExpectedBuildId)
+    if ($versionRequested -ne $buildRequested) { return $false }
+    if (-not $versionRequested) { return $true }
+
+    $marker = [regex]::Match([string]$Probe.Output,'(?m)^---XINZHAO_BUILD---\r?\n')
+    if (-not $marker.Success) { return $false }
+    $buildStart = $marker.Index + $marker.Length
+    $buildText = ([string]$Probe.Output).Substring($buildStart)
+    $nextMarker = [regex]::Match($buildText,'(?m)^---')
+    if ($nextMarker.Success) { $buildText = $buildText.Substring(0,$nextMarker.Index) }
+    try { $build = $buildText.Trim() | ConvertFrom-Json } catch { return $false }
+    $fields = Get-ArthurBuildIdentityFields -Build $build
+    return ([string]$fields.Firmware -eq [string]$Policy.device.build_marker) -and
+           ([string]$fields.Version -eq $ExpectedVersion) -and
+           ([string]$fields.BuildId -eq $ExpectedBuildId) -and
+           ([string]$fields.Target -eq 'qualcommax/ipq60xx') -and
+           ([string]$fields.Profile -eq 'jdcloud_re-ss-01')
+}
+
+function Test-ArthurExpectedAuthenticatedEvidence {
+    param(
+        [Parameter(Mandatory=$true)]$Probe,
+        $Policy,
+        [string]$ExpectedVersion = '',
+        [string]$ExpectedBuildId = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($ExpectedVersion) -and [string]::IsNullOrWhiteSpace($ExpectedBuildId)) {
+        return (Test-ArthurAuthenticatedEvidence -Probe $Probe -Policy $Policy)
+    }
+    return (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $Probe -Policy $Policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)
 }
 
 function Get-ArthurIdentityCommand {
@@ -460,8 +496,17 @@ function Restore-ArthurKnownHosts {
 }
 
 function Ensure-ArthurUnattendedAccess {
-    param([string]$DeviceIp = '192.168.6.1')
+    param(
+        [string]$DeviceIp = '192.168.6.1',
+        [string]$ExpectedVersion = '',
+        [string]$ExpectedBuildId = ''
+    )
     $policy = Get-ArthurAccessPolicy
+    $exactVersionRequested = -not [string]::IsNullOrWhiteSpace($ExpectedVersion)
+    $exactBuildRequested = -not [string]::IsNullOrWhiteSpace($ExpectedBuildId)
+    if ($exactVersionRequested -ne $exactBuildRequested) {
+        throw 'DEVICE_IDENTITY_EXPECTATION_INVALID: expected version and build ID must be supplied together.'
+    }
     if ($DeviceIp -ne [string]$policy.device.management_ip) {
         throw "DEVICE_IDENTITY_MISMATCH expected=$($policy.device.management_ip) actual=$DeviceIp"
     }
@@ -472,10 +517,10 @@ function Ensure-ArthurUnattendedAccess {
     if (-not (Test-Path -LiteralPath $knownHosts -PathType Leaf)) {
         [System.IO.File]::WriteAllText($knownHosts,'',[System.Text.Encoding]::ASCII)
     }
-    $identityCommand = Get-ArthurIdentityCommand
+    $identityCommand = if ($exactVersionRequested) { Get-ArthurReadOnlyIdentityCommand } else { Get-ArthurIdentityCommand }
 
     $strict = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $identityCommand
-    if (Test-ArthurAuthenticatedEvidence -Probe $strict -Policy $policy) {
+    if (Test-ArthurExpectedAuthenticatedEvidence -Probe $strict -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId) {
         Write-Host 'ARTHUR_UNATTENDED_ACCESS=PASS mode=strict-existing-trust'
         return [pscustomobject]@{ KnownHosts=$knownHosts; Mode='strict-existing-trust'; HostKeyRebound=$false }
     }
@@ -493,24 +538,24 @@ function Ensure-ArthurUnattendedAccess {
     try {
         $candidate = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode 'accept-new' -Command $identityCommand
         $authMode = 'runner-key'
-        if (-not (Test-ArthurAuthenticatedEvidence -Probe $candidate -Policy $policy)) {
+        if (-not (Test-ArthurExpectedAuthenticatedEvidence -Probe $candidate -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)) {
             $candidateClass = Get-ArthurSshFailureClass -ExitCode $candidate.ExitCode -Output $candidate.Output
             if ($candidateClass -notin @('AUTH_RECOVERY_REQUIRED','ACCESS_RECOVERY_REQUIRED')) {
                 throw "AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: candidate SSH evidence failed class=$candidateClass"
             }
             $passwordProbe = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode yes -Command $identityCommand -PasswordAuth
-            if (-not (Test-ArthurAuthenticatedEvidence -Probe $passwordProbe -Policy $policy)) {
+            if (-not (Test-ArthurExpectedAuthenticatedEvidence -Probe $passwordProbe -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)) {
                 if ($passwordProbe.ExitCode -eq 61) { throw 'UNRECOVERABLE_SSH_AUTH: neither runner key nor secured password recovery is available.' }
                 throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: password-authenticated endpoint did not prove the authorized Arthur identity.'
             }
         $readOnlyProbe = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode yes -Command (Get-ArthurReadOnlyIdentityCommand) -PasswordAuth
-        if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $readOnlyProbe -Policy $policy)) {
+        if (-not (Test-ArthurReadOnlyAuthenticatedEvidence -Probe $readOnlyProbe -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)) {
             throw 'AUTHENTICATED_DEVICE_IDENTITY_MISMATCH: password-authenticated board, build, target, profile, and br-lan MAC evidence did not match the authorized Arthur identity.'
         }
         Write-Host 'PASSWORD_AUTH_IDENTITY=PASS board=target=profile=br-lan'
             $runnerRecord = Ensure-ArthurRunnerKey -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts
             $candidate = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $tempKnownHosts -StrictMode yes -Command $identityCommand
-            if (-not (Test-ArthurAuthenticatedEvidence -Probe $candidate -Policy $policy)) {
+            if (-not (Test-ArthurExpectedAuthenticatedEvidence -Probe $candidate -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)) {
                 throw 'UNRECOVERABLE_SSH_AUTH: controller key installation did not produce strict key authentication.'
             }
             $authMode = 'password-recovered-runner-key'
@@ -518,7 +563,7 @@ function Ensure-ArthurUnattendedAccess {
 
         $knownHostsRecord = Set-ArthurVerifiedKnownHost -DeviceIp $DeviceIp -KnownHosts $knownHosts -CandidateKnownHosts $tempKnownHosts
         $final = Invoke-ArthurSshProbe -DeviceIp $DeviceIp -KnownHostsFile $knownHosts -StrictMode yes -Command $identityCommand
-        if (-not (Test-ArthurAuthenticatedEvidence -Probe $final -Policy $policy)) {
+        if (-not (Test-ArthurExpectedAuthenticatedEvidence -Probe $final -Policy $policy -ExpectedVersion $ExpectedVersion -ExpectedBuildId $ExpectedBuildId)) {
             throw 'SSH_HOST_IDENTITY_MISMATCH: strict verification failed after verified known_hosts replacement.'
         }
 
