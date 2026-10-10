@@ -21,6 +21,9 @@ $setupStep = $workflow.Substring($setupIndex, $stepEnd - $setupIndex)
 $expectedUrl = 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip'
 $expectedSha256 = '02FE458BE20493FBDF43F61EA20610B811EE6C738AB1676C61B9CFCD1A33C860'
 foreach ($required in @(
+    'Get-Command pwsh.exe',
+    '[version]''7.4.0''',
+    'PWSH_EXISTING_RUNTIME=PASS',
     $expectedUrl,
     $expectedSha256,
     'Get-FileHash',
@@ -43,6 +46,21 @@ $downloadLoopIndex = $setupStep.IndexOf('for ($attempt = 1; $attempt -le 3; $att
 $downloadCallIndex = $setupStep.IndexOf('Invoke-WebRequest', [StringComparison]::Ordinal)
 if ($downloadLoopIndex -lt 0 -or $downloadCallIndex -lt $downloadLoopIndex -or $setupStep -notmatch '(?i)unexpected EOF\|0 bytes from the transport stream\|TLS handshake timeout\|connection reset' -or $setupStep -notmatch 'Start-Sleep -Seconds') {
     throw 'TEST_FAIL: official PowerShell archive download must retry only bounded transient transport failures.'
+}
+$patternAssignment = '$transientTransportFailure = $downloadError -match '
+$patternAssignmentIndex = $setupStep.IndexOf($patternAssignment, [StringComparison]::Ordinal)
+if ($patternAssignmentIndex -lt 0) { throw 'TEST_FAIL: transient download classification must be explicit.' }
+$patternLiteralStart = $setupStep.IndexOf("'", $patternAssignmentIndex + $patternAssignment.Length, [StringComparison]::Ordinal)
+$patternLiteralEnd = if ($patternLiteralStart -ge 0) { $setupStep.IndexOf("'", $patternLiteralStart + 1, [StringComparison]::Ordinal) } else { -1 }
+if ($patternLiteralStart -lt 0 -or $patternLiteralEnd -lt 0) { throw 'TEST_FAIL: transient download classifier regex must be quoted.' }
+$transientPattern = $setupStep.Substring($patternLiteralStart + 1, $patternLiteralEnd - $patternLiteralStart - 1)
+$observedTlsFailure = '基础连接已经关闭: 发送时发生错误。由于远程方已关闭传输流，身份验证失败。'
+if ($observedTlsFailure -notmatch $transientPattern) {
+    throw 'TEST_FAIL: the observed localized TLS/transport failure must be classified as transient for bounded retry.'
+}
+$existingRuntimeIndex = $setupStep.IndexOf('PWSH_EXISTING_RUNTIME=PASS',[StringComparison]::Ordinal)
+if ($existingRuntimeIndex -lt 0 -or $existingRuntimeIndex -ge $downloadCallIndex) {
+    throw 'TEST_FAIL: a compatible runner-installed PowerShell 7 runtime must be used before attempting the external archive download.'
 }
 
 $lines = $setupStep -split "`r?`n"

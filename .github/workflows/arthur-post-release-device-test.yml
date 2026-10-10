@@ -97,43 +97,70 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
           $version = '7.6.6'
           $expectedSha256 = '02FE458BE20493FBDF43F61EA20610B811EE6C738AB1676C61B9CFCD1A33C860'
-          $archive = Join-Path $env:RUNNER_TEMP "PowerShell-$version-win-x64.zip"
-          $installDir = Join-Path $env:RUNNER_TEMP "arthur-powershell-$version-$env:GITHUB_RUN_ID"
-          $downloadUri = 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip'
-
-          $downloaded = $false
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
+          $minimumRuntimeVersion = [version]'7.4.0'
+          $existingPwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+          $existingPwshPath = if ($existingPwsh) { $existingPwsh.Source } else { $null }
+          $existingRuntimeText = $null
+          $existingRuntimeExitCode = -1
+          if ($existingPwshPath) {
             try {
-              Invoke-WebRequest -UseBasicParsing -TimeoutSec 240 -Uri $downloadUri -OutFile $archive
-              $downloaded = $true
-              break
+              $existingRuntimeText = (& $existingPwshPath -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
+              $existingRuntimeExitCode = $LASTEXITCODE
             }
             catch {
-              $downloadError = $_.Exception.ToString()
-              $transientTransportFailure = $downloadError -match '(?i)(unexpected EOF|0 bytes from the transport stream|TLS handshake timeout|connection reset|connection closed|timed out)'
-              if (Test-Path -LiteralPath $archive) { Remove-Item -Force -LiteralPath $archive }
-              if (-not $transientTransportFailure -or $attempt -eq 3) {
-                throw "POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempt=$attempt transient=$transientTransportFailure error=$downloadError"
-              }
-              $delaySeconds = 5 * $attempt
-              Write-Host "POWERSHELL_ARCHIVE_DOWNLOAD_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
-              Start-Sleep -Seconds $delaySeconds
+              $existingRuntimeExitCode = -1
             }
           }
-          if (-not $downloaded) { throw 'POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempts=3' }
-          $actualSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToUpperInvariant()
-          if ($actualSha256 -ne $expectedSha256) { throw "POWERSHELL_ARCHIVE_SHA256_MISMATCH expected=$expectedSha256 actual=$actualSha256" }
+          $existingRuntimeVersion = $null
+          if ($existingRuntimeExitCode -eq 0) {
+            try { $existingRuntimeVersion = [version]$existingRuntimeText }
+            catch { $existingRuntimeVersion = $null }
+          }
 
-          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-          Expand-Archive -LiteralPath $archive -DestinationPath $installDir
-          $pwsh = Join-Path $installDir 'pwsh.exe'
-          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) { throw 'POWERSHELL_BOOTSTRAP_PWSH_MISSING' }
+          if ($existingPwshPath -and $null -ne $existingRuntimeVersion -and $existingRuntimeVersion -ge $minimumRuntimeVersion) {
+            $runtimeVersion = $existingRuntimeVersion.ToString()
+            [System.IO.File]::AppendAllText($env:GITHUB_PATH, (Split-Path -Parent $existingPwshPath) + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "PWSH_EXISTING_RUNTIME=PASS version=$runtimeVersion"
+          }
+          else {
+            $archive = Join-Path $env:RUNNER_TEMP "PowerShell-$version-win-x64.zip"
+            $installDir = Join-Path $env:RUNNER_TEMP "arthur-powershell-$version-$env:GITHUB_RUN_ID"
+            $downloadUri = 'https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.zip'
 
-          $runtimeVersion = (& $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
-          $runtimeExitCode = $LASTEXITCODE
-          if ($runtimeExitCode -ne 0 -or $runtimeVersion -ne $version) { throw "POWERSHELL_BOOTSTRAP_RUNTIME_MISMATCH expected=$version actual=$runtimeVersion exit=$runtimeExitCode" }
-          [System.IO.File]::AppendAllText($env:GITHUB_PATH, $installDir + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
-          Write-Host "PWSH_BOOTSTRAP=PASS version=$runtimeVersion archive_sha256=$actualSha256"
+            $downloaded = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Invoke-WebRequest -UseBasicParsing -TimeoutSec 240 -Uri $downloadUri -OutFile $archive
+                $downloaded = $true
+                break
+              }
+              catch {
+                $downloadError = $_.Exception.ToString()
+                $transientTransportFailure = $downloadError -match '(?i)(unexpected EOF|0 bytes from the transport stream|TLS handshake timeout|connection reset|connection closed|timed out|基础连接已经关闭|远程方已关闭传输流|身份验证失败|发送时发生错误)'
+                if (Test-Path -LiteralPath $archive) { Remove-Item -Force -LiteralPath $archive }
+                if (-not $transientTransportFailure -or $attempt -eq 3) {
+                  throw "POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempt=$attempt transient=$transientTransportFailure error=$downloadError"
+                }
+                $delaySeconds = 5 * $attempt
+                Write-Host "POWERSHELL_ARCHIVE_DOWNLOAD_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
+                Start-Sleep -Seconds $delaySeconds
+              }
+            }
+            if (-not $downloaded) { throw 'POWERSHELL_ARCHIVE_DOWNLOAD_FAILED attempts=3' }
+            $actualSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToUpperInvariant()
+            if ($actualSha256 -ne $expectedSha256) { throw "POWERSHELL_ARCHIVE_SHA256_MISMATCH expected=$expectedSha256 actual=$actualSha256" }
+
+            New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $installDir
+            $pwsh = Join-Path $installDir 'pwsh.exe'
+            if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) { throw 'POWERSHELL_BOOTSTRAP_PWSH_MISSING' }
+
+            $runtimeVersion = (& $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
+            $runtimeExitCode = $LASTEXITCODE
+            if ($runtimeExitCode -ne 0 -or $runtimeVersion -ne $version) { throw "POWERSHELL_BOOTSTRAP_RUNTIME_MISMATCH expected=$version actual=$runtimeVersion exit=$runtimeExitCode" }
+            [System.IO.File]::AppendAllText($env:GITHUB_PATH, $installDir + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+            Write-Host "PWSH_BOOTSTRAP=PASS version=$runtimeVersion archive_sha256=$actualSha256"
+          }
 
       - name: Execute exact-release flash and base/file-management acceptance
         if: github.event_name == 'push'
