@@ -46,6 +46,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $sourceRoot = Join-Path $env:RUNNER_TEMP ("arthur-post-release-source-{0}" -f $env:GITHUB_RUN_ID)
           $remote = "https://github.com/$($env:GITHUB_REPOSITORY).git"
+          $env:GIT_TERMINAL_PROMPT = '0'
+          $env:GCM_INTERACTIVE = 'Never'
           function Invoke-Git([string[]]$Arguments,[switch]$AllowFailure) {
             $oldPreference = $ErrorActionPreference
             try {
@@ -73,9 +75,10 @@ jobs:
             Invoke-Git @('-C',$sourceRoot,'remote','add','origin',$remote) | Out-Null
             $fetched = $false
             for ($attempt = 1; $attempt -le 3; $attempt++) {
-              $fetch = Invoke-Git @('-c','http.sslBackend=openssl','-C',$sourceRoot,'fetch','--no-tags','--depth=1','origin',$env:GITHUB_SHA) -AllowFailure
+              Write-Host "SOURCE_FETCH_ATTEMPT attempt=$attempt/3"
+              $fetch = Invoke-Git @('-c','http.sslBackend=openssl','-c','http.connectTimeout=30','-c','http.lowSpeedLimit=1024','-c','http.lowSpeedTime=30','-c','credential.interactive=never','-C',$sourceRoot,'fetch','--no-tags','--depth=1','origin',$env:GITHUB_SHA) -AllowFailure
               if ($fetch.ExitCode -eq 0) { $fetched = $true; break }
-              $transient = $fetch.Output -match '(?i)(unexpected EOF|TLS handshake timeout|connection reset|connection closed|timed out|curl 56|SSL connection.*closed)'
+              $transient = $fetch.Output -match '(?i)(unexpected EOF|TLS handshake timeout|connection reset|connection closed|timed out|curl 56|SSL connection.*closed|基础连接已经关闭|远程方已关闭传输流|身份验证失败|发送时发生错误)'
               if (-not $transient -or $attempt -eq 3) { throw "SOURCE_FETCH_FAILED attempt=$attempt transient=$transient error=$($fetch.Output)" }
               $delaySeconds = 5 * $attempt
               Write-Host "SOURCE_FETCH_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
