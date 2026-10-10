@@ -29,5 +29,10 @@
   "rollback_firmware": "XinZhaoWrt-Arthur-v0.1.5-20260927-sysupgrade.bin",
   "rollback_sha256": "97c7860df005e3d222d64f91872933c65ce5c77f4063ec641764f1013cf504e4",
   "required_terminal": "PRODUCT_GOAL_VERIFIED",
-  "on_failure": "PRESERVE_RELEASE_KEEP_PREVIOUS_KNOWN_GOOD_OPEN_SEPARATE_REPAIR_EXECUTION"
+  "on_failure": "PRESERVE_RELEASE_KEEP_PREVIOUS_KNOWN_GOOD_OPEN_SEPARATE_REPAIR_EXECUTION",
+  "retry_sequence": 1,
+  "retry_reason": "Previous workflow attempt failed in GitHub Actions setup while downloading actions/upload-artifact; no repository checkout step, device access, upload, sysupgrade, reboot, or validation step ran.",
+  "previous_run_id": 38024143357,
+  "previous_run_device_write_started": false,
+  "reauthorized_at": "2026-10-10T12:40:00+08:00"
 }
