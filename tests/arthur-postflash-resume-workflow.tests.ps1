@@ -47,6 +47,26 @@ foreach ($required in @(
         throw "TEST_FAIL: guarded PostFlash dispatch is missing required workflow behavior: $required"
     }
 }
+
+$resumeAstTokens = $null
+$resumeAstErrors = $null
+$resumeAst = [System.Management.Automation.Language.Parser]::ParseFile($resumeScriptPath,[ref]$resumeAstTokens,[ref]$resumeAstErrors)
+$loginFormFunction = $resumeAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-LuciLoginForm' },$true)
+if (-not $loginFormFunction) { throw 'TEST_FAIL: the resume verifier must expose its LuCI login-form classifier.' }
+. ([scriptblock]::Create($loginFormFunction.Extent.Text))
+
+$authenticatedQuickFileBody = @'
+<html><script>const genericLoginClass = "login-page";</script><main>Quick file manager</main></html>
+'@
+$actualLuciLoginBody = @'
+<html><form class="login-page"><input type="text" name="luci_username"><input type="password" name="luci_password"></form></html>
+'@
+if (Test-LuciLoginForm -Body $authenticatedQuickFileBody) {
+    throw 'TEST_FAIL: a normal authenticated QuickFile response containing the generic login-page literal was classified as a login page.'
+}
+if (-not (Test-LuciLoginForm -Body $actualLuciLoginBody)) {
+    throw 'TEST_FAIL: the LuCI username/password login form was not classified as a login page.'
+}
 if ($workflow -match '(?m)^\s*uses:\s*actions/') {
     throw 'TEST_FAIL: the postflash resume workflow must not depend on downloading an external GitHub Action.'
 }
@@ -128,3 +148,4 @@ if ($runBlockCount -lt 5) { throw 'TEST_FAIL: workflow PowerShell blocks were no
 
 Write-Output 'ARTHUR_POSTFLASH_RESUME_ONLY_WORKFLOW=PASS'
 Write-Output 'ARTHUR_POSTFLASH_RESUME_NO_FLASH_BOUNDARY=PASS'
+Write-Output 'ARTHUR_POSTFLASH_QUICKFILE_AUTHENTICATED_BODY_CLASSIFICATION=PASS'

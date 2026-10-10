@@ -130,6 +130,13 @@ function Invoke-LuciGet {
     finally { Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $body }
 }
 
+function Test-LuciLoginForm {
+    param([string]$Body)
+    $hasUsernameField = [regex]::IsMatch($Body,'(?is)<input\b(?=[^>]*\bname\s*=\s*["'']luci_username["''])[^>]*>')
+    $hasPasswordField = [regex]::IsMatch($Body,'(?is)<input\b(?=[^>]*\bname\s*=\s*["'']luci_password["''])[^>]*>')
+    return $hasUsernameField -and $hasPasswordField
+}
+
 Require ([int]$Request.schema_version -eq 1) 'REQUEST_SCHEMA_INVALID' 'schema_version must be 1'
 Require ([string]$Request.status -eq 'AUTHORIZED') 'POST_RELEASE_TEST_NOT_AUTHORIZED' 'request status must be AUTHORIZED'
 Require ($Request.device_write_authorized -eq $true) 'DEVICE_WRITE_NOT_AUTHORIZED' 'runner-key recovery must be authorized by the post-release request'
@@ -215,10 +222,10 @@ $session = New-RootLuciCookie -KnownHosts $knownHosts
 try {
     $quickfilePage = Invoke-LuciGet -Cookie $session.Cookie -Path '/cgi-bin/luci/admin/system/quickfile'
     Require ($quickfilePage.ExitCode -eq 0 -and $quickfilePage.HttpCode -eq '200') 'QUICKFILE_UI_FAIL' 'QuickFile LuCI route did not return HTTP 200'
-    Require ($quickfilePage.Body -notmatch '(?i)502 Bad Gateway|404 Not Found|404 未找到|x-luci-login-required|login-page') 'QUICKFILE_UI_FAIL' 'QuickFile response contains an error or login page'
+    Require ($quickfilePage.Body -notmatch '(?i)502 Bad Gateway|404 Not Found|404 未找到|x-luci-login-required' -and -not (Test-LuciLoginForm -Body $quickfilePage.Body)) 'QUICKFILE_UI_FAIL' 'QuickFile response contains an error or login form'
     $linkeasePage = Invoke-LuciGet -Cookie $session.Cookie -Path '/cgi-bin/luci/admin/services/linkease/file/?path=/data_mmcblk0p27'
     Require ($linkeasePage.ExitCode -eq 0 -and $linkeasePage.HttpCode -eq '200') 'LINKEASE_FILE_UI_FAIL' 'LinkEase file route did not return HTTP 200'
-    Require ($linkeasePage.Body -notmatch '(?i)502 Bad Gateway|404 Not Found|404 未找到|No page is registered|x-luci-login-required|login-page') 'LINKEASE_FILE_UI_FAIL' 'LinkEase file response contains an error or login page'
+    Require ($linkeasePage.Body -notmatch '(?i)502 Bad Gateway|404 Not Found|404 未找到|No page is registered|x-luci-login-required' -and -not (Test-LuciLoginForm -Body $linkeasePage.Body)) 'LINKEASE_FILE_UI_FAIL' 'LinkEase file response contains an error or login form'
 }
 finally {
     Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $session.Cookie
