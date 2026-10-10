@@ -44,10 +44,23 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $sourceRoot = Join-Path $env:RUNNER_TEMP ("arthur-post-release-source-{0}" -f $env:GITHUB_RUN_ID)
-          $remote = "https://github.com/$($env:GITHUB_REPOSITORY).git"
+          $remote = 'https://github.com/mxonline/xinzhaowrt.git'
+          if ($env:GITHUB_REPOSITORY -ne 'mxonline/xinzhaowrt') { throw 'SOURCE_REPOSITORY_IDENTITY_MISMATCH' }
+          if ($env:GITHUB_SHA -notmatch '^[0-9a-f]{40}$') { throw 'SOURCE_COMMIT_IDENTITY_INVALID' }
+          $commitSpec = "$($env:GITHUB_SHA)^{commit}"
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+          $sourceRoot = [IO.Path]::GetFullPath((Join-Path $runnerTemp ("arthur-post-release-source-{0}-{1}" -f $env:GITHUB_RUN_ID,$env:GITHUB_RUN_ATTEMPT)))
           $env:GIT_TERMINAL_PROMPT = '0'
           $env:GCM_INTERACTIVE = 'Never'
+
+          function Assert-SourceRootInRunnerTemp {
+            $fullPath = [IO.Path]::GetFullPath($sourceRoot)
+            $prefix = $runnerTemp + [IO.Path]::DirectorySeparatorChar
+            if ([string]::Equals($fullPath,$runnerTemp,[StringComparison]::OrdinalIgnoreCase) -or -not $fullPath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {
+              throw 'SOURCE_ROOT_OUTSIDE_RUNNER_TEMP'
+            }
+          }
+
           function Invoke-Git([string[]]$Arguments,[switch]$AllowFailure) {
             $oldPreference = $ErrorActionPreference
             try {
@@ -61,37 +74,144 @@ jobs:
             [pscustomobject]@{ExitCode=$code;Output=$output}
           }
 
-          if (Test-Path -LiteralPath $sourceRoot -PathType Container) {
-            $origin = Invoke-Git @('-C',$sourceRoot,'remote','get-url','origin')
-            if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
-            $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
-            if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_ROOT_OCCUPIED_BY_DIFFERENT_COMMIT' }
-            $dirty = Invoke-Git @('-C',$sourceRoot,'status','--porcelain','--untracked-files=no')
-            if (-not [string]::IsNullOrWhiteSpace($dirty.Output)) { throw 'SOURCE_ROOT_HAS_TRACKED_CHANGES' }
-          }
-          else {
-            New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
-            Invoke-Git @('init','--quiet',$sourceRoot) | Out-Null
-            Invoke-Git @('-C',$sourceRoot,'remote','add','origin',$remote) | Out-Null
-            $fetched = $false
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-              Write-Host "SOURCE_FETCH_ATTEMPT attempt=$attempt/3"
-              $fetch = Invoke-Git @('-c','http.sslBackend=openssl','-c','http.connectTimeout=30','-c','http.lowSpeedLimit=1024','-c','http.lowSpeedTime=30','-c','credential.interactive=never','-C',$sourceRoot,'fetch','--no-tags','--depth=1','origin',$env:GITHUB_SHA) -AllowFailure
-              if ($fetch.ExitCode -eq 0) { $fetched = $true; break }
-              $transient = $fetch.Output -match '(?i)(unexpected EOF|TLS handshake timeout|connection reset|connection closed|timed out|curl 56|SSL connection.*closed|基础连接已经关闭|远程方已关闭传输流|身份验证失败|发送时发生错误)'
-              if (-not $transient -or $attempt -eq 3) { throw "SOURCE_FETCH_FAILED attempt=$attempt transient=$transient error=$($fetch.Output)" }
-              $delaySeconds = 5 * $attempt
-              Write-Host "SOURCE_FETCH_RETRY attempt=$attempt/3 delay_seconds=$delaySeconds"
-              Start-Sleep -Seconds $delaySeconds
-            }
-            if (-not $fetched) { throw 'SOURCE_FETCH_FAILED attempts=3' }
-            Invoke-Git @('-C',$sourceRoot,'checkout','--detach','FETCH_HEAD') | Out-Null
-            $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
-            if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_COMMIT_MISMATCH' }
+          function Remove-IsolatedSourceRoot {
+            Assert-SourceRootInRunnerTemp
+            if (Test-Path -LiteralPath $sourceRoot) { Remove-Item -Recurse -Force -LiteralPath $sourceRoot }
           }
 
-          [System.IO.File]::AppendAllText($env:GITHUB_ENV,('ARTHUR_SOURCE_ROOT=' + $sourceRoot + [Environment]::NewLine),[System.Text.UTF8Encoding]::new($false))
-          Write-Host "WORKFLOW_SOURCE=PASS commit=$env:GITHUB_SHA"
+          $sourceReady = $false
+          $sourceAvailable = $false
+          $sourceKind = ''
+          $sourceRepo = ''
+          try {
+            if (Test-Path -LiteralPath $sourceRoot) { throw 'SOURCE_ROOT_ALREADY_EXISTS' }
+
+            $sourceRepoCandidates = @()
+            if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+              $sourceRepoCandidates += Join-Path $env:LOCALAPPDATA 'XinZhaoWrt\ControlPlane\workspace'
+            }
+            if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_WORKSPACE)) {
+              $sourceRepoCandidates += $env:GITHUB_WORKSPACE
+            }
+            $seenCandidates = @{}
+            foreach ($candidate in $sourceRepoCandidates) {
+              $candidate = [IO.Path]::GetFullPath($candidate)
+              if ($seenCandidates.ContainsKey($candidate)) { continue }
+              $seenCandidates[$candidate] = $true
+              if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+
+              $candidateGit = Invoke-Git @('-C',$candidate,'rev-parse','--git-dir') -AllowFailure
+              if ($candidateGit.ExitCode -ne 0) { continue }
+              $origin = Invoke-Git @('-C',$candidate,'remote','get-url','origin') -AllowFailure
+              if ($origin.ExitCode -ne 0) { throw 'SOURCE_ORIGIN_IDENTITY_UNAVAILABLE' }
+              if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
+
+              $objectExists = Invoke-Git @('-C',$candidate,'cat-file','-e',$commitSpec) -AllowFailure
+              if ($objectExists.ExitCode -ne 0) {
+                Write-Output "SOURCE_LOCAL_CANDIDATE=MISS path=$candidate"
+                continue
+              }
+
+              Write-Output "SOURCE_LOCAL_OBJECT=PASS path=$candidate commit=$env:GITHUB_SHA"
+              $sourceRepo = $candidate
+              $sourceKind = 'worktree'
+              $worktreeAdd = Invoke-Git @('-C',$candidate,'worktree','add','--detach',$sourceRoot,$env:GITHUB_SHA) -AllowFailure
+              if ($worktreeAdd.ExitCode -ne 0) { throw "SOURCE_LOCAL_WORKTREE_CREATE_FAILED error=$($worktreeAdd.Output)" }
+
+              $origin = Invoke-Git @('-C',$sourceRoot,'remote','get-url','origin')
+              if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
+              $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
+              if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_COMMIT_MISMATCH' }
+              $dirty = Invoke-Git @('-C',$sourceRoot,'status','--porcelain','--untracked-files=no')
+              if (-not [string]::IsNullOrWhiteSpace($dirty.Output)) { throw 'SOURCE_ROOT_HAS_TRACKED_CHANGES' }
+
+              Write-Output "WORKFLOW_SOURCE_LOCAL_REUSE=PASS commit=$env:GITHUB_SHA"
+              $sourceAvailable = $true
+              break
+            }
+
+            if (-not $sourceAvailable) {
+              $maxRetries = 4
+              $maxAttempts = $maxRetries + 1
+              $retryDelaysSeconds = @(5,10,20,30)
+              $transientPattern = '(?i)(curl\s*28|operation too slow|low[- ]speed|unexpected EOF|early EOF|fetch-pack:\s*unexpected disconnect|invalid index-pack output|curl\s*56|TLS handshake timeout|connection reset|connection closed|SSL connection.*closed|remote end hung up|远程方关闭传输流|基础连接关闭|基础连接已经关闭|远程方已关闭传输流|身份验证失败|发送时发生错误)'
+              $transientFixtures = @(
+                'curl 28 Operation too slow',
+                'fatal: early EOF',
+                'fetch-pack: unexpected disconnect',
+                'fatal: fetch-pack: invalid index-pack output',
+                'curl 56',
+                'TLS handshake timeout',
+                'connection reset',
+                'connection closed',
+                'SSL connection has been closed',
+                'remote end hung up',
+                '远程方关闭传输流',
+                '基础连接关闭'
+              )
+              foreach ($fixture in $transientFixtures) {
+                if ($fixture -notmatch $transientPattern) { throw "SOURCE_FETCH_CLASSIFIER_REGRESSION fixture=$fixture" }
+              }
+              Write-Output 'SOURCE_FETCH_RETRY_CLASSIFICATION=PASS'
+
+              $fetched = $false
+              $lastFetchOutput = ''
+              for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+                Remove-IsolatedSourceRoot
+                New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+                Invoke-Git @('init','--quiet',$sourceRoot) | Out-Null
+                Invoke-Git @('-C',$sourceRoot,'remote','add','origin',$remote) | Out-Null
+                Write-Output "SOURCE_FETCH_ATTEMPT attempt=$attempt/$maxAttempts"
+                $fetch = Invoke-Git @('-c','http.sslBackend=openssl','-c','http.connectTimeout=30','-c','http.lowSpeedLimit=1024','-c','http.lowSpeedTime=30','-c','credential.interactive=never','-C',$sourceRoot,'fetch','--no-tags','--depth=1','origin',$env:GITHUB_SHA) -AllowFailure
+                if ($fetch.ExitCode -eq 0) { $fetched = $true; break }
+
+                $lastFetchOutput = $fetch.Output
+                $transient = $fetch.Output -match $transientPattern
+                if (-not $transient) { throw "SOURCE_FETCH_FAILED attempt=$attempt transient=False error=$lastFetchOutput" }
+                if ($attempt -eq $maxAttempts) {
+                  throw "SOURCE_FETCH_TRANSIENT_EXHAUSTED attempts=$maxAttempts retries=$maxRetries error=$lastFetchOutput"
+                }
+
+                $retryNumber = $attempt
+                $delaySeconds = $retryDelaysSeconds[$retryNumber - 1]
+                Write-Output "SOURCE_FETCH_RETRY attempt=$retryNumber/$maxRetries delay_seconds=$delaySeconds"
+                Remove-IsolatedSourceRoot
+                Start-Sleep -Seconds $delaySeconds
+              }
+              if (-not $fetched) { throw "SOURCE_FETCH_TRANSIENT_EXHAUSTED attempts=$maxAttempts retries=$maxRetries error=$lastFetchOutput" }
+
+              Invoke-Git @('-C',$sourceRoot,'checkout','--detach','FETCH_HEAD') | Out-Null
+              $origin = Invoke-Git @('-C',$sourceRoot,'remote','get-url','origin')
+              if ($origin.Output.Trim() -ne $remote) { throw 'SOURCE_ORIGIN_MISMATCH' }
+              $head = Invoke-Git @('-C',$sourceRoot,'rev-parse','HEAD')
+              if ($head.Output.Trim() -ne $env:GITHUB_SHA) { throw 'SOURCE_COMMIT_MISMATCH' }
+              $dirty = Invoke-Git @('-C',$sourceRoot,'status','--porcelain','--untracked-files=no')
+              if (-not [string]::IsNullOrWhiteSpace($dirty.Output)) { throw 'SOURCE_ROOT_HAS_TRACKED_CHANGES' }
+              $sourceKind = 'fetch'
+              $fetched = $true
+              $sourceAvailable = $true
+            }
+
+            [System.IO.File]::AppendAllText($env:GITHUB_ENV,('ARTHUR_SOURCE_ROOT=' + $sourceRoot + [Environment]::NewLine),[System.Text.UTF8Encoding]::new($false))
+            [System.IO.File]::AppendAllText($env:GITHUB_ENV,('ARTHUR_SOURCE_KIND=' + $sourceKind + [Environment]::NewLine),[System.Text.UTF8Encoding]::new($false))
+            [System.IO.File]::AppendAllText($env:GITHUB_ENV,('ARTHUR_SOURCE_REPO=' + $sourceRepo + [Environment]::NewLine),[System.Text.UTF8Encoding]::new($false))
+            Write-Output "WORKFLOW_SOURCE=PASS commit=$env:GITHUB_SHA"
+            $sourceReady = $true
+          }
+          catch {
+            Write-Output 'DEVICE_ACCESSED=NO'
+            Write-Output 'SECOND_FLASH_EXECUTED=NO'
+            throw
+          }
+          finally {
+            if (-not $sourceReady -and (Test-Path -LiteralPath $sourceRoot)) {
+              if ($sourceKind -eq 'worktree' -and -not [string]::IsNullOrWhiteSpace($sourceRepo)) {
+                $removeWorktree = Invoke-Git @('-C',$sourceRepo,'worktree','remove','--force',$sourceRoot) -AllowFailure
+                if ($removeWorktree.ExitCode -ne 0 -and (Test-Path -LiteralPath $sourceRoot)) { Remove-IsolatedSourceRoot }
+              }
+              else { Remove-IsolatedSourceRoot }
+            }
+          }
 
       - name: Install pinned PowerShell 7 runtime
         shell: powershell
@@ -461,3 +581,25 @@ jobs:
             Copy-Item -Recurse -Force -Path (Join-Path $src '*') -Destination $dst
           }
           Write-Host "POST_RELEASE_EVIDENCE_LOCAL_PATH=$dst"
+
+      - name: Clean exact PostFlash source workspace
+        if: always() && env.ARTHUR_SOURCE_ROOT != ''
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+          $sourceRoot = [IO.Path]::GetFullPath($env:ARTHUR_SOURCE_ROOT)
+          $prefix = $runnerTemp + [IO.Path]::DirectorySeparatorChar
+          if ([string]::Equals($sourceRoot,$runnerTemp,[StringComparison]::OrdinalIgnoreCase) -or -not $sourceRoot.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'SOURCE_ROOT_OUTSIDE_RUNNER_TEMP'
+          }
+          if ($env:ARTHUR_SOURCE_KIND -eq 'worktree') {
+            if ([string]::IsNullOrWhiteSpace($env:ARTHUR_SOURCE_REPO)) { throw 'SOURCE_WORKTREE_REPOSITORY_MISSING' }
+            $origin = (& git -C $env:ARTHUR_SOURCE_REPO remote get-url origin 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $origin -ne 'https://github.com/mxonline/xinzhaowrt.git') { throw 'SOURCE_ORIGIN_MISMATCH_DURING_CLEANUP' }
+            & git -C $env:ARTHUR_SOURCE_REPO worktree remove --force $sourceRoot
+            if ($LASTEXITCODE -ne 0) { throw 'SOURCE_WORKTREE_CLEANUP_FAILED' }
+          }
+          elseif (Test-Path -LiteralPath $sourceRoot) {
+            Remove-Item -Recurse -Force -LiteralPath $sourceRoot
+          }
