@@ -114,6 +114,19 @@ if ($workflow -match '(?m)^      ARTHUR_ROOT_PASSWORD:') {
     throw 'TEST_FAIL: the root password secret must not be exposed to every job step.'
 }
 
+$productGoalStepStart = $workflow.IndexOf('      - name: Execute exact-release highest product-goal runtime validation',[StringComparison]::Ordinal)
+$productGoalStepEnd = if ($productGoalStepStart -ge 0) { $workflow.IndexOf("`n      - name:",$productGoalStepStart + 1,[StringComparison]::Ordinal) } else { -1 }
+if ($productGoalStepStart -lt 0 -or $productGoalStepEnd -lt 0) {
+    throw 'TEST_FAIL: the exact-release product-goal validation step must be present.'
+}
+$productGoalStep = $workflow.Substring($productGoalStepStart,$productGoalStepEnd-$productGoalStepStart)
+if (-not $productGoalStep.Contains('--model gpt-5.6-terra')) {
+    throw 'TEST_FAIL: the exact-release product-goal Codex invocation must bind the runner-supported gpt-5.6-terra model explicitly.'
+}
+if ($productGoalStep.Contains('gpt-6-luna')) {
+    throw 'TEST_FAIL: the exact-release product-goal step must not inherit the unsupported gpt-6-luna runner model.'
+}
+
 $tokens = $null
 $errors = $null
 [void][System.Management.Automation.Language.Parser]::ParseFile($resumeScriptPath,[ref]$tokens,[ref]$errors)
