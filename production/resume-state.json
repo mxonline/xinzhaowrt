@@ -236,6 +236,6 @@
     "host push bridge",
     "chat/model narrative"
   ],
-  "evidence_timestamp": "2026-10-10T06:43:13.204074+08:00",
-  "semantic_sha256": "cde4e645e529befd5dfb4055a349a8a70bd183a2b50e78c518d6c6450a6dfc32"
+  "semantic_sha256": "ea655942e58eed6873f511a3d8911c4d08e8ca1769e42643986feca0df5d6a13",
+  "evidence_timestamp": "2026-10-09T22:43:13.204074+00:00"
 }
