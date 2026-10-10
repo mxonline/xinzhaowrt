@@ -24,9 +24,9 @@ jobs:
       - xinzhaowrt-controller
     timeout-minutes: 240
     env:
-      GH_TOKEN: \${{ github.token }}
-      GITHUB_TOKEN: \${{ github.token }}
-      ARTHUR_ROOT_PASSWORD: \${{ secrets.ARTHUR_ROOT_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
       PYTHONDONTWRITEBYTECODE: '1'
 
     steps:
@@ -305,14 +305,15 @@ jobs:
           Write-Host 'POST_RELEASE_VALIDATED=PASS'
           Write-Host 'PRODUCT_GOAL_VERIFIED=PASS'
 
-      - name: Upload independent post-release machine evidence
+      - name: Persist independent post-release machine evidence locally
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Arthur-v0.1.6-post-release-device-test-\${{ github.run_id }}
-          path: |
-            output/real-device/real-device-verification.json
-            output/real-device/real-device-verification.md
-            output/real-device/v016-file-management-postflash.json
-            output/real-device/v016-product-goal-exact-release.json
-          if-no-files-found: warn
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $src = Join-Path $env:GITHUB_WORKSPACE 'output\real-device'
+          $dst = Join-Path $env:LOCALAPPDATA ('XinZhaoWrt\PostReleaseDeviceTest\run-' + $env:GITHUB_RUN_ID + '\evidence')
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path -LiteralPath $src) {
+            Copy-Item -Recurse -Force -Path (Join-Path $src '*') -Destination $dst
+          }
+          Write-Host "POST_RELEASE_EVIDENCE_LOCAL_PATH=$dst"
