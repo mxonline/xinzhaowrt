@@ -12,8 +12,9 @@ if (-not (Test-Path -LiteralPath $resumeScriptPath -PathType Leaf)) {
 foreach ($required in @(
     'workflow_dispatch:',
     'resume_postflash_only:',
+    'resume_product_goal_only:',
     'ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}',
-    "if: github.event_name == 'push' || inputs.resume_postflash_only == 'true'",
+    "if: github.event_name == 'push' || inputs.resume_postflash_only == 'true' || inputs.resume_product_goal_only == 'true'",
     '- name: Load exact current workflow source',
     "'-C',`$sourceRoot,'remote','get-url','origin'",
     "'-c','http.sslBackend=openssl'",
@@ -41,6 +42,9 @@ foreach ($required in @(
     '- xinzhaowrt-controller',
     "if: github.event_name == 'push'",
     "if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true'",
+    "inputs.resume_postflash_only == 'true' && inputs.resume_product_goal_only != 'true'",
+    "inputs.resume_postflash_only == 'true' || inputs.resume_product_goal_only == 'true'",
+    'Reject ambiguous PostFlash and product-goal resume modes',
     'scripts\arthur-postflash-resume.ps1'
 )) {
     if (-not $workflow.Contains($required)) {
@@ -69,6 +73,12 @@ if (-not (Test-LuciLoginForm -Body $actualLuciLoginBody)) {
 }
 if ($workflow -match '(?m)^\s*uses:\s*actions/') {
     throw 'TEST_FAIL: the postflash resume workflow must not depend on downloading an external GitHub Action.'
+}
+$workflowSteps = $workflow -split '(?m)^      - name:'
+foreach ($step in $workflowSteps) {
+    if ([regex]::Matches($step,'(?m)^        if:').Count -gt 1) {
+        throw 'TEST_FAIL: each workflow step must have at most one condition.'
+    }
 }
 
 $resume = Get-Content -Raw -LiteralPath $resumeScriptPath
@@ -101,7 +111,7 @@ $resumeStepStart = $workflow.IndexOf('      - name: Execute strictly no-flash Po
 $resumeStepEnd = if ($resumeStepStart -ge 0) { $workflow.IndexOf("`n      - name:",$resumeStepStart + 1,[StringComparison]::Ordinal) } else { -1 }
 if ($resumeStepStart -lt 0 -or $resumeStepEnd -lt 0) { throw 'TEST_FAIL: the resume-only workflow step must be a separate gated step.' }
 $resumeStep = $workflow.Substring($resumeStepStart,$resumeStepEnd-$resumeStepStart)
-if (-not $resumeStep.Contains("if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true'")) {
+if (-not $resumeStep.Contains("inputs.resume_postflash_only == 'true' && inputs.resume_product_goal_only != 'true'")) {
     throw 'TEST_FAIL: the no-flash verifier must run only for an explicit true resume dispatch.'
 }
 if (-not $resumeStep.Contains('ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}')) {
@@ -123,8 +133,27 @@ $productGoalStep = $workflow.Substring($productGoalStepStart,$productGoalStepEnd
 if (-not $productGoalStep.Contains('--model gpt-5.6-terra')) {
     throw 'TEST_FAIL: the exact-release product-goal Codex invocation must bind the runner-supported gpt-5.6-terra model explicitly.'
 }
+if (-not $productGoalStep.Contains("inputs.resume_postflash_only == 'true' || inputs.resume_product_goal_only == 'true'")) {
+    throw 'TEST_FAIL: the product-goal-only dispatch must reach the product-goal validator.'
+}
+if (-not $productGoalStep.Contains('Reuse exact PASS file-management evidence from run 38087541420')) {
+    throw 'TEST_FAIL: product-goal-only validation must reuse the exact prior file-management evidence without retesting it.'
+}
 if ($productGoalStep.Contains('gpt-6-luna')) {
     throw 'TEST_FAIL: the exact-release product-goal step must not inherit the unsupported gpt-6-luna runner model.'
+}
+
+$productResumeStart = $workflow.IndexOf('      - name: Validate exact PostFlash evidence and Arthur identity read-only for product-only resume',[StringComparison]::Ordinal)
+$productResumeEnd = if ($productResumeStart -ge 0) { $workflow.IndexOf("`n      - name:",$productResumeStart + 1,[StringComparison]::Ordinal) } else { -1 }
+if ($productResumeStart -lt 0 -or $productResumeEnd -lt 0) {
+    throw 'TEST_FAIL: product-goal-only mode must validate and restore prior exact-release PostFlash evidence.'
+}
+$productResumeStep = $workflow.Substring($productResumeStart,$productResumeEnd-$productResumeStart)
+if (-not $productResumeStep.Contains("inputs.resume_product_goal_only == 'true'") -or -not $productResumeStep.Contains('scripts\arthur-product-goal-resume.ps1')) {
+    throw 'TEST_FAIL: exact PostFlash evidence and read-only identity binding must run only for the explicit product-goal-only dispatch.'
+}
+if ($productResumeStep -match '(?i)ARTHUR_ROOT_PASSWORD|sysupgrade|scp|firmware|reboot|Ensure-ArthurUnattendedAccess') {
+    throw 'TEST_FAIL: product-goal-only preflight must not expose credentials, recover SSH, flash, transfer firmware, or reboot.'
 }
 
 $tokens = $null

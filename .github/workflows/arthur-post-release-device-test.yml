@@ -16,6 +16,14 @@ on:
           - 'false'
           - 'true'
         default: 'false'
+      resume_product_goal_only:
+        description: Reuse exact prior PostFlash evidence and resume remaining product checks; never flash or reboot
+        required: true
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
 
 permissions:
   contents: read
@@ -27,7 +35,7 @@ concurrency:
 
 jobs:
   exact-release-device-test:
-    if: github.event_name == 'push' || inputs.resume_postflash_only == 'true'
+    if: github.event_name == 'push' || inputs.resume_postflash_only == 'true' || inputs.resume_product_goal_only == 'true'
     runs-on:
       - self-hosted
       - windows
@@ -296,6 +304,11 @@ jobs:
             Write-Host "PWSH_BOOTSTRAP=PASS version=$runtimeVersion archive_sha256=$actualSha256"
           }
 
+      - name: Reject ambiguous PostFlash and product-goal resume modes
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true' && inputs.resume_product_goal_only == 'true'
+        shell: powershell
+        run: throw 'AMBIGUOUS_RESUME_MODE: select exactly one no-flash resume mode.'
+
       - name: Execute exact-release flash and base/file-management acceptance
         if: github.event_name == 'push'
         env:
@@ -307,7 +320,7 @@ jobs:
           pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-post-release-v016-device-test.ps1 -RequestPath .\production\post-release-device-test-request.json
 
       - name: Execute strictly no-flash PostFlash resume
-        if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true'
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_postflash_only == 'true' && inputs.resume_product_goal_only != 'true'
         env:
           ARTHUR_ROOT_PASSWORD: ${{ secrets.ARTHUR_ROOT_PASSWORD }}
         shell: powershell
@@ -316,7 +329,16 @@ jobs:
           Set-Location -LiteralPath $env:ARTHUR_SOURCE_ROOT
           pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-postflash-resume.ps1 -RequestPath .\production\post-release-device-test-request.json
 
+      - name: Validate exact PostFlash evidence and Arthur identity read-only for product-only resume
+        if: github.event_name == 'workflow_dispatch' && inputs.resume_product_goal_only == 'true' && inputs.resume_postflash_only != 'true'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:ARTHUR_SOURCE_ROOT
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\arthur-product-goal-resume.ps1 -RequestPath .\production\post-release-device-test-request.json -PreviousRunId 38087541420
+
       - name: Execute exact-release highest product-goal runtime validation
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.resume_postflash_only == 'true' || inputs.resume_product_goal_only == 'true') && (inputs.resume_postflash_only != 'true' || inputs.resume_product_goal_only != 'true'))
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -348,6 +370,8 @@ jobs:
 
           The preceding device-validation step has completed for this workflow mode. Read the evidence files below and verify their exact release identity and PASS markers.
           For a workflow_dispatch run with resume_postflash_only=true, the preceding step performed read-only exact Ethernet/HTTP identity checks, authenticated SSH recovery, canonical PostFlash verification and read-only file-management acceptance. This path does not download or copy firmware, run sysupgrade checks, flash, build or release.
+          For a workflow_dispatch run with resume_product_goal_only=true, the preceding step validated and copied the exact PASS evidence from run 38087541420, then read-only verified Ethernet MAC, HTTP build identity, and strict SSH identity. It did not repeat PostFlash, file-management checks, SSH recovery, or reboot.
+          Reuse exact PASS file-management evidence from run 38087541420. Preserve QUICKFILE_BACKEND, QUICKFILE_UI, QUICKSTART_LINKEASE_FILE_MANAGER, LINKEASE_MMCBLK0P27_BROWSE and NO_FILE_MANAGEMENT_404_502 as PASS from that bound report; do not retest or modify QuickFile or LinkEase.
           For the push-triggered path, the preceding step performed the existing authorized release and PostFlash flow, which can consume at most its single authorized flash.
           Read and verify, do not blindly trust:
           output/real-device/real-device-verification.json
