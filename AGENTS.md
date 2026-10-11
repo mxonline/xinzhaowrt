@@ -50,6 +50,18 @@ After a new failure is genuinely fixed and verified, update `knowledge/KNOWN-FAI
 - Handoff must never initiate Build/Flash/Release, restart a successful Build, unlock a verified device gate, require pre-release whole-device testing, or add a controller/Stage/Gate. Recover from the last verified machine checkpoint; maintain RELEASE-FIRST, POST_RELEASE_DEVICE_TEST as independent post-release work, and product-goal safety.
 - No tokens, root passwords, cookies, SSH key material, or secrets in HANDOFF. If persistence/readback is unavailable, disclose that the summary was not updated; never invent a completed write.
 
+## Arthur intent-aligned TDD execution method (2026-10-12)
+
+This project adopts the reusable development method in [XinZhao code standard](https://github.com/mxonline/xinzhou-code-standard/blob/main/codex/REUSE_GATE.md). It is a way to execute the **existing** Arthur requirements and verification, not an additional Phase, Gate, Controller, Runtime, release terminal or authorization. The highest `production/product-goal-contract.json`, operator intent, durable release state and release policy remain authoritative.
+
+1. **State and intent before code:** start with the highest product-goal contract, `production/operator-intent.json`, validated `production/resume-state.json`, event/evidence history and effective Git. Derive the intended user-facing behavior, protected baseline, allowed diff and existing terminal. Reuse answers and evidence already accepted; do not start another execution to apply this method.
+2. **Concrete acceptance criteria:** preserve the exact device/target, firmware identity, required 22 LuCI apps, known-good rollback, frozen Wi-Fi/LAN and all task-specific invariants. Record input/condition, expected observable behavior and verification evidence in the existing issue, feature task or release evidence, not a parallel machine-state file.
+3. **Test-first where meaningful:** for a permitted source behavior change, identify a targeted reproducible failure (RED), implement the smallest correction (GREEN), rerun focused checks and affected regression tests. For governance, planning or document-only work, use reviewable acceptance examples and static checks; never claim a runtime RED/GREEN test that was not run.
+4. **Real behavior and minimal changes:** continue existing Reuse Gate and safe real-device-first development rules. LIVE_PREVIEW is used only for explicitly allowlisted, recoverable changes under its existing authorization. Neither a passing unit test nor a preview justifies a Build, device write or Known-Good promotion. One frozen Candidate retains its existing single-build and exact-artifact requirements.
+5. **Repair and release evidence:** capture the first causal failure and actual log/evidence, attempt the smallest valid repair, avoid repeating the same failure without progress. Read back the applicable existing end state: `PRODUCTION_RELEASED` proves the release pipeline; only independent exact-artifact device evidence may prove `PRODUCT_GOAL_VERIFIED` or advance Known-Good. `POST_RELEASE_DEVICE_TEST` stays independent of Build and Release.
+
+A method or documentation update under `GOVERNANCE_RULES_ONLY` is never firmware execution authorization. It must not change operator intent, locked source, accepted artifact, release state, real-device config or pre-release gate ordering. Never run Build, Flash, sysupgrade or real-device mutation merely to validate this governance integration.
+
 ## Reuse Gate hard rule
 
 `knowledge/REUSE-GATE.md` is a prospective source/implementation decision gate. It does not create a new firmware workflow and does not supersede the current Known-Good/Candidate/Stable gates.
