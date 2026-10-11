@@ -28,6 +28,12 @@ The Fast Preflight routing layer is also prospective. It must not cancel or rest
 
 The user-approved v0.1.3 development rule is the default **development** route. `LIVE_PREVIEW`/HOT deployment is not a production release stage. A preview PASS never replaces Candidate build/flash or post-flash `REAL_DEVICE_VERIFY`; it starts/resumes the durable Feature Handoff unless the user explicitly requested a pause.
 
+## Intent-aligned development route (2026-10-12)
+
+For any new Arthur feature, authorized repair, or future firmware behavior change, follow the intent-aligned TDD method in `AGENTS.md` after reading the highest product-goal contract and existing operator intent. Record the intended behavior, protected invariants, acceptance examples and expected diff in the original task evidence. Run focused RED/GREEN tests only when code and environment make them meaningful. For a governance-only request, make no device or firmware mutation.
+
+This is a lightweight addition inside the existing Reuse Gate, real-device-first, LIVE_PREVIEW, Fast Preflight and RELEASE_FIRST chain. It creates no new Stage/Gate and leaves `PRODUCTION_RELEASED` separate from `PRODUCT_GOAL_VERIFIED`.
+
 ## Routing table
 
 ### Any new Arthur/OpenWrt feature

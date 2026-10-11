@@ -95,6 +95,21 @@ Assert-Contains $verifyProject 'test-package-manager-concurrency-gate.sh' 'verif
 $buildCheck = Get-Content -Raw -LiteralPath $BuildCheckPath
 Assert-Contains $buildCheck 'ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS' 'cross-platform build gate must emit machine evidence'
 
+# Governance-only intent/TDD integration must not redefine the product goal.
+$AgentRules = Get-Content -Raw -LiteralPath (Join-Path $Root 'AGENTS.md')
+$KnowledgeRouter = Get-Content -Raw -LiteralPath (Join-Path $Root 'knowledge\INDEX.md')
+Assert-Contains $AgentRules '## Arthur intent-aligned TDD execution method (2026-10-12)' 'Arthur agent entrypoint must include the intent-aligned method'
+Assert-Contains $AgentRules 'production/product-goal-contract.json' 'intent method must preserve the highest product-goal authority'
+Assert-Contains $AgentRules 'production/operator-intent.json' 'intent method must preserve the explicit operator scope'
+Assert-Contains $AgentRules 'RED' 'intent method must describe meaningful failing test evidence'
+Assert-Contains $AgentRules 'GREEN' 'intent method must describe minimum implementation and regression'
+Assert-Contains $AgentRules 'POST_RELEASE_DEVICE_TEST' 'intent method must preserve independent device acceptance'
+Assert-Contains $AgentRules 'GOVERNANCE_RULES_ONLY' 'intent method must forbid release authorization by governance'
+Assert-Contains $AgentRules 'not an additional Phase, Gate' 'intent method must not insert a parallel firmware gate'
+Assert-Contains $KnowledgeRouter '## Intent-aligned development route (2026-10-12)' 'Arthur knowledge router must route intent-aligned tasks'
+Assert-Contains $KnowledgeRouter 'PRODUCTION_RELEASED' 'router must preserve the release terminal'
+Assert-Contains $KnowledgeRouter 'PRODUCT_GOAL_VERIFIED' 'router must preserve the product terminal'
+
 Write-Host 'ARTHUR_PRODUCT_GOAL_HIGHEST_PRIORITY=PASS'
 Write-Host 'ARTHUR_PRODUCT_GOAL_MACHINE_EVIDENCE=PASS'
 Write-Host 'ARTHUR_PRODUCT_GOAL_NO_STAGE_OVERRIDE=PASS'
